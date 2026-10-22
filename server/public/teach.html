@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Teach Soul Friend</title>
+<style>
+:root{--bg:#EEF1FA;--card:#fff;--ink:#1C2140;--muted:#5F6688;--line:#D8DDF0;--mari:#F5A524;--ok:#1D9E75;--bad:#C0392B}
+@media (prefers-color-scheme:dark){:root{--bg:#0F1226;--card:#1A1F3D;--ink:#ECEEFB;--muted:#A3A9CC;--line:#2C3360}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,"Noto Sans Telugu",sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:26px;margin:0}
+.sub{color:var(--muted);margin:4px 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-top:14px}
+h2{font-size:18px;margin:0 0 4px}
+.hint{color:var(--muted);font-size:14px;margin:0 0 12px}
+input,textarea{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+textarea{min-height:140px;resize:vertical}
+label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
+button{font:600 15px system-ui,sans-serif;border:0;border-radius:999px;padding:10px 18px;cursor:pointer;background:var(--mari);color:#1C1406;margin-top:12px}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);padding:6px 12px;margin:0}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--mari);outline-offset:2px}
+.msg{font-size:14px;margin-top:10px;min-height:1.2em}
+.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+ul{list-style:none;padding:0;margin:0}
+li{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+li:first-child{border-top:0}
+li div{flex:1;min-width:0}
+li b{display:block;overflow-wrap:anywhere}
+li small{color:var(--muted)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>Teach Soul Friend</h1>
+  <p class="sub">Only you, the owner, can add knowledge here. The puppy uses it to answer everyone. ఇక్కడ మీరు నేర్పించినది పప్పీ అందరికీ చెబుతుంది.</p>
+
+  <section class="card" id="login">
+    <h2>Owner password</h2>
+    <p class="hint">The TEACH_PASSWORD you set in the server's .env file.</p>
+    <input id="pw" type="password" autocomplete="current-password" aria-label="Owner password">
+    <button id="enter" type="button">Open</button>
+    <div class="msg" id="loginMsg" role="status"></div>
+  </section>
+
+  <div id="tools" hidden>
+    <section class="card">
+      <h2>Upload a file</h2>
+      <p class="hint">PDF, photo of a document (JPG, PNG) or text file, up to 20 MB. Telugu and English both work, even scanned pages. Save Word files as PDF first.</p>
+      <input id="file" type="file" accept=".pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" aria-label="Choose a file">
+      <label for="fileTitle">Title (optional)</label>
+      <input id="fileTitle" placeholder="For example: GO 30 patta rules">
+      <button id="upload" type="button">Add file</button>
+      <div class="msg" id="fileMsg" role="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>Paste text</h2>
+      <p class="hint">Notes, FAQs, office timings, scheme details, or a YouTube video's transcript (on YouTube: More › Show transcript › copy).</p>
+      <label for="textTitle">Title</label>
+      <input id="textTitle" placeholder="For example: Mandal office timings">
+      <label for="text">Text</label>
+      <textarea id="text"></textarea>
+      <button id="addText" type="button">Add text</button>
+      <div class="msg" id="textMsg" role="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>Add a web page</h2>
+      <p class="hint">The page is read once and saved. Add it again later if it changes.</p>
+      <input id="url" type="url" placeholder="https://" aria-label="Web address">
+      <button id="addUrl" type="button">Add page</button>
+      <div class="msg" id="urlMsg" role="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>What the puppy knows</h2>
+      <ul id="list"></ul>
+      <p class="hint" id="empty">Nothing yet. Add your first file above.</p>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let key = "";
+try { key = sessionStorage.getItem("teachKey") || ""; } catch (e) {}
+
+async function api(path, body) {
+  const r = await fetch("/api/teach/" + path, {
+    method: body ? "POST" : "GET",
+    headers: { "Content-Type": "application/json", "X-Teach-Key": key },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || "Something went wrong.");
+  return data;
+}
+function say(el, text, ok) { el.textContent = text; el.className = "msg " + (ok ? "ok" : "bad"); }
+
+async function refresh() {
+  const { items } = await api("list");
+  const ul = $("list"); ul.textContent = "";
+  $("empty").hidden = items.length > 0;
+  for (const it of items) {
+    const li = document.createElement("li");
+    const d = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = it.title;
+    const s = document.createElement("small"); s.textContent = `${new Date(it.added).toLocaleDateString()} · ${it.chars.toLocaleString()} characters · ${it.source}`;
+    d.append(b, s);
+    const del = document.createElement("button"); del.className = "ghost"; del.type = "button"; del.textContent = "Delete";
+    del.onclick = async () => {
+      if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "Tap again to delete"; return; }
+      try { await api("delete", { id: it.id }); refresh(); } catch (e) { del.textContent = "Couldn't delete"; }
+    };
+    li.append(d, del); ul.append(li);
+  }
+}
+
+async function enter() {
+  key = $("pw").value.trim() || key;
+  if (!key) { say($("loginMsg"), "Enter the password.", false); return; }
+  try {
+    await refresh();
+    try { sessionStorage.setItem("teachKey", key); } catch (e) {}
+    $("login").hidden = true; $("tools").hidden = false;
+  } catch (e) { say($("loginMsg"), e.message, false); key = ""; }
+}
+$("enter").onclick = enter;
+$("pw").addEventListener("keydown", e => { if (e.key === "Enter") enter(); });
+if (key) enter();
+
+async function busy(btn, msgEl, work) {
+  btn.disabled = true; say(msgEl, "Working… large files can take a minute.", true);
+  try { await work(); await refresh(); } catch (e) { say(msgEl, e.message, false); }
+  finally { btn.disabled = false; }
+}
+
+$("upload").onclick = () => {
+  const f = $("file").files[0];
+  if (!f) { say($("fileMsg"), "Choose a file first.", false); return; }
+  if (f.size > 20 * 1024 * 1024) { say($("fileMsg"), "That file is over 20 MB. Split it into smaller files.", false); return; }
+  busy($("upload"), $("fileMsg"), async () => {
+    const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = bad; r.readAsDataURL(f); });
+    const type = f.type || (f.name.endsWith(".pdf") ? "application/pdf" : "text/plain");
+    const { item } = await api("file", { name: f.name, mediaType: type, data, title: $("fileTitle").value.trim() || undefined });
+    say($("fileMsg"), `Added "${item.title}" (${item.chars.toLocaleString()} characters).`, true);
+    $("file").value = ""; $("fileTitle").value = "";
+  });
+};
+$("addText").onclick = () => busy($("addText"), $("textMsg"), async () => {
+  const { item } = await api("text", { title: $("textTitle").value.trim(), text: $("text").value });
+  say($("textMsg"), `Added "${item.title}".`, true); $("text").value = ""; $("textTitle").value = "";
+});
+$("addUrl").onclick = () => busy($("addUrl"), $("urlMsg"), async () => {
+  const { item } = await api("url", { url: $("url").value.trim() });
+  say($("urlMsg"), `Added "${item.title}".`, true); $("url").value = "";
+});
+</script>
+</body>
+</html>

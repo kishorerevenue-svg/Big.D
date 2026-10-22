@@ -1,0 +1,499 @@
+package com.soulfriend.pet
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import android.text.InputType
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import org.json.JSONObject
+import java.util.Locale
+import kotlin.math.abs
+
+/** Keeps the puppy floating on top of other apps, listens, talks, and runs tasks. */
+class PetService : Service(), TextToSpeech.OnInitListener {
+
+    companion object {
+        @Volatile var running = false
+        const val ACTION_SAY = "com.soulfriend.pet.SAY"
+        const val ACTION_STOP = "com.soulfriend.pet.STOP"
+        const val ACTION_LISTEN = "com.soulfriend.pet.LISTEN"
+        const val ACTION_PHOTO = "com.soulfriend.pet.PHOTO"
+        private const val CHANNEL = "puppy"
+    }
+
+    private lateinit var wm: WindowManager
+    private lateinit var store: Store
+    private lateinit var brain: Brain
+    private lateinit var actions: Actions
+    private val main = Handler(Looper.getMainLooper())
+
+    private lateinit var pet: PuppyView
+    private lateinit var petParams: WindowManager.LayoutParams
+    private var bubble: TextView? = null
+    private var bubbleParams: WindowManager.LayoutParams? = null
+    private var panel: View? = null
+    private var panelText: TextView? = null
+    private var panelInput: EditText? = null
+    private var panelTools: View? = null
+    private var langBtn: Button? = null
+    private var voiceBtn: Button? = null
+
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var teluguVoiceMissingShown = false
+    private var recognizer: SpeechRecognizer? = null
+    private var listening = false
+
+    private var lastQuestion = ""
+    private var lastReply = ""
+    private var panelContent = ""
+    private var utter = 0
+    private var photoQuestion = ""
+
+    private val hideBubble = Runnable { removeBubble() }
+    private val goSleep = Runnable { if (!listening && !pet.talking) pet.mood = PuppyView.Mood.SLEEPY }
+
+    private fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
+    private val screenW get() = resources.displayMetrics.widthPixels
+    private val screenH get() = resources.displayMetrics.heightPixels
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        running = true
+        store = Store(this)
+        brain = Brain(store)
+        actions = Actions(this) { title, text -> openPanel(title, text) }
+        wm = getSystemService(WindowManager::class.java)
+        goForeground()
+        addPet()
+        tts = TextToSpeech(this, this)
+        say("Hi! I'm Soul Friend. Tap me and talk!", PuppyView.Mood.EXCITED)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
+            ACTION_SAY -> say(intent.getStringExtra("text") ?: "", PuppyView.Mood.SURPRISED, prefix = "⏰ ")
+            ACTION_LISTEN -> startListening()
+            ACTION_PHOTO -> intent.getStringExtra("path")?.let { sendPhoto(it) }
+        }
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        running = false
+        main.removeCallbacksAndMessages(null)
+        try { recognizer?.destroy() } catch (e: Exception) { }
+        tts?.shutdown()
+        removeBubble(); closePanel()
+        try { wm.removeView(pet) } catch (e: Exception) { }
+        super.onDestroy()
+    }
+
+    // ---------------- foreground notification ----------------
+    private fun goForeground() {
+        val nm = getSystemService(NotificationManager::class.java)
+        if (nm.getNotificationChannel(CHANNEL) == null)
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Floating puppy", NotificationManager.IMPORTANCE_MIN))
+        val open = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val stop = PendingIntent.getService(this, 2, Intent(this, PetService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
+        val n = Notification.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_paw)
+            .setContentTitle("Soul Friend is on your screen")
+            .setContentText("Tap the puppy to talk. Hold it for the menu.")
+            .setContentIntent(open)
+            .addAction(Notification.Action.Builder(null, "Hide puppy", stop).build())
+            .setOngoing(true)
+            .build()
+        val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        when {
+            Build.VERSION.SDK_INT >= 34 -> {
+                var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                if (mic) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                startForeground(1, n, type)
+            }
+            Build.VERSION.SDK_INT >= 30 && mic -> startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            else -> startForeground(1, n)
+        }
+    }
+
+    // ---------------- the puppy window ----------------
+    private fun overlayParams(w: Int, h: Int, focusable: Boolean = false) = WindowManager.LayoutParams(
+        w, h, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        (if (focusable) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+        PixelFormat.TRANSLUCENT
+    ).apply { gravity = Gravity.TOP or Gravity.START }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun addPet() {
+        pet = PuppyView(this)
+        pet.contentDescription = "Soul Friend puppy. Tap to talk, hold for menu."
+        val size = dp(112)
+        petParams = overlayParams(size, size).apply {
+            x = if (store.petX >= 0) store.petX else screenW - size - dp(8)
+            y = if (store.petY >= 0) store.petY else screenH / 2
+        }
+        wm.addView(pet, petParams)
+
+        val slop = ViewConfiguration.get(this).scaledTouchSlop
+        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0
+        var moved = false; var longDone = false
+        val longPress = Runnable { longDone = true; wake(); togglePanel() }
+        pet.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX; downY = e.rawY; startX = petParams.x; startY = petParams.y
+                    moved = false; longDone = false
+                    main.postDelayed(longPress, 550)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - downX; val dy = e.rawY - downY
+                    if (!moved && (abs(dx) > slop || abs(dy) > slop)) { moved = true; main.removeCallbacks(longPress) }
+                    if (moved) {
+                        petParams.x = (startX + dx).toInt().coerceIn(0, screenW - pet.width)
+                        petParams.y = (startY + dy).toInt().coerceIn(0, screenH - pet.height)
+                        wm.updateViewLayout(pet, petParams); placeBubble()
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    main.removeCallbacks(longPress)
+                    if (moved) { store.petX = petParams.x; store.petY = petParams.y }
+                    else if (!longDone && e.actionMasked == MotionEvent.ACTION_UP) { wake(); if (listening) stopListening() else startListening() }
+                }
+            }
+            true
+        }
+        wake()
+    }
+
+    private fun wake() {
+        if (pet.mood == PuppyView.Mood.SLEEPY) pet.mood = PuppyView.Mood.HAPPY
+        main.removeCallbacks(goSleep); main.postDelayed(goSleep, 180_000)
+    }
+
+    // ---------------- speech bubble ----------------
+    private fun showBubble(text: String, keepMs: Long = 9000) {
+        main.removeCallbacks(hideBubble)
+        val b = bubble ?: TextView(this).apply {
+            setTextColor(Color.parseColor("#1C2140")); textSize = 15f
+            setPadding(dp(14), dp(10), dp(14), dp(10)); maxWidth = dp(250)
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(18).toFloat(); setStroke(dp(1), Color.parseColor("#D8DDF0")) }
+            elevation = dp(4).toFloat()
+            setOnClickListener { openPanel(null, lastReply) }
+        }.also { v ->
+            bubble = v
+            bubbleParams = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT)
+            wm.addView(v, bubbleParams)
+        }
+        b.text = if (text.length > 260) text.take(250) + "…" else text
+        b.post { placeBubble() }
+        if (keepMs > 0) main.postDelayed(hideBubble, keepMs)
+    }
+
+    private fun placeBubble() {
+        val b = bubble ?: return; val p = bubbleParams ?: return
+        val bw = b.width.takeIf { it > 0 } ?: dp(200); val bh = b.height.takeIf { it > 0 } ?: dp(60)
+        p.x = (petParams.x + pet.width / 2 - bw / 2).coerceIn(dp(8), maxOf(dp(8), screenW - bw - dp(8)))
+        p.y = if (petParams.y - bh - dp(4) > dp(24)) petParams.y - bh - dp(4) else petParams.y + pet.height + dp(4)
+        try { wm.updateViewLayout(b, p) } catch (e: Exception) { }
+    }
+
+    private fun removeBubble() {
+        bubble?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        bubble = null; bubbleParams = null
+    }
+
+    // ---------------- talking ----------------
+    override fun onInit(status: Int) {
+        ttsReady = status == TextToSpeech.SUCCESS
+        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(id: String?) { main.post { pet.talking = true } }
+            override fun onDone(id: String?) { main.post { pet.talking = false } }
+            @Deprecated("Deprecated in Java")
+            override fun onError(id: String?) { main.post { pet.talking = false } }
+        })
+    }
+
+    private fun isTelugu(s: String) = s.any { it in 'ఀ'..'౿' }
+
+    private fun say(text: String, mood: PuppyView.Mood, extra: String = "", prefix: String = "") {
+        if (text.isBlank()) return
+        pet.mood = mood
+        showBubble(prefix + text + extra, keepMs = (6000 + text.length * 80L).coerceAtMost(30_000))
+        speak(text)
+    }
+
+    private fun speak(text: String) {
+        val t = tts
+        if (!store.voiceOn || t == null || !ttsReady) { fakeTalk(text); return }
+        val te = isTelugu(text)
+        val r = t.setLanguage(if (te) Locale.forLanguageTag("te-IN") else Locale.forLanguageTag("en-IN"))
+        if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
+            if (te && !teluguVoiceMissingShown) {
+                teluguVoiceMissingShown = true
+                main.postDelayed({ showBubble("To hear me in Telugu, open the Soul Friend app and tap 'Install Telugu voice'.", 8000) }, 7000)
+            }
+            fakeTalk(text); return
+        }
+        t.setPitch(1.35f); t.setSpeechRate(1.0f)
+        t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "u" + (++utter))
+    }
+
+    private fun fakeTalk(text: String) {
+        pet.talking = true
+        main.postDelayed({ pet.talking = false }, (400 + text.length * 45L).coerceAtMost(6000))
+    }
+
+    private fun hush() { try { tts?.stop() } catch (e: Exception) { }; pet.talking = false }
+
+    // ---------------- listening ----------------
+    private fun startListening() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            say("I need the microphone. Open the Soul Friend app and tap 'Allow microphone'.", PuppyView.Mood.SAD); openApp(); return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            say("Voice typing isn't available on this phone. Hold me to type instead.", PuppyView.Mood.CONFUSED); return
+        }
+        hush()
+        val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
+        rec.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { showBubble(if (store.lang == "en") "Listening…" else "వింటున్నాను… Listening…", 0) }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { setListening(false) }
+            override fun onError(error: Int) {
+                setListening(false)
+                val msg = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap me and speak again."
+                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "No internet for voice. Check your connection."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Please allow the microphone in the Soul Friend app."
+                    else -> "Voice didn't work. Tap me to try again, or hold me to type."
+                }
+                pet.mood = PuppyView.Mood.CONFUSED; showBubble(msg, 5000)
+            }
+            override fun onPartialResults(partial: Bundle?) {
+                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) showBubble("“$it”", 0) }
+            }
+            override fun onResults(results: Bundle?) {
+                setListening(false)
+                val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (heard.isNullOrBlank()) { showBubble("I didn't catch that. Tap me and speak again.", 5000); return }
+                send(heard)
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (store.lang == "en") "en-IN" else "te-IN")
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        setListening(true)
+        try { rec.startListening(i) } catch (e: Exception) { setListening(false); showBubble("Voice didn't start. Hold me to type instead.", 5000) }
+    }
+
+    private fun stopListening() { try { recognizer?.stopListening() } catch (e: Exception) { }; setListening(false) }
+
+    private fun setListening(on: Boolean) {
+        listening = on; pet.listening = on
+        if (on) pet.mood = PuppyView.Mood.HAPPY
+    }
+
+    // ---------------- asking the brain ----------------
+    private fun send(text: String) {
+        lastQuestion = text
+        pet.mood = PuppyView.Mood.THINKING
+        showBubble("“$text”\n…", 0)
+        brain.ask(text, onReply = { json -> handleReply(json) }, onError = { err ->
+            pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000)
+        })
+    }
+
+    private fun sendPhoto(path: String) {
+        val b64 = try { android.util.Base64.encodeToString(java.io.File(path).readBytes(), android.util.Base64.NO_WRAP) } catch (e: Exception) { null }
+        if (b64 == null) { showBubble("I couldn't open that photo.", 5000); return }
+        val q = photoQuestion.ifBlank { if (store.lang == "te") "ఈ ఫోటోలో ఏముందో సులభంగా చెప్పు." else "What is in this photo? Explain it simply." }
+        photoQuestion = ""
+        lastQuestion = q
+        pet.mood = PuppyView.Mood.THINKING
+        showBubble("📷 “$q”\n…", 0)
+        brain.ask(q, onReply = { json -> handleReply(json) }, onError = { err -> pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }, photo = Pair("image/jpeg", b64))
+    }
+
+    private fun handleReply(json: JSONObject) {
+        val reply = json.optString("reply", "Woof!")
+        lastReply = reply
+        val done = mutableListOf<String>()
+        val arr = json.optJSONArray("actions")
+        if (arr != null) for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { a -> actions.run(a)?.let { done.add(it) } }
+        var extra = if (done.isEmpty()) "" else "\n\n" + done.joinToString("\n") { "✓ $it" }
+        val src = json.optJSONArray("sources")
+        if (src != null && src.length() > 0)
+            extra += "\n\nSources:\n" + (0 until src.length()).joinToString("\n") { i -> src.optJSONObject(i)?.let { "• " + it.optString("title") + "\n  " + it.optString("url") } ?: "" }
+        say(reply, PuppyView.moodOf(json.optString("emotion")), extra)
+        panelText?.let { if (panel != null && panelContent.isEmpty()) { it.text = reply + extra; panelTools?.visibility = View.VISIBLE } }
+    }
+
+    // ---------------- menu panel (hold the puppy) ----------------
+    private fun togglePanel() { if (panel == null) openPanel(null, lastReply) else closePanel() }
+
+    private fun pill(label: String, primary: Boolean = false, onClick: () -> Unit) = Button(this).apply {
+        text = label; isAllCaps = false; textSize = 14f; minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
+        setPadding(dp(12), dp(6), dp(12), dp(6))
+        setTextColor(if (primary) Color.parseColor("#1C1406") else Color.parseColor("#1C2140"))
+        background = GradientDrawable().apply { setColor(Color.parseColor(if (primary) "#F5A524" else "#E3E7F8")); cornerRadius = dp(18).toFloat() }
+        stateListAnimator = null
+        setOnClickListener { onClick() }
+    }
+
+    private fun row(vararg views: View) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        views.forEachIndexed { i, v -> addView(v, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { if (i > 0) marginStart = dp(6) }) }
+    }
+
+    private fun langLabel() = when (store.lang) { "te" -> "తెలుగు"; "en" -> "EN"; else -> "Auto" }
+
+    private fun openPanel(title: String?, content: String) {
+        panelContent = if (title != null) content else ""
+        if (panel == null) buildPanel()
+        val head = if (title != null) "$title\n\n" else ""
+        panelText?.text = head + content.ifBlank { "Type a message below, or tap 🎤 to talk." }
+        panelTools?.visibility = if (content.isBlank()) View.GONE else View.VISIBLE
+    }
+
+    private fun buildPanel() {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply { setColor(Color.parseColor("#FFFFFF")); cornerRadius = dp(20).toFloat(); setStroke(dp(1), Color.parseColor("#D8DDF0")) }
+            elevation = dp(8).toFloat()
+        }
+        val title = TextView(this).apply { text = "Soul Friend"; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1C2140")) }
+        langBtn = pill(langLabel()) {
+            store.lang = when (store.lang) { "auto" -> "te"; "te" -> "en"; else -> "auto" }; langBtn?.text = langLabel()
+        }
+        voiceBtn = pill(if (store.voiceOn) "🔊" else "🔇") {
+            store.voiceOn = !store.voiceOn; voiceBtn?.text = if (store.voiceOn) "🔊" else "🔇"; if (!store.voiceOn) hush()
+        }
+        val close = pill("✕") { closePanel() }
+        val spacer = View(this)
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(title); addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
+            addView(langBtn); addView(voiceBtn, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+            addView(close, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+        }
+        card.addView(header)
+
+        val text = TextView(this).apply { textSize = 15f; setTextColor(Color.parseColor("#1C2140")); setTextIsSelectable(true); setLineSpacing(0f, 1.2f) }
+        panelText = text
+        val scroll = object : ScrollView(this) {
+            override fun onMeasure(w: Int, h: Int) = super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(dp(240), View.MeasureSpec.AT_MOST))
+        }.apply { addView(text) }
+        card.addView(scroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+
+        val reported = TextView(this).apply { textSize = 12f; setTextColor(Color.parseColor("#5F6688")) }
+        val tools = row(
+            pill("Copy") { actions.copy(currentPanelText()); reported.text = "Copied" },
+            pill("Share") { closePanel(); actions.share(currentPanelText()) },
+            pill("Report") {
+                brain.report("Reported from puppy", currentPanelText(), lastQuestion)
+                reported.text = "Reported. Thank you."
+            },
+            reported
+        )
+        panelTools = tools
+        card.addView(tools, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+
+        val input = EditText(this).apply {
+            hint = "Type, or ask about a photo…"; textSize = 15f; setSingleLine(false); maxLines = 3
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            imeOptions = EditorInfo.IME_ACTION_SEND
+            setTextColor(Color.parseColor("#1C2140")); setHintTextColor(Color.parseColor("#8A90B0"))
+            background = GradientDrawable().apply { setColor(Color.parseColor("#F1F3FB")); cornerRadius = dp(18).toFloat() }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        panelInput = input
+        val sendIt = {
+            val q = input.text.toString().trim()
+            if (q.isNotEmpty()) { input.setText(""); panelContent = ""; panelText?.text = "…"; panelTools?.visibility = View.GONE; send(q) }
+        }
+        input.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { sendIt(); true } else false }
+        val mic = pill("🎤") { input.clearFocus(); hideKeyboard(input); startListening() }
+        val photo = pill("📷") {
+            photoQuestion = input.text.toString().trim(); input.setText(""); hideKeyboard(input); closePanel()
+            try { startActivity(Intent(this, PhotoActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+        }
+        val sendBtn = pill("Send", primary = true) { sendIt() }
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(input, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(photo, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+            addView(mic, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+            addView(sendBtn, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+        }
+        card.addView(inputRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+
+        val footer = row(
+            pill("My lists") { closePanel(); openApp() },
+            pill("New chat") { brain.clear(); lastReply = ""; panelText?.text = "New chat started."; panelTools?.visibility = View.GONE },
+            pill("Hide puppy") { stopSelf() }
+        )
+        card.addView(footer, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
+
+        val p = overlayParams(minOf(screenW - dp(24), dp(380)), WindowManager.LayoutParams.WRAP_CONTENT, focusable = true).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; x = 0; y = dp(56)
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+        }
+        wm.addView(card, p)
+        panel = card
+    }
+
+    private fun currentPanelText() = panelText?.text?.toString() ?: ""
+
+    private fun hideKeyboard(v: View) { getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(v.windowToken, 0) }
+
+    private fun closePanel() {
+        panel?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        panel = null; panelText = null; panelInput = null; panelTools = null; langBtn = null; voiceBtn = null; panelContent = ""
+    }
+
+    private fun openApp() {
+        try { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+    }
+}
