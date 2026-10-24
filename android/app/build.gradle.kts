@@ -10,7 +10,7 @@ android {
     defaultConfig {
         // Change this to your own unique name before the first Play Store upload,
         // for example "com.yourname.soulfriend". It can never change afterwards.
-        applicationId = "BigD"
+        applicationId = "com.kishore.bigd"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
