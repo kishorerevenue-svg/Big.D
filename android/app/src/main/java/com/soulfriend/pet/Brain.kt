@@ -34,11 +34,19 @@ class Brain(private val store: Store) {
             .put("memories", JSONArray().also { a -> store.memories().forEach { a.put(it) } })
         if (photo != null) body.put("image", JSONObject().put("mediaType", photo.first).put("data", photo.second))
         val server = store.server
+        if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) {
+            history.removeAt(history.lastIndex)
+            main.post { onError("I don't have a brain yet! Set up your server, then type its address in the Soul Friend app (Server address).") }
+            return
+        }
         pool.execute {
             try {
                 val (code, out) = post("$server/api/pet", body.toString())
                 val json = try { JSONObject(out) } catch (e: Exception) { JSONObject() }
-                if (code in 200..299) {
+                if (code in 200..299 && !json.has("reply")) main.post {
+                    history.removeAt(history.lastIndex)
+                    onError("That server address is not a Soul Friend server. Check the address in the Soul Friend app.")
+                } else if (code in 200..299) {
                     val reply = json.optString("reply", "Woof!")
                     main.post {
                         if (photo != null) history[history.lastIndex] = JSONObject().put("role", "user").put("content", "[I showed you a photo] $text")

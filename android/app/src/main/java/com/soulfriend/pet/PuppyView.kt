@@ -14,7 +14,8 @@ import kotlin.math.sin
 /** The cartoon puppy, drawn in code so it can change its face at any moment. */
 class PuppyView(context: Context) : View(context) {
 
-    enum class Mood { HAPPY, EXCITED, THINKING, SAD, SURPRISED, LOVE, SLEEPY, CONFUSED }
+    enum class Mood { HAPPY, EXCITED, THINKING, SAD, SURPRISED, LOVE, SLEEPY, CONFUSED,
+        LAUGHING, ANGRY, CRYING, SHY, COOL, WINK, PROUD, SCARED, YAWNING, DIZZY }
 
     var mood: Mood = Mood.HAPPY
         set(v) { field = v; moodSince = SystemClock.uptimeMillis(); invalidate() }
@@ -34,6 +35,8 @@ class PuppyView(context: Context) : View(context) {
     private val tongue = Color.parseColor("#F2667F")
     private val accent = Color.parseColor("#F5A524")
     private val listen = Color.parseColor("#6E7CF4")
+    private val tear = Color.parseColor("#6EC6FF")
+    private val angryRed = Color.parseColor("#E5484D")
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -60,10 +63,13 @@ class PuppyView(context: Context) : View(context) {
         // gentle bounce; bigger when excited
         val bounce = when (mood) {
             Mood.EXCITED -> abs(sin(t * 7f)) * -5f
-            Mood.SLEEPY -> sin(t * 1.2f) * 0.8f
+            Mood.LAUGHING -> abs(sin(t * 9f)) * -3f
+            Mood.SLEEPY, Mood.YAWNING -> sin(t * 1.2f) * 0.8f
+            Mood.PROUD -> -2f + sin(t * 2f) * 0.6f
             else -> sin(t * 2.4f) * 1.4f
         }
-        c.translate(0f, bounce)
+        val shake = if (mood == Mood.SCARED) sin(t * 45f) * 0.8f else if (mood == Mood.ANGRY) sin(t * 30f) * 0.4f else 0f
+        c.translate(shake, bounce)
 
         // listening glow
         if (listening) {
@@ -73,8 +79,16 @@ class PuppyView(context: Context) : View(context) {
         }
 
         // tail (behind body)
-        val wagSpeed = when (mood) { Mood.EXCITED, Mood.LOVE -> 16f; Mood.HAPPY -> 9f; Mood.SAD, Mood.SLEEPY -> 0f; else -> 4f }
-        val wag = if (wagSpeed == 0f) -25f else sin(t * wagSpeed) * 28f
+        val wagSpeed = when (mood) {
+            Mood.EXCITED, Mood.LOVE -> 16f; Mood.LAUGHING -> 14f; Mood.HAPPY, Mood.WINK -> 9f; Mood.PROUD -> 8f; Mood.COOL -> 5f
+            Mood.SAD, Mood.SLEEPY, Mood.CRYING, Mood.SCARED, Mood.YAWNING, Mood.ANGRY -> 0f; Mood.SHY, Mood.DIZZY -> 3f; else -> 4f
+        }
+        val wag = when {
+            mood == Mood.ANGRY -> 12f
+            mood == Mood.SCARED -> -40f
+            wagSpeed == 0f -> -25f
+            else -> sin(t * wagSpeed) * 28f
+        }
         c.save(); c.rotate(wag, 70f, 80f)
         line.color = furDark; line.strokeWidth = 6f
         path.reset(); path.moveTo(70f, 80f); path.quadTo(84f, 74f, 86f, 60f); c.drawPath(path, line)
@@ -87,22 +101,34 @@ class PuppyView(context: Context) : View(context) {
         ellipse(c, 61f, 94f, 7f, 4.5f, cream)
 
         // ears
-        val earTilt = when (mood) { Mood.SAD, Mood.SLEEPY -> 34f; Mood.EXCITED, Mood.SURPRISED -> 6f; Mood.THINKING, Mood.CONFUSED -> 18f; else -> 16f }
+        val earTilt = when (mood) {
+            Mood.SAD, Mood.SLEEPY, Mood.CRYING -> 34f; Mood.SCARED -> 40f; Mood.YAWNING -> 30f; Mood.SHY -> 26f
+            Mood.EXCITED, Mood.SURPRISED -> 6f; Mood.ANGRY -> 8f; Mood.LAUGHING, Mood.PROUD -> 10f
+            Mood.THINKING, Mood.CONFUSED, Mood.DIZZY -> 20f; else -> 16f
+        }
         val earFlap = if (talking) sin(t * 14f) * 3f else 0f
         ellipse(c, 23f, 40f, 9f, 18f, furDark, earTilt + earFlap)
         ellipse(c, 77f, 40f, 9f, 18f, furDark, -earTilt - earFlap)
 
         // head (tilts when thinking or confused)
-        val headTilt = when (mood) { Mood.THINKING -> -8f; Mood.CONFUSED -> 10f; else -> 0f }
+        val headTilt = when (mood) {
+            Mood.THINKING -> -8f; Mood.CONFUSED -> 10f; Mood.SHY -> 7f; Mood.WINK -> -6f
+            Mood.DIZZY -> sin(t * 3f) * 10f; Mood.LAUGHING -> sin(t * 10f) * 3f; else -> 0f
+        }
         c.save(); c.rotate(headTilt, 50f, 60f)
         fill.color = fur; c.drawCircle(50f, 44f, 29f, fill)
         ellipse(c, 62f, 40f, 9f, 8f, Color.parseColor("#D49B52"))   // eye patch
         ellipse(c, 50f, 58f, 15f, 11f, cream)                         // muzzle
 
         // cheeks
-        if (mood == Mood.HAPPY || mood == Mood.LOVE || mood == Mood.EXCITED) {
-            fill.color = pink; fill.alpha = 150
-            c.drawCircle(31f, 55f, 4.5f, fill); c.drawCircle(69f, 55f, 4.5f, fill); fill.alpha = 255
+        if (mood in setOf(Mood.HAPPY, Mood.LOVE, Mood.EXCITED, Mood.LAUGHING, Mood.WINK, Mood.PROUD, Mood.SHY)) {
+            val big = mood == Mood.SHY
+            fill.color = pink; fill.alpha = if (big) 230 else 150
+            c.drawCircle(31f, 55f, if (big) 6f else 4.5f, fill); c.drawCircle(69f, 55f, if (big) 6f else 4.5f, fill); fill.alpha = 255
+            if (big) {
+                line.color = Color.parseColor("#E0607E"); line.strokeWidth = 1.2f
+                for (cx in floatArrayOf(31f, 69f)) for (i in -1..1) c.drawLine(cx - 2f + i * 2.4f, 57f, cx + i * 2.4f, 53f, line)
+            }
         }
 
         drawEyes(c, now)
@@ -117,7 +143,7 @@ class PuppyView(context: Context) : View(context) {
         drawSymbol(c, t)
         c.restore()
 
-        postInvalidateDelayed(if (mood == Mood.SLEEPY && !talking && !listening) 90L else 33L)
+        postInvalidateDelayed(if ((mood == Mood.SLEEPY || mood == Mood.YAWNING) && !talking && !listening) 90L else 33L)
     }
 
     private fun drawEyes(c: Canvas, now: Long) {
@@ -132,9 +158,49 @@ class PuppyView(context: Context) : View(context) {
                 for (x in floatArrayOf(lx, rx)) { path.reset(); path.moveTo(x - 4.5f, ey + 2f); path.quadTo(x, ey - 5f, x + 4.5f, ey + 2f); c.drawPath(path, line) }
             }
             mood == Mood.LOVE -> { heart(c, lx, ey, 5.5f, tongue); heart(c, rx, ey, 5.5f, tongue) }
+            mood == Mood.LAUGHING -> {
+                path.reset(); path.moveTo(lx - 4f, ey - 3.5f); path.lineTo(lx + 3f, ey); path.lineTo(lx - 4f, ey + 3.5f); c.drawPath(path, line)
+                path.reset(); path.moveTo(rx + 4f, ey - 3.5f); path.lineTo(rx - 3f, ey); path.lineTo(rx + 4f, ey + 3.5f); c.drawPath(path, line)
+            }
+            mood == Mood.CRYING || mood == Mood.PROUD -> {
+                for (x in floatArrayOf(lx, rx)) { path.reset(); path.moveTo(x - 4.5f, ey - 1f); path.quadTo(x, ey + 4f, x + 4.5f, ey - 1f); c.drawPath(path, line) }
+                if (mood == Mood.CRYING) {
+                    line.strokeWidth = 2f
+                    c.drawLine(lx - 5f, ey - 6f, lx + 4f, ey - 9f, line); c.drawLine(rx - 4f, ey - 9f, rx + 5f, ey - 6f, line)
+                    val fall = ((now - start) / 1000f * 14f) % 12f
+                    drop(c, lx - 1f, ey + 6f + fall, 2.2f, tear); drop(c, rx + 1f, ey + 6f + (fall + 6f) % 12f, 2.2f, tear)
+                }
+            }
+            mood == Mood.COOL -> {
+                fill.color = Color.parseColor("#1E1E2A")
+                oval.set(lx - 7.5f, ey - 5f, lx + 6f, ey + 4.5f); c.drawRoundRect(oval, 3.5f, 3.5f, fill)
+                oval.set(rx - 6f, ey - 5f, rx + 7.5f, ey + 4.5f); c.drawRoundRect(oval, 3.5f, 3.5f, fill)
+                line.color = Color.parseColor("#1E1E2A"); line.strokeWidth = 2f; c.drawLine(lx + 6f, ey - 2f, rx - 6f, ey - 2f, line)
+                line.color = Color.WHITE; line.strokeWidth = 1.4f; c.drawLine(lx - 4.5f, ey - 2.5f, lx - 2f, ey - 2.5f, line); c.drawLine(rx - 3f, ey - 2.5f, rx - 0.5f, ey - 2.5f, line)
+            }
+            mood == Mood.WINK -> {
+                fill.color = ink; c.drawCircle(lx, ey, 4.8f, fill); fill.color = Color.WHITE; c.drawCircle(lx - 1.4f, ey - 1.6f, 1.4f, fill)
+                path.reset(); path.moveTo(rx - 4.5f, ey + 2f); path.quadTo(rx, ey - 5f, rx + 4.5f, ey + 2f); c.drawPath(path, line)
+            }
+            mood == Mood.SCARED -> {
+                for (x in floatArrayOf(lx, rx)) {
+                    fill.color = Color.WHITE; c.drawCircle(x, ey, 6.2f, fill)
+                    line.color = ink; line.strokeWidth = 1.4f; c.drawCircle(x, ey, 6.2f, line)
+                    fill.color = ink; c.drawCircle(x, ey + 0.5f, 2.2f, fill)
+                }
+                line.strokeWidth = 2f
+                c.drawLine(lx - 5f, ey - 9f, lx + 4f, ey - 11f, line); c.drawLine(rx - 4f, ey - 11f, rx + 5f, ey - 9f, line)
+            }
+            mood == Mood.YAWNING -> {
+                for (x in floatArrayOf(lx, rx)) { path.reset(); path.moveTo(x - 4.5f, ey); path.quadTo(x, ey + 2.5f, x + 4.5f, ey); c.drawPath(path, line) }
+            }
+            mood == Mood.DIZZY -> {
+                line.strokeWidth = 2.2f
+                for (x in floatArrayOf(lx, rx)) { c.drawLine(x - 3.5f, ey - 3.5f, x + 3.5f, ey + 3.5f, line); c.drawLine(x - 3.5f, ey + 3.5f, x + 3.5f, ey - 3.5f, line) }
+            }
             else -> {
-                val r = when (mood) { Mood.SURPRISED -> 6f; Mood.SAD -> 4f; else -> 4.8f }
-                val (dx, dy) = if (mood == Mood.THINKING) Pair(1.8f, -2f) else Pair(0f, 0f)
+                val r = when (mood) { Mood.SURPRISED -> 6f; Mood.SAD -> 4f; Mood.ANGRY -> 4f; Mood.SHY -> 4.2f; else -> 4.8f }
+                val (dx, dy) = when (mood) { Mood.THINKING -> Pair(1.8f, -2f); Mood.SHY -> Pair(-1f, 2.5f); else -> Pair(0f, 0f) }
                 fill.color = ink
                 c.drawCircle(lx + dx, ey + dy, if (mood == Mood.CONFUSED) r + 1.4f else r, fill)
                 c.drawCircle(rx + dx, ey + dy, if (mood == Mood.CONFUSED) r - 1f else r, fill)
@@ -143,6 +209,10 @@ class PuppyView(context: Context) : View(context) {
                 if (mood == Mood.SAD) {
                     line.strokeWidth = 2f
                     c.drawLine(lx - 5f, ey - 6f, lx + 4f, ey - 9f, line); c.drawLine(rx - 4f, ey - 9f, rx + 5f, ey - 6f, line)
+                }
+                if (mood == Mood.ANGRY) {
+                    line.strokeWidth = 2.4f
+                    c.drawLine(lx - 5f, ey - 10f, lx + 4f, ey - 5.5f, line); c.drawLine(rx - 4f, ey - 5.5f, rx + 5f, ey - 10f, line)
                 }
             }
         }
@@ -162,9 +232,21 @@ class PuppyView(context: Context) : View(context) {
             Mood.SURPRISED -> ellipse(c, 50f, 64f, 3.5f, 4.2f, ink)
             Mood.CONFUSED, Mood.THINKING -> { path.reset(); path.moveTo(44f, 63f); path.quadTo(48f, 61f, 50f, 63f); path.quadTo(53f, 65f, 57f, 62f); c.drawPath(path, line) }
             Mood.SLEEPY -> { path.reset(); path.moveTo(45f, 62f); path.quadTo(50f, 64f, 55f, 62f); c.drawPath(path, line) }
+            Mood.LAUGHING -> {
+                fill.color = ink; path.reset(); path.moveTo(41f, 60f); path.quadTo(50f, 77f, 59f, 60f); path.close(); c.drawPath(path, fill)
+                ellipse(c, 50f, 68f, 4.5f, 3f, tongue)
+            }
+            Mood.ANGRY -> { line.strokeWidth = 2.4f; path.reset(); path.moveTo(44f, 65f); path.quadTo(50f, 61f, 56f, 65f); c.drawPath(path, line) }
+            Mood.CRYING -> { ellipse(c, 50f, 64.5f, 4.5f, 3.2f, ink); path.reset(); path.moveTo(43f, 67f); path.quadTo(50f, 59f, 57f, 67f); c.drawPath(path, line) }
+            Mood.SHY -> { path.reset(); path.moveTo(46f, 62f); path.quadTo(50f, 65f, 54f, 62f); c.drawPath(path, line) }
+            Mood.COOL -> { path.reset(); path.moveTo(44f, 62f); path.quadTo(51f, 65.5f, 57f, 60f); c.drawPath(path, line) }
+            Mood.PROUD -> { line.strokeWidth = 2.4f; path.reset(); path.moveTo(42f, 61f); path.quadTo(50f, 67.5f, 58f, 61f); c.drawPath(path, line) }
+            Mood.SCARED -> { ellipse(c, 50f, 64.5f, 5f, 3.5f, ink); fill.color = Color.WHITE; oval.set(46f, 61.5f, 54f, 63.5f); c.drawRect(oval, fill) }
+            Mood.YAWNING -> { ellipse(c, 50f, 66f, 5.5f, 7.5f, ink); ellipse(c, 50f, 70.5f, 3.8f, 2.8f, tongue) }
+            Mood.DIZZY -> { path.reset(); path.moveTo(43f, 63f); path.quadTo(46.5f, 60f, 50f, 63f); path.quadTo(53.5f, 66f, 57f, 63f); c.drawPath(path, line) }
             else -> {
                 path.reset(); path.moveTo(42f, 60f); path.quadTo(46f, 64.5f, 50f, 59.5f); path.quadTo(54f, 64.5f, 58f, 60f); c.drawPath(path, line)
-                if (mood == Mood.EXCITED || mood == Mood.HAPPY || mood == Mood.LOVE) {
+                if (mood == Mood.EXCITED || mood == Mood.HAPPY || mood == Mood.LOVE || mood == Mood.WINK) {
                     fill.color = tongue; oval.set(46.5f, 61f, 53.5f, 70f); c.drawRoundRect(oval, 3.5f, 3.5f, fill)
                     line.strokeWidth = 1f; line.color = Color.parseColor("#C94861"); c.drawLine(50f, 63f, 50f, 68f, line)
                 }
@@ -180,8 +262,43 @@ class PuppyView(context: Context) : View(context) {
             Mood.SURPRISED -> c.drawText("!", 84f, 18f, text)
             Mood.SLEEPY -> { text.textSize = 12f; val y = 18f - (t * 6f % 8f); c.drawText("z", 80f, y, text); text.textSize = 9f; c.drawText("z", 88f, y - 7f, text) }
             Mood.LOVE -> heart(c, 84f, 12f + sin(t * 3f) * 2f, 5f, tongue)
+            Mood.LAUGHING -> { text.textSize = 11f; c.drawText("HA", 84f, 16f + sin(t * 9f) * 1.5f, text); text.textSize = 8f; c.drawText("ha", 91f, 7f, text) }
+            Mood.ANGRY -> {
+                line.color = angryRed; line.strokeWidth = 2.2f
+                val x = 82f; val y = 14f
+                c.drawLine(x - 5f, y - 1.5f, x - 1.5f, y - 1.5f, line); c.drawLine(x - 1.5f, y - 5f, x - 1.5f, y - 1.5f, line)
+                c.drawLine(x + 1.5f, y - 5f, x + 1.5f, y - 1.5f, line); c.drawLine(x + 1.5f, y - 1.5f, x + 5f, y - 1.5f, line)
+                c.drawLine(x - 5f, y + 1.5f, x - 1.5f, y + 1.5f, line); c.drawLine(x - 1.5f, y + 1.5f, x - 1.5f, y + 5f, line)
+                c.drawLine(x + 1.5f, y + 1.5f, x + 5f, y + 1.5f, line); c.drawLine(x + 1.5f, y + 1.5f, x + 1.5f, y + 5f, line)
+            }
+            Mood.COOL -> star(c, 84f, 14f, 4f + sin(t * 4f), accent)
+            Mood.WINK -> star(c, 76f, 26f, 3.5f, accent)
+            Mood.PROUD -> { star(c, 82f, 12f, 4.5f, accent); star(c, 90f, 22f, 2.8f, accent); star(c, 18f, 14f, 3f, accent) }
+            Mood.SCARED -> drop(c, 78f, 22f + (t * 3f % 3f), 3f, tear)
+            Mood.DIZZY -> for (i in 0..2) {
+                val a = t * 3f + i * 2.094f
+                star(c, 50f + kotlin.math.cos(a) * 16f, 12f + sin(a) * 4f, 2.8f, accent)
+            }
             else -> {}
         }
+    }
+
+    /** Four-point sparkle. */
+    private fun star(c: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
+        fill.color = color
+        path.reset()
+        path.moveTo(cx, cy - r); path.quadTo(cx, cy, cx + r, cy); path.quadTo(cx, cy, cx, cy + r)
+        path.quadTo(cx, cy, cx - r, cy); path.quadTo(cx, cy, cx, cy - r); path.close()
+        c.drawPath(path, fill)
+    }
+
+    /** Tear or sweat drop. */
+    private fun drop(c: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
+        fill.color = color
+        path.reset()
+        path.moveTo(cx, cy - r * 1.8f)
+        path.quadTo(cx + r * 1.2f, cy, cx, cy + r); path.quadTo(cx - r * 1.2f, cy, cx, cy - r * 1.8f); path.close()
+        c.drawPath(path, fill)
     }
 
     private fun heart(c: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
@@ -196,7 +313,10 @@ class PuppyView(context: Context) : View(context) {
     companion object {
         fun moodOf(name: String?): Mood = when (name) {
             "excited" -> Mood.EXCITED; "thinking" -> Mood.THINKING; "sad" -> Mood.SAD; "surprised" -> Mood.SURPRISED
-            "love" -> Mood.LOVE; "sleepy" -> Mood.SLEEPY; "confused" -> Mood.CONFUSED; else -> Mood.HAPPY
+            "love" -> Mood.LOVE; "sleepy" -> Mood.SLEEPY; "confused" -> Mood.CONFUSED
+            "laughing" -> Mood.LAUGHING; "angry" -> Mood.ANGRY; "crying" -> Mood.CRYING; "shy" -> Mood.SHY
+            "cool" -> Mood.COOL; "wink" -> Mood.WINK; "proud" -> Mood.PROUD; "scared" -> Mood.SCARED
+            "yawning" -> Mood.YAWNING; "dizzy" -> Mood.DIZZY; else -> Mood.HAPPY
         }
     }
 }
