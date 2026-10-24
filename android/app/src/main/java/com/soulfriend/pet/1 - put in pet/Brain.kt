@@ -27,7 +27,7 @@ class Brain(private val store: Store) {
         val todos = JSONArray(); store.todos().forEach { todos.put(JSONObject().put("text", it.text).put("done", it.done)) }
         val notes = JSONArray(); store.notes().takeLast(10).forEach { notes.put(it) }
         val body = JSONObject()
-            .put("messages", messages).put("lang", store.lang)
+            .put("messages", messages).put("lang", store.lang).put("pet", store.petKind)
             .put("now", OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString())
             .put("tz", ZoneId.systemDefault().id)
             .put("todos", todos).put("notes", notes)
