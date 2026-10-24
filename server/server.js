@@ -13,6 +13,9 @@ const PORT = Number(process.env.PORT || 3000);
 const API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const API_BASE = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-5-5";
+// Two-level brain: hard or multi-task requests go to the smarter model.
+const SMART_MODEL = process.env.SMART_MODEL || "claude-sonnet-5-5";
+const SMART_MODE = (process.env.SMART_MODE || "auto").toLowerCase(); // auto | always | never
 const SAVE_CHATS = String(process.env.SAVE_CHATS || "false") === "true";
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ||
   "https://localhost,http://localhost,capacitor://localhost").split(",").map(s => s.trim()).filter(Boolean);
@@ -22,7 +25,17 @@ const TEACH_PASSWORD = process.env.TEACH_PASSWORD || "";
 const DATA_DIR = path.join(__dirname, "data");
 const PUBLIC_DIR = path.join(__dirname, "public");
 fs.mkdirSync(DATA_DIR, { recursive: true });
-const learn = require("./learn.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, WEB_SEARCH });
+const learn = require("./learn.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_MODEL, WEB_SEARCH });
+
+/** Picks the brain for this message: fast for chat, smart for hard or many-task requests. */
+function pickModel(text, hasImage) {
+  if (SMART_MODE === "always") return SMART_MODEL;
+  if (SMART_MODE === "never") return MODEL;
+  const t = String(text || "").toLowerCase();
+  const joins = (t.match(/\b(and|then|also)\b|,|మరియు|తర్వాత|ఇంకా|కూడా/g) || []).length;
+  const hard = /\b(why|how (to|do|does|can|should|much|many)|explain|compare|plan|analy[sz]e|calculate|letter|application|petition|essay|summar|translate|draft|report|steps?)\b|ఎందుకు|ఎలా చేయ|ఎలా రాయ|వివరించు|లేఖ|దరఖాస్తు|అనువాదం|ప్రణాళిక|లెక్క/.test(t);
+  return (hasImage || t.length > 220 || joins >= 2 || hard) ? SMART_MODEL : MODEL;
+}
 const SEARCH_RULE = WEB_SEARCH ? "\nYou can search the internet with the web_search tool. Use it for news, prices, weather, results, government schemes and anything recent or that you are not sure about. Do not search for simple chat, translations or tasks." : "";
 
 const EMOTIONS = ["happy", "laughing", "thinking", "surprised", "sad", "confused", "love", "wink", "calm"];
@@ -42,7 +55,8 @@ Reply with only a JSON object: {"emotion": "<one of: ${EMOTIONS.join(", ")}>", "
 }
 
 // ---------- floating puppy (Android app): reply + face + actions ----------
-const PET_EMOTIONS = ["happy", "excited", "thinking", "sad", "surprised", "love", "sleepy", "confused"];
+const PET_EMOTIONS = ["happy", "excited", "thinking", "sad", "surprised", "love", "sleepy", "confused",
+  "laughing", "angry", "crying", "shy", "cool", "wink", "proud", "scared", "yawning", "dizzy"];
 const ACTION_TYPES = ["reminder", "timer", "alarm", "todo_add", "todo_done", "todo_remove", "note_save",
   "call", "whatsapp", "open_app", "show_text", "copy_text", "remember", "forget"];
 
@@ -79,6 +93,12 @@ You can do these actions. Only add an action when the user clearly asked for it:
 - {"type":"copy_text","text":"<text to copy to clipboard>"}
 - {"type":"remember","text":"<a lasting fact about the user worth remembering, e.g. their name, family, likes, important dates>"}  (use when they tell you something personal and lasting; do not remember passwords, bank or card numbers)
 - {"type":"forget","text":"<the remembered fact to remove>"}  (when they ask you to forget something)
+How to think (do this silently, never show it):
+1. Read the whole request. Split it into separate tasks if the user asked for several things ("remind me at 5, add milk to my list and open YouTube" = 3 tasks).
+2. For each task, decide the right action and fill in every detail. Add ONE action per task, in the order asked.
+3. If a task is missing something important (time, person, which app), do the other tasks and ask one short question about the missing one.
+4. In "reply", confirm each task in a few words ("Done! Reminder at 5, milk added, opening YouTube."), then add anything helpful.
+5. Pick the emotion that fits: laughing for jokes, proud when you finished many tasks, shy when praised, sad or crying for bad news, scared for danger, cool when relaxed, wink when playful, yawning or sleepy late at night, dizzy when confused by too much, angry only playfully.
 Work out exact times yourself from the current date and time ("tomorrow 9 am", "in 2 hours"). For questions about the to-do list or notes, answer from the lists above. If a photo is attached, look at it carefully and help with what they ask (read it, translate it, explain it).${SEARCH_RULE}${ctx.knowledge || ""}
 
 Reply with only a JSON object, no other text:
@@ -101,8 +121,11 @@ function parsePet(text) {
 }
 
 async function askPet(messages, lang, ctx) {
-  const out = await learn.callClaude({ system: petPrompt(lang, ctx), messages, maxTokens: 2000 });
-  return { ...parsePet(out.text), sources: out.sources };
+  const last = messages[messages.length - 1];
+  const hasImage = Array.isArray(last.content);
+  const model = pickModel(hasImage ? last.content[1].text : last.content, hasImage);
+  const out = await learn.callClaude({ system: petPrompt(lang, ctx), messages, maxTokens: 2500, model });
+  return { ...parsePet(out.text), sources: out.sources, brain: model === SMART_MODEL ? "smart" : "fast" };
 }
 
 // ---------- simple per-device rate limit ----------
@@ -192,7 +215,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
 
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD }, origin);
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);

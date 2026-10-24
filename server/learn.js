@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, WEB_SEARCH }) {
+module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_MODEL, WEB_SEARCH }) {
   const KDIR = path.join(DATA_DIR, "knowledge");
   fs.mkdirSync(KDIR, { recursive: true });
   const INDEX = path.join(KDIR, "index.json");
@@ -74,8 +74,8 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, WEB_SE
   }
 
   // ---------- calling Claude (with optional internet search) ----------
-  async function callClaude({ system, messages, maxTokens = 1500, search = WEB_SEARCH }) {
-    const body = { model: MODEL, max_tokens: maxTokens, system, messages: messages.slice() };
+  async function callClaude({ system, messages, maxTokens = 1500, search = WEB_SEARCH, model = MODEL }) {
+    const body = { model, max_tokens: maxTokens, system, messages: messages.slice() };
     if (search) body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }];
     let data = null;
     for (let round = 0; round < 3; round++) {
@@ -111,7 +111,7 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, WEB_SE
     if (mediaType === "application/pdf") block = { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } };
     else if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mediaType)) block = { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } };
     else throw Object.assign(new Error("Only PDF, photos (JPG, PNG, WEBP) and text files can be added. Save Word files as PDF first."), { user: true });
-    const out = await callClaude({ system: "You turn documents into plain text.", messages: [{ role: "user", content: [block, { type: "text", text: TRANSCRIBE }] }], maxTokens: 16000, search: false });
+    const out = await callClaude({ system: "You turn documents into plain text.", messages: [{ role: "user", content: [block, { type: "text", text: TRANSCRIBE }] }], maxTokens: 16000, search: false, model: SMART_MODEL || MODEL });
     return out.text + (out.truncated ? "\n\n[The document was very long; only the first part was saved. Split it into smaller files to add the rest.]" : "");
   }
 
