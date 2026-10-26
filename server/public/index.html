@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>Soul Friend</title>
+<title>BigD AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Tammudu+2:wght@500;700&family=Hind+Guntur:wght@400;500;600&display=swap">
 <style>
@@ -88,7 +88,7 @@ form{display:flex;gap:8px}
 <body>
 <div class="app">
   <header>
-    <div class="name">Soul Friend<small>ఆత్మ మిత్రుడు</small></div>
+    <div class="name">BigD AI<small>బిగ్ డి</small></div>
     <div class="ctrls">
       <div class="seg" role="group" aria-label="Reply language">
         <button type="button" data-lang="auto" aria-pressed="true">Auto</button>
@@ -100,7 +100,7 @@ form{display:flex;gap:8px}
   </header>
 
   <div class="stage">
-    <svg id="bot" viewBox="0 0 240 236" role="img" aria-label="Soul Friend robot face">
+    <svg id="bot" viewBox="0 0 240 236" role="img" aria-label="BigD AI robot face">
       <g id="head">
         <line x1="120" y1="50" x2="120" y2="28" stroke="var(--robot-dark)" stroke-width="5" stroke-linecap="round"/>
         <circle id="bulb" cx="120" cy="22" r="9" fill="var(--marigold)"/>
@@ -266,7 +266,7 @@ async function send(text){
 $("f").addEventListener("submit",e=>{e.preventDefault();send($("msg").value);});
 
 function greet(){
-  bubble("bot","నమస్తే! Hi! I'm Soul Friend. I can translate, explain words, fix grammar, or help you write a message in Telugu or English. Try one of these:");
+  bubble("bot","నమస్తే! Hi! I'm BigD AI. I can translate, explain words, fix grammar, or help you write a message in Telugu or English. Try one of these:");
   const sg=document.createElement("div"); sg.className="sugg";
   ["Translate: నేను రేపు ఆఫీసుకి రాలేను","Write a polite leave request in English","ఈ రోజు నాకు చాలా బోర్ గా ఉంది","Explain 'empathy' in Telugu"].forEach(t=>{const b=document.createElement("button");b.type="button";b.textContent=t;b.onclick=()=>send(t);sg.append(b);});
   log.append(sg);

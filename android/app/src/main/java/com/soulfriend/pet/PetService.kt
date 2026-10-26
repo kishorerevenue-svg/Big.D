@@ -51,6 +51,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_STOP = "com.soulfriend.pet.STOP"
         const val ACTION_LISTEN = "com.soulfriend.pet.LISTEN"
         const val ACTION_PHOTO = "com.soulfriend.pet.PHOTO"
+        const val ACTION_PET = "com.soulfriend.pet.PET"
         private const val CHANNEL = "puppy"
     }
 
@@ -102,7 +103,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         goForeground()
         addPet()
         tts = TextToSpeech(this, this)
-        say("Hi! I'm Soul Friend. Tap me and talk!", PuppyView.Mood.EXCITED)
+        say("Hi! I'm BigD AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -111,6 +112,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             ACTION_SAY -> say(intent.getStringExtra("text") ?: "", PuppyView.Mood.SURPRISED, prefix = "⏰ ")
             ACTION_LISTEN -> startListening()
             ACTION_PHOTO -> intent.getStringExtra("path")?.let { sendPhoto(it) }
+            ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble("Hi! I'm your ${pet.kind.label.lowercase()} now!", 4000) }
         }
         return START_STICKY
     }
@@ -120,7 +122,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         main.removeCallbacksAndMessages(null)
         try { recognizer?.destroy() } catch (e: Exception) { }
         tts?.shutdown()
-        removeBubble(); closePanel()
+        removeBubble(); closePanel(); hideCloseTarget()
         try { wm.removeView(pet) } catch (e: Exception) { }
         super.onDestroy()
     }
@@ -134,7 +136,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val stop = PendingIntent.getService(this, 2, Intent(this, PetService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_paw)
-            .setContentTitle("Soul Friend is on your screen")
+            .setContentTitle("BigD AI is on your screen")
             .setContentText("Tap the puppy to talk. Hold it for the menu.")
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Hide puppy", stop).build())
@@ -162,7 +164,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     @SuppressLint("ClickableViewAccessibility")
     private fun addPet() {
         pet = PuppyView(this)
-        pet.contentDescription = "Soul Friend puppy. Tap to talk, hold for menu."
+        pet.kind = PuppyView.kindOf(store.petKind)
+        pet.contentDescription = "BigD AI pet. Tap to talk, hold for menu, drag to the X at the bottom to close."
         val size = dp(112)
         petParams = overlayParams(size, size).apply {
             x = if (store.petX >= 0) store.petX else screenW - size - dp(8)
@@ -183,22 +186,83 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
-                    if (!moved && (abs(dx) > slop || abs(dy) > slop)) { moved = true; main.removeCallbacks(longPress) }
+                    if (!moved && (abs(dx) > slop || abs(dy) > slop)) { moved = true; main.removeCallbacks(longPress); showCloseTarget() }
                     if (moved) {
                         petParams.x = (startX + dx).toInt().coerceIn(0, screenW - pet.width)
                         petParams.y = (startY + dy).toInt().coerceIn(0, screenH - pet.height)
                         wm.updateViewLayout(pet, petParams); placeBubble()
+                        highlightClose(overClose())
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     main.removeCallbacks(longPress)
-                    if (moved) { store.petX = petParams.x; store.petY = petParams.y }
+                    if (moved) {
+                        val close = overClose()
+                        hideCloseTarget()
+                        if (close) { stopSelf(); return@setOnTouchListener true }
+                        store.petX = petParams.x; store.petY = petParams.y
+                    }
                     else if (!longDone && e.actionMasked == MotionEvent.ACTION_UP) { wake(); if (listening) stopListening() else startListening() }
                 }
             }
             true
         }
         wake()
+    }
+
+    // ---------------- drag to the ✕ to close ----------------
+    private var closeTarget: View? = null
+    private var closeCircle: TextView? = null
+    private val closeSize get() = dp(64)
+    private val closeCenterX get() = screenW / 2
+    private val closeCenterY get() = screenH - dp(150)
+
+    private fun showCloseTarget() {
+        if (closeTarget != null) return
+        val circle = TextView(this).apply {
+            text = "✕"; textSize = 26f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#CC1C2140")); setStroke(dp(2), Color.WHITE) }
+        }
+        val label = TextView(this).apply {
+            text = "Drag here to close"; textSize = 13f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            background = GradientDrawable().apply { setColor(Color.parseColor("#991C2140")); cornerRadius = dp(12).toFloat() }
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            addView(circle, LinearLayout.LayoutParams(closeSize, closeSize))
+            addView(label, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+        }
+        val p = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; x = 0; y = closeCenterY - closeSize / 2 }
+        try { wm.addView(box, p); closeTarget = box; closeCircle = circle } catch (e: Exception) { }
+    }
+
+    private fun hideCloseTarget() {
+        closeTarget?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        closeTarget = null; closeCircle = null
+    }
+
+    private fun overClose(): Boolean {
+        if (closeTarget == null) return false
+        val cx = petParams.x + pet.width / 2; val cy = petParams.y + pet.height / 2
+        val dx = (cx - closeCenterX).toFloat(); val dy = (cy - closeCenterY).toFloat()
+        return dx * dx + dy * dy < dp(90).toFloat() * dp(90)
+    }
+
+    private var closeHot = false
+    private fun highlightClose(hot: Boolean) {
+        if (hot == closeHot) return
+        closeHot = hot
+        val c = closeCircle ?: return
+        (c.background as? GradientDrawable)?.setColor(Color.parseColor(if (hot) "#E5484D" else "#CC1C2140"))
+        c.animate().scaleX(if (hot) 1.25f else 1f).scaleY(if (hot) 1.25f else 1f).setDuration(120).start()
+        if (hot) { pet.mood = PuppyView.Mood.SAD; c.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS) }
+        else pet.mood = PuppyView.Mood.HAPPY
     }
 
     private fun wake() {
@@ -266,7 +330,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
             if (te && !teluguVoiceMissingShown) {
                 teluguVoiceMissingShown = true
-                main.postDelayed({ showBubble("To hear me in Telugu, open the Soul Friend app and tap 'Install Telugu voice'.", 8000) }, 7000)
+                main.postDelayed({ showBubble("To hear me in Telugu, open the BigD AI app and tap 'Install Telugu voice'.", 8000) }, 7000)
             }
             fakeTalk(text); return
         }
@@ -284,7 +348,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     // ---------------- listening ----------------
     private fun startListening() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            say("I need the microphone. Open the Soul Friend app and tap 'Allow microphone'.", PuppyView.Mood.SAD); openApp(); return
+            say("I need the microphone. Open the BigD AI app and tap 'Allow microphone'.", PuppyView.Mood.SAD); openApp(); return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             say("Voice typing isn't available on this phone. Hold me to type instead.", PuppyView.Mood.CONFUSED); return
@@ -302,7 +366,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap me and speak again."
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "No internet for voice. Check your connection."
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Please allow the microphone in the Soul Friend app."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Please allow the microphone in the BigD AI app."
                     else -> "Voice didn't work. Tap me to try again, or hold me to type."
                 }
                 pet.mood = PuppyView.Mood.CONFUSED; showBubble(msg, 5000)
@@ -403,7 +467,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             background = GradientDrawable().apply { setColor(Color.parseColor("#FFFFFF")); cornerRadius = dp(20).toFloat(); setStroke(dp(1), Color.parseColor("#D8DDF0")) }
             elevation = dp(8).toFloat()
         }
-        val title = TextView(this).apply { text = "Soul Friend"; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1C2140")) }
+        val title = TextView(this).apply { text = "BigD AI"; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1C2140")) }
         langBtn = pill(langLabel()) {
             store.lang = when (store.lang) { "auto" -> "te"; "te" -> "en"; else -> "auto" }; langBtn?.text = langLabel()
         }
@@ -472,9 +536,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val footer = row(
             pill("My lists") { closePanel(); openApp() },
             pill("New chat") { brain.clear(); lastReply = ""; panelText?.text = "New chat started."; panelTools?.visibility = View.GONE },
-            pill("Hide puppy") { stopSelf() }
+            pill("🐾 Change pet") { nextPet() }
         )
         card.addView(footer, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
+        val footer2 = row(pill("✕ Close pet") { stopSelf() })
+        card.addView(footer2, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
 
         val p = overlayParams(minOf(screenW - dp(24), dp(380)), WindowManager.LayoutParams.WRAP_CONTENT, focusable = true).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; x = 0; y = dp(56)
@@ -491,6 +557,14 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun closePanel() {
         panel?.let { try { wm.removeView(it) } catch (e: Exception) { } }
         panel = null; panelText = null; panelInput = null; panelTools = null; langBtn = null; voiceBtn = null; panelContent = ""
+    }
+
+    private fun nextPet() {
+        val all = PuppyView.Kind.values()
+        val next = all[(pet.kind.ordinal + 1) % all.size]
+        store.petKind = next.key; pet.kind = next; pet.mood = PuppyView.Mood.EXCITED
+        brain.clear()
+        showBubble("Hi! I'm your ${next.label.lowercase()} now! · ${next.telugu}", 4000)
     }
 
     private fun openApp() {

@@ -31,7 +31,7 @@ cd "$APP_DIR"
 [ -f .env ] || cp .env.example .env
 echo "Now open .env and paste your API key:   nano $APP_DIR/.env"
 
-echo "== 5/5 Starting Soul Friend server =="
+echo "== 5/5 Starting BigD AI server =="
 pm2 start server.js --name soul-friend
 pm2 save
 pm2 startup systemd -u root --hp /root | tail -1 | bash || true

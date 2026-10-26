@@ -18,7 +18,7 @@ object Reminders {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Reminders and timers set by Soul Friend"
+                description = "Reminders and timers set by BigD AI"
             })
         }
     }
@@ -62,7 +62,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(ctx, Reminders.CHANNEL)
             .setSmallIcon(R.drawable.ic_paw)
-            .setContentTitle("Soul Friend reminder")
+            .setContentTitle("BigD AI reminder")
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
             .setContentIntent(open)

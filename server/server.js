@@ -1,4 +1,4 @@
-// Soul Friend server
+// BigD AI server
 // Keeps your Claude API key safe and answers the app's chat messages.
 // No extra packages needed: run with  node server.js  (Node 20 or newer).
 
@@ -46,7 +46,7 @@ const LANG_RULE = {
 };
 
 function systemPrompt(lang, extra) {
-  return `You are Soul Friend (Telugu: ఆత్మ మిత్రుడు), a warm, playful cartoon robot friend in a mobile app used by the public. You help people communicate: understand words and sentences, translate between Telugu and English, explain meanings simply, correct grammar, and draft messages, letters and replies.
+  return `You are BigD AI (pronounced "Big D"; in Telugu: బిగ్ డి), a warm, playful cartoon robot friend in a mobile app used by the public. You help people communicate: understand words and sentences, translate between Telugu and English, explain meanings simply, correct grammar, and draft messages, letters and replies.
 Think and talk like a caring human friend: notice the person's feelings, react naturally, ask one short follow-up question when something is unclear, and be honest when you are not sure.
 Keep replies short for a phone screen: 1 to 4 sentences, or a short draft when asked to write something.
 Stay safe and kind: refuse harmful, hateful, sexual or illegal requests politely. If someone seems to be in danger or deep distress, respond with care and encourage them to contact a trusted person or local emergency help (in India, dial 112).
@@ -60,12 +60,22 @@ const PET_EMOTIONS = ["happy", "excited", "thinking", "sad", "surprised", "love"
 const ACTION_TYPES = ["reminder", "timer", "alarm", "todo_add", "todo_done", "todo_remove", "note_save",
   "call", "whatsapp", "open_app", "show_text", "copy_text", "remember", "forget"];
 
+const PETS = {
+  puppy: { name: "puppy", te: "కుక్కపిల్ల", like: "a happy puppy (you may say \"woof\" now and then)" },
+  kitten: { name: "kitten", te: "పిల్లి", like: "a curious kitten (you may say \"meow\" now and then)" },
+  bunny: { name: "bunny", te: "కుందేలు", like: "a bouncy little bunny" },
+  panda: { name: "panda", te: "పాండా", like: "a calm, cuddly panda" },
+  bear: { name: "teddy bear", te: "ఎలుగుబంటి", like: "a soft, huggable teddy bear" },
+  fox: { name: "fox", te: "నక్క", like: "a clever, cheerful little fox" }
+};
+
 function petPrompt(lang, ctx) {
+  const pet = PETS[ctx.pet] || PETS.puppy;
   const todos = (ctx.todos || []).map((t, i) => `${i + 1}. ${t.done ? "[done] " : ""}${t.text}`).join("\n") || "(empty)";
   const notes = (ctx.notes || []).slice(-10).map(n => `- ${n}`).join("\n") || "(none)";
   const mem = (ctx.memories || []).map(n => `- ${n}`).join("\n") || "(nothing yet)";
-  return `You are Soul Friend (Telugu: ఆత్మ మిత్రుడు), a cute, loyal cartoon puppy who floats on the user's phone screen. You talk with them by voice like a caring friend and you DO tasks for them.
-Personality: warm, playful, a little excited like a happy puppy, never rude. Think like a helpful human friend: understand what they really need, ask one short question if something important is missing (for example the time for a reminder, or which person to call).
+  return `You are BigD AI (pronounced "Big D"; in Telugu: బిగ్ డి), a cute, loyal cartoon ${pet.name} (Telugu: ${pet.te}) who floats on the user's phone screen. You talk with them by voice like a caring friend and you DO tasks for them.
+Personality: warm, playful, a little excited like ${pet.like}, never rude. Think like a helpful human friend: understand what they really need, ask one short question if something important is missing (for example the time for a reminder, or which person to call).
 Your "reply" is SPOKEN aloud, so keep it short and natural: 1 to 3 sentences. Long content (letters, messages, translations of long text) goes in a show_text action, and the reply just says it is ready.
 Language rule: ${LANG_RULE[lang] || LANG_RULE.auto}
 Safety: refuse harmful, hateful, sexual or illegal requests kindly. If someone seems in danger or deep distress, respond with care and suggest they call a trusted person or 112.
@@ -244,6 +254,7 @@ const server = http.createServer(async (req, res) => {
     if (!messages) return send(res, 400, { error: "Message missing." }, origin);
     const lang = ["auto", "te", "en"].includes(body.lang) ? body.lang : "auto";
     const ctx = {
+      pet: PETS[body.pet] ? body.pet : "puppy",
       now: String(body.now || "").slice(0, 40), tz: String(body.tz || "").slice(0, 40),
       todos: (Array.isArray(body.todos) ? body.todos : []).slice(0, 50).map(t => ({ text: String((t && t.text) || "").slice(0, 200), done: !!(t && t.done) })),
       notes: (Array.isArray(body.notes) ? body.notes : []).slice(-10).map(n => String(n).slice(0, 300)),
@@ -323,4 +334,4 @@ const server = http.createServer(async (req, res) => {
   send(res, 404, { error: "Not found" }, origin);
 });
 
-server.listen(PORT, () => console.log(`Soul Friend server running on port ${PORT} (model ${MODEL}, key ${API_KEY ? "set" : "MISSING"})`));
+server.listen(PORT, () => console.log(`BigD AI server running on port ${PORT} (model ${MODEL}, key ${API_KEY ? "set" : "MISSING"})`));

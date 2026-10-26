@@ -79,22 +79,51 @@ class MainActivity : Activity() {
         root.removeAllViews()
 
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(PuppyView(this).apply { mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }, LinearLayout.LayoutParams(dp(120), dp(120)))
+        head.addView(PuppyView(this).apply { kind = PuppyView.kindOf(store.petKind); mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }, LinearLayout.LayoutParams(dp(120), dp(120)))
         head.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
-            addView(text("Soul Friend", 26f, bold = true)); addView(text("ఆత్మ మిత్రుడు · your puppy friend", 15f, muted))
+            addView(text("BigD AI", 26f, bold = true)); addView(text("బిగ్ డి · your pet friend", 15f, muted))
         })
         add(head, 0)
 
         // start / stop
         val ready = Settings.canDrawOverlays(this)
-        add(button(if (PetService.running) "Hide the puppy" else "Show the puppy on my screen", primary = true) {
+        add(button(if (PetService.running) "Close my pet" else "Show my pet on the screen", primary = true) {
             if (PetService.running) stopService(Intent(this, PetService::class.java))
             else if (!ready) Toast.makeText(this, "First allow 'Show over other apps' below", Toast.LENGTH_LONG).show()
             else { startForegroundService(Intent(this, PetService::class.java)); moveTaskToBack(true) }
             root.postDelayed({ render() }, 400)
         }, 16)
-        add(text("Tap the puppy to talk. Hold it for the menu. Drag it anywhere.\nపప్పీని నొక్కి మాట్లాడండి. మెనూ కోసం నొక్కి పట్టుకోండి.", 13f, muted), 8)
+        add(text("Tap the pet to talk. Hold it for the menu. Drag it anywhere. To close it, drag it down to the ✕.\nనొక్కి మాట్లాడండి. మెనూ కోసం నొక్కి పట్టుకోండి. మూసివేయడానికి కిందకి ✕ వద్దకు లాగండి.", 13f, muted), 8)
+
+        // choose a pet
+        val petCard = card()
+        petCard.put(text("Choose your pet · మీ పెంపుడు జంతువు", 18f, bold = true), 0)
+        val current = PuppyView.kindOf(store.petKind)
+        PuppyView.Kind.values().toList().chunked(3).forEach { rowKinds ->
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            rowKinds.forEach { k ->
+                val chosen = k == current
+                val cell = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(4), dp(8), dp(4), dp(8))
+                    background = GradientDrawable().apply {
+                        setColor(Color.parseColor(if (chosen) "#FFF3D6" else "#F4F6FC")); cornerRadius = dp(16).toFloat()
+                        if (chosen) setStroke(dp(2), Color.parseColor("#F5A524"))
+                    }
+                    addView(PuppyView(this@MainActivity).apply { kind = k; mood = if (chosen) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }, LinearLayout.LayoutParams(dp(72), dp(72)))
+                    addView(text((if (chosen) "✓ " else "") + k.label, 14f, bold = true).apply { gravity = Gravity.CENTER })
+                    addView(text(k.telugu, 12f, muted).apply { gravity = Gravity.CENTER })
+                    setOnClickListener {
+                        store.petKind = k.key
+                        if (PetService.running) startService(Intent(this@MainActivity, PetService::class.java).setAction(PetService.ACTION_PET))
+                        render()
+                    }
+                }
+                r.addView(cell, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+            }
+            petCard.put(r, 10)
+        }
+        add(petCard, 14)
 
         // permissions
         val perms = card()
@@ -225,7 +254,7 @@ class MainActivity : Activity() {
         }
         add(noteCard, 14)
 
-        add(text("Soul Friend is an AI and can make mistakes. Check important things before you rely on them.", 12.5f, muted), 18)
+        add(text("BigD AI is an AI and can make mistakes. Check important things before you rely on them.", 12.5f, muted), 18)
         add(button("Privacy policy") {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(store.server + "/privacy"))) } catch (e: Exception) { }
         }, 8)

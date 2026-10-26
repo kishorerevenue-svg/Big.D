@@ -30,6 +30,11 @@ class Store(context: Context) {
         get() = p.getBoolean("voice", true)
         set(v) { p.edit().putBoolean("voice", v).apply() }
 
+    /** puppy, kitten, bunny, panda, bear or fox */
+    var petKind: String
+        get() = p.getString("petKind", "puppy") ?: "puppy"
+        set(v) { p.edit().putString("petKind", v).apply() }
+
     var petX: Int
         get() = p.getInt("petX", -1)
         set(v) { p.edit().putInt("petX", v).apply() }

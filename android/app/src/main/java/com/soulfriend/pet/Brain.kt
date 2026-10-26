@@ -27,7 +27,7 @@ class Brain(private val store: Store) {
         val todos = JSONArray(); store.todos().forEach { todos.put(JSONObject().put("text", it.text).put("done", it.done)) }
         val notes = JSONArray(); store.notes().takeLast(10).forEach { notes.put(it) }
         val body = JSONObject()
-            .put("messages", messages).put("lang", store.lang)
+            .put("messages", messages).put("lang", store.lang).put("pet", store.petKind)
             .put("now", OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString())
             .put("tz", ZoneId.systemDefault().id)
             .put("todos", todos).put("notes", notes)
@@ -36,7 +36,7 @@ class Brain(private val store: Store) {
         val server = store.server
         if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) {
             history.removeAt(history.lastIndex)
-            main.post { onError("I don't have a brain yet! Set up your server, then type its address in the Soul Friend app (Server address).") }
+            main.post { onError("I don't have a brain yet! Set up your server, then type its address in the BigD AI app (Server address).") }
             return
         }
         pool.execute {
@@ -45,7 +45,7 @@ class Brain(private val store: Store) {
                 val json = try { JSONObject(out) } catch (e: Exception) { JSONObject() }
                 if (code in 200..299 && !json.has("reply")) main.post {
                     history.removeAt(history.lastIndex)
-                    onError("That server address is not a Soul Friend server. Check the address in the Soul Friend app.")
+                    onError("That server address is not a BigD AI server. Check the address in the BigD AI app.")
                 } else if (code in 200..299) {
                     val reply = json.optString("reply", "Woof!")
                     main.post {
@@ -60,7 +60,7 @@ class Brain(private val store: Store) {
             } catch (e: Exception) {
                 main.post {
                     if (history.isNotEmpty()) history.removeAt(history.lastIndex)
-                    onError(if (server.contains("YOUR-DOMAIN")) "Set your server address in the Soul Friend app first."
+                    onError(if (server.contains("YOUR-DOMAIN")) "Set your server address in the BigD AI app first."
                             else "No connection. Check your internet and try again.")
                 }
             }

@@ -1,4 +1,4 @@
-// Soul Friend learning: knowledge the OWNER teaches (files, text, web links),
+// BigD AI learning: knowledge the OWNER teaches (files, text, web links),
 // plus the shared call to Claude with live internet search.
 const fs = require("fs");
 const path = require("path");

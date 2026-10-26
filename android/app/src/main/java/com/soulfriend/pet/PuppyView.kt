@@ -11,8 +11,16 @@ import android.view.View
 import kotlin.math.abs
 import kotlin.math.sin
 
-/** The cartoon puppy, drawn in code so it can change its face at any moment. */
+/** The cartoon pet (puppy, kitten, bunny, panda, bear or fox), drawn in code so it can change its face at any moment. */
 class PuppyView(context: Context) : View(context) {
+
+    enum class Kind(val key: String, val label: String, val telugu: String) {
+        PUPPY("puppy", "Puppy", "కుక్కపిల్ల"), KITTEN("kitten", "Kitten", "పిల్లి"), BUNNY("bunny", "Bunny", "కుందేలు"),
+        PANDA("panda", "Panda", "పాండా"), BEAR("bear", "Teddy bear", "ఎలుగుబంటి"), FOX("fox", "Fox", "నక్క")
+    }
+
+    var kind: Kind = Kind.PUPPY
+        set(v) { field = v; applyColors(); invalidate() }
 
     enum class Mood { HAPPY, EXCITED, THINKING, SAD, SURPRISED, LOVE, SLEEPY, CONFUSED,
         LAUGHING, ANGRY, CRYING, SHY, COOL, WINK, PROUD, SCARED, YAWNING, DIZZY }
@@ -27,10 +35,27 @@ class PuppyView(context: Context) : View(context) {
     private var moodSince = SystemClock.uptimeMillis()
     private val start = SystemClock.uptimeMillis()
 
-    private val fur = Color.parseColor("#E9B872")
-    private val furDark = Color.parseColor("#8A5A2B")
-    private val cream = Color.parseColor("#FFF1DC")
+    private var fur = Color.parseColor("#E9B872")
+    private var furDark = Color.parseColor("#8A5A2B")
+    private var cream = Color.parseColor("#FFF1DC")
+    private var patch = Color.parseColor("#D49B52")
+    private var nose = Color.parseColor("#2B1D14")
     private val ink = Color.parseColor("#2B1D14")
+    private var eyeInk = ink
+    private val earPink = Color.parseColor("#FFB3C4")
+
+    private fun applyColors() {
+        fun c(s: String) = Color.parseColor(s)
+        eyeInk = ink; nose = ink
+        when (kind) {
+            Kind.PUPPY -> { fur = c("#E9B872"); furDark = c("#8A5A2B"); cream = c("#FFF1DC"); patch = c("#D49B52") }
+            Kind.KITTEN -> { fur = c("#B4BACB"); furDark = c("#7D849C"); cream = c("#F6F7FB"); patch = c("#9AA1B6"); nose = c("#F07C98") }
+            Kind.BUNNY -> { fur = c("#EFE8F0"); furDark = c("#D9CCDB"); cream = c("#FFFFFF"); patch = c("#EDE4EE"); nose = c("#F07C98") }
+            Kind.PANDA -> { fur = c("#FAFAFA"); furDark = c("#2C2C36"); cream = c("#FFFFFF"); patch = c("#2C2C36"); eyeInk = Color.WHITE }
+            Kind.BEAR -> { fur = c("#B07A4F"); furDark = c("#7C5131"); cream = c("#EBCDA8"); patch = c("#9C6A42") }
+            Kind.FOX -> { fur = c("#F08A3C"); furDark = c("#3B2A22"); cream = c("#FFF6EC"); patch = c("#E07A2E") }
+        }
+    }
     private val pink = Color.parseColor("#FF8FA8")
     private val tongue = Color.parseColor("#F2667F")
     private val accent = Color.parseColor("#F5A524")
@@ -90,15 +115,21 @@ class PuppyView(context: Context) : View(context) {
             else -> sin(t * wagSpeed) * 28f
         }
         c.save(); c.rotate(wag, 70f, 80f)
-        line.color = furDark; line.strokeWidth = 6f
-        path.reset(); path.moveTo(70f, 80f); path.quadTo(84f, 74f, 86f, 60f); c.drawPath(path, line)
+        when (kind) {
+            Kind.PUPPY -> { line.color = furDark; line.strokeWidth = 6f; path.reset(); path.moveTo(70f, 80f); path.quadTo(84f, 74f, 86f, 60f); c.drawPath(path, line) }
+            Kind.KITTEN -> { line.color = fur; line.strokeWidth = 5f; path.reset(); path.moveTo(70f, 82f); path.cubicTo(90f, 82f, 84f, 58f, 94f, 56f); c.drawPath(path, line) }
+            Kind.FOX -> { ellipse(c, 82f, 70f, 8f, 16f, fur, 35f); ellipse(c, 88f, 60f, 4.5f, 6f, cream, 35f) }
+            Kind.BUNNY -> { fill.color = Color.WHITE; c.drawCircle(73f, 84f, 6f, fill) }
+            Kind.PANDA, Kind.BEAR -> { fill.color = furDark; c.drawCircle(73f, 84f, 4.5f, fill) }
+        }
         c.restore()
 
         // body and paws
         ellipse(c, 50f, 81f, 24f, 15f, fur)
         ellipse(c, 50f, 84f, 12f, 9f, cream)
-        ellipse(c, 39f, 94f, 7f, 4.5f, cream)
-        ellipse(c, 61f, 94f, 7f, 4.5f, cream)
+        val paw = if (kind == Kind.PANDA) furDark else cream
+        ellipse(c, 39f, 94f, 7f, 4.5f, paw)
+        ellipse(c, 61f, 94f, 7f, 4.5f, paw)
 
         // ears
         val earTilt = when (mood) {
@@ -107,8 +138,7 @@ class PuppyView(context: Context) : View(context) {
             Mood.THINKING, Mood.CONFUSED, Mood.DIZZY -> 20f; else -> 16f
         }
         val earFlap = if (talking) sin(t * 14f) * 3f else 0f
-        ellipse(c, 23f, 40f, 9f, 18f, furDark, earTilt + earFlap)
-        ellipse(c, 77f, 40f, 9f, 18f, furDark, -earTilt - earFlap)
+        drawEars(c, earTilt, earFlap)
 
         // head (tilts when thinking or confused)
         val headTilt = when (mood) {
@@ -117,8 +147,18 @@ class PuppyView(context: Context) : View(context) {
         }
         c.save(); c.rotate(headTilt, 50f, 60f)
         fill.color = fur; c.drawCircle(50f, 44f, 29f, fill)
-        ellipse(c, 62f, 40f, 9f, 8f, Color.parseColor("#D49B52"))   // eye patch
-        ellipse(c, 50f, 58f, 15f, 11f, cream)                         // muzzle
+        when (kind) {
+            Kind.PUPPY -> ellipse(c, 62f, 40f, 9f, 8f, patch)                          // eye patch
+            Kind.PANDA -> { ellipse(c, 38f, 42f, 8f, 9.5f, patch, 25f); ellipse(c, 62f, 42f, 8f, 9.5f, patch, -25f) }
+            Kind.FOX -> { ellipse(c, 34f, 54f, 13f, 10f, cream, -20f); ellipse(c, 66f, 54f, 13f, 10f, cream, 20f) }
+            Kind.KITTEN -> { line.color = patch; line.strokeWidth = 2.4f; for (dx in floatArrayOf(-5f, 0f, 5f)) c.drawLine(50f + dx, 17f, 50f + dx * 0.6f, 24f, line) }
+            else -> {}
+        }
+        ellipse(c, 50f, 58f, if (kind == Kind.BUNNY || kind == Kind.KITTEN) 12f else 15f, if (kind == Kind.BUNNY || kind == Kind.KITTEN) 9f else 11f, cream) // muzzle
+        if (kind == Kind.KITTEN || kind == Kind.FOX) {   // whiskers
+            line.color = if (kind == Kind.FOX) Color.parseColor("#7A4A2A") else Color.parseColor("#6F7690"); line.strokeWidth = 1f
+            for (sgn in floatArrayOf(-1f, 1f)) for (dy in floatArrayOf(-2f, 1.5f)) c.drawLine(50f + sgn * 9f, 56f + dy, 50f + sgn * 22f, 54f + dy * 2f, line)
+        }
 
         // cheeks
         if (mood in setOf(Mood.HAPPY, Mood.LOVE, Mood.EXCITED, Mood.LAUGHING, Mood.WINK, Mood.PROUD, Mood.SHY)) {
@@ -134,7 +174,9 @@ class PuppyView(context: Context) : View(context) {
         drawEyes(c, now)
 
         // nose
-        ellipse(c, 50f, 52.5f, 5.2f, 3.8f, ink)
+        if (kind == Kind.KITTEN || kind == Kind.BUNNY) {
+            fill.color = nose; path.reset(); path.moveTo(46.5f, 51f); path.lineTo(53.5f, 51f); path.lineTo(50f, 55f); path.close(); c.drawPath(path, fill)
+        } else ellipse(c, 50f, 52.5f, 5.2f, 3.8f, nose)
         fill.color = Color.WHITE; c.drawCircle(48.5f, 51.5f, 1.1f, fill)
 
         drawMouth(c, t)
@@ -147,11 +189,11 @@ class PuppyView(context: Context) : View(context) {
     }
 
     private fun drawEyes(c: Canvas, now: Long) {
-        val blink = ((now / 100) % 45) == 0L
-        line.color = ink; line.strokeWidth = 2.6f
+        val bleyeInk = ((now / 100) % 45) == 0L
+        line.color = eyeInk; line.strokeWidth = 2.6f
         val lx = 39f; val rx = 61f; val ey = 41f
         when {
-            mood == Mood.SLEEPY || blink -> {
+            mood == Mood.SLEEPY || bleyeInk -> {
                 c.drawLine(lx - 4f, ey + 1f, lx + 4f, ey + 1f, line); c.drawLine(rx - 4f, ey + 1f, rx + 4f, ey + 1f, line)
             }
             mood == Mood.HAPPY || mood == Mood.EXCITED -> {
@@ -179,14 +221,14 @@ class PuppyView(context: Context) : View(context) {
                 line.color = Color.WHITE; line.strokeWidth = 1.4f; c.drawLine(lx - 4.5f, ey - 2.5f, lx - 2f, ey - 2.5f, line); c.drawLine(rx - 3f, ey - 2.5f, rx - 0.5f, ey - 2.5f, line)
             }
             mood == Mood.WINK -> {
-                fill.color = ink; c.drawCircle(lx, ey, 4.8f, fill); fill.color = Color.WHITE; c.drawCircle(lx - 1.4f, ey - 1.6f, 1.4f, fill)
+                fill.color = eyeInk; c.drawCircle(lx, ey, 4.8f, fill); fill.color = Color.WHITE; c.drawCircle(lx - 1.4f, ey - 1.6f, 1.4f, fill)
                 path.reset(); path.moveTo(rx - 4.5f, ey + 2f); path.quadTo(rx, ey - 5f, rx + 4.5f, ey + 2f); c.drawPath(path, line)
             }
             mood == Mood.SCARED -> {
                 for (x in floatArrayOf(lx, rx)) {
                     fill.color = Color.WHITE; c.drawCircle(x, ey, 6.2f, fill)
-                    line.color = ink; line.strokeWidth = 1.4f; c.drawCircle(x, ey, 6.2f, line)
-                    fill.color = ink; c.drawCircle(x, ey + 0.5f, 2.2f, fill)
+                    line.color = eyeInk; line.strokeWidth = 1.4f; c.drawCircle(x, ey, 6.2f, line)
+                    fill.color = eyeInk; c.drawCircle(x, ey + 0.5f, 2.2f, fill)
                 }
                 line.strokeWidth = 2f
                 c.drawLine(lx - 5f, ey - 9f, lx + 4f, ey - 11f, line); c.drawLine(rx - 4f, ey - 11f, rx + 5f, ey - 9f, line)
@@ -201,7 +243,7 @@ class PuppyView(context: Context) : View(context) {
             else -> {
                 val r = when (mood) { Mood.SURPRISED -> 6f; Mood.SAD -> 4f; Mood.ANGRY -> 4f; Mood.SHY -> 4.2f; else -> 4.8f }
                 val (dx, dy) = when (mood) { Mood.THINKING -> Pair(1.8f, -2f); Mood.SHY -> Pair(-1f, 2.5f); else -> Pair(0f, 0f) }
-                fill.color = ink
+                fill.color = eyeInk
                 c.drawCircle(lx + dx, ey + dy, if (mood == Mood.CONFUSED) r + 1.4f else r, fill)
                 c.drawCircle(rx + dx, ey + dy, if (mood == Mood.CONFUSED) r - 1f else r, fill)
                 fill.color = Color.WHITE
@@ -246,6 +288,11 @@ class PuppyView(context: Context) : View(context) {
             Mood.DIZZY -> { path.reset(); path.moveTo(43f, 63f); path.quadTo(46.5f, 60f, 50f, 63f); path.quadTo(53.5f, 66f, 57f, 63f); c.drawPath(path, line) }
             else -> {
                 path.reset(); path.moveTo(42f, 60f); path.quadTo(46f, 64.5f, 50f, 59.5f); path.quadTo(54f, 64.5f, 58f, 60f); c.drawPath(path, line)
+                if (kind == Kind.BUNNY) {
+                    fill.color = Color.WHITE; oval.set(47.3f, 60.5f, 52.7f, 66f); c.drawRoundRect(oval, 1.2f, 1.2f, fill)
+                    line.strokeWidth = 0.9f; c.drawRoundRect(oval, 1.2f, 1.2f, line); c.drawLine(50f, 60.5f, 50f, 66f, line)
+                    return
+                }
                 if (mood == Mood.EXCITED || mood == Mood.HAPPY || mood == Mood.LOVE || mood == Mood.WINK) {
                     fill.color = tongue; oval.set(46.5f, 61f, 53.5f, 70f); c.drawRoundRect(oval, 3.5f, 3.5f, fill)
                     line.strokeWidth = 1f; line.color = Color.parseColor("#C94861"); c.drawLine(50f, 63f, 50f, 68f, line)
@@ -283,6 +330,37 @@ class PuppyView(context: Context) : View(context) {
         }
     }
 
+    /** Ears differ for each animal; [tilt] is bigger when the pet feels low. */
+    private fun drawEars(c: Canvas, tilt: Float, flap: Float) {
+        val droop = (tilt - 16f) * 1.1f + flap
+        when (kind) {
+            Kind.PUPPY -> {
+                ellipse(c, 23f, 40f, 9f, 18f, furDark, tilt + flap)
+                ellipse(c, 77f, 40f, 9f, 18f, furDark, -tilt - flap)
+            }
+            Kind.KITTEN, Kind.FOX -> for (sgn in floatArrayOf(-1f, 1f)) {
+                c.save(); c.rotate(sgn * (-8f + droop), 50f + sgn * 20f, 28f)
+                val bx = 50f + sgn * 20f
+                fill.color = fur
+                path.reset(); path.moveTo(bx - 12f, 30f); path.lineTo(bx + sgn * 6f, if (kind == Kind.FOX) 2f else 6f); path.lineTo(bx + 12f, 30f); path.close(); c.drawPath(path, fill)
+                fill.color = if (kind == Kind.FOX) furDark else earPink
+                path.reset(); path.moveTo(bx - 6f, 26f); path.lineTo(bx + sgn * 4.5f, if (kind == Kind.FOX) 7f else 11f); path.lineTo(bx + 6f, 26f); path.close(); c.drawPath(path, fill)
+                c.restore()
+            }
+            Kind.BUNNY -> for (sgn in floatArrayOf(-1f, 1f)) {
+                c.save(); c.rotate(sgn * (6f + droop * 1.6f), 50f + sgn * 11f, 22f)
+                ellipse(c, 50f + sgn * 11f, 14f, 7f, 15f, fur)
+                ellipse(c, 50f + sgn * 11f, 14.5f, 3.8f, 11f, earPink)
+                c.restore()
+            }
+            Kind.PANDA, Kind.BEAR -> for (sgn in floatArrayOf(-1f, 1f)) {
+                val ex = 50f + sgn * (23f + droop * 0.15f); val ey = 20f + droop * 0.2f
+                fill.color = furDark; c.drawCircle(ex, ey, 9.5f, fill)
+                if (kind == Kind.BEAR) { fill.color = cream; c.drawCircle(ex, ey + 1f, 5f, fill) }
+            }
+        }
+    }
+
     /** Four-point sparkle. */
     private fun star(c: Canvas, cx: Float, cy: Float, r: Float, color: Int) {
         fill.color = color
@@ -310,7 +388,10 @@ class PuppyView(context: Context) : View(context) {
         c.drawPath(path, fill)
     }
 
+    init { applyColors() }
+
     companion object {
+        fun kindOf(key: String?): Kind = Kind.values().firstOrNull { it.key == key } ?: Kind.PUPPY
         fun moodOf(name: String?): Mood = when (name) {
             "excited" -> Mood.EXCITED; "thinking" -> Mood.THINKING; "sad" -> Mood.SAD; "surprised" -> Mood.SURPRISED
             "love" -> Mood.LOVE; "sleepy" -> Mood.SLEEPY; "confused" -> Mood.CONFUSED

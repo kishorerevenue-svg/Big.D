@@ -28,7 +28,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
         when (a.optString("type")) {
             "reminder" -> reminder(a.optString("at"), a.optString("text", "Reminder"))
             "timer" -> timer(a.optLong("seconds", 0), a.optString("label", "Timer"))
-            "alarm" -> alarm(a.optInt("hour", -1), a.optInt("minute", 0), a.optString("label", "Soul Friend"))
+            "alarm" -> alarm(a.optInt("hour", -1), a.optInt("minute", 0), a.optString("label", "BigD AI"))
             "todo_add" -> { store.addTodo(a.optString("text")); "Added to your list: ${a.optString("text")}" }
             "todo_done" -> store.findTodo(a.optString("text")).let { if (it < 0) "Couldn't find that item in your list" else { store.setTodoDone(it, true); "Marked done: ${store.todos()[it].text}" } }
             "todo_remove" -> store.findTodo(a.optString("text")).let { if (it < 0) "Couldn't find that item in your list" else { val t = store.todos()[it].text; store.removeTodo(it); "Removed: $t" } }
@@ -36,7 +36,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
             "call" -> call(a.optString("number"), a.optString("contact"))
             "whatsapp" -> whatsapp(a.optString("number"), a.optString("contact"), a.optString("message"))
             "open_app" -> openApp(a.optString("name"))
-            "show_text" -> { showText(a.optString("title", "Soul Friend"), a.optString("text")); null }
+            "show_text" -> { showText(a.optString("title", "BigD AI"), a.optString("text")); null }
             "copy_text" -> { copy(a.optString("text")); "Copied" }
             "remember" -> { store.remember(a.optString("text")); "I'll remember that" }
             "forget" -> if (store.forget(a.optString("text"))) "Forgotten" else "I didn't have that saved"
@@ -92,7 +92,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
         val n = digits(number).ifBlank { lookup(contact)?.let { digits(it) } ?: "" }
         if (n.isBlank()) {
             return if (contact.isNotBlank() && ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
-                "Allow Contacts in the Soul Friend app so I can find $contact"
+                "Allow Contacts in the BigD AI app so I can find $contact"
             else if (contact.isNotBlank()) "I couldn't find $contact in your contacts" else "Which number should I call?"
         }
         return if (start(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$n")))) "Opening the dialer for ${contact.ifBlank { n }}. Tap Call." else "No phone app found"
@@ -127,7 +127,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
     }
 
     fun copy(text: String) {
-        ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Soul Friend", text))
+        ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("BigD AI", text))
     }
 
     fun share(text: String) {
