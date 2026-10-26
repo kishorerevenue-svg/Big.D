@@ -13,13 +13,29 @@ android {
         applicationId = "com.kishore.bigd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // GitHub numbers every build, so each Play upload gets a higher version code.
+        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
+        versionName = "1.0." + (System.getenv("VERSION_CODE") ?: "0")
+    }
+
+    // The Play Store "stamp". The keystore and its password come from GitHub Secrets,
+    // never from this public code.
+    val keystoreFile = System.getenv("KEYSTORE_FILE")
+    signingConfigs {
+        create("release") {
+            if (keystoreFile != null) {
+                storeFile = file(keystoreFile)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = "bigd"
+                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (keystoreFile != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 
