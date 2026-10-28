@@ -24,19 +24,21 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
-      - name: Build the Play Store app (signed AAB)
+      - name: Build the phone APK and Play Store AAB (signed with your stamp)
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
-            echo "No KEYSTORE_BASE64 secret yet, skipping the Play Store build."
+            echo "No KEYSTORE_BASE64 secret yet, skipping signed builds."
             exit 0
           fi
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           export KEYSTORE_FILE="$RUNNER_TEMP/upload.jks"
-          ./gradlew bundleRelease --no-daemon
+          ./gradlew assembleRelease bundleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/BigD-AI.apk
+      # Same stamp every time, so each new APK installs over the old one.
       - uses: actions/upload-artifact@v4
         with:
           name: bigd-ai-phone-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/release/BigD-AI.apk
       - uses: actions/upload-artifact@v4
         with:
           name: bigd-play-store-aab
