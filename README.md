@@ -23,7 +23,11 @@ Soul Friend (ఆత్మ మిత్రుడు) is a cartoon puppy that floa
 - `android/` is the Android app (Kotlin, no extra libraries). Open it in Android Studio, or upload it to GitHub to build automatically.
   - `app/src/main/java/com/soulfriend/pet/Store.kt` holds `DEFAULT_SERVER`. Put your server address there, or type it in the app.
   - `app/build.gradle.kts` holds `applicationId`. Change it to your own unique name before you publish.
-  - `.github/workflows/build-apk.yml` makes GitHub build the APK for you.
+  - `.github/workflows/build-apk.yml` makes GitHub build the APKs for you.
+  - The app comes in two editions:
+    - **Lite** (`BigD-AI-Lite.apk`, named "BigD AI Lite" on the phone): everything except "Reply to messages". Share this one on WhatsApp or a website.
+    - **Full** (`BigD-AI-Full.apk` and the Play Store AAB): every feature. Upload the AAB to the Play Store.
+    - Why: "Reply to messages" needs notification access. In India, Play Protect blocks any APK with notification access when it is installed from WhatsApp, a browser or a file manager. Apps from the Play Store are not blocked.
 - `store-images/` has the Play Store icon (512×512) and feature graphic (1024×500).
 
 The step-by-step guide is in the "Soul Friend App Launch Guide" doc shared in the chat.

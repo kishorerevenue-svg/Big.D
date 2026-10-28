@@ -18,6 +18,30 @@ android {
         versionName = "1.0." + (System.getenv("VERSION_CODE") ?: "0")
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
+    // Two editions of the app, built from the same code:
+    //  - full: every feature, including "Reply to messages". This one goes to the Play Store.
+    //  - lite: everything except "Reply to messages". Share this APK on WhatsApp or a website.
+    // "Reply to messages" needs notification access. In India, Play Protect blocks any APK with
+    // notification access when it is installed from WhatsApp, a browser or a file manager.
+    // The lite edition has its own app id and name, so it never clashes with the Play Store app.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("full") {
+            dimension = "edition"
+            buildConfigField("boolean", "MESSAGE_REPLIES", "true")
+        }
+        create("lite") {
+            dimension = "edition"
+            applicationIdSuffix = ".lite"
+            versionNameSuffix = "-lite"
+            buildConfigField("boolean", "MESSAGE_REPLIES", "false")
+        }
+    }
+
     // The Play Store "stamp". The keystore and its password come from GitHub Secrets,
     // never from this public code.
     val keystoreFile = System.getenv("KEYSTORE_FILE")

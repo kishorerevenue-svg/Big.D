@@ -80,16 +80,8 @@
                 android:value="Floating companion pet that stays on screen over other apps so the user can talk to it at any time" />
         </service>
 
-        <!-- Reads new chat notifications (WhatsApp, SMS...) to suggest replies. Off until the user allows it. -->
-        <service
-            android:name=".MessageListener"
-            android:exported="true"
-            android:label="BigD AI message replies"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
+        <!-- "Reply to messages" (MessageListener) is declared only in src/full/AndroidManifest.xml.
+             Do not add it here: it would make Play Protect block the lite APK. -->
 
         <receiver android:name=".ReminderReceiver" android:exported="false" />
 

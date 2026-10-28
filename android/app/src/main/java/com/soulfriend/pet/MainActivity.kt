@@ -221,11 +221,11 @@ class MainActivity : Activity() {
         add(pair(tile("⏰", "Add reminder", "Once or repeating") { tasksTab = "rem"; go("tasks") },
             tile("🔒", "My Vault", "Cards and documents") { go("vault") }), 10)
 
-        val tips = listOf(
+        val tips = listOfNotNull(
             "Say \"remind me to take medicine every day at 8 am\"",
             "Say \"NOC letter Word file for Sy.No. 370/1\"",
             "Hold the pet for the menu: type, photo, lists",
-            "Turn on WhatsApp replies in the Pet page",
+            if (BuildConfig.MESSAGE_REPLIES) "Turn on WhatsApp replies in the Pet page" else null,
             "Drag the pet down to ✕ to close it"
         )
         add(ui.card(Ui.TEAL_SOFT).apply {
@@ -277,7 +277,8 @@ class MainActivity : Activity() {
         }, 12)
 
         add(ui.section("Permissions · అనుమతులు").apply { permissionRows(this) }, 12)
-        add(messagesCard(), 12)
+        // "Reply to messages" exists only in the full (Play Store) edition. See build.gradle.kts.
+        if (BuildConfig.MESSAGE_REPLIES) add(messagesCard(), 12)
         add(briefingCard(), 12)
 
         add(ui.section("Privacy", "Useful for office files. Photos are sent as they are.").apply {
@@ -736,7 +737,9 @@ class MainActivity : Activity() {
             put(ui.row(ui.button("Share with friends", "sun") {
                 leavingForSystemScreen = true
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_TEXT, "Try BigD AI 🐾 – a cute pet on your phone screen that talks in Telugu and English, sets reminders, writes letters and replies to WhatsApp. ${store.server}"), "Share BigD AI"))
+                    .putExtra(Intent.EXTRA_TEXT, "Try BigD AI 🐾 – a cute pet on your phone screen that talks in Telugu and English, " +
+                        (if (BuildConfig.MESSAGE_REPLIES) "sets reminders, writes letters and replies to WhatsApp." else "sets reminders and writes letters.") +
+                        " ${store.server}"), "Share BigD AI"))
             }), 10)
         }, 12)
 
@@ -789,7 +792,8 @@ class MainActivity : Activity() {
             0 -> {
                 add(bigPet(PuppyView.Mood.EXCITED), 16)
                 add(ui.text("నమస్తే! I'm BigD AI", 27f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER }, 8)
-                add(ui.text("Your pet friend on your phone. I talk in Telugu and English, set reminders, make Word and Excel files, reply to WhatsApp and keep your cards safe.", 15f, Ui.MUTED).apply { gravity = Gravity.CENTER }, 8)
+                add(ui.text("Your pet friend on your phone. I talk in Telugu and English, set reminders, make Word and Excel files, " +
+                    (if (BuildConfig.MESSAGE_REPLIES) "reply to WhatsApp and keep your cards safe." else "and keep your cards safe."), 15f, Ui.MUTED).apply { gravity = Gravity.CENTER }, 8)
                 add(ui.section("Choose your language · మీ భాష").apply {
                     put(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL

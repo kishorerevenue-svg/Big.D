@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Name under the icon for the lite edition, so it is easy to tell apart from the Play Store app. -->
+    <string name="app_name">BigD AI Lite</string>
+</resources>

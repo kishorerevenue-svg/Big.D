@@ -20,11 +20,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Build the test app (APK)
+      - name: Build the test apps (Lite and Full)
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
-      - name: Build the phone APK and Play Store AAB (signed with your stamp)
+      - name: Build the phone APKs and Play Store AAB (signed with your stamp)
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
             echo "No KEYSTORE_BASE64 secret yet, skipping signed builds."
@@ -32,15 +32,23 @@ jobs:
           fi
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           export KEYSTORE_FILE="$RUNNER_TEMP/upload.jks"
-          ./gradlew assembleRelease bundleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/BigD-AI.apk
+          ./gradlew assembleLiteRelease assembleFullRelease bundleFullRelease --no-daemon
+          cp app/build/outputs/apk/lite/release/app-lite-release.apk app/build/outputs/apk/lite/release/BigD-AI-Lite.apk
+          cp app/build/outputs/apk/full/release/app-full-release.apk app/build/outputs/apk/full/release/BigD-AI-Full.apk
       # Same stamp every time, so each new APK installs over the old one.
+      # Lite: share this one on WhatsApp. It has no "Reply to messages", so Play Protect lets it install.
       - uses: actions/upload-artifact@v4
         with:
-          name: bigd-ai-phone-apk
-          path: android/app/build/outputs/apk/release/BigD-AI.apk
+          name: bigd-ai-lite-apk
+          path: android/app/build/outputs/apk/lite/release/BigD-AI-Lite.apk
+      # Full: every feature, for your own testing. Play Protect blocks it when it is opened from WhatsApp.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bigd-ai-full-apk
+          path: android/app/build/outputs/apk/full/release/BigD-AI-Full.apk
+      # Play Store upload (full edition).
       - uses: actions/upload-artifact@v4
         with:
           name: bigd-play-store-aab
-          path: android/app/build/outputs/bundle/release/app-release.aab
+          path: android/app/build/outputs/bundle/fullRelease/app-full-release.aab
           if-no-files-found: ignore

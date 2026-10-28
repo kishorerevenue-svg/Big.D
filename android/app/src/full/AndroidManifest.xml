@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Added only to the full (Play Store) edition. The lite edition leaves this out,
+     because Play Protect in India blocks sideloaded APKs that have notification access. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Reads new chat notifications (WhatsApp, SMS...) to suggest replies. Off until the user allows it. -->
+        <service
+            android:name="com.soulfriend.pet.MessageListener"
+            android:exported="true"
+            android:label="BigD AI message replies"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
