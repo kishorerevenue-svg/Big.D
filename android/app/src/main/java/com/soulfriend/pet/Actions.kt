@@ -26,7 +26,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
 
     fun run(a: JSONObject): String? = try {
         when (a.optString("type")) {
-            "reminder" -> reminder(a.optString("at"), a.optString("text", "Reminder"))
+            "reminder" -> reminder(a.optString("at"), a.optString("text", "Reminder"), a.optString("repeat", ""))
             "timer" -> timer(a.optLong("seconds", 0), a.optString("label", "Timer"))
             "alarm" -> alarm(a.optInt("hour", -1), a.optInt("minute", 0), a.optString("label", "BigD AI"))
             "todo_add" -> { store.addTodo(a.optString("text")); "Added to your list: ${a.optString("text")}" }
@@ -53,12 +53,17 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
         }
     }
 
-    private fun reminder(at: String, text: String): String {
-        val ms = parseTime(at) ?: return "I couldn't understand the time for that reminder"
-        if (ms < System.currentTimeMillis() - 30_000) return "That time has already passed"
-        val (_, exact) = Reminders.add(ctx, ms, text)
+    private fun reminder(at: String, text: String, repeat: String): String {
+        var ms = parseTime(at) ?: return "I couldn't understand the time for that reminder"
+        val rep = Reminders.cleanRepeat(repeat)
+        if (ms < System.currentTimeMillis() - 30_000) {
+            if (rep.isEmpty()) return "That time has already passed"
+            ms = Reminders.nextTime(ms, rep)
+        }
+        val (_, exact) = Reminders.add(ctx, ms, text, rep)
         val whenText = timeFmt.format(java.time.Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
-        return "Reminder set for $whenText" + if (exact) "" else " (may ring a few minutes late)"
+        val again = if (rep.isEmpty()) "" else ", then ${Reminders.repeatLabel(rep)}"
+        return "Reminder set for $whenText$again" + if (exact) "" else " (may ring a few minutes late)"
     }
 
     private fun timer(seconds: Long, label: String): String {

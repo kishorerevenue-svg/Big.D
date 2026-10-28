@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.AlertDialog
+import android.app.TimePickerDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -75,31 +76,8 @@ class MainActivity : Activity() {
 
     private fun granted(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
 
-    // ---------- the screen ----------
-    private fun render() {
-        root.removeAllViews()
-
-        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(PuppyView(this).apply { kind = PuppyView.kindOf(store.petKind); mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }, LinearLayout.LayoutParams(dp(120), dp(120)))
-        head.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
-            addView(text("BigD AI", 26f, bold = true)); addView(text("బిగ్ డి · your pet friend", 15f, muted))
-        })
-        add(head, 0)
-
-        // start / stop
-        val ready = Settings.canDrawOverlays(this)
-        add(button(if (PetService.running) "Close my pet" else "Show my pet on the screen", primary = true) {
-            if (PetService.running) stopService(Intent(this, PetService::class.java))
-            else if (!ready) Toast.makeText(this, "First allow 'Show over other apps' below", Toast.LENGTH_LONG).show()
-            else { startForegroundService(Intent(this, PetService::class.java)); moveTaskToBack(true) }
-            root.postDelayed({ render() }, 400)
-        }, 16)
-        add(text("Tap the pet to talk. Hold it for the menu. Drag it anywhere. To close it, drag it down to the ✕.\nనొక్కి మాట్లాడండి. మెనూ కోసం నొక్కి పట్టుకోండి. మూసివేయడానికి కిందకి ✕ వద్దకు లాగండి.", 13f, muted), 8)
-
-        // choose a pet
-        val petCard = card()
-        petCard.put(text("Choose your pet · మీ పెంపుడు జంతువు", 18f, bold = true), 0)
+    /** The 6 pets to choose from. */
+    private fun petPicker(petCard: LinearLayout) {
         val current = PuppyView.kindOf(store.petKind)
         PuppyView.Kind.values().toList().chunked(3).forEach { rowKinds ->
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -124,11 +102,11 @@ class MainActivity : Activity() {
             }
             petCard.put(r, 10)
         }
-        add(petCard, 14)
+    }
 
-        // permissions
-        val perms = card()
-        perms.put(text("Setup · సెటప్", 18f, bold = true), 0)
+    /** Overlay, microphone, notifications, exact alarms, contacts and Telugu voice. */
+    private fun permissionRows(perms: LinearLayout) {
+        val ready = Settings.canDrawOverlays(this)
         fun step(done: Boolean, label: String, why: String, action: () -> Unit) {
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             r.addView(LinearLayout(this).apply {
@@ -166,6 +144,101 @@ class MainActivity : Activity() {
             catch (e: Exception) { Toast.makeText(this, "Open Settings › Text-to-speech › Google › Install voice data › Telugu", Toast.LENGTH_LONG).show() }
         })
         perms.put(voiceRow, 12)
+    }
+
+    // ---------- first-time setup guide ----------
+    private var setupStep = 0
+
+    private fun renderSetup() {
+        root.removeAllViews()
+        add(text("Step ${setupStep + 1} of 4", 13f, muted), 0)
+        fun nav(nextLabel: String = "Next ›", onNext: () -> Unit = { setupStep++; render() }) {
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            if (setupStep > 0) r.addView(button("‹ Back") { setupStep--; render() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) })
+            r.addView(button(nextLabel, primary = true) { onNext() })
+            add(r, 20)
+        }
+        fun bigPet(m: PuppyView.Mood) = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(PuppyView(this@MainActivity).apply { kind = PuppyView.kindOf(store.petKind); mood = m }, LinearLayout.LayoutParams(dp(170), dp(170)))
+        }
+        when (setupStep) {
+            0 -> {
+                add(bigPet(PuppyView.Mood.EXCITED), 8)
+                add(text("నమస్తే! I'm BigD AI 🐾", 26f, bold = true).apply { gravity = Gravity.CENTER }, 8)
+                add(text("Your pet friend on your phone screen. I talk in Telugu and English, set reminders, write messages, reply to WhatsApp and more.", 15f, muted).apply { gravity = Gravity.CENTER }, 8)
+                val c = card()
+                c.put(text("Choose your language · మీ భాష", 18f, bold = true), 0)
+                val langRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                listOf("te" to "తెలుగు", "en" to "English", "auto" to "Both").forEach { (code, label) ->
+                    langRow.addView(button((if (store.lang == code) "● " else "") + label, primary = store.lang == code) { store.lang = code; render() },
+                        LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) })
+                }
+                c.put(langRow, 10)
+                add(c, 18)
+                nav()
+            }
+            1 -> {
+                add(text("Choose your pet · మీ పెంపుడు జంతువు", 22f, bold = true), 8)
+                add(text("You can change it any time.", 14f, muted), 4)
+                val c = card(); petPicker(c); add(c, 14)
+                nav()
+            }
+            2 -> {
+                add(text("Allow a few things · అనుమతులు", 22f, bold = true), 8)
+                add(text("Only \"Show over other apps\" is needed to start. You can allow the others later.", 14f, muted), 4)
+                val c = card(); permissionRows(c); add(c, 14)
+                nav()
+            }
+            else -> {
+                add(bigPet(PuppyView.Mood.LOVE), 8)
+                add(text("All set! 🎉", 26f, bold = true).apply { gravity = Gravity.CENTER }, 8)
+                val c = card()
+                c.put(text("👆 Tap me to talk\n✋ Hold me for the menu (type, photo, lists)\n↕️ Drag me anywhere; drag me down to ✕ to close\n💬 Later: turn on WhatsApp replies and the ☀️ morning briefing in this app", 15f), 0)
+                add(c, 14)
+                nav("Start! Show my pet 🐾") {
+                    store.onboarded = true
+                    if (Settings.canDrawOverlays(this)) { startForegroundService(Intent(this, PetService::class.java)); moveTaskToBack(true) }
+                    else Toast.makeText(this, "Allow 'Show over other apps' in Setup, then tap Show my pet.", Toast.LENGTH_LONG).show()
+                    root.postDelayed({ render() }, 400)
+                }
+            }
+        }
+    }
+
+    // ---------- the screen ----------
+    private fun render() {
+        if (!store.onboarded) { renderSetup(); return }
+        root.removeAllViews()
+
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(PuppyView(this).apply { kind = PuppyView.kindOf(store.petKind); mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }, LinearLayout.LayoutParams(dp(120), dp(120)))
+        head.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
+            addView(text("BigD AI", 26f, bold = true)); addView(text("బిగ్ డి · your pet friend", 15f, muted))
+        })
+        add(head, 0)
+
+        // start / stop
+        val ready = Settings.canDrawOverlays(this)
+        add(button(if (PetService.running) "Close my pet" else "Show my pet on the screen", primary = true) {
+            if (PetService.running) stopService(Intent(this, PetService::class.java))
+            else if (!ready) Toast.makeText(this, "First allow 'Show over other apps' below", Toast.LENGTH_LONG).show()
+            else { startForegroundService(Intent(this, PetService::class.java)); moveTaskToBack(true) }
+            root.postDelayed({ render() }, 400)
+        }, 16)
+        add(text("Tap the pet to talk. Hold it for the menu. Drag it anywhere. To close it, drag it down to the ✕.\nనొక్కి మాట్లాడండి. మెనూ కోసం నొక్కి పట్టుకోండి. మూసివేయడానికి కిందకి ✕ వద్దకు లాగండి.", 13f, muted), 8)
+
+        // choose a pet
+        val petCard = card()
+        petCard.put(text("Choose your pet · మీ పెంపుడు జంతువు", 18f, bold = true), 0)
+        petPicker(petCard)
+        add(petCard, 14)
+
+        // permissions
+        val perms = card()
+        perms.put(text("Setup · సెటప్", 18f, bold = true), 0)
+        permissionRows(perms)
         add(perms, 18)
 
         // language + server
@@ -235,6 +308,32 @@ class MainActivity : Activity() {
         }
         add(msgCard, 14)
 
+        // good-morning briefing
+        val briefCard = card()
+        briefCard.put(text("Good-morning briefing ☀️ · శుభోదయం", 18f, bold = true), 0)
+        briefCard.put(text("Every morning your pet tells you today's panchangam (tithi, nakshatram, Rahu kalam), the weather, your reminders and to-dos.", 12.5f, muted), 4)
+        briefCard.put(check("Morning briefing ON", store.briefOn) { store.briefOn = it; Briefing.schedule(this) }, 8)
+        if (store.briefOn) {
+            val h = store.briefHour; val m = store.briefMinute
+            val timeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            timeRow.addView(text("Time: %d:%02d %s".format(if (h % 12 == 0) 12 else h % 12, m, if (h < 12) "AM" else "PM"), 15f, bold = true), LinearLayout.LayoutParams(0, -2, 1f))
+            timeRow.addView(button("Change") {
+                TimePickerDialog(this, { _, hh, mm -> store.briefHour = hh; store.briefMinute = mm; Briefing.schedule(this); render() }, h, m, false).show()
+            })
+            briefCard.put(timeRow, 6)
+            val cityBox = EditText(this).apply { setText(store.city); hint = "Your town or city, e.g. Visakhapatnam"; textSize = 14f; setSingleLine(); setTextColor(navy) }
+            briefCard.put(cityBox, 6)
+            val bRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            bRow.addView(button("Save city") { store.city = cityBox.text.toString(); Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show() },
+                LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) })
+            bRow.addView(button("Try it now") {
+                store.city = cityBox.text.toString(); Briefing.runNow(this)
+                Toast.makeText(this, "Your briefing will arrive in a few seconds.", Toast.LENGTH_LONG).show()
+            })
+            briefCard.put(bRow, 6)
+        }
+        add(briefCard, 14)
+
         // to-do list
         val todoCard = card()
         todoCard.put(text("My to-do list · పనుల జాబితా", 18f, bold = true), 0)
@@ -260,12 +359,12 @@ class MainActivity : Activity() {
         val remCard = card()
         remCard.put(text("Reminders and timers", 18f, bold = true), 0)
         val rems = store.reminders().sortedBy { it.at }
-        if (rems.isEmpty()) remCard.put(text("None. Say \"remind me at 5 pm to call the office\".", 13f, muted))
+        if (rems.isEmpty()) remCard.put(text("None. Say \"remind me at 5 pm to call the office\" or \"remind me to take medicine every day at 8 am and 8 pm\".", 13f, muted))
         rems.forEach { r ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             row.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text(r.text, 15f)); addView(text(fmt.format(Instant.ofEpochMilli(r.at).atZone(ZoneId.systemDefault())), 12.5f, muted))
+                addView(text(r.text, 15f)); addView(text(fmt.format(Instant.ofEpochMilli(r.at).atZone(ZoneId.systemDefault())) + Reminders.repeatLabel(r.repeat).let { if (it.isEmpty()) "" else " · 🔁 $it" }, 12.5f, muted))
             }, LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(button("Cancel") { Reminders.cancel(this, r); render() })
             remCard.put(row, 8)

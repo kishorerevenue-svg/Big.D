@@ -91,6 +91,13 @@
 
         <receiver android:name=".ReminderReceiver" android:exported="false" />
 
+        <!-- Good-morning briefing -->
+        <receiver android:name=".BriefingReceiver" android:exported="false" />
+        <service
+            android:name=".BriefingJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

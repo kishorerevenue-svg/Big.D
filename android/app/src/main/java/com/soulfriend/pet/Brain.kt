@@ -88,6 +88,27 @@ class Brain(private val store: Store) {
         }
     }
 
+    /** Good-morning briefing text (panchangam, weather, today's reminders and to-dos). */
+    fun briefing(reminders: List<String>, onOk: (String) -> Unit, onError: (String) -> Unit) {
+        val server = store.server
+        if (!server.startsWith("https://")) { main.post { onError("No server address.") }; return }
+        val todos = JSONArray(); store.todos().filter { !it.done }.take(10).forEach { todos.put(it.text) }
+        val body = JSONObject()
+            .put("now", OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString())
+            .put("tz", ZoneId.systemDefault().id).put("lang", store.lang).put("city", store.city)
+            .put("pet", store.petKind).put("todos", todos)
+            .put("reminders", JSONArray().also { a -> reminders.forEach { a.put(it) } })
+        pool.execute {
+            try {
+                val (code, out) = post("$server/api/briefing", body.toString())
+                val json = try { JSONObject(out) } catch (e: Exception) { JSONObject() }
+                val text = json.optString("text", "")
+                if (code in 200..299 && text.isNotBlank()) main.post { onOk(text) }
+                else main.post { onError(json.optString("error", "error $code")) }
+            } catch (e: Exception) { main.post { onError("No connection.") } }
+        }
+    }
+
     fun report(reason: String, reply: String, question: String) {
         val body = JSONObject().put("reason", reason).put("reply", reply).put("question", question).toString()
         val server = store.server
@@ -98,6 +119,7 @@ class Brain(private val store: Store) {
         val c = URL(url).openConnection() as HttpURLConnection
         c.requestMethod = "POST"; c.connectTimeout = 15_000; c.readTimeout = 60_000; c.doOutput = true
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        c.setRequestProperty("X-Device", store.deviceId)
         c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
         val code = c.responseCode
         val stream = if (code in 200..299) c.inputStream else c.errorStream

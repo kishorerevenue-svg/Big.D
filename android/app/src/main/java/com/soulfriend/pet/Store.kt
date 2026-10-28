@@ -8,11 +8,12 @@ import org.json.JSONObject
 /** Everything the puppy remembers, saved on the phone. */
 object Config {
     /** Put your server address here, or type it in the app's setup screen. No slash at the end. */
-    const val DEFAULT_SERVER = "https://YOUR-DOMAIN.com"
+    const val DEFAULT_SERVER = "https://bigdai.tech"
 }
 
 data class Todo(val text: String, val done: Boolean)
-data class Reminder(val id: Int, val at: Long, val text: String)
+/** [repeat] is "", "daily", "weekdays", "weekly" or "monthly". */
+data class Reminder(val id: Int, val at: Long, val text: String, val repeat: String = "")
 
 class Store(context: Context) {
     private val p: SharedPreferences = context.applicationContext.getSharedPreferences("soul_friend", Context.MODE_PRIVATE)
@@ -34,6 +35,30 @@ class Store(context: Context) {
     var petKind: String
         get() = p.getString("petKind", "puppy") ?: "puppy"
         set(v) { p.edit().putString("petKind", v).apply() }
+
+    /** A random id for this phone, so the server can apply a fair daily limit. Not linked to the person. */
+    val deviceId: String
+        get() = p.getString("deviceId", null) ?: java.util.UUID.randomUUID().toString().also { p.edit().putString("deviceId", it).apply() }
+
+    /** First-time setup guide finished? */
+    var onboarded: Boolean
+        get() = p.getBoolean("onboarded", false)
+        set(v) { p.edit().putBoolean("onboarded", v).apply() }
+
+    // ---- good-morning briefing ----
+    var briefOn: Boolean
+        get() = p.getBoolean("briefOn", false)
+        set(v) { p.edit().putBoolean("briefOn", v).apply() }
+    var briefHour: Int
+        get() = p.getInt("briefHour", 7)
+        set(v) { p.edit().putInt("briefHour", v).apply() }
+    var briefMinute: Int
+        get() = p.getInt("briefMinute", 0)
+        set(v) { p.edit().putInt("briefMinute", v).apply() }
+    /** Town or city for weather and panchangam timings, e.g. "Visakhapatnam". */
+    var city: String
+        get() = p.getString("city", "") ?: ""
+        set(v) { p.edit().putString("city", v.trim()).apply() }
 
     // ---- message replies (WhatsApp, SMS, ...) ----
     /** Watch new chat-app notifications and suggest replies. */
@@ -120,15 +145,17 @@ class Store(context: Context) {
     // ---- reminders ----
     fun reminders(): List<Reminder> {
         val a = JSONArray(p.getString("reminders", "[]"))
-        return (0 until a.length()).map { val o = a.getJSONObject(it); Reminder(o.getInt("id"), o.getLong("at"), o.optString("text")) }
+        return (0 until a.length()).map { val o = a.getJSONObject(it); Reminder(o.getInt("id"), o.getLong("at"), o.optString("text"), o.optString("repeat", "")) }
     }
     private fun saveReminders(list: List<Reminder>) {
-        val a = JSONArray(); list.forEach { a.put(JSONObject().put("id", it.id).put("at", it.at).put("text", it.text)) }
+        val a = JSONArray(); list.forEach { a.put(JSONObject().put("id", it.id).put("at", it.at).put("text", it.text).put("repeat", it.repeat)) }
         p.edit().putString("reminders", a.toString()).apply()
     }
-    fun addReminder(at: Long, text: String): Reminder {
+    fun addReminder(at: Long, text: String, repeat: String = ""): Reminder {
         val id = p.getInt("nextId", 1); p.edit().putInt("nextId", id + 1).apply()
-        val r = Reminder(id, at, text); saveReminders(reminders() + r); return r
+        val r = Reminder(id, at, text, repeat); saveReminders(reminders() + r); return r
     }
+    fun updateReminder(r: Reminder) { saveReminders(reminders().map { if (it.id == r.id) r else it }) }
+    fun reminder(id: Int): Reminder? = reminders().firstOrNull { it.id == id }
     fun removeReminder(id: Int) { saveReminders(reminders().filter { it.id != id }) }
 }

@@ -89,7 +89,7 @@ What you remember about this user (from earlier chats):
 ${mem}
 
 You can do these actions. Only add an action when the user clearly asked for it:
-- {"type":"reminder","at":"<ISO 8601 date-time with offset>","text":"<what to remind>"}  (a reminder notification at a time)
+- {"type":"reminder","at":"<ISO 8601 date-time with offset>","text":"<what to remind>","repeat":"<optional: daily | weekdays | weekly | monthly>"}  (a reminder notification at a time; add "repeat" for repeating ones like medicine "every day at 8 am". For several times a day, add one daily reminder per time.)
 - {"type":"timer","seconds":<number>,"label":"<label>"}  (countdown, e.g. "5 minutes" = 300)
 - {"type":"alarm","hour":<0-23>,"minute":<0-59>,"label":"<label>"}  (wake-up alarm in the phone's Clock app)
 - {"type":"todo_add","text":"<item>"}
@@ -142,6 +142,31 @@ async function draftReply(ctx) {
   return { reply, emotion: PET_EMOTIONS.includes(obj.emotion) ? obj.emotion : "happy", warning: String(obj.warning || "").trim().slice(0, 300) };
 }
 
+// ---------- good-morning briefing ----------
+async function morningBriefing(ctx, lang) {
+  const pet = PETS[ctx.pet] || PETS.puppy;
+  const place = ctx.city || "the user's area in Andhra Pradesh or Telangana, India";
+  const telugu = lang !== "en";
+  const system = `You are BigD AI, a cute cartoon ${pet.name} who greets the user every morning. Write today's short good-morning briefing that will be read aloud.
+Current date and time: ${ctx.now || "unknown"} (time zone ${ctx.tz}). Place: ${place}.
+Include, in this order, in short natural sentences:
+1. A warm greeting and today's date${telugu ? " and the Telugu weekday" : ""}.
+2. Today's Telugu panchangam for ${place}: tithi, nakshatram and Rahu kalam (times). Look these up with web search on a reliable panchangam source for today's date. If you cannot find them for certain, skip this part rather than guess.
+3. Today's weather for ${place} (temperature range, rain chance), using web search.
+4. The user's reminders for today and pending to-dos (below), briefly. If there are none, skip.
+5. One short kind or motivating line.
+Keep it under 90 words. ${telugu ? "Write in simple spoken Telugu script (numbers and times can stay as digits)." : "Write in simple English."} No lists, no markdown, no links.
+User's reminders today: ${ctx.reminders.length ? ctx.reminders.join("; ") : "none"}
+Pending to-dos: ${ctx.todos.length ? ctx.todos.join("; ") : "none"}
+After any searching, end with only a JSON object: {"text":"<the briefing>","emotion":"<one of: ${PET_EMOTIONS.join(", ")}>"}`;
+  const out = await learn.callClaude({ system, messages: [{ role: "user", content: "Good morning! Give me today's briefing." }], maxTokens: 1200, model: MODEL });
+  let obj = null;
+  try { obj = JSON.parse(out.text); } catch (e) { const a = out.text.indexOf("{"), b = out.text.lastIndexOf("}"); if (a >= 0 && b > a) { try { obj = JSON.parse(out.text.slice(a, b + 1)); } catch (e2) { } } }
+  const text = String((obj && obj.text) || "").trim().slice(0, 1200);
+  if (!text) throw new Error("empty_briefing");
+  return { text, emotion: PET_EMOTIONS.includes(obj.emotion) ? obj.emotion : "happy", sources: out.sources };
+}
+
 function parsePet(text) {
   let obj = null;
   try { obj = JSON.parse(text); } catch (e) {
@@ -172,6 +197,25 @@ function allowed(ip) {
   if (list.length >= LIMIT_PER_10_MIN) { hits.set(ip, list); return false; }
   list.push(now); hits.set(ip, list); return true;
 }
+// ---------- daily limits (protect your API bill) ----------
+const PER_DEVICE_DAILY = Number(process.env.PER_DEVICE_DAILY || 80);
+const PER_IP_DAILY = Number(process.env.PER_IP_DAILY || 250);
+const DAILY_TOTAL = Number(process.env.DAILY_TOTAL || 4000);
+const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10); // India date
+let daily = { day: today(), dev: new Map(), ip: new Map(), total: 0, brief: new Map() };
+/** Counts one AI call. Returns an error message when a daily limit is reached, otherwise "". */
+function dailyCheck(req, kind) {
+  if (daily.day !== today()) daily = { day: today(), dev: new Map(), ip: new Map(), total: 0, brief: new Map() };
+  const ip = clientIp(req);
+  const dev = String(req.headers["x-device"] || "").replace(/[^\w-]/g, "").slice(0, 64) || "ip:" + ip;
+  if (daily.total >= DAILY_TOTAL) return "BigD AI is very busy today. Please try again tomorrow. ఈ రోజు చాలా రద్దీగా ఉంది, రేపు మళ్ళీ ప్రయత్నించండి.";
+  if (kind === "brief") { const b = daily.brief.get(dev) || 0; if (b >= 3) return "Today's briefing was already sent."; daily.brief.set(dev, b + 1); }
+  const d = daily.dev.get(dev) || 0, i = daily.ip.get(ip) || 0;
+  if (d >= PER_DEVICE_DAILY || i >= PER_IP_DAILY) return "You've used today's free messages. Please try again tomorrow. ఈ రోజు ఉచిత మెసేజ్‌లు అయిపోయాయి, రేపు మళ్ళీ ప్రయత్నించండి.";
+  daily.dev.set(dev, d + 1); daily.ip.set(ip, i + 1); daily.total++;
+  return "";
+}
+
 setInterval(() => { const now = Date.now(); for (const [ip, l] of hits) if (!l.some(t => now - t < 600000)) hits.delete(ip); }, 600000).unref();
 
 // ---------- helpers ----------
@@ -191,7 +235,7 @@ function send(res, status, obj, origin) {
 function cors(origin) {
   return ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes("*")
     ? { "Access-Control-Allow-Origin": origin, "Vary": "Origin",
-        "Access-Control-Allow-Methods": "POST, GET, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" }
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, X-Device" }
     : {};
 }
 function readBody(req, max = 64 * 1024) {
@@ -256,6 +300,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
     if (!API_KEY) return send(res, 500, { error: "Server has no API key yet. Add it to the .env file." }, origin);
+    { const lim = dailyCheck(req, "msg"); if (lim) return send(res, 429, { error: lim }, origin); }
     let body;
     try { body = await readBody(req); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
     const messages = cleanMessages(body.messages);
@@ -274,6 +319,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/api/pet") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
     if (!API_KEY) return send(res, 500, { error: "Server has no API key yet. Add it to the .env file." }, origin);
+    { const lim = dailyCheck(req, "msg"); if (lim) return send(res, 429, { error: lim }, origin); }
     let body;
     try { body = await readBody(req, 8 * 1024 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
     const messages = cleanMessages(body.messages);
@@ -305,6 +351,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/api/reply") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
     if (!API_KEY) return send(res, 500, { error: "Server has no API key yet. Add it to the .env file." }, origin);
+    { const lim = dailyCheck(req, "msg"); if (lim) return send(res, 429, { error: lim }, origin); }
     let body;
     try { body = await readBody(req, 64 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
     const text = String(body.text || "").trim();
@@ -319,6 +366,24 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       console.error("Reply error:", e.status || "", e.message);
       return send(res, 502, { error: "The AI is busy right now. Please try again." }, origin);
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/briefing") {
+    if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many requests." }, origin);
+    if (!API_KEY) return send(res, 500, { error: "Server has no API key yet." }, origin);
+    { const lim = dailyCheck(req, "brief"); if (lim) return send(res, 429, { error: lim }, origin); }
+    let body;
+    try { body = await readBody(req, 32 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
+    const lang = ["auto", "te", "en"].includes(body.lang) ? body.lang : "auto";
+    const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map(x => String(x).slice(0, 200));
+    const ctx = { now: String(body.now || "").slice(0, 40), tz: String(body.tz || "Asia/Kolkata").slice(0, 40), city: String(body.city || "").slice(0, 80),
+      pet: PETS[body.pet] ? body.pet : "puppy", todos: list(body.todos, 10), reminders: list(body.reminders, 10) };
+    try {
+      return send(res, 200, await morningBriefing(ctx, lang), origin);
+    } catch (e) {
+      console.error("Briefing error:", e.status || "", e.message);
+      return send(res, 502, { error: "The AI is busy right now." }, origin);
     }
   }
 

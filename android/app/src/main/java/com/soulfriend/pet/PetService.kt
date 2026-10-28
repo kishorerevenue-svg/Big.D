@@ -110,7 +110,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
-            ACTION_SAY -> say(intent.getStringExtra("text") ?: "", PuppyView.Mood.SURPRISED, prefix = "⏰ ")
+            ACTION_SAY -> say(intent.getStringExtra("text") ?: "",
+                intent.getStringExtra("mood")?.let { PuppyView.moodOf(it) } ?: PuppyView.Mood.SURPRISED,
+                prefix = intent.getStringExtra("prefix") ?: "⏰ ")
             ACTION_LISTEN -> startListening()
             ACTION_PHOTO -> intent.getStringExtra("path")?.let { sendPhoto(it) }
             ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble("Hi! I'm your ${pet.kind.label.lowercase()} now!", 4000) }
