@@ -35,6 +35,31 @@ jobs:
           ./gradlew assembleLiteRelease assembleFullRelease bundleFullRelease --no-daemon
           cp app/build/outputs/apk/lite/release/app-lite-release.apk app/build/outputs/apk/lite/release/BigD-AI-Lite.apk
           cp app/build/outputs/apk/full/release/app-full-release.apk app/build/outputs/apk/full/release/BigD-AI-Full.apk
+      # Stops the build if the Lite APK ever gets one of the four permissions that make
+      # Play Protect block sideloaded apps in India (SMS reading, notification access, Accessibility).
+      - name: Check the Lite APK is safe to share on WhatsApp
+        run: |
+          lite=app/build/outputs/apk/lite/release/BigD-AI-Lite.apk
+          full=app/build/outputs/apk/full/release/BigD-AI-Full.apk
+          if [ ! -f "$lite" ]; then echo "No signed APKs to check."; exit 0; fi
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
+          for apk in "$lite" "$full"; do
+            "$aapt2" dump badging "$apk" | grep -E "^(package|application-label):" | sed "s|^|::notice title=$(basename "$apk")::|"
+          done
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$lite" > "$RUNNER_TEMP/lite-manifest.txt"
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$full" > "$RUNNER_TEMP/full-manifest.txt"
+          grep -q "E: manifest" "$RUNNER_TEMP/lite-manifest.txt"
+          blocked='READ_SMS|RECEIVE_SMS|BIND_NOTIFICATION_LISTENER_SERVICE|BIND_ACCESSIBILITY_SERVICE'
+          if grep -Eo "$blocked" "$RUNNER_TEMP/lite-manifest.txt"; then
+            echo "::error::BigD-AI-Lite.apk has a permission that Play Protect blocks in India. Keep it out of src/main/AndroidManifest.xml."
+            exit 1
+          fi
+          echo "::notice title=BigD-AI-Lite.apk::None of the four permissions Play Protect blocks in India."
+          if grep -q BIND_NOTIFICATION_LISTENER_SERVICE "$RUNNER_TEMP/full-manifest.txt"; then
+            echo "::notice title=BigD-AI-Full.apk::Reply to messages (notification access) is included."
+          else
+            echo "::warning title=BigD-AI-Full.apk::Reply to messages (notification access) is missing."
+          fi
       # Same stamp every time, so each new APK installs over the old one.
       # Lite: share this one on WhatsApp. It has no "Reply to messages", so Play Protect lets it install.
       - uses: actions/upload-artifact@v4
