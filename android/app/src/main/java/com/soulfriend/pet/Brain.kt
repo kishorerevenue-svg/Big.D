@@ -67,6 +67,27 @@ class Brain(private val store: Store) {
         }
     }
 
+    /** Asks the server to write a reply to a chat message. [onDraft] gets (reply, warning). */
+    fun draftReply(m: Incoming, instruction: String, auto: Boolean, onDraft: (String, String) -> Unit, onError: (String) -> Unit) {
+        val server = store.server
+        if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) { main.post { onError("Set your server address in the BigD AI app first.") }; return }
+        val body = JSONObject()
+            .put("app", m.app).put("chat", m.chat).put("sender", m.sender).put("group", m.group)
+            .put("text", m.text).put("instruction", instruction).put("auto", auto)
+        if (!auto) body.put("memories", JSONArray().also { a -> store.memories().forEach { a.put(it) } })
+        pool.execute {
+            try {
+                val (code, out) = post("$server/api/reply", body.toString())
+                val json = try { JSONObject(out) } catch (e: Exception) { JSONObject() }
+                val reply = json.optString("reply", "")
+                if (code in 200..299 && reply.isNotBlank()) main.post { onDraft(reply, json.optString("warning", "")) }
+                else main.post { onError(json.optString("error", "Couldn't write a reply (error $code).")) }
+            } catch (e: Exception) {
+                main.post { onError("No connection. Check your internet and try again.") }
+            }
+        }
+    }
+
     fun report(reason: String, reply: String, question: String) {
         val body = JSONObject().put("reason", reason).put("reply", reply).put("question", question).toString()
         val server = store.server

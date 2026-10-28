@@ -35,6 +35,33 @@ class Store(context: Context) {
         get() = p.getString("petKind", "puppy") ?: "puppy"
         set(v) { p.edit().putString("petKind", v).apply() }
 
+    // ---- message replies (WhatsApp, SMS, ...) ----
+    /** Watch new chat-app notifications and suggest replies. */
+    var msgWatch: Boolean
+        get() = p.getBoolean("msgWatch", false)
+        set(v) { p.edit().putBoolean("msgWatch", v).apply() }
+    /** Which app groups to watch: whatsapp, sms, telegram, instagram, messenger, signal */
+    var msgApps: Set<String>
+        get() = p.getStringSet("msgApps", setOf("whatsapp", "sms")) ?: setOf("whatsapp", "sms")
+        set(v) { p.edit().putStringSet("msgApps", HashSet(v)).apply() }
+    var msgReadAloud: Boolean
+        get() = p.getBoolean("msgReadAloud", true)
+        set(v) { p.edit().putBoolean("msgReadAloud", v).apply() }
+    var autoReply: Boolean
+        get() = p.getBoolean("autoReply", false)
+        set(v) { p.edit().putBoolean("autoReply", v).apply() }
+    var autoMessage: String
+        get() = p.getString("autoMessage", "I'm busy right now, I'll reply soon 🙏") ?: ""
+        set(v) { p.edit().putString("autoMessage", v.trim()).apply() }
+    /** Let the AI adapt the auto-reply to each message (language, greeting). */
+    var autoSmart: Boolean
+        get() = p.getBoolean("autoSmart", true)
+        set(v) { p.edit().putBoolean("autoSmart", v).apply() }
+    /** Add "(auto-reply)" at the end so people know it was automatic. */
+    var autoTag: Boolean
+        get() = p.getBoolean("autoTag", true)
+        set(v) { p.edit().putBoolean("autoTag", v).apply() }
+
     var petX: Int
         get() = p.getInt("petX", -1)
         set(v) { p.edit().putInt("petX", v).apply() }

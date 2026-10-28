@@ -3,6 +3,7 @@ package com.soulfriend.pet
 import android.Manifest
 import android.app.Activity
 import android.app.AlarmManager
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -190,6 +191,50 @@ class MainActivity : Activity() {
         }, 6)
         add(settings, 14)
 
+        // message replies
+        val msgCard = card()
+        msgCard.put(text("Reply to messages · మెసేజ్ రిప్లైలు", 18f, bold = true), 0)
+        msgCard.put(text("When a WhatsApp or SMS message comes, your pet shows it and writes a reply. Nothing is sent until you tap Send, unless Auto-reply is on.", 12.5f, muted), 4)
+        val access = MessageHub.accessGranted(this)
+        val accRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        accRow.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text((if (access) "✅ " else "⬜ ") + "Notification access", 15f, bold = true))
+            addView(text("Lets the pet read new message notifications from the apps you tick below.", 12.5f, muted))
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        if (!access) accRow.addView(button("Allow") { showMessageDisclosure() })
+        msgCard.put(accRow, 10)
+        if (!access) msgCard.put(text("If Android says \"Restricted setting\": open Settings › Apps › BigD AI › ⋮ (top right) › Allow restricted settings, then tap Allow again.", 12f, muted), 4)
+
+        fun check(label: String, on: Boolean, change: (Boolean) -> Unit) = CheckBox(this).apply {
+            text = label; isChecked = on; textSize = 15f; setTextColor(navy)
+            setOnCheckedChangeListener { _, c -> change(c); render() }
+        }
+        msgCard.put(check("Watch new messages", store.msgWatch) { store.msgWatch = it }, 10)
+        if (store.msgWatch) {
+            msgCard.put(text("Apps to watch", 14f, bold = true), 8)
+            val apps = store.msgApps
+            MessageHub.APPS.forEach { (key, label, _) ->
+                msgCard.put(check(label, key in apps) { on -> store.msgApps = if (on) apps + key else apps - key }, 0)
+            }
+            msgCard.put(check("Read new messages aloud", store.msgReadAloud) { store.msgReadAloud = it }, 8)
+
+            msgCard.put(text("Auto-reply 🤖", 14f, bold = true), 12)
+            msgCard.put(check("Auto-reply ON (replies by itself)", store.autoReply) { store.autoReply = it }, 0)
+            val autoBox = EditText(this).apply {
+                setText(store.autoMessage); textSize = 14f; setTextColor(navy); hint = "Auto-reply message"
+                setSingleLine(false); maxLines = 3
+            }
+            msgCard.put(autoBox, 4)
+            msgCard.put(button("Save message") {
+                store.autoMessage = autoBox.text.toString(); Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+            }, 4)
+            msgCard.put(check("Smart: adapt the reply to each message (language, greeting)", store.autoSmart) { store.autoSmart = it }, 4)
+            msgCard.put(check("Add \"(auto-reply)\" at the end", store.autoTag) { store.autoTag = it }, 0)
+            msgCard.put(text("Auto-reply never answers group chats, and replies only once per chat every 30 minutes. It works only while your pet's notification access is on.", 12f, muted), 4)
+        }
+        add(msgCard, 14)
+
         // to-do list
         val todoCard = card()
         todoCard.put(text("My to-do list · పనుల జాబితా", 18f, bold = true), 0)
@@ -258,6 +303,18 @@ class MainActivity : Activity() {
         add(button("Privacy policy") {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(store.server + "/privacy"))) } catch (e: Exception) { }
         }, 8)
+    }
+
+    /** Google Play asks apps to explain clearly before asking for notification access. */
+    private fun showMessageDisclosure() {
+        AlertDialog.Builder(this)
+            .setTitle("Read message notifications?")
+            .setMessage("To suggest and send replies, BigD AI reads new message notifications from the chat apps you choose (for example WhatsApp or SMS).\n\n" +
+                "For each new message, the sender's name and the message text are sent to the BigD AI server and to Anthropic's Claude AI to write a reply. They are not stored on the server.\n\n" +
+                "Nothing is sent to the other person unless you tap Send or switch on Auto-reply. You can turn this off at any time.")
+            .setPositiveButton("Agree and continue") { _, _ -> store.msgWatch = true; MessageHub.openAccessSettings(this) }
+            .setNegativeButton("Not now", null)
+            .show()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

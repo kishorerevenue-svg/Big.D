@@ -102,6 +102,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         wm = getSystemService(WindowManager::class.java)
         goForeground()
         addPet()
+        MessageHub.listener = { m, autoSent -> onMessage(m, autoSent) }
         tts = TextToSpeech(this, this)
         say("Hi! I'm BigD AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
     }
@@ -119,6 +120,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         running = false
+        MessageHub.listener = null
+        closeMsgCard()
         main.removeCallbacksAndMessages(null)
         try { recognizer?.destroy() } catch (e: Exception) { }
         tts?.shutdown()
@@ -362,7 +365,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { setListening(false) }
             override fun onError(error: Int) {
-                setListening(false)
+                setListening(false); replyVoice = false
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap me and speak again."
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "No internet for voice. Check your connection."
@@ -377,8 +380,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             override fun onResults(results: Bundle?) {
                 setListening(false)
                 val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                if (heard.isNullOrBlank()) { showBubble("I didn't catch that. Tap me and speak again.", 5000); return }
-                send(heard)
+                if (heard.isNullOrBlank()) { replyVoice = false; showBubble("I didn't catch that. Tap me and speak again.", 5000); return }
+                if (replyVoice) { replyVoice = false; replyByVoice(heard) } else send(heard)
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
@@ -565,6 +568,126 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         store.petKind = next.key; pet.kind = next; pet.mood = PuppyView.Mood.EXCITED
         brain.clear()
         showBubble("Hi! I'm your ${next.label.lowercase()} now! · ${next.telugu}", 4000)
+    }
+
+    // ---------------- chat messages (WhatsApp, SMS, ...) ----------------
+    private var msgCard: View? = null
+    private var msgText: TextView? = null
+    private var msgInput: EditText? = null
+    private var msgWarn: TextView? = null
+    private var msgAutoBtn: Button? = null
+    private var msgCurrent: Incoming? = null
+    private var replyVoice = false
+
+    private fun onMessage(m: Incoming, autoSent: String?) {
+        wake()
+        if (autoSent != null) {
+            pet.mood = PuppyView.Mood.WINK
+            showBubble("🤖 Auto-replied to ${m.chat}: $autoSent", 7000)
+            return
+        }
+        pet.mood = PuppyView.Mood.SURPRISED
+        val who = if (m.group) "${m.sender} (${m.chat})" else m.chat
+        showBubble("💬 $who · ${m.app}\n${m.text}", 8000)
+        if (store.msgReadAloud && !listening) speak(if (isTelugu(m.text)) "${m.sender}: ${m.text}" else "${m.sender} says: ${m.text}")
+        openMsgCard(m)
+        draft(m, "")
+    }
+
+    private fun draft(m: Incoming, instruction: String) {
+        msgInput?.setText(""); msgInput?.hint = "Writing a reply…"; msgWarn?.visibility = View.GONE
+        pet.mood = PuppyView.Mood.THINKING
+        brain.draftReply(m, instruction, auto = false, onDraft = { reply, warning ->
+            if (msgCurrent !== m) return@draftReply
+            msgInput?.setText(reply); msgInput?.setSelection(reply.length)
+            if (warning.isNotBlank()) { msgWarn?.text = "⚠️ $warning"; msgWarn?.visibility = View.VISIBLE; pet.mood = PuppyView.Mood.SCARED }
+            else pet.mood = PuppyView.Mood.HAPPY
+        }, onError = { err ->
+            if (msgCurrent !== m) return@draftReply
+            msgInput?.hint = "Type your reply"; pet.mood = PuppyView.Mood.CONFUSED; showBubble(err, 5000)
+        })
+    }
+
+    private fun sendMsgReply() {
+        val m = msgCurrent ?: return
+        val text = msgInput?.text?.toString()?.trim().orEmpty()
+        if (text.isEmpty()) { showBubble("Write a reply first, or tap 🎤 and say it.", 4000); return }
+        msgInput?.let { hideKeyboard(it) }
+        if (MessageHub.send(this, m, text)) {
+            closeMsgCard(); pet.mood = PuppyView.Mood.PROUD; showBubble("Sent to ${m.chat} ✓", 4000)
+        } else {
+            pet.mood = PuppyView.Mood.SAD; showBubble("Couldn't send. The message may be old; open ${m.app} to reply.", 6000)
+        }
+    }
+
+    /** Voice in the message card: "send" sends; anything else tells me how to reply. */
+    private fun replyByVoice(heard: String) {
+        val m = msgCurrent ?: run { send(heard); return }
+        val h = heard.trim().lowercase().trimEnd('.', '!')
+        if (h in setOf("send", "send it", "ok send", "yes send", "పంపు", "పంపించు", "సెండ్", "సెండ్ చెయ్", "పంపేయ్")) { sendMsgReply(); return }
+        showBubble("“$heard”\n…", 0)
+        draft(m, heard)
+    }
+
+    private fun openMsgCard(m: Incoming) {
+        closePanel()
+        msgCurrent = m
+        if (msgCard == null) buildMsgCard()
+        val who = if (m.group) "${m.sender} · ${m.chat}" else m.chat
+        msgText?.text = "💬 $who · ${m.app}\n\n${m.text}"
+        msgAutoBtn?.text = autoLabel()
+    }
+
+    private fun autoLabel() = if (store.autoReply) "🤖 Auto-reply: ON" else "🤖 Auto-reply: off"
+
+    private fun buildMsgCard() {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(20).toFloat(); setStroke(dp(2), Color.parseColor("#25D366")) }
+            elevation = dp(8).toFloat()
+        }
+        val text = TextView(this).apply { textSize = 15f; setTextColor(Color.parseColor("#1C2140")); setLineSpacing(0f, 1.15f); maxLines = 8 }
+        msgText = text
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP
+            addView(text, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(pill("✕") { closeMsgCard() })
+        }
+        card.addView(head)
+        val warn = TextView(this).apply { textSize = 13f; setTextColor(Color.parseColor("#B4232A")); visibility = View.GONE }
+        msgWarn = warn
+        card.addView(warn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        val input = EditText(this).apply {
+            hint = "Writing a reply…"; textSize = 15f; setSingleLine(false); maxLines = 4
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setTextColor(Color.parseColor("#1C2140")); setHintTextColor(Color.parseColor("#8A90B0"))
+            background = GradientDrawable().apply { setColor(Color.parseColor("#EAF8EF")); cornerRadius = dp(16).toFloat() }
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+        }
+        msgInput = input
+        card.addView(input, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        card.addView(row(
+            pill("Send ➤", primary = true) { sendMsgReply() },
+            pill("🎤 Say reply") { input.clearFocus(); hideKeyboard(input); replyVoice = true; startListening() },
+            pill("↻") { msgCurrent?.let { draft(it, "") } },
+            pill("Ignore") { closeMsgCard(); pet.mood = PuppyView.Mood.HAPPY }
+        ), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
+        msgAutoBtn = pill(autoLabel()) {
+            store.autoReply = !store.autoReply; msgAutoBtn?.text = autoLabel()
+            showBubble(if (store.autoReply) "Auto-reply is ON: I'll answer new messages with \"${store.autoMessage}\"" else "Auto-reply is off.", 5000)
+        }
+        card.addView(row(msgAutoBtn!!), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+        val p = overlayParams(minOf(screenW - dp(24), dp(380)), WindowManager.LayoutParams.WRAP_CONTENT, focusable = true).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; x = 0; y = dp(56)
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+        }
+        try { wm.addView(card, p); msgCard = card } catch (e: Exception) { }
+    }
+
+    private fun closeMsgCard() {
+        msgCard?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        msgCard = null; msgText = null; msgInput = null; msgWarn = null; msgAutoBtn = null; msgCurrent = null; replyVoice = false
     }
 
     private fun openApp() {
