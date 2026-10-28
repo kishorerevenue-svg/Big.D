@@ -17,6 +17,9 @@ old="$(git rev-parse HEAD)"
 git pull -q || { echo "git pull failed"; exit 1; }
 new="$(git rev-parse HEAD)"
 if [ "$old" != "$new" ]; then
+  if ! git diff --quiet "$old" "$new" -- server/package.json server/package-lock.json; then
+    (cd "$SERVER_DIR" && npm install --omit=dev --no-audit --no-fund) && echo "libraries updated"
+  fi
   pm2 restart soul-friend --update-env && echo "updated $old -> $new"
 else
   echo "already up to date"

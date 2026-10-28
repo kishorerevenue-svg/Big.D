@@ -251,6 +251,12 @@ class MainActivity : Activity() {
         }
         settings.put(langRow, 10)
         settings.put(text("Auto: the puppy listens in Telugu and replies in the language you use.", 12.5f, muted), 6)
+        settings.put(CheckBox(this).apply {
+            text = "Hide personal details before sending (Aadhaar, phone and PAN numbers become XXXX…1234)"
+            isChecked = store.hidePersonal; textSize = 14f; setTextColor(navy)
+            setOnCheckedChangeListener { _, c -> store.hidePersonal = c }
+        }, 10)
+        settings.put(text("Useful for office files. Photos are sent as they are.", 12f, muted), 2)
         settings.put(text("Server address", 15f, bold = true), 16)
         val serverBox = EditText(this).apply {
             setText(store.server); textSize = 14f; inputType = InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_CLASS_TEXT; setSingleLine()

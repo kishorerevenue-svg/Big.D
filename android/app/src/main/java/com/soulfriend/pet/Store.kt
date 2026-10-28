@@ -40,6 +40,11 @@ class Store(context: Context) {
     val deviceId: String
         get() = p.getString("deviceId", null) ?: java.util.UUID.randomUUID().toString().also { p.edit().putString("deviceId", it).apply() }
 
+    /** Mask Aadhaar, phone and PAN numbers before anything leaves the phone. */
+    var hidePersonal: Boolean
+        get() = p.getBoolean("hidePersonal", false)
+        set(v) { p.edit().putBoolean("hidePersonal", v).apply() }
+
     /** First-time setup guide finished? */
     var onboarded: Boolean
         get() = p.getBoolean("onboarded", false)

@@ -28,6 +28,7 @@ systemctl reload caddy
 
 echo "== 4/5 Preparing settings =="
 cd "$APP_DIR"
+npm install --omit=dev --no-audit --no-fund
 [ -f .env ] || cp .env.example .env
 echo "Now open .env and paste your API key:   nano $APP_DIR/.env"
 

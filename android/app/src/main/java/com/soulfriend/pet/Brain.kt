@@ -21,7 +21,7 @@ class Brain(private val store: Store) {
 
     /** [photo] = Pair(mediaType, base64) to ask about a picture. */
     fun ask(text: String, onReply: (JSONObject) -> Unit, onError: (String) -> Unit, photo: Pair<String, String>? = null) {
-        history.add(JSONObject().put("role", "user").put("content", text))
+        history.add(JSONObject().put("role", "user").put("content", Privacy.maybe(store, text)))
         while (history.size > 12) history.removeAt(0)
         val messages = JSONArray(); history.forEach { messages.put(it) }
         val todos = JSONArray(); store.todos().forEach { todos.put(JSONObject().put("text", it.text).put("done", it.done)) }
@@ -73,7 +73,7 @@ class Brain(private val store: Store) {
         if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) { main.post { onError("Set your server address in the BigD AI app first.") }; return }
         val body = JSONObject()
             .put("app", m.app).put("chat", m.chat).put("sender", m.sender).put("group", m.group)
-            .put("text", m.text).put("instruction", instruction).put("auto", auto)
+            .put("text", Privacy.maybe(store, m.text)).put("instruction", Privacy.maybe(store, instruction)).put("auto", auto)
         if (!auto) body.put("memories", JSONArray().also { a -> store.memories().forEach { a.put(it) } })
         pool.execute {
             try {

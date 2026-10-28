@@ -6,7 +6,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.app.DownloadManager
 import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Environment
 import android.net.Uri
 import android.provider.AlarmClock
 import android.provider.ContactsContract
@@ -40,9 +43,23 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
             "copy_text" -> { copy(a.optString("text")); "Copied" }
             "remember" -> { store.remember(a.optString("text")); "I'll remember that" }
             "forget" -> if (store.forget(a.optString("text"))) "Forgotten" else "I didn't have that saved"
+            "download" -> download(a.optString("url"), a.optString("name", "BigD-file"))
             else -> null
         }
     } catch (e: Exception) { "Sorry, I couldn't do that on this phone" }
+
+    /** Saves a Word/Excel file the server made into Downloads › BigD AI. */
+    private fun download(url: String, name: String): String {
+        if (!url.startsWith(store.server + "/files/")) return "That file link didn't come from your BigD server"
+        val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "BigD-file" }
+        val req = DownloadManager.Request(Uri.parse(url))
+            .setTitle(safe).setDescription("From BigD AI")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        if (Build.VERSION.SDK_INT >= 29) req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "BigD AI/$safe")
+        else req.setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, safe)
+        ctx.getSystemService(DownloadManager::class.java).enqueue(req)
+        return "📄 $safe is downloading. Tap the download notification to open it, or find it in Downloads › BigD AI."
+    }
 
     private fun parseTime(s: String): Long? {
         if (s.isBlank()) return null

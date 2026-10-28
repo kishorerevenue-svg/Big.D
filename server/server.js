@@ -26,6 +26,7 @@ const DATA_DIR = path.join(__dirname, "data");
 const PUBLIC_DIR = path.join(__dirname, "public");
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const learn = require("./learn.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_MODEL, WEB_SEARCH });
+const files = require("./files.js")({ DATA_DIR });
 
 /** Picks the brain for this message: fast for chat, smart for hard or many-task requests. */
 function pickModel(text, hasImage) {
@@ -33,7 +34,7 @@ function pickModel(text, hasImage) {
   if (SMART_MODE === "never") return MODEL;
   const t = String(text || "").toLowerCase();
   const joins = (t.match(/\b(and|then|also)\b|,|మరియు|తర్వాత|ఇంకా|కూడా/g) || []).length;
-  const hard = /\b(why|how (to|do|does|can|should|much|many)|explain|compare|plan|analy[sz]e|calculate|letter|application|petition|essay|summar|translate|draft|report|steps?)\b|ఎందుకు|ఎలా చేయ|ఎలా రాయ|వివరించు|లేఖ|దరఖాస్తు|అనువాదం|ప్రణాళిక|లెక్క/.test(t);
+  const hard = /\b(why|how (to|do|does|can|should|much|many)|explain|compare|plan|analy[sz]e|calculate|letter|application|petition|essay|summar|translate|draft|report|steps?|word|excel|docx|xlsx|pdf|spreadsheet|sheet|file|table|format)\b|ఫైల్|ఎక్సెల్|వర్డ్|టేబుల్|ఎందుకు|ఎలా చేయ|ఎలా రాయ|వివరించు|లేఖ|దరఖాస్తు|అనువాదం|ప్రణాళిక|లెక్క/.test(t);
   return (hasImage || t.length > 220 || joins >= 2 || hard) ? SMART_MODEL : MODEL;
 }
 const SEARCH_RULE = WEB_SEARCH ? "\nYou can search the internet with the web_search tool. Use it for news, prices, weather, results, government schemes and anything recent or that you are not sure about. Do not search for simple chat, translations or tasks." : "";
@@ -58,7 +59,7 @@ Reply with only a JSON object: {"emotion": "<one of: ${EMOTIONS.join(", ")}>", "
 const PET_EMOTIONS = ["happy", "excited", "thinking", "sad", "surprised", "love", "sleepy", "confused",
   "laughing", "angry", "crying", "shy", "cool", "wink", "proud", "scared", "yawning", "dizzy"];
 const ACTION_TYPES = ["reminder", "timer", "alarm", "todo_add", "todo_done", "todo_remove", "note_save",
-  "call", "whatsapp", "open_app", "show_text", "copy_text", "remember", "forget"];
+  "call", "whatsapp", "open_app", "show_text", "copy_text", "remember", "forget", "make_file"];
 
 const PETS = {
   puppy: { name: "puppy", te: "కుక్కపిల్ల", like: "a happy puppy (you may say \"woof\" now and then)" },
@@ -103,6 +104,9 @@ You can do these actions. Only add an action when the user clearly asked for it:
 - {"type":"copy_text","text":"<text to copy to clipboard>"}
 - {"type":"remember","text":"<a lasting fact about the user worth remembering, e.g. their name, family, likes, important dates>"}  (use when they tell you something personal and lasting; do not remember passwords, bank or card numbers)
 - {"type":"forget","text":"<the remembered fact to remove>"}  (when they ask you to forget something)
+- {"type":"make_file","format":"docx","title":"<file name>","content":{"blocks":[ ... ]}}  (a Word file: letters, reports, notices, applications, minutes). Blocks, in order: {"right":"Lr.No. ... / Date: ..."}, {"h":"heading"}, {"p":"paragraph; **bold** allowed; \\n for a new line"}, {"list":["...","..."],"numbered":true}, {"table":[["Header1","Header2"],["a","b"]]}, {"sign":"Name\\nDesignation\\nOffice"}, {"center":"..."}.
+- {"type":"make_file","format":"xlsx","title":"<file name>","content":{"sheets":[{"name":"Sheet1","title":"<optional title row>","columns":["Col A","Col B"],"rows":[["a",1],["b",2]]}]}}  (an Excel file: lists, registers, statements, budgets). Cells starting with "=" are formulas, e.g. "=SUM(B2:B10)" (row 1 is the header row unless you give a title, which adds 2 rows above).
+File rules: make a file only when the user asks for a file, Word, Excel, document or sheet. Write the COMPLETE content in the file (not a summary). Government/office letters follow the Indian format: From, To, Lr.No. and Date, Sub:, Ref:, salutation, body paragraphs, signature block; leave clear blanks like "______" for details the user did not give. Use the user's language (Telugu or English) for the content. PDF is not available yet: make a Word file and say they can save it as PDF from Word. In "reply", just say the file is ready.
 How to think (do this silently, never show it):
 1. Read the whole request. Split it into separate tasks if the user asked for several things ("remind me at 5, add milk to my list and open YouTube" = 3 tasks).
 2. For each task, decide the right action and fill in every detail. Add ONE action per task, in the order asked.
@@ -140,6 +144,23 @@ async function draftReply(ctx) {
   const reply = String((obj && obj.reply) || "").trim().slice(0, 1000);
   if (!reply) throw new Error("empty_reply");
   return { reply, emotion: PET_EMOTIONS.includes(obj.emotion) ? obj.emotion : "happy", warning: String(obj.warning || "").trim().slice(0, 300) };
+}
+
+/** Turns "make_file" actions into real files and "download" actions with a link. */
+async function makeFileActions(actions, req) {
+  const base = (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
+  const out = [];
+  for (const a of actions || []) {
+    if (a.type !== "make_file") { out.push(a); continue; }
+    try {
+      const f = await files.create(a);
+      out.push({ type: "download", url: base + f.path, name: f.name, format: f.format });
+    } catch (e) {
+      console.error("File error:", e.message);
+      out.push({ type: "show_text", title: String(a.title || "File"), text: "Sorry, I couldn't make that file. Please try again." });
+    }
+  }
+  return out;
 }
 
 // ---------- good-morning briefing ----------
@@ -185,7 +206,7 @@ async function askPet(messages, lang, ctx) {
   const last = messages[messages.length - 1];
   const hasImage = Array.isArray(last.content);
   const model = pickModel(hasImage ? last.content[1].text : last.content, hasImage);
-  const out = await learn.callClaude({ system: petPrompt(lang, ctx), messages, maxTokens: 2500, model });
+  const out = await learn.callClaude({ system: petPrompt(lang, ctx), messages, maxTokens: 6000, model });
   return { ...parsePet(out.text), sources: out.sources, brain: model === SMART_MODEL ? "smart" : "fast" };
 }
 
@@ -340,6 +361,7 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const out = await askPet(messages, lang, ctx);
+      out.actions = await makeFileActions(out.actions, req);
       if (SAVE_CHATS) { const u = messages[messages.length - 1].content; appendLine("chats.jsonl", { at: new Date().toISOString(), app: "pet", user: typeof u === "string" ? u : "[photo] " + u[1].text, ...out }); }
       return send(res, 200, out, origin);
     } catch (e) {
@@ -429,6 +451,8 @@ const server = http.createServer(async (req, res) => {
     appendLine("reports.jsonl", { at: new Date().toISOString(), reason: String(body.reason || "").slice(0, 300), reply: String(body.reply || "").slice(0, 4000), question: String(body.question || "").slice(0, 2000) });
     return send(res, 200, { ok: true }, origin);
   }
+
+  if (req.method === "GET" && files.serve(url, res)) return;
 
   // public pages: privacy policy, delete-data page, web version of the app
   if (req.method === "GET") {

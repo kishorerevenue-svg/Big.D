@@ -1,9 +1,17 @@
 {
-  "name": "soul-friend-server",
+  "name": "bigd-ai-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Server for the Soul Friend app. Keeps the Claude API key safe.",
+  "description": "Server for the BigD AI app. Keeps the Claude API key safe.",
   "main": "server.js",
-  "engines": { "node": ">=20" },
-  "scripts": { "start": "node server.js" }
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "docx": "^9.5.1",
+    "exceljs": "^4.4.0"
+  }
 }
