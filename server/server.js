@@ -416,6 +416,11 @@ const server = http.createServer(async (req, res) => {
     if (!teachAllowed(req)) return send(res, 401, { error: "Wrong password." });
     try {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
+      if (req.method === "GET" && url.pathname === "/api/teach/feedback") {
+        let lines = [];
+        try { lines = fs.readFileSync(path.join(DATA_DIR, "feedback.jsonl"), "utf8").trim().split("\n").filter(Boolean).slice(-200).map(l => JSON.parse(l)).reverse(); } catch (e) { }
+        return send(res, 200, { items: lines });
+      }
       if (req.method === "POST") {
         const body = await readBody(req, 30 * 1024 * 1024);
         if (url.pathname === "/api/teach/delete") return send(res, 200, { ok: learn.removeKnowledge(String(body.id || "")) });
@@ -442,6 +447,18 @@ const server = http.createServer(async (req, res) => {
       console.error("Teach error:", e.status || "", e.message);
       return send(res, 502, { error: "Couldn't add that right now. Try again, or try a smaller file." });
     }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/feedback") {
+    if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many requests." }, origin);
+    let body;
+    try { body = await readBody(req, 16 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
+    const rating = Math.max(0, Math.min(5, Number(body.rating) || 0));
+    const text = String(body.text || "").slice(0, 4000);
+    if (!rating && !text.trim()) return send(res, 400, { error: "Empty feedback." }, origin);
+    appendLine("feedback.jsonl", { at: new Date().toISOString(), rating, kind: String(body.kind || "").slice(0, 20), text,
+      version: String(body.version || "").slice(0, 20), android: String(body.android || "").slice(0, 10), pet: String(body.pet || "").slice(0, 20) });
+    return send(res, 200, { ok: true }, origin);
   }
 
   if (req.method === "POST" && url.pathname === "/api/report") {

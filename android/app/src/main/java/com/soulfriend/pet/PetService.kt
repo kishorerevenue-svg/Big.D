@@ -539,7 +539,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         card.addView(inputRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
         val footer = row(
-            pill("My lists") { closePanel(); openApp() },
+            pill("My lists") { closePanel(); openApp("tasks") },
             pill("New chat") { brain.clear(); lastReply = ""; panelText?.text = "New chat started."; panelTools?.visibility = View.GONE },
             pill("🐾 Change pet") { nextPet() }
         )
@@ -692,7 +692,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         msgCard = null; msgText = null; msgInput = null; msgWarn = null; msgAutoBtn = null; msgCurrent = null; replyVoice = false
     }
 
-    private fun openApp() {
-        try { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+    private fun openApp(tab: String = "pet") {
+        try { startActivity(Intent(this, MainActivity::class.java).putExtra("tab", tab).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
     }
 }

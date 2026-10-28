@@ -57,8 +57,9 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
         if (Build.VERSION.SDK_INT >= 29) req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "BigD AI/$safe")
         else req.setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, safe)
-        ctx.getSystemService(DownloadManager::class.java).enqueue(req)
-        return "📄 $safe is downloading. Tap the download notification to open it, or find it in Downloads › BigD AI."
+        val id = ctx.getSystemService(DownloadManager::class.java).enqueue(req)
+        store.addFile(SavedFile(id, safe, if (safe.endsWith(".xlsx")) "xlsx" else "docx", System.currentTimeMillis()))
+        return "📄 $safe is ready. Open it from the download notification or the Files page in the BigD AI app."
     }
 
     private fun parseTime(s: String): Long? {

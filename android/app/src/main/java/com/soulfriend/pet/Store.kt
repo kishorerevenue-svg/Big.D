@@ -12,6 +12,8 @@ object Config {
 }
 
 data class Todo(val text: String, val done: Boolean)
+/** A Word/Excel file BigD made; [id] is the phone's download id. */
+data class SavedFile(val id: Long, val name: String, val format: String, val at: Long)
 /** [repeat] is "", "daily", "weekdays", "weekly" or "monthly". */
 data class Reminder(val id: Int, val at: Long, val text: String, val repeat: String = "")
 
@@ -146,6 +148,18 @@ class Store(context: Context) {
         saveMemories(keep); return keep.size < l.size
     }
     fun removeMemory(index: Int) { val l = memories().toMutableList(); if (index in l.indices) { l.removeAt(index); saveMemories(l) } }
+
+    // ---- files BigD made ----
+    fun files(): List<SavedFile> {
+        val a = JSONArray(p.getString("files", "[]"))
+        return (0 until a.length()).map { val o = a.getJSONObject(it); SavedFile(o.getLong("id"), o.optString("name"), o.optString("format"), o.optLong("at")) }
+    }
+    private fun saveFiles(l: List<SavedFile>) {
+        val a = JSONArray(); l.takeLast(200).forEach { a.put(JSONObject().put("id", it.id).put("name", it.name).put("format", it.format).put("at", it.at)) }
+        p.edit().putString("files", a.toString()).apply()
+    }
+    fun addFile(f: SavedFile) = saveFiles(files() + f)
+    fun removeFile(id: Long) = saveFiles(files().filter { it.id != id })
 
     // ---- reminders ----
     fun reminders(): List<Reminder> {
