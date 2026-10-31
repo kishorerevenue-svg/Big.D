@@ -213,7 +213,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; tag = key
             addView(TextView(this@MainActivity).apply { text = icon; textSize = 20f; gravity = Gravity.CENTER })
             addView(TextView(this@MainActivity).apply {
-                text = label; textSize = 13.5f; setTextColor(Ui.TEAL_DARK); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                text = label; textSize = 13f; setTextColor(Ui.TEAL_DARK); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, 0, 0)
             })
             contentDescription = label
@@ -229,7 +229,7 @@ class MainActivity : Activity() {
             item.background = if (on) ui.round(Ui.TEAL_SOFT, 24, Ui.TEAL) else null
             item.getChildAt(1).visibility = if (on) View.VISIBLE else View.GONE
             item.alpha = if (key == dragKey) 0.35f else 1f
-            (item.layoutParams as? LinearLayout.LayoutParams)?.let { lp -> val w = if (on) 2.8f else 1f; if (lp.weight != w) { lp.weight = w; item.layoutParams = lp } }
+            (item.layoutParams as? LinearLayout.LayoutParams)?.let { lp -> val w = if (on) 3.2f else 1f; if (lp.weight != w) { lp.weight = w; item.layoutParams = lp } }
         }
     }
 
