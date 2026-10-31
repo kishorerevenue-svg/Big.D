@@ -11,7 +11,7 @@ object PetVoice {
         PuppyView.Kind.PUPPY to (1.35f to 1.0f), PuppyView.Kind.KITTEN to (1.5f to 1.05f), PuppyView.Kind.BUNNY to (1.55f to 1.05f),
         PuppyView.Kind.PANDA to (1.1f to 0.95f), PuppyView.Kind.BEAR to (0.9f to 0.92f), PuppyView.Kind.FOX to (1.3f to 1.05f),
         PuppyView.Kind.ROBOT to (1.05f to 1.0f), PuppyView.Kind.PARROT to (1.55f to 1.1f), PuppyView.Kind.MOCHI to (1.6f to 1.0f),
-        PuppyView.Kind.KITTY to (1.5f to 1.05f)
+        PuppyView.Kind.KITTY to (1.5f to 1.05f), PuppyView.Kind.CHAMELEON to (1.42f to 1.08f)
     )
 
     /** (pitch, speed) for the phone's own voice. */

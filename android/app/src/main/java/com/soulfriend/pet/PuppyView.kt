@@ -14,13 +14,14 @@ import android.view.View
 import kotlin.math.abs
 import kotlin.math.sin
 
-/** The cartoon pet (puppy, kitten, bunny, panda, bear, fox, robot, parrot, mochi or anime kitty), drawn in code so it can change its face at any moment. */
+/** The cartoon pet (puppy, kitten, bunny, panda, bear, fox, robot, parrot, mochi, anime kitty or Rangu the chameleon), drawn in code so it can change its face at any moment. */
 class PuppyView(context: Context) : View(context) {
 
     enum class Kind(val key: String, val label: String, val telugu: String) {
         PUPPY("puppy", "Puppy", "కుక్కపిల్ల"), KITTEN("kitten", "Kitten", "పిల్లి"), BUNNY("bunny", "Bunny", "కుందేలు"),
         PANDA("panda", "Panda", "పాండా"), BEAR("bear", "Teddy bear", "ఎలుగుబంటి"), FOX("fox", "Fox", "నక్క"),
-        ROBOT("robot", "Robot", "రోబో"), PARROT("parrot", "Parrot", "చిలుక"), MOCHI("mochi", "Mochi", "మోచి"), KITTY("kitty", "Anime kitty", "కిట్టీ")
+        ROBOT("robot", "Robot", "రోబో"), PARROT("parrot", "Parrot", "చిలుక"), MOCHI("mochi", "Mochi", "మోచి"), KITTY("kitty", "Anime kitty", "కిట్టీ"),
+        CHAMELEON("chameleon", "Rangu", "ఊసరవెల్లి")
     }
 
     var kind: Kind = Kind.PUPPY
@@ -50,7 +51,7 @@ class PuppyView(context: Context) : View(context) {
 
     private fun applyColors() {
         fun c(s: String) = Color.parseColor(s)
-        eyeInk = ink; nose = ink
+        eyeInk = ink; nose = ink; skinReady = false
         when (kind) {
             Kind.PUPPY -> { fur = c("#E9B872"); furDark = c("#8A5A2B"); cream = c("#FFF1DC"); patch = c("#D49B52") }
             Kind.KITTEN -> { fur = c("#B4BACB"); furDark = c("#7D849C"); cream = c("#F6F7FB"); patch = c("#9AA1B6"); nose = c("#F07C98") }
@@ -58,7 +59,7 @@ class PuppyView(context: Context) : View(context) {
             Kind.PANDA -> { fur = c("#FAFAFA"); furDark = c("#2C2C36"); cream = c("#FFFFFF"); patch = c("#2C2C36"); eyeInk = Color.WHITE }
             Kind.BEAR -> { fur = c("#B07A4F"); furDark = c("#7C5131"); cream = c("#EBCDA8"); patch = c("#9C6A42") }
             Kind.FOX -> { fur = c("#F08A3C"); furDark = c("#3B2A22"); cream = c("#FFF6EC"); patch = c("#E07A2E") }
-            else -> {}   // robot, parrot, mochi and kitty paint their own colours in drawCharacter()
+            else -> {}   // robot, parrot, mochi, kitty and Rangu paint their own colours in drawCharacter()
         }
     }
     private val pink = Color.parseColor("#FF8FA8")
@@ -537,6 +538,7 @@ class PuppyView(context: Context) : View(context) {
                 at(c, 50f, 68f, 0.62f, 50f, 60f) { drawMouth(c, t, col("#5A3A30"), col("#FF7F98"), philtrum = false) }
                 c.restore(); c.restore()
             }
+            Kind.CHAMELEON -> drawRangu(c, t, now)
             else -> {   // KITTY
                 ellipse(c, 50f, 97.5f, 21f, 3.2f, Color.argb(38, 19, 42, 44))
                 c.save(); c.rotate(wag * 0.6f, 63f, 89f)
@@ -566,6 +568,291 @@ class PuppyView(context: Context) : View(context) {
                 c.restore()
             }
         }
+    }
+
+    // ===================== Rangu the chameleon =====================
+    // Rangu's skin glides to a new colour whenever his mood changes, his turret eyes look around
+    // on their own, and every so often (when he's happy and quiet) he snatches a fly with his tongue.
+    private val ranguSkin = mapOf(
+        Mood.HAPPY to "#43D16A", Mood.WINK to "#43D16A", Mood.EXCITED to "#FFD02E", Mood.LAUGHING to "#FFAA2E",
+        Mood.LOVE to "#FF6FAE", Mood.SHY to "#FF9CC2", Mood.SAD to "#5AA2FF", Mood.CRYING to "#4C8BF5",
+        Mood.SLEEPY to "#B3A4F5", Mood.YAWNING to "#B3A4F5", Mood.SCARED to "#DCE8EC", Mood.ANGRY to "#FF5A4F",
+        Mood.SURPRISED to "#FF9A3D", Mood.THINKING to "#2ED3C0", Mood.CONFUSED to "#B888FF", Mood.COOL to "#28C0F0",
+        Mood.PROUD to "#FFC23A"
+    ).mapValues { Color.parseColor(it.value) }
+    private val skin = FloatArray(3)
+    private var skinReady = false
+    private val hsv = FloatArray(3)
+    private val eyeWhite = Color.parseColor("#FFF4CF")
+    private val pupil = Color.parseColor("#1E1A2E")
+    private val mouthIn = Color.parseColor("#7E1626")
+    private val tongueTip = Color.parseColor("#FF4F7E")
+    private val tongueC = Color.parseColor("#FF6F91")
+    private val branch = Color.parseColor("#8A5A2B")
+    private val leaf = Color.parseColor("#5BB55B")
+    private val tmpA = Path()
+    private val tmpB = Path()
+    private val spots = arrayOf(floatArrayOf(41f, 31f, 1.8f, 0.75f), floatArrayOf(57.5f, 29f, 1.4f, 0.75f), floatArrayOf(63.5f, 35.5f, 1.9f, 0.6f),
+        floatArrayOf(36.5f, 37f, 1.2f, 0.6f), floatArrayOf(60f, 50f, 1.1f, 0.5f))
+
+    private fun mixC(a: Int, b: Int, k: Float) = Color.rgb(
+        (Color.red(a) + (Color.red(b) - Color.red(a)) * k).toInt(),
+        (Color.green(a) + (Color.green(b) - Color.green(a)) * k).toInt(),
+        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k).toInt())
+    private fun alpha(cl: Int, a: Float) = Color.argb((a * 255).toInt(), Color.red(cl), Color.green(cl), Color.blue(cl))
+    private fun smooth(a: Float, b: Float, x: Float): Float { val k = ((x - a) / (b - a)).coerceIn(0f, 1f); return k * k * (3 - 2 * k) }
+
+    /** Seconds into a fly-snatch (one every 18 s while Rangu is happy and quiet), or -1. */
+    private fun snatchPhase(t: Float): Float {
+        if (mood != Mood.HAPPY || talking || listening) return -1f
+        val p = (t + 8f) % 18f
+        return if (p < 4.4f) p else -1f
+    }
+    private fun flyEase(q: Float): Float { val k = 1f - minOf(q / 2.3f, 1f); return 1f - k * k * k }
+    private fun flyX(q: Float) = -6f + 15f * flyEase(q) + sin(q * 21f) * 1.6f
+    private fun flyY(q: Float) = 40f + 20f * flyEase(q) + kotlin.math.cos(q * 15f) * 1.8f
+
+    private fun drawFly(c: Canvas, x: Float, y: Float, caught: Boolean, t: Float) {
+        val fl = if (caught) 0.4f else abs(sin(t * 70f))
+        ellipse(c, x - 1.5f, y - 2f, 2.7f, 1.6f * (0.3f + fl), Color.argb(230, 170, 215, 255), -30f)
+        ellipse(c, x + 1.5f, y - 2f, 2.7f, 1.6f * (0.3f + fl), Color.argb(230, 170, 215, 255), 30f)
+        ellipse(c, x, y, 2.5f, 1.8f, Color.rgb(42, 42, 51))
+        fill.color = Color.rgb(224, 72, 72); c.drawCircle(x + 1.7f, y - 0.5f, 0.75f, fill)
+        ellipse(c, x - 0.6f, y - 0.6f, 0.9f, 0.5f, Color.argb(128, 255, 255, 255))
+        if (!caught) {
+            line.color = Color.argb(90, 42, 42, 51); line.strokeWidth = 0.6f
+            c.drawLine(x - 5.5f, y - 1f, x - 3.8f, y - 1f, line); c.drawLine(x - 5f, y + 1.2f, x - 3.6f, y + 0.9f, line)
+        }
+    }
+
+    private fun drawRangu(c: Canvas, t: Float, now: Long) {
+        // skin colour glides towards the colour of his mood (rainbow when dizzy)
+        val target = if (mood == Mood.DIZZY) { hsv[0] = (t * 120f) % 360f; hsv[1] = 0.55f; hsv[2] = 0.95f; Color.HSVToColor(hsv) }
+            else ranguSkin[mood] ?: ranguSkin.getValue(Mood.HAPPY)
+        if (!skinReady) { skin[0] = Color.red(target).toFloat(); skin[1] = Color.green(target).toFloat(); skin[2] = Color.blue(target).toFloat(); skinReady = true }
+        else {
+            skin[0] += (Color.red(target) - skin[0]) * 0.12f; skin[1] += (Color.green(target) - skin[1]) * 0.12f; skin[2] += (Color.blue(target) - skin[2]) * 0.12f
+        }
+        val mid = Color.rgb(skin[0].toInt(), skin[1].toInt(), skin[2].toInt())
+        val light = mixC(mid, Color.WHITE, 0.5f)
+        val dark = mixC(mid, Color.rgb(52, 24, 70), 0.26f)
+        val deep = mixC(mid, Color.rgb(20, 10, 30), 0.62f)
+        val belly = mixC(mid, Color.rgb(255, 247, 220), 0.62f)
+        val low = mood in setOf(Mood.SAD, Mood.SLEEPY, Mood.CRYING, Mood.SCARED, Mood.YAWNING)
+        val blush = mood in setOf(Mood.HAPPY, Mood.LOVE, Mood.EXCITED, Mood.LAUGHING, Mood.WINK, Mood.PROUD, Mood.SHY)
+        val ht = when (mood) {
+            Mood.THINKING -> -8f; Mood.CONFUSED -> 10f; Mood.SHY -> 7f; Mood.WINK -> -6f
+            Mood.DIZZY -> sin(t * 3f) * 10f; Mood.LAUGHING -> sin(t * 10f) * 3f; else -> 0f
+        }
+
+        // the fly snatch
+        val q = snatchPhase(t)
+        val mx = 50f; val my = 57.5f
+        val tongueOut = q >= 2.35f && q < 2.85f
+        var tipX = mx; var tipY = my
+        if (tongueOut) {
+            if (q < 2.5f) { val k = 1f - (q - 2.35f) / 0.15f; val f = 1f - k * k; tipX = mx + (flyX(q) - mx) * f; tipY = my + (flyY(q) - my) * f }
+            else { val k = (q - 2.5f) / 0.35f; val f = k * k; val cx = flyX(2.5f); val cy = flyY(2.5f); tipX = cx + (mx - cx) * f; tipY = cy + (my - cy) * f }
+        }
+        val chewing = q >= 2.85f && q < 3.8f
+
+        // where each eye looks: -1..1 (the eyes move on their own, like a real chameleon)
+        fun wanderX(side: Int) = if (side < 0) kotlin.math.cos(t * 0.8f) * 0.85f else kotlin.math.cos(t * 0.6f + 2f) * 0.85f
+        fun wanderY(side: Int) = if (side < 0) sin(t * 1.1f) * 0.7f else sin(t * 0.9f + 1f) * 0.7f
+        fun lookX(side: Int, y: Boolean): Float {
+            val cx = if (side < 0) 27f else 73f
+            if (q >= 0f && q < 2.9f) {
+                val fx = if (q < 2.5f) flyX(q) else tipX; val fy = if (q < 2.5f) flyY(q) else tipY
+                val dx = fx - cx; val dy = fy - 41f; val n = kotlin.math.hypot(dx, dy).coerceAtLeast(0.01f)
+                val w = if (side < 0) smooth(0.2f, 0.6f, q) else smooth(1f, 1.5f, q)
+                return if (y) wanderY(side) + (dy / n - wanderY(side)) * w else wanderX(side) + (dx / n - wanderX(side)) * w
+            }
+            if (talking || listening) return if (y) 0.15f else 0f
+            return when (mood) {
+                Mood.THINKING -> if (y) -0.65f else 0.65f
+                Mood.CONFUSED -> if (side < 0) (if (y) -0.6f else -0.7f) else (if (y) 0.7f else 0.6f)
+                Mood.SHY -> if (y) 0.65f else -0.55f
+                Mood.SAD, Mood.CRYING -> if (y) 0.8f else 0f
+                Mood.HAPPY, Mood.WINK -> {
+                    val p = t % 12f; val w = smooth(5f, 5.5f, p) * (1f - smooth(8f, 8.5f, p))   // now and then he looks right at you
+                    if (y) wanderY(side) * (1f - w) + 0.12f * w else wanderX(side) * (1f - w)
+                }
+                else -> if (y) 0.1f else 0f
+            }
+        }
+
+        fun turret(cx: Float, cy: Float, side: Int) {
+            val lx = lookX(side, false); val ly = lookX(side, true)
+            ovalP(c, cx, cy, 11.5f, 11f, rad(cx - 3.5f, cy - 4f, 15f, 0f to light, 0.6f to mid, 1f to dark))
+            val ox = cx + lx * 4.2f; val oy = cy + ly * 4.2f
+            // rings of the eye turret, centred on where it looks
+            c.save(); path.reset(); oval.set(cx - 11.5f, cy - 11f, cx + 11.5f, cy + 11f); path.addOval(oval, Path.Direction.CW); c.clipPath(path)
+            line.color = alpha(dark, 0.35f); line.strokeWidth = 0.9f; c.drawCircle(ox, oy, 7.8f, line); c.drawCircle(ox, oy, 10.4f, line)
+            c.restore()
+            line.color = alpha(dark, 0.5f); line.strokeWidth = 0.8f; c.drawOval(oval, line)
+            val blink = ((now / 100) % 45) == 0L && mood !in setOf(Mood.EXCITED, Mood.LAUGHING, Mood.PROUD, Mood.CRYING, Mood.SLEEPY, Mood.YAWNING)
+            val closedSmile = (chewing || mood == Mood.EXCITED || (mood == Mood.WINK && side > 0)) && !tongueOut
+            line.color = ink; line.strokeWidth = 2.2f
+            if (mood == Mood.SLEEPY || blink) {
+                ellipse(c, ox, oy, 5.6f, 5.6f, alpha(dark, 0.35f)); c.drawLine(ox - 4.2f, oy + 0.5f, ox + 4.2f, oy + 0.5f, line); return
+            }
+            if (closedSmile) { path.reset(); path.moveTo(ox - 4.2f, oy + 1.8f); path.quadTo(ox, oy - 4.5f, ox + 4.2f, oy + 1.8f); c.drawPath(path, line); return }
+            if (mood == Mood.LAUGHING) {
+                val s = -side.toFloat()
+                path.reset(); path.moveTo(ox - 3.6f * s, oy - 3.2f); path.lineTo(ox + 2.8f * s, oy); path.lineTo(ox - 3.6f * s, oy + 3.2f); c.drawPath(path, line); return
+            }
+            if (mood == Mood.PROUD || mood == Mood.CRYING || mood == Mood.YAWNING) {
+                path.reset(); path.moveTo(ox - 4.2f, oy - 1f); path.quadTo(ox, oy + 3.6f, ox + 4.2f, oy - 1f); c.drawPath(path, line)
+                if (mood == Mood.CRYING) { val f = (t * 14f) % 12f; drop(c, ox + side * 2f, oy + 6f + f, 2.1f, tear) }
+                return
+            }
+            if (mood == Mood.COOL) return   // sunglasses are drawn over both eyes later
+            val er = if (mood == Mood.SCARED) 6.2f else 5.6f
+            fill.color = eyeWhite; c.drawCircle(ox, oy, er, fill)
+            line.color = Color.argb(230, 230, 170, 60); line.strokeWidth = 0.9f; c.drawCircle(ox, oy, er, line)
+            val pr = when (mood) { Mood.SURPRISED -> 4.2f; Mood.SCARED -> 1.9f; Mood.SAD -> 3.2f; else -> 3.5f }
+            val px = ox + lx * 1.2f; val py = oy + ly * 1.2f
+            when (mood) {
+                Mood.LOVE -> heart(c, px, py + 0.3f, 3.6f, tongue)
+                Mood.DIZZY -> {
+                    line.color = ink; line.strokeWidth = 1.1f; path.reset()
+                    var a = 0f
+                    while (a < 13f) {
+                        val r = 0.35f * a; val x = px + kotlin.math.cos(a + t * 6f * side) * r; val y = py + sin(a + t * 6f * side) * r
+                        if (a == 0f) path.moveTo(x, y) else path.lineTo(x, y); a += 0.3f
+                    }
+                    c.drawPath(path, line)
+                }
+                else -> {
+                    fill.color = pupil; c.drawCircle(px, py, pr, fill)
+                    fill.color = Color.WHITE; c.drawCircle(px - pr * 0.38f, py - pr * 0.42f, maxOf(0.6f, pr * 0.36f), fill); c.drawCircle(px + pr * 0.4f, py + pr * 0.42f, pr * 0.16f, fill)
+                }
+            }
+            // eyelids for feelings: a straight lid edge, tilted for sad or angry
+            val (y0, slant) = when (mood) { Mood.SAD -> -2.2f to -1.6f; Mood.ANGRY -> -1.6f to 2.4f; Mood.SHY -> -1.2f to 0f; else -> return }
+            val ay = oy + y0 + slant * side; val by = oy + y0 - slant * side
+            tmpA.reset(); tmpA.moveTo(ox - 8f, oy - 8f); tmpA.lineTo(ox + 8f, oy - 8f); tmpA.lineTo(ox + 8f, by); tmpA.lineTo(ox - 8f, ay); tmpA.close()
+            tmpB.reset(); tmpB.addCircle(ox, oy, 6.1f, Path.Direction.CW)
+            tmpA.op(tmpB, Path.Op.INTERSECT); fill.color = mid; c.drawPath(tmpA, fill)
+            // lid edge: the part of the line inside the eye
+            val dx = 16f; val dy = by - ay; val fx = -8f; val fy = ay - oy
+            val qa = dx * dx + dy * dy; val qb = 2f * (fx * dx + fy * dy); val qc = fx * fx + fy * fy - 5.8f * 5.8f
+            val disc = qb * qb - 4f * qa * qc
+            if (disc > 0f) {
+                val sq = kotlin.math.sqrt(disc); val u1 = (-qb - sq) / (2f * qa); val u2 = (-qb + sq) / (2f * qa)
+                line.color = ink; line.strokeWidth = 1.3f
+                c.drawLine(ox - 8f + dx * u1, ay + dy * u1, ox - 8f + dx * u2, ay + dy * u2, line)
+            }
+        }
+
+        fun mouth() {
+            line.color = ink; line.strokeWidth = 1.8f
+            if (tongueOut) {
+                path.reset(); path.moveTo(41f, 55f); path.quadTo(50f, 51.5f, 59f, 55f); path.quadTo(50f, 64f, 41f, 55f); path.close()
+                fill.color = mouthIn; c.drawPath(path, fill); return
+            }
+            if (talking || mood == Mood.LAUGHING || mood == Mood.YAWNING || mood == Mood.EXCITED) {
+                val open = if (talking) 1.5f + abs(sin(t * 18f)) * 4.2f else when (mood) { Mood.YAWNING -> 7f; Mood.LAUGHING -> 6f; else -> 4.5f }
+                tmpB.reset(); tmpB.moveTo(36f, 54f); tmpB.quadTo(50f, 59f, 64f, 54f); tmpB.quadTo(50f, 59f + open * 1.9f, 36f, 54f); tmpB.close()
+                fill.color = mouthIn; c.drawPath(tmpB, fill)
+                if (open > 3f) {
+                    tmpA.reset(); oval.set(44f, 58f + open * 0.55f, 56f, 58f + open * 1.95f); tmpA.addOval(oval, Path.Direction.CW)
+                    tmpA.op(tmpB, Path.Op.INTERSECT); fill.color = Color.rgb(255, 127, 152); c.drawPath(tmpA, fill)
+                }
+                path.reset(); path.moveTo(36f, 54f); path.quadTo(50f, 59f, 64f, 54f); c.drawPath(path, line)
+                return
+            }
+            path.reset()
+            when (mood) {
+                Mood.SAD, Mood.CRYING -> { path.moveTo(39f, 59f); path.quadTo(50f, 53.5f, 61f, 59f); c.drawPath(path, line) }
+                Mood.SURPRISED -> ellipse(c, 50f, 58f, 3f, 3.6f, ink)
+                Mood.SCARED -> { ellipse(c, 50f, 58f, 5.5f, 2.8f, ink); fill.color = Color.WHITE; c.drawRect(45.5f, 56.2f, 54.5f, 57.6f, fill) }
+                Mood.ANGRY -> { path.moveTo(39f, 57f); path.quadTo(44.5f, 55f, 50f, 57f); path.quadTo(55.5f, 59f, 61f, 57f); c.drawPath(path, line) }
+                Mood.SLEEPY -> { path.moveTo(43f, 56.5f); path.quadTo(50f, 58.5f, 57f, 56.5f); c.drawPath(path, line) }
+                Mood.DIZZY -> { path.moveTo(38f, 57f); path.quadTo(44f, 54f, 50f, 57f); path.quadTo(56f, 60f, 62f, 57f); c.drawPath(path, line) }
+                Mood.THINKING, Mood.CONFUSED -> { path.moveTo(40f, 57f); path.quadTo(48f, 58f, 60f, 54f); c.drawPath(path, line) }
+                Mood.COOL -> { path.moveTo(39f, 56f); path.quadTo(52f, 60f, 62f, 53f); c.drawPath(path, line) }
+                Mood.SHY -> { path.moveTo(44f, 56f); path.quadTo(50f, 58.5f, 56f, 56f); c.drawPath(path, line) }
+                else -> {   // big smile with curled corners (and chewing)
+                    val munch = if (chewing) abs(sin(q * 16f)) * 1.6f else 0f
+                    path.moveTo(34.5f, 53f); path.quadTo(50f, 61.5f + munch, 65.5f, 53f); c.drawPath(path, line)
+                    path.reset(); path.moveTo(34.5f, 53f); path.quadTo(33f, 52.2f, 33.2f, 50.6f); c.drawPath(path, line)
+                    path.reset(); path.moveTo(65.5f, 53f); path.quadTo(67f, 52.2f, 66.8f, 50.6f); c.drawPath(path, line)
+                    if (mood == Mood.LOVE || mood == Mood.PROUD) { fill.color = Color.rgb(255, 127, 152); oval.set(47.4f, 57.4f, 52.6f, 61.8f); c.drawArc(oval, 0f, 180f, true, fill) }
+                }
+            }
+            if (mood == Mood.COOL) {   // sunglasses over both eye turrets
+                ellipse(c, 27f, 41f, 8.4f, 6.6f, Color.rgb(30, 30, 42)); ellipse(c, 73f, 41f, 8.4f, 6.6f, Color.rgb(30, 30, 42))
+                line.color = Color.rgb(30, 30, 42); line.strokeWidth = 2.2f; c.drawLine(35f, 39f, 65f, 39f, line)
+                line.color = Color.argb(217, 255, 255, 255); line.strokeWidth = 1.3f; c.drawLine(22f, 38.5f, 25.5f, 37f, line); c.drawLine(68f, 38.5f, 71.5f, 37f, line)
+            }
+        }
+
+        // shadow and branch
+        ellipse(c, 50f, 96.5f, 24f, 2.6f, Color.argb(36, 19, 42, 44))
+        line.color = branch; line.strokeWidth = 5f
+        path.reset(); path.moveTo(4f, 89f); path.quadTo(50f, 84f, 96f, 89.5f); c.drawPath(path, line)
+        line.color = Color.argb(140, 80, 48, 20); line.strokeWidth = 1.3f
+        path.reset(); path.moveTo(10f, 91f); path.quadTo(50f, 86.6f, 90f, 91.4f); c.drawPath(path, line)
+        ellipse(c, 88f, 85.2f, 5f, 2.3f, leaf, -28f); ellipse(c, 12f, 86.2f, 4f, 2f, leaf, 22f)
+
+        // curled tail behind the body: curls tighter when he feels low, swishes when excited
+        val ex = mood == Mood.EXCITED || mood == Mood.LAUGHING
+        val turns = 1.55f + (if (low) 0.3f else 0f) - (if (ex) 0.18f * abs(sin(t * 6f)) else 0f)
+        c.save(); c.rotate(if (ex) sin(t * 9f) * 7f else sin(t * 1.8f) * 4f, 66f, 78f)
+        val tcx = 82f; val tcy = 69f; val r0 = 11f; val a0 = 2.55f
+        val sx = tcx + kotlin.math.cos(a0) * r0; val sy = tcy + sin(a0) * r0
+        for (pass in 0..1) {
+            fill.color = if (pass == 0) dark else mid
+            val grow = if (pass == 0) 0.7f else 0f
+            for (i in 0..10) { val k = i / 10f; c.drawCircle(63f + (sx - 63f) * k, 79f + (sy - 79f) * k, (5.6f - 0.3f * k) / 2f + grow, fill) }
+            for (i in 0..80) {
+                val s = i / 80f; val a = a0 - s * turns * 6.2832f; val r = r0 * (1f - 0.86f * s)
+                c.drawCircle(tcx + kotlin.math.cos(a) * r, tcy + sin(a) * r, (5.3f - 3.9f * s) / 2f + grow, fill)
+            }
+        }
+        fill.color = alpha(light, 0.8f)
+        for (i in 3..80 step 9) {
+            val s = i / 80f; val a = a0 - s * turns * 6.2832f; val r = r0 * (1f - 0.86f * s)
+            c.drawCircle(tcx + kotlin.math.cos(a) * r, tcy + sin(a) * r, (5.3f - 3.9f * s) * 0.18f, fill)
+        }
+        c.restore()
+
+        // body, belly stripes and the feet gripping the branch
+        ovalP(c, 50f, 73f, 19f, 15f, rad(43f, 66f, 28f, 0f to light, 0.55f to mid, 1f to dark))
+        ellipse(c, 50f, 77.5f, 10.5f, 8.5f, alpha(belly, 0.9f))
+        line.color = alpha(dark, 0.45f); line.strokeWidth = 1.2f
+        for (sg in floatArrayOf(-1f, 1f)) for (dy in floatArrayOf(0f, 5f)) {
+            path.reset(); path.moveTo(50f + sg * 13f, 64f + dy); path.quadTo(50f + sg * 17f, 68f + dy, 50f + sg * 15.5f, 73f + dy); c.drawPath(path, line)
+        }
+        for (x in floatArrayOf(39.5f, 60.5f)) { ellipse(c, x, 81.5f, 4.2f, 5.4f, mid); ellipse(c, x - 2.5f, 87.1f, 3f, 2.4f, dark); ellipse(c, x + 2.6f, 87.5f, 3f, 2.4f, mid) }
+
+        // head: helmet crest, spots, eye turrets, face
+        c.save(); c.rotate(ht, 50f, 62f)
+        path.reset(); path.moveTo(35.5f, 33f); path.cubicTo(35.5f, 19f, 43f, 11f, 50.5f, 11f); path.cubicTo(58f, 11f, 64.5f, 19f, 64.5f, 33f); path.close()
+        c.drawPath(path, lin(50f, 11f, 50f, 33f, 0f to dark, 1f to mid))
+        fill.color = alpha(light, 0.75f); c.drawCircle(43f, 16.5f, 1.5f, fill); c.drawCircle(50.5f, 12.6f, 1.5f, fill); c.drawCircle(58f, 16.5f, 1.5f, fill)
+        line.color = alpha(light, 0.5f); line.strokeWidth = 0.9f
+        path.reset(); path.moveTo(40f, 30f); path.quadTo(50.5f, 12f, 61f, 30f); c.drawPath(path, line)
+        ovalP(c, 50f, 45f, 26.5f, 21.5f, rad(42f, 35f, 38f, 0f to light, 0.5f to mid, 1f to dark))
+        for (sp in spots) { fill.color = alpha(light, sp[3]); c.drawCircle(sp[0], sp[1], sp[2], fill) }
+        ellipse(c, 50f, 61f, 15f, 5.2f, alpha(belly, 0.85f))
+        turret(27f, 41f, -1); turret(73f, 41f, 1)
+        fill.color = alpha(deep, 0.85f); c.drawCircle(46.5f, 48f, 0.85f, fill); c.drawCircle(53.5f, 48f, 0.85f, fill)
+        if (blush || chewing) { ellipse(c, 35f, 53.5f, 4.2f, 2.8f, Color.argb(140, 255, 143, 168)); ellipse(c, 65f, 53.5f, 4.2f, 2.8f, Color.argb(140, 255, 143, 168)) }
+        if (chewing) { ellipse(c, 37f, 57f, 4.5f, 3.6f, alpha(light, 0.9f)); ellipse(c, 63f, 57f, 4.5f, 3.6f, alpha(light, 0.9f)) }
+        mouth()
+        c.restore()
+
+        // tongue and fly (only while snatching, so never tilted)
+        if (tongueOut) {
+            line.color = tongueC; line.strokeWidth = 2.4f; c.drawLine(mx, my, tipX, tipY, line)
+            fill.color = tongueTip; c.drawCircle(tipX, tipY, 2.7f, fill)
+            fill.color = Color.argb(204, 255, 255, 255); c.drawCircle(tipX - 0.8f, tipY - 0.9f, 0.8f, fill)
+            if (q >= 2.5f) drawFly(c, tipX, tipY - 0.5f, true, t)
+        }
+        if (q >= 0f && q < 2.5f) drawFly(c, flyX(q), flyY(q), false, t)
+        if (q >= 3.3f && q < 3.9f) { star(c, 30f, 60f, 2.8f, accent); star(c, 25f, 54f, 1.7f, accent) }
     }
 
     /** Four-point sparkle. */
@@ -602,8 +889,11 @@ class PuppyView(context: Context) : View(context) {
         const val EYE_ANIME = 1
         const val EYE_GLOW = 2
         const val EYE_RINGED = 3
-        /** The newest pets, shown with a "New" badge. */
-        val NEW_KINDS = setOf(Kind.ROBOT, Kind.PARROT, Kind.MOCHI, Kind.KITTY)
+        /** The newest pets, newest first, shown with a "New" badge. */
+        val NEW_KINDS = listOf(Kind.CHAMELEON, Kind.ROBOT, Kind.PARROT, Kind.MOCHI, Kind.KITTY)
+        /** What the pet says when you pick it. */
+        fun hello(k: Kind): String = if (k == Kind.CHAMELEON) "Hi! I'm Rangu, your chameleon! Watch me change colour with my mood 🌈"
+            else "Hi! I'm your ${k.label.lowercase()} now!"
         fun kindOf(key: String?): Kind = Kind.values().firstOrNull { it.key == key } ?: Kind.PUPPY
         fun moodOf(name: String?): Mood = when (name) {
             "excited" -> Mood.EXCITED; "thinking" -> Mood.THINKING; "sad" -> Mood.SAD; "surprised" -> Mood.SURPRISED

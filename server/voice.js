@@ -13,7 +13,8 @@ module.exports = function makeVoice({ DATA_DIR }) {
   // Chirp 3 HD voice for each pet (names from Google's list) and its speaking speed.
   const PET_VOICE = {
     puppy: ["Puck", 1.05], kitten: ["Leda", 1.05], bunny: ["Aoede", 1.08], panda: ["Kore", 0.95], bear: ["Orus", 0.92],
-    fox: ["Zephyr", 1.05], robot: ["Charon", 1.0], parrot: ["Laomedeia", 1.1], mochi: ["Leda", 1.0], kitty: ["Aoede", 1.05]
+    fox: ["Zephyr", 1.05], robot: ["Charon", 1.0], parrot: ["Laomedeia", 1.1], mochi: ["Leda", 1.0], kitty: ["Aoede", 1.05],
+    chameleon: ["Fenrir", 1.08]
   };
   // Bill guard: stop asking Google after this many characters in a month (1 million are free).
   // Then the pet simply uses the phone's voice until the 1st of next month.

@@ -338,7 +338,7 @@ class MainActivity : Activity() {
     private fun petPicker(box: LinearLayout) {
         val current = PuppyView.kindOf(store.petKind)
         // newest pets first
-        val kinds = PuppyView.Kind.values().sortedBy { if (it in PuppyView.NEW_KINDS) 0 else 1 }
+        val kinds = PuppyView.Kind.values().sortedBy { PuppyView.NEW_KINDS.indexOf(it).let { i -> if (i < 0) 99 else i } }
         kinds.chunked(3).forEach { rowKinds ->
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             rowKinds.forEach { k ->

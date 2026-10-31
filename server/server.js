@@ -72,7 +72,8 @@ const PETS = {
   robot: { name: "little robot", te: "రోబో", like: "a friendly little robot (you may say \"beep boop\" now and then)" },
   parrot: { name: "green parrot", te: "చిలుక", like: "a chatty green parrot (చిలుక) who loves sweet words (చిలక పలుకులు)" },
   mochi: { name: "mochi", te: "మోచి", like: "a soft, squishy, giggly mochi friend" },
-  kitty: { name: "anime kitty", te: "కిట్టీ", like: "a sweet anime-style kitten (you may say \"nyaa\" now and then)" }
+  kitty: { name: "anime kitty", te: "కిట్టీ", like: "a sweet anime-style kitten (you may say \"nyaa\" now and then)" },
+  chameleon: { name: "chameleon called Rangu", te: "ఊసరవెల్లి, పేరు రంగు", like: "a cheeky chameleon called Rangu (రంగు) whose skin changes colour with his feelings (green happy, yellow excited, pink love, blue sad, purple sleepy, red angry, pale when scared) and who loves snapping flies with his long tongue; you may joke about your colours now and then" }
 };
 
 function petPrompt(lang, ctx) {

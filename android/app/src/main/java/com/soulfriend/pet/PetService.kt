@@ -129,7 +129,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 if (intent.getBooleanExtra("failed", false)) { pet.mood = PuppyView.Mood.SAD; showBubble("I couldn't read the screen this time. Please try again.", 5000) }
                 else { pet.mood = PuppyView.Mood.HAPPY; showBubble("Okay, I won't look at your screen.", 3000) }
             }
-            ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble("Hi! I'm your ${pet.kind.label.lowercase()} now!", 4000) }
+            ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble(PuppyView.hello(pet.kind), 4000) }
         }
         return START_STICKY
     }
@@ -645,7 +645,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val next = all[(pet.kind.ordinal + 1) % all.size]
         store.petKind = next.key; pet.kind = next; pet.mood = PuppyView.Mood.EXCITED
         brain.clear()
-        showBubble("Hi! I'm your ${next.label.lowercase()} now! · ${next.telugu}", 4000)
+        showBubble(PuppyView.hello(next) + " · ${next.telugu}", 4000)
     }
 
     // ---------------- hands-free control (Plus edition) ----------------
