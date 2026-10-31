@@ -279,6 +279,7 @@ class MainActivity : Activity() {
         add(ui.section("Permissions · అనుమతులు").apply { permissionRows(this) }, 12)
         // "Reply to messages" exists only in the full (Play Store) edition. See build.gradle.kts.
         if (BuildConfig.MESSAGE_REPLIES) add(messagesCard(), 12)
+        if (BuildConfig.HANDS_FREE) add(handsFreeCard(), 12)
         add(briefingCard(), 12)
 
         add(ui.section("Privacy", "Useful for office files. Photos are sent as they are.").apply {
@@ -382,6 +383,46 @@ class MainActivity : Activity() {
             put(ui.check("Add \"(auto-reply)\" at the end", store.autoTag) { store.autoTag = it }, 0)
             put(ui.text("Auto-reply never answers group chats, and replies only once per chat every 30 minutes.", 12f, Ui.MUTED), 6)
         }
+    }
+
+    /** Plus edition: Hands-free control (Accessibility) with Google's required disclosure first. */
+    private fun handsFreeCard() = ui.section("Hands-free control 🎮",
+        "Scroll Instagram Reels, YouTube Shorts and more by voice or with small remote buttons. Also Back, Home and Lock by voice.").apply {
+        val on = HandsFreeService.isOn(this@MainActivity)
+        put(ui.line(ui.stack(ui.text((if (on) "✅  " else "◻️  ") + "Hands-free control", 15f, Ui.INK, bold = true),
+            ui.text(if (on) "On. Say a command or use the remote." else "Off. Needs your permission in Accessibility settings.", 12.5f, Ui.MUTED)),
+            if (on) ui.button("Settings", "ghost") { leavingForSystemScreen = true; HandsFreeService.openSettings(this@MainActivity) }
+            else ui.button("Turn on", "primary") { showHandsFreeDisclosure() }), 12)
+        if (on) {
+            put(ui.check("Show the Reels remote (⏮ ⏯ ⏭ ❤) on the left edge", store.remoteOn) {
+                store.remoteOn = it
+                if (PetService.running) startService(Intent(this@MainActivity, PetService::class.java).setAction(PetService.ACTION_REMOTE))
+            }, 10)
+            put(ui.row(ui.button("🎙 Start Reels voice mode", "sun") {
+                if (!Settings.canDrawOverlays(this@MainActivity)) { toast("First allow \"Show over other apps\" above."); return@button }
+                if (!PetService.running) startForegroundService(Intent(this@MainActivity, PetService::class.java))
+                content.postDelayed({ try { startService(Intent(this@MainActivity, PetService::class.java).setAction(PetService.ACTION_VOICE_MODE)) } catch (e: Exception) { } }, 900)
+                moveTaskToBack(true)
+            }), 10)
+        }
+        put(ui.card(Ui.TEAL_SOFT).apply {
+            addView(ui.text("Say to your pet", 14f, Ui.TEAL_DARK, bold = true))
+            put(ui.text("• \"next\" / \"నెక్స్ట్\": next reel\n• \"previous\" / \"మునుపటి\": previous reel\n• \"pause\" / \"ఆపు\": pause or play\n• \"like\" / \"లైక్\": like\n• \"go back\", \"go home\", \"lock screen\", \"screenshot\"\n• \"reels mode\": keeps listening for next/previous/pause/like (tap the pet to stop)", 13.5f, Ui.INK), 6)
+        }, 12)
+        put(ui.text("Only these fixed commands are used. Your pet never acts on its own, and Hands-free control never reads your screen.", 12f, Ui.MUTED), 8)
+    }
+
+    /** Google Play requires this clear explanation and consent before sending the user to Accessibility settings. */
+    private fun showHandsFreeDisclosure() {
+        AlertDialog.Builder(this)
+            .setTitle("Allow Hands-free control?")
+            .setMessage("BigD AI uses Android's Accessibility service to control your phone hands-free.\n\n" +
+                "What it does: when you say a command (for example \"next reel\", \"pause\", \"go back\") or tap a BigD remote button, it performs exactly that one swipe, tap or button press.\n\n" +
+                "What it does not do: it does not read, collect, store or send what is on your screen, and the AI never decides to act on its own.\n\n" +
+                "Next, Android opens Accessibility settings. Tap \"BigD AI Hands-free control\" and switch it on. You can switch it off there at any time.")
+            .setPositiveButton("Agree and continue") { _, _ -> leavingForSystemScreen = true; HandsFreeService.openSettings(this) }
+            .setNegativeButton("No thanks", null)
+            .show()
     }
 
     private fun briefingCard() = ui.section("Good-morning briefing ☀️",

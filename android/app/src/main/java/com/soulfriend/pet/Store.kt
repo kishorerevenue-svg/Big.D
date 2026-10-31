@@ -47,6 +47,11 @@ class Store(context: Context) {
         get() = p.getBoolean("hidePersonal", false)
         set(v) { p.edit().putBoolean("hidePersonal", v).apply() }
 
+    /** Show the Reels remote buttons on screen (Plus edition). */
+    var remoteOn: Boolean
+        get() = p.getBoolean("remoteOn", false)
+        set(v) { p.edit().putBoolean("remoteOn", v).apply() }
+
     /** First-time setup guide finished? */
     var onboarded: Boolean
         get() = p.getBoolean("onboarded", false)

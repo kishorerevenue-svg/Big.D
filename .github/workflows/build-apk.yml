@@ -32,9 +32,10 @@ jobs:
           fi
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           export KEYSTORE_FILE="$RUNNER_TEMP/upload.jks"
-          ./gradlew assembleLiteRelease assembleFullRelease bundleFullRelease --no-daemon
+          ./gradlew assembleLiteRelease assembleFullRelease bundleFullRelease assemblePlusRelease bundlePlusRelease --no-daemon
           cp app/build/outputs/apk/lite/release/app-lite-release.apk app/build/outputs/apk/lite/release/BigD-AI-Lite.apk
           cp app/build/outputs/apk/full/release/app-full-release.apk app/build/outputs/apk/full/release/BigD-AI-Full.apk
+          cp app/build/outputs/apk/plus/release/app-plus-release.apk app/build/outputs/apk/plus/release/BigD-AI-Plus.apk
       # Stops the build if the Lite APK ever gets one of the four permissions that make
       # Play Protect block sideloaded apps in India (SMS reading, notification access, Accessibility).
       - name: Check the Lite APK is safe to share on WhatsApp
@@ -48,6 +49,18 @@ jobs:
           done
           "$aapt2" dump xmltree --file AndroidManifest.xml "$lite" > "$RUNNER_TEMP/lite-manifest.txt"
           "$aapt2" dump xmltree --file AndroidManifest.xml "$full" > "$RUNNER_TEMP/full-manifest.txt"
+          plus=app/build/outputs/apk/plus/release/BigD-AI-Plus.apk
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$plus" > "$RUNNER_TEMP/plus-manifest.txt"
+          # The first Play Store upload (Full) must not have Accessibility: only Plus has it.
+          if grep -q BIND_ACCESSIBILITY_SERVICE "$RUNNER_TEMP/full-manifest.txt"; then
+            echo "::error::BigD-AI-Full has Hands-free control (Accessibility). Keep it in src/plus only."
+            exit 1
+          fi
+          if grep -q BIND_ACCESSIBILITY_SERVICE "$RUNNER_TEMP/plus-manifest.txt"; then
+            echo "::notice title=BigD-AI-Plus.apk::Hands-free control (Accessibility) is included."
+          else
+            echo "::warning title=BigD-AI-Plus.apk::Hands-free control (Accessibility) is missing."
+          fi
           grep -q "E: manifest" "$RUNNER_TEMP/lite-manifest.txt"
           blocked='READ_SMS|RECEIVE_SMS|BIND_NOTIFICATION_LISTENER_SERVICE|BIND_ACCESSIBILITY_SERVICE'
           if grep -Eo "$blocked" "$RUNNER_TEMP/lite-manifest.txt"; then
@@ -71,6 +84,18 @@ jobs:
         with:
           name: bigd-ai-full-apk
           path: android/app/build/outputs/apk/full/release/BigD-AI-Full.apk
+      # Plus: Full + Hands-free control. Play Protect blocks it when sideloaded in India:
+      # test it through Play Console internal testing, or install with a computer (adb).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bigd-ai-plus-apk
+          path: android/app/build/outputs/apk/plus/release/BigD-AI-Plus.apk
+      # Upload this instead of the Full AAB once the Accessibility declaration is ready.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bigd-play-store-plus-aab
+          path: android/app/build/outputs/bundle/plusRelease/app-plus-release.aab
+          if-no-files-found: ignore
       # Play Store upload (full edition).
       - uses: actions/upload-artifact@v4
         with:

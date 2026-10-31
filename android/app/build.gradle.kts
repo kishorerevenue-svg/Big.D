@@ -22,8 +22,10 @@ android {
         buildConfig = true
     }
 
-    // Two editions of the app, built from the same code:
-    //  - full: every feature, including "Reply to messages". This one goes to the Play Store.
+    // Three editions of the app, built from the same code:
+    //  - full: every feature, including "Reply to messages". This one goes to the Play Store first.
+    //  - plus: full + Hands-free control (Accessibility: scroll Reels, Back, Home by voice/buttons).
+    //          Same app id as full; upload it after Google approves the Accessibility declaration.
     //  - lite: everything except "Reply to messages". Share this APK on WhatsApp or a website.
     // "Reply to messages" needs notification access. In India, Play Protect blocks any APK with
     // notification access when it is installed from WhatsApp, a browser or a file manager.
@@ -33,12 +35,20 @@ android {
         create("full") {
             dimension = "edition"
             buildConfigField("boolean", "MESSAGE_REPLIES", "true")
+            buildConfigField("boolean", "HANDS_FREE", "false")
+        }
+        create("plus") {
+            dimension = "edition"
+            versionNameSuffix = "-plus"
+            buildConfigField("boolean", "MESSAGE_REPLIES", "true")
+            buildConfigField("boolean", "HANDS_FREE", "true")
         }
         create("lite") {
             dimension = "edition"
             applicationIdSuffix = ".lite"
             versionNameSuffix = "-lite"
             buildConfigField("boolean", "MESSAGE_REPLIES", "false")
+            buildConfigField("boolean", "HANDS_FREE", "false")
         }
     }
 

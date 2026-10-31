@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plus edition = Full edition + Hands-free control (Accessibility).
+     Same app id as Full, so it replaces Full on the Play Store once Google approves the
+     Accessibility declaration. Never add this to src/main: Lite and the first Full upload must stay without it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Same as the Full edition: reads new chat notifications to suggest replies. -->
+        <service
+            android:name="com.soulfriend.pet.MessageListener"
+            android:exported="true"
+            android:label="BigD AI message replies"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Hands-free control: fixed swipes, taps and Back/Home when the user gives a command.
+             It never reads the screen. Off until the user turns it on in Accessibility settings. -->
+        <service
+            android:name="com.soulfriend.pet.HandsFreeService"
+            android:exported="true"
+            android:label="@string/hands_free_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/hands_free_config" />
+        </service>
+    </application>
+</manifest>

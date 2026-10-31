@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hands_free_label">BigD AI Hands-free control</string>
+    <string name="hands_free_summary">Scroll Reels and press Back or Home by voice or with BigD\'s remote buttons.</string>
+    <string name="hands_free_description">BigD AI Hands-free control lets you control your phone by voice or with BigD\'s small remote buttons. When you say a command such as \"next reel\", \"previous reel\", \"pause\", \"like\", \"go back\" or \"go home\", or tap a remote button, it performs exactly that one swipe, tap or button press. It never acts on its own and the AI never decides to act. It does not read, store or send what is on your screen. You can turn it off here at any time.</string>
+</resources>

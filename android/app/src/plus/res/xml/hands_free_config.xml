@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No screen reading (canRetrieveWindowContent=false), no events: only gestures the user asks for. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/hands_free_description"
+    android:summary="@string/hands_free_summary"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="1000"
+    android:canRetrieveWindowContent="false"
+    android:canPerformGestures="true"
+    android:isAccessibilityTool="false"
+    android:settingsActivity="com.soulfriend.pet.MainActivity" />

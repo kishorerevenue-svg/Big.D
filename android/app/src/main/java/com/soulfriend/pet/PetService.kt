@@ -53,6 +53,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_PHOTO = "com.soulfriend.pet.PHOTO"
         const val ACTION_PET = "com.soulfriend.pet.PET"
         const val ACTION_SCREEN_DONE = "com.soulfriend.pet.SCREEN_DONE"
+        const val ACTION_REMOTE = "com.soulfriend.pet.REMOTE"
+        const val ACTION_VOICE_MODE = "com.soulfriend.pet.VOICE_MODE"
         private const val CHANNEL = "puppy"
     }
 
@@ -103,6 +105,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         wm = getSystemService(WindowManager::class.java)
         goForeground()
         addPet()
+        if (BuildConfig.HANDS_FREE && store.remoteOn) showRemote()
         MessageHub.listener = { m, autoSent -> onMessage(m, autoSent) }
         tts = TextToSpeech(this, this)
         say("Hi! I'm BigD AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
@@ -116,6 +119,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 prefix = intent.getStringExtra("prefix") ?: "⏰ ")
             ACTION_LISTEN -> startListening()
             ACTION_PHOTO -> { showPetAgain(); intent.getStringExtra("path")?.let { sendPhoto(it, intent.getBooleanExtra("screen", false)) } }
+            ACTION_REMOTE -> { if (store.remoteOn) showRemote() else hideRemote() }
+            ACTION_VOICE_MODE -> startVoiceMode()
             ACTION_SCREEN_DONE -> {
                 showPetAgain(); photoQuestion = ""
                 if (intent.getBooleanExtra("failed", false)) { pet.mood = PuppyView.Mood.SAD; showBubble("I couldn't read the screen this time. Please try again.", 5000) }
@@ -133,7 +138,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         main.removeCallbacksAndMessages(null)
         try { recognizer?.destroy() } catch (e: Exception) { }
         tts?.shutdown()
-        removeBubble(); closePanel(); hideCloseTarget()
+        removeBubble(); closePanel(); hideCloseTarget(); hideRemote(); voiceMode = false
         try { wm.removeView(pet) } catch (e: Exception) { }
         super.onDestroy()
     }
@@ -213,7 +218,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                         if (close) { stopSelf(); return@setOnTouchListener true }
                         store.petX = petParams.x; store.petY = petParams.y
                     }
-                    else if (!longDone && e.actionMasked == MotionEvent.ACTION_UP) { wake(); if (listening) stopListening() else startListening() }
+                    else if (!longDone && e.actionMasked == MotionEvent.ACTION_UP) { wake(); if (voiceMode) stopVoiceMode() else if (listening) stopListening() else startListening() }
                 }
             }
             true
@@ -367,13 +372,16 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         hush()
         val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
         rec.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { showBubble(if (store.lang == "en") "Listening…" else "వింటున్నాను… Listening…", 0) }
+            override fun onReadyForSpeech(params: Bundle?) {
+                showBubble(if (voiceMode) "🎙 Say: next · previous · pause · like\n(tap me to stop)" else if (store.lang == "en") "Listening…" else "వింటున్నాను… Listening…", 0)
+            }
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { setListening(false) }
             override fun onError(error: Int) {
                 setListening(false); replyVoice = false
+                if (voiceMode) { voiceModeNext(error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT); return }
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap me and speak again."
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "No internet for voice. Check your connection."
@@ -383,11 +391,13 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 pet.mood = PuppyView.Mood.CONFUSED; showBubble(msg, 5000)
             }
             override fun onPartialResults(partial: Bundle?) {
+                if (voiceMode) return
                 partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) showBubble("“$it”", 0) }
             }
             override fun onResults(results: Bundle?) {
                 setListening(false)
                 val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (voiceMode) { onVoiceModeHeard(heard.orEmpty()); return }
                 if (heard.isNullOrBlank()) { replyVoice = false; showBubble("I didn't catch that. Tap me and speak again.", 5000); return }
                 if (replyVoice) { replyVoice = false; replyByVoice(heard) } else send(heard)
             }
@@ -411,6 +421,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     // ---------------- asking the brain ----------------
     private fun send(text: String) {
+        HandsFree.match(text)?.let { if (handsFree(it)) return }
+        if (BuildConfig.HANDS_FREE && Regex("^(reels? mode|hands ?free( mode)?|రీల్స్ మోడ్|హ్యాండ్స్ ఫ్రీ)$", RegexOption.IGNORE_CASE).matches(text.trim().trimEnd('.', '!'))) { startVoiceMode(); return }
         if (ScreenCaptureService.wantsScreen(text)) { readScreen(text); return }
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
@@ -571,7 +583,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             pill("🐾 Change pet") { nextPet() }
         )
         card.addView(footer, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
-        val footer2 = row(pill("✕ Close pet") { stopSelf() })
+        val footer2 = if (BuildConfig.HANDS_FREE) row(
+            pill(if (store.remoteOn) "🎮 Hide remote" else "🎮 Remote") { store.remoteOn = !store.remoteOn; closePanel(); if (store.remoteOn) showRemote() else hideRemote() },
+            pill("🎙 Reels voice") { closePanel(); startVoiceMode() },
+            pill("✕ Close pet") { stopSelf() }
+        ) else row(pill("✕ Close pet") { stopSelf() })
         card.addView(footer2, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
 
         val p = overlayParams(minOf(screenW - dp(24), dp(380)), WindowManager.LayoutParams.WRAP_CONTENT, focusable = true).apply {
@@ -597,6 +613,99 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         store.petKind = next.key; pet.kind = next; pet.mood = PuppyView.Mood.EXCITED
         brain.clear()
         showBubble("Hi! I'm your ${next.label.lowercase()} now! · ${next.telugu}", 4000)
+    }
+
+    // ---------------- hands-free control (Plus edition) ----------------
+    private val reelCmds = setOf(HandsFree.Cmd.NEXT, HandsFree.Cmd.PREVIOUS, HandsFree.Cmd.PAUSE, HandsFree.Cmd.LIKE)
+
+    /** Runs one fixed command. Returns true when the words were a command (handled here, never sent to the AI). */
+    private fun handsFree(cmd: HandsFree.Cmd): Boolean {
+        if (!BuildConfig.HANDS_FREE) {
+            if (cmd !in reelCmds) return false
+            say("Scrolling Reels comes in BigD AI Plus, after the Play Store approval. For now, Google's Voice Access can do it: say \"scroll down\".", PuppyView.Mood.CONFUSED)
+            return true
+        }
+        if (!HandsFreeService.isOn(this) || HandsFreeService.instance == null) {
+            say("To do that, turn on Hands-free control in the BigD AI app: Pet › Hands-free control.", PuppyView.Mood.CONFUSED)
+            main.postDelayed({ openApp("pet") }, 1800)
+            return true
+        }
+        val ok = HandsFreeService.run(cmd)
+        pet.mood = if (ok) PuppyView.Mood.WINK else PuppyView.Mood.SAD
+        showBubble(if (ok) cmd.label else "Couldn't do that on this phone.", 1500)
+        return true
+    }
+
+    // Reels voice mode: keeps listening for the 4 Reels words only. Nothing else you say is used or sent anywhere.
+    private var voiceMode = false
+    private var voiceModeLastUse = 0L
+
+    private fun startVoiceMode() {
+        if (!BuildConfig.HANDS_FREE) { handsFree(HandsFree.Cmd.NEXT); return }
+        if (!HandsFreeService.isOn(this) || HandsFreeService.instance == null) { handsFree(HandsFree.Cmd.NEXT); return }
+        closePanel(); closeMsgCard()
+        voiceMode = true; voiceModeLastUse = System.currentTimeMillis()
+        pet.mood = PuppyView.Mood.COOL
+        startListening()
+    }
+
+    private fun stopVoiceMode() {
+        voiceMode = false
+        try { recognizer?.cancel() } catch (e: Exception) { }
+        setListening(false)
+        pet.mood = PuppyView.Mood.HAPPY; showBubble("Reels voice mode off.", 2500)
+    }
+
+    private fun onVoiceModeHeard(heard: String) {
+        val cmd = HandsFree.match(heard)
+        if (cmd != null && cmd in reelCmds) {
+            voiceModeLastUse = System.currentTimeMillis()
+            HandsFreeService.run(cmd)
+            pet.mood = PuppyView.Mood.WINK
+        } else if (Regex("stop listening|stop voice|exit|ఆపేయ్ వినడం|వినడం ఆపు").containsMatchIn(heard.lowercase())) { stopVoiceMode(); return }
+        voiceModeNext(true)
+    }
+
+    /** Listen again, unless 5 minutes passed without a command or the pet was closed. */
+    private fun voiceModeNext(quiet: Boolean) {
+        if (!voiceMode) return
+        if (System.currentTimeMillis() - voiceModeLastUse > 5 * 60_000L) { stopVoiceMode(); return }
+        main.postDelayed({ if (voiceMode) startListening() }, if (quiet) 250L else 1500L)
+    }
+
+    // Small remote on the left edge (the right edge has Instagram's like/comment buttons).
+    private var remote: View? = null
+
+    private fun showRemote() {
+        if (remote != null || !BuildConfig.HANDS_FREE) return
+        fun btn(label: String, cmd: HandsFree.Cmd) = TextView(this).apply {
+            text = label; textSize = 20f; gravity = Gravity.CENTER
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#CC0E6B6B")) }
+            setTextColor(Color.WHITE)
+            setOnClickListener { handsFree(cmd) }
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(4), dp(6), dp(4), dp(6))
+            background = GradientDrawable().apply { cornerRadius = dp(28).toFloat(); setColor(Color.parseColor("#66000000")) }
+            listOf("⏮" to HandsFree.Cmd.PREVIOUS, "⏯" to HandsFree.Cmd.PAUSE, "⏭" to HandsFree.Cmd.NEXT, "❤" to HandsFree.Cmd.LIKE).forEach { (l, c) ->
+                addView(btn(l, c), LinearLayout.LayoutParams(dp(46), dp(46)).apply { topMargin = dp(4); bottomMargin = dp(4) })
+            }
+            addView(TextView(this@PetService).apply {
+                text = "✕"; textSize = 14f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+                setOnClickListener { store.remoteOn = false; hideRemote() }
+            }, LinearLayout.LayoutParams(dp(46), dp(30)))
+        }
+        val p = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL; x = dp(4); y = 0
+        }
+        try { wm.addView(box, p); remote = box } catch (e: Exception) { }
+    }
+
+    private fun hideRemote() {
+        remote?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        remote = null
     }
 
     // ---------------- chat messages (WhatsApp, SMS, ...) ----------------
