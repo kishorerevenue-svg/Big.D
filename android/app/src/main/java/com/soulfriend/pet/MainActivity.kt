@@ -223,7 +223,7 @@ class MainActivity : Activity() {
 
         val tips = listOfNotNull(
             "Say \"remind me to take medicine every day at 8 am\"",
-            "Say \"NOC letter Word file for Sy.No. 370/1\"",
+            "Say \"make a leave letter for 2 days as a Word file\"",
             "Hold the pet for the menu: type, photo, lists",
             if (BuildConfig.MESSAGE_REPLIES) "Turn on WhatsApp replies in the Pet page" else null,
             "Drag the pet down to ✕ to close it"
@@ -575,7 +575,7 @@ class MainActivity : Activity() {
     // =================== 4. FILES ===================
     private fun filesPage() {
         pageHeader("Files", "Word letters and Excel sheets made by your pet")
-        val ask = ui.input("Describe the file, e.g. \"NOC letter for Sy.No. 370/1 as Word\"", multi = true)
+        val ask = ui.input("Describe the file, e.g. \"Leave letter for 2 days, as Word\" or \"Monthly expenses list in Excel\"", multi = true)
         val status = ui.text("", 13f, Ui.MUTED)
         add(ui.section("Make a new file").apply {
             put(ask, 10)
