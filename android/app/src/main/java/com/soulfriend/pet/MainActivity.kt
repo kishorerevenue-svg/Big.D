@@ -274,6 +274,8 @@ class MainActivity : Activity() {
                     addView(ui.chip(label, store.lang == code) { store.lang = code; render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(8) })
                 }
             }, 12)
+
+        add(voiceCard(), 12)
         }, 12)
 
         add(ui.section("Permissions · అనుమతులు").apply { permissionRows(this) }, 12)
@@ -304,10 +306,40 @@ class MainActivity : Activity() {
         }, 12)
     }
 
-    /** The 6 pets to choose from. */
+    /** Natural voice on/off, its status on the server, and a test button. */
+    private fun voiceCard() = ui.section("Voice 🔊", "Each pet has its own voice, and it changes with the pet's mood.").apply {
+        val status = ui.text("Checking the natural voice…", 12.5f, Ui.MUTED)
+        put(ui.check("Natural voice (sounds like a real person, Telugu and English)", store.naturalVoice) { store.naturalVoice = it }, 10)
+        put(status, 4)
+        put(ui.row(ui.button("▶ Test voice", "primary") {
+            if (!Settings.canDrawOverlays(this@MainActivity)) { toast("First allow \"Show over other apps\" below."); return@button }
+            if (!PetService.running) startForegroundService(Intent(this@MainActivity, PetService::class.java))
+            val line = if (store.lang == "en") "Hi! This is my voice. Do you like it?" else "నమస్తే! ఇది నా గొంతు. నచ్చిందా?"
+            content.postDelayed({ try { startService(Intent(this@MainActivity, PetService::class.java).setAction(PetService.ACTION_SAY).putExtra("text", line).putExtra("mood", "excited").putExtra("prefix", "").putExtra("test", true)) } catch (e: Exception) { } }, 900)
+        }), 10)
+        val server = store.server
+        io.execute {
+            val on = try {
+                val c = java.net.URL("$server/health").openConnection() as java.net.HttpURLConnection
+                c.connectTimeout = 8000; c.readTimeout = 8000
+                val j = JSONObject(c.inputStream.bufferedReader().use { it.readText() }); c.disconnect(); j.optBoolean("tts", false)
+            } catch (e: Exception) { null }
+            runOnUiThread {
+                status.text = when (on) {
+                    true -> "✅ Natural voice is ready on your server."
+                    false -> "Natural voice isn't set up on your server yet, so your pet uses the phone's voice for now."
+                    null -> "Couldn't reach your server to check the natural voice."
+                }
+            }
+        }
+    }
+
+    /** The pets to choose from (newest first). */
     private fun petPicker(box: LinearLayout) {
         val current = PuppyView.kindOf(store.petKind)
-        PuppyView.Kind.values().toList().chunked(3).forEach { rowKinds ->
+        // newest pets first
+        val kinds = PuppyView.Kind.values().sortedBy { if (it in PuppyView.NEW_KINDS) 0 else 1 }
+        kinds.chunked(3).forEach { rowKinds ->
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             rowKinds.forEach { k ->
                 val chosen = k == current
@@ -317,6 +349,9 @@ class MainActivity : Activity() {
                     addView(PuppyView(this@MainActivity).apply { kind = k; mood = if (chosen) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }, LinearLayout.LayoutParams(dp(70), dp(70)))
                     addView(ui.text((if (chosen) "✓ " else "") + k.label, 13.5f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER })
                     addView(ui.text(k.telugu, 12f, Ui.MUTED).apply { gravity = Gravity.CENTER })
+                    if (k in PuppyView.NEW_KINDS) addView(ui.text("✨ New", 11f, Ui.TEAL_DARK, bold = true).apply {
+                        gravity = Gravity.CENTER; background = ui.round(Ui.TEAL_SOFT, 10); setPadding(dp(8), dp(1), dp(8), dp(1))
+                    }, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4) })
                     setOnClickListener {
                         store.petKind = k.key
                         if (PetService.running) startService(Intent(this@MainActivity, PetService::class.java).setAction(PetService.ACTION_PET))
@@ -325,6 +360,7 @@ class MainActivity : Activity() {
                 }
                 r.addView(cell, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
             }
+            repeat(3 - rowKinds.size) { r.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f).apply { setMargins(dp(4), 0, dp(4), 0) }) }
             box.put(r, 10)
         }
     }

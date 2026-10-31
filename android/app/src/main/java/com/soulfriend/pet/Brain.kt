@@ -109,6 +109,31 @@ class Brain(private val store: Store) {
         }
     }
 
+    /**
+     * Natural voice: asks the server for an MP3 of [text]. Returns the file, or null.
+     * [notSetUp] is called when the server says natural voice isn't set up (then stop asking).
+     * Must be called off the main thread.
+     */
+    fun ttsBlocking(text: String, pet: String, mood: String, dir: java.io.File, notSetUp: () -> Unit): java.io.File? {
+        val server = store.server
+        if (!server.startsWith("https://")) return null
+        return try {
+            val c = URL("$server/api/tts").openConnection() as HttpURLConnection
+            c.requestMethod = "POST"; c.connectTimeout = 8_000; c.readTimeout = 20_000; c.doOutput = true
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            c.setRequestProperty("X-Device", store.deviceId)
+            val body = JSONObject().put("text", Privacy.maybe(store, text)).put("pet", pet).put("mood", mood).toString()
+            c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = c.responseCode
+            if (code == 501) { c.disconnect(); notSetUp(); return null }
+            if (code !in 200..299) { c.disconnect(); return null }
+            val f = java.io.File(dir, "voice_" + System.nanoTime() + ".mp3")
+            c.inputStream.use { inp -> f.outputStream().use { inp.copyTo(it) } }
+            c.disconnect()
+            if (f.length() < 200) { f.delete(); null } else f
+        } catch (e: Exception) { null }
+    }
+
     fun report(reason: String, reply: String, question: String) {
         val body = JSONObject().put("reason", reason).put("reply", reply).put("question", question).toString()
         val server = store.server

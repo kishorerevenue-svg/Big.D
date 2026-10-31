@@ -114,9 +114,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
-            ACTION_SAY -> say(intent.getStringExtra("text") ?: "",
-                intent.getStringExtra("mood")?.let { PuppyView.moodOf(it) } ?: PuppyView.Mood.SURPRISED,
-                prefix = intent.getStringExtra("prefix") ?: "⏰ ")
+            ACTION_SAY -> {
+                if (intent.getBooleanExtra("test", false)) naturalNotSetUp = false // "Test voice" asks the server again
+                say(intent.getStringExtra("text") ?: "",
+                    intent.getStringExtra("mood")?.let { PuppyView.moodOf(it) } ?: PuppyView.Mood.SURPRISED,
+                    prefix = intent.getStringExtra("prefix") ?: "⏰ ")
+            }
             ACTION_LISTEN -> startListening()
             ACTION_PHOTO -> { showPetAgain(); intent.getStringExtra("path")?.let { sendPhoto(it, intent.getBooleanExtra("screen", false)) } }
             ACTION_REMOTE -> { if (store.remoteOn) showRemote() else hideRemote() }
@@ -133,6 +136,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         running = false
+        natural.stop(); voicePool.shutdownNow()
         MessageHub.listener = null
         closeMsgCard()
         main.removeCallbacksAndMessages(null)
@@ -338,7 +342,35 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         speak(text)
     }
 
+    // Natural voice (server) first when it is set up; otherwise the phone's own voice.
+    private val natural = NaturalVoicePlayer()
+    @Volatile private var naturalNotSetUp = false
+    private var speakSeq = 0
+    private val voicePool = java.util.concurrent.Executors.newSingleThreadExecutor()
+
     private fun speak(text: String) {
+        val seq = ++speakSeq
+        if (store.voiceOn && store.naturalVoice && !naturalNotSetUp) {
+            val kind = pet.kind; val mood = pet.mood
+            voicePool.execute {
+                val f = brain.ttsBlocking(text, kind.key, mood.name.lowercase(), cacheDir) { naturalNotSetUp = true }
+                main.post {
+                    if (seq != speakSeq) { f?.delete(); return@post }
+                    if (f == null) { speakPhone(text); return@post }
+                    try { tts?.stop() } catch (e: Exception) { }
+                    natural.play(f, PetVoice.naturalPitch(kind, mood),
+                        onStart = { pet.talking = true },
+                        onDone = { if (seq == speakSeq) pet.talking = false },
+                        onFail = { if (seq == speakSeq) speakPhone(text) })
+                }
+            }
+            return
+        }
+        speakPhone(text)
+    }
+
+    private fun speakPhone(text: String) {
+        natural.stop()
         val t = tts
         if (!store.voiceOn || t == null || !ttsReady) { fakeTalk(text); return }
         val te = isTelugu(text)
@@ -350,7 +382,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             fakeTalk(text); return
         }
-        t.setPitch(1.35f); t.setSpeechRate(1.0f)
+        val (pitch, rate) = PetVoice.phone(pet.kind, pet.mood)
+        t.setPitch(pitch); t.setSpeechRate(rate)
         t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "u" + (++utter))
     }
 
@@ -359,7 +392,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         main.postDelayed({ pet.talking = false }, (400 + text.length * 45L).coerceAtMost(6000))
     }
 
-    private fun hush() { try { tts?.stop() } catch (e: Exception) { }; pet.talking = false }
+    private fun hush() { speakSeq++; natural.stop(); try { tts?.stop() } catch (e: Exception) { }; pet.talking = false }
 
     // ---------------- listening ----------------
     private fun startListening() {

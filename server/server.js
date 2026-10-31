@@ -27,6 +27,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const learn = require("./learn.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_MODEL, WEB_SEARCH });
 const files = require("./files.js")({ DATA_DIR });
+const voice = require("./voice.js")({ DATA_DIR });
 
 /** Picks the brain for this message: fast for chat, smart for hard or many-task requests. */
 function pickModel(text, hasImage) {
@@ -67,7 +68,11 @@ const PETS = {
   bunny: { name: "bunny", te: "కుందేలు", like: "a bouncy little bunny" },
   panda: { name: "panda", te: "పాండా", like: "a calm, cuddly panda" },
   bear: { name: "teddy bear", te: "ఎలుగుబంటి", like: "a soft, huggable teddy bear" },
-  fox: { name: "fox", te: "నక్క", like: "a clever, cheerful little fox" }
+  fox: { name: "fox", te: "నక్క", like: "a clever, cheerful little fox" },
+  robot: { name: "little robot", te: "రోబో", like: "a friendly little robot (you may say \"beep boop\" now and then)" },
+  parrot: { name: "green parrot", te: "చిలుక", like: "a chatty green parrot (చిలుక) who loves sweet words (చిలక పలుకులు)" },
+  mochi: { name: "mochi", te: "మోచి", like: "a soft, squishy, giggly mochi friend" },
+  kitty: { name: "anime kitty", te: "కిట్టీ", like: "a sweet anime-style kitten (you may say \"nyaa\" now and then)" }
 };
 
 function petPrompt(lang, ctx) {
@@ -76,7 +81,7 @@ function petPrompt(lang, ctx) {
   const notes = (ctx.notes || []).slice(-10).map(n => `- ${n}`).join("\n") || "(none)";
   const mem = (ctx.memories || []).map(n => `- ${n}`).join("\n") || "(nothing yet)";
   return `You are BigD AI (pronounced "Big D"; in Telugu: బిగ్ డి), a cute, loyal cartoon ${pet.name} (Telugu: ${pet.te}) who floats on the user's phone screen. You talk with them by voice like a caring friend and you DO tasks for them.
-Personality: warm, playful, a little excited like ${pet.like}, never rude. Think like a helpful human friend: understand what they really need, ask one short question if something important is missing (for example the time for a reminder, or which person to call).
+Personality: warm, playful, a little excited like ${pet.like}, never rude. In Telugu replies, sprinkle natural spoken expressions when they fit (for example "అబ్బా!", "సూపర్!", "అయ్యో!", "హహ్హా!"), but don't overdo it. Think like a helpful human friend: understand what they really need, ask one short question if something important is missing (for example the time for a reminder, or which person to call).
 Your "reply" is SPOKEN aloud, so keep it short and natural: 1 to 3 sentences. Long content (letters, messages, translations of long text) goes in a show_text action, and the reply just says it is ready.
 Language rule: ${LANG_RULE[lang] || LANG_RULE.auto}
 Safety: refuse harmful, hateful, sexual or illegal requests kindly. If someone seems in danger or deep distress, respond with care and suggest they call a trusted person or 112.
@@ -212,11 +217,12 @@ async function askPet(messages, lang, ctx) {
 
 // ---------- simple per-device rate limit ----------
 const hits = new Map();
-function allowed(ip) {
+const ttsHits = new Map(); // voice has its own counter, so speaking never uses up chat requests
+function allowed(ip, map = hits, limit = LIMIT_PER_10_MIN) {
   const now = Date.now(), win = 10 * 60 * 1000;
-  const list = (hits.get(ip) || []).filter(t => now - t < win);
-  if (list.length >= LIMIT_PER_10_MIN) { hits.set(ip, list); return false; }
-  list.push(now); hits.set(ip, list); return true;
+  const list = (map.get(ip) || []).filter(t => now - t < win);
+  if (list.length >= limit) { map.set(ip, list); return false; }
+  list.push(now); map.set(ip, list); return true;
 }
 // ---------- daily limits (protect your API bill) ----------
 const PER_DEVICE_DAILY = Number(process.env.PER_DEVICE_DAILY || 80);
@@ -224,6 +230,17 @@ const PER_IP_DAILY = Number(process.env.PER_IP_DAILY || 250);
 const DAILY_TOTAL = Number(process.env.DAILY_TOTAL || 4000);
 const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10); // India date
 let daily = { day: today(), dev: new Map(), ip: new Map(), total: 0, brief: new Map() };
+const TTS_PER_DEVICE_DAILY = Number(process.env.TTS_PER_DEVICE_DAILY || 300);
+const TTS_DAILY_TOTAL = Number(process.env.TTS_DAILY_TOTAL || 10000);
+let ttsDaily = { day: "", dev: new Map(), total: 0 };
+function ttsAllowed(req) {
+  if (ttsDaily.day !== today()) ttsDaily = { day: today(), dev: new Map(), total: 0 };
+  const dev = String(req.headers["x-device"] || "").replace(/[^\w-]/g, "").slice(0, 64) || "ip:" + clientIp(req);
+  const n = ttsDaily.dev.get(dev) || 0;
+  if (n >= TTS_PER_DEVICE_DAILY || ttsDaily.total >= TTS_DAILY_TOTAL) return false;
+  ttsDaily.dev.set(dev, n + 1); ttsDaily.total++; return true;
+}
+
 /** Counts one AI call. Returns an error message when a daily limit is reached, otherwise "". */
 function dailyCheck(req, kind) {
   if (daily.day !== today()) daily = { day: today(), dev: new Map(), ip: new Map(), total: 0, brief: new Map() };
@@ -237,7 +254,7 @@ function dailyCheck(req, kind) {
   return "";
 }
 
-setInterval(() => { const now = Date.now(); for (const [ip, l] of hits) if (!l.some(t => now - t < 600000)) hits.delete(ip); }, 600000).unref();
+setInterval(() => { const now = Date.now(); for (const m of [hits, ttsHits]) for (const [ip, l] of m) if (!l.some(t => now - t < 600000)) m.delete(ip); }, 600000).unref();
 
 // ---------- helpers ----------
 function loadEnv(file) {
@@ -316,7 +333,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
 
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD }, origin);
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
@@ -446,6 +463,22 @@ const server = http.createServer(async (req, res) => {
       if (e.message === "too_large") return send(res, 413, { error: "That file is too big. Keep files under 20 MB." });
       console.error("Teach error:", e.status || "", e.message);
       return send(res, 502, { error: "Couldn't add that right now. Try again, or try a smaller file." });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/tts") {
+    if (!voice.enabled) return send(res, 501, { error: "Natural voice is not set up on this server." }, origin);
+    if (!allowed(clientIp(req), ttsHits, LIMIT_PER_10_MIN * 2) || !ttsAllowed(req)) return send(res, 429, { error: "Voice limit reached for now." }, origin);
+    let body;
+    try { body = await readBody(req, 16 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
+    try {
+      const { file } = await voice.speak(body.text, String(body.pet || ""), String(body.mood || ""));
+      res.writeHead(200, { "Content-Type": "audio/mpeg", "Cache-Control": "no-store", ...cors(origin) });
+      return fs.createReadStream(file).pipe(res);
+    } catch (e) {
+      if (e.user) return send(res, 400, { error: "Nothing to say." }, origin);
+      console.error("TTS error:", e.message);
+      return send(res, 502, { error: "The voice service is busy." }, origin);
     }
   }
 

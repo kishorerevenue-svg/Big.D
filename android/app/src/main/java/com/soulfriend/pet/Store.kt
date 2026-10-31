@@ -47,6 +47,11 @@ class Store(context: Context) {
         get() = p.getBoolean("hidePersonal", false)
         set(v) { p.edit().putBoolean("hidePersonal", v).apply() }
 
+    /** Use the natural (human-like) voice from the server when it is set up. */
+    var naturalVoice: Boolean
+        get() = p.getBoolean("naturalVoice", true)
+        set(v) { p.edit().putBoolean("naturalVoice", v).apply() }
+
     /** Show the Reels remote buttons on screen (Plus edition). */
     var remoteOn: Boolean
         get() = p.getBoolean("remoteOn", false)
