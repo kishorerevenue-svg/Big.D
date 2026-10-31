@@ -28,6 +28,9 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const learn = require("./learn.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_MODEL, WEB_SEARCH });
 const files = require("./files.js")({ DATA_DIR });
 const voice = require("./voice.js")({ DATA_DIR });
+const baseUrl = req => (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
+// created after the helpers below exist (see "extras" near the web server)
+let extras = null;
 
 /** Picks the brain for this message: fast for chat, smart for hard or many-task requests. */
 function pickModel(text, hasImage) {
@@ -60,7 +63,7 @@ Reply with only a JSON object: {"emotion": "<one of: ${EMOTIONS.join(", ")}>", "
 const PET_EMOTIONS = ["happy", "excited", "thinking", "sad", "surprised", "love", "sleepy", "confused",
   "laughing", "angry", "crying", "shy", "cool", "wink", "proud", "scared", "yawning", "dizzy"];
 const ACTION_TYPES = ["reminder", "timer", "alarm", "todo_add", "todo_done", "todo_remove", "note_save",
-  "call", "whatsapp", "open_app", "show_text", "copy_text", "remember", "forget", "make_file"];
+  "call", "whatsapp", "open_app", "show_text", "copy_text", "remember", "forget", "make_file", "letter"];
 
 const PETS = {
   puppy: { name: "puppy", te: "కుక్కపిల్ల", like: "a happy puppy (you may say \"woof\" now and then)" },
@@ -110,9 +113,10 @@ You can do these actions. Only add an action when the user clearly asked for it:
 - {"type":"copy_text","text":"<text to copy to clipboard>"}
 - {"type":"remember","text":"<a lasting fact about the user worth remembering, e.g. their name, family, likes, important dates>"}  (use when they tell you something personal and lasting; do not remember passwords, bank or card numbers)
 - {"type":"forget","text":"<the remembered fact to remove>"}  (when they ask you to forget something)
-- {"type":"make_file","format":"docx","title":"<file name>","content":{"blocks":[ ... ]}}  (a Word file: letters, reports, notices, applications, minutes). Blocks, in order: {"right":"Lr.No. ... / Date: ..."}, {"h":"heading"}, {"p":"paragraph; **bold** allowed; \\n for a new line"}, {"list":["...","..."],"numbered":true}, {"table":[["Header1","Header2"],["a","b"]]}, {"sign":"Name\\nDesignation\\nOffice"}, {"center":"..."}.
+- {"type":"make_file","format":"docx","title":"<file name>","content":{"blocks":[ ... ]}}  (a Word file: letters, reports, notices, applications, minutes). Blocks, in order: {"right":"Lr.No. ... / Date: ..."}, {"head":"title with a line under it (notices, reports)"}, {"h":"heading"}, {"sub":"subject line of a letter"}, {"ref":"references of a letter"}, {"p":"paragraph; **bold** allowed; \\n for a new line; add \"justify\":false for address blocks"}, {"list":["...","..."],"numbered":true}, {"table":[["Header1","Header2"],["a","b"]]}, {"sign":"Name\\nDesignation\\nOffice"}, {"center":"..."}.
 - {"type":"make_file","format":"xlsx","title":"<file name>","content":{"sheets":[{"name":"Sheet1","title":"<optional title row>","columns":["Col A","Col B"],"rows":[["a",1],["b",2]]}]}}  (an Excel file: lists, registers, statements, budgets). Cells starting with "=" are formulas, e.g. "=SUM(B2:B10)" (row 1 is the header row unless you give a title, which adds 2 rows above).
-File rules: make a file only when the user asks for a file, Word, Excel, document or sheet. Write the COMPLETE content in the file (not a summary). Government/office letters follow the Indian format: From, To, Lr.No. and Date, Sub:, Ref:, salutation, body paragraphs, signature block; leave clear blanks like "______" for details the user did not give. Use the user's language (Telugu or English) for the content. PDF is not available yet: make a Word file and say they can save it as PDF from Word. In "reply", just say the file is ready.
+- {"type":"letter","request":"<what document they want, with every detail they already gave>"}  (opens the letter helper in the app, which asks the person each missing detail step by step and then makes a complete Word file. Use this INSTEAD of make_file when they want a letter, application, petition or similar document but have not given the details it needs, such as names, addresses, dates or reasons.)
+File rules: make a file only when the user asks for a file, Word, Excel, document or sheet, and use make_file only when you have the details it needs (otherwise use "letter"). Write the COMPLETE content in the file (not a summary). Government/office letters follow the Indian format: From, To, Lr.No. and Date, Sub:, Ref:, salutation, body paragraphs, signature block; never leave blanks: if details are missing, use the "letter" action instead. Use the user's language (Telugu or English) for the content. PDF is not available yet: make a Word file and say they can save it as PDF from Word. In "reply", just say the file is ready.
 How to think (do this silently, never show it):
 1. Read the whole request. Split it into separate tasks if the user asked for several things ("remind me at 5, add milk to my list and open YouTube" = 3 tasks).
 2. For each task, decide the right action and fill in every detail. Add ONE action per task, in the order asked.
@@ -154,7 +158,7 @@ async function draftReply(ctx) {
 
 /** Turns "make_file" actions into real files and "download" actions with a link. */
 async function makeFileActions(actions, req) {
-  const base = (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
+  const base = baseUrl(req);
   const out = [];
   for (const a of actions || []) {
     if (a.type !== "make_file") { out.push(a); continue; }
@@ -333,6 +337,10 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
 
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
+
+  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY,
+    adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
+  if (await extras(req, res, url, origin)) return;
 
   if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}) }, origin);
 

@@ -1,25 +1,36 @@
 package com.soulfriend.pet
 
 import android.Manifest
+import android.animation.LayoutTransition
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.app.DownloadManager
 import android.app.TimePickerDialog
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.text.InputType
+import android.text.TextUtils
+import android.view.DragEvent
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -40,35 +51,43 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 
-/** The BigD AI app: Home, Pet, Tasks, Files, Vault and Feedback pages with a bottom menu. */
+/** The BigD AI app: Home, Pet, Tasks, Files, Messages, Vault and Community pages with a bottom menu. */
 class MainActivity : Activity() {
 
-    private lateinit var store: Store
-    private lateinit var ui: Ui
+    internal lateinit var store: Store
+    internal lateinit var ui: Ui
     private lateinit var vault: VaultStore
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
     private lateinit var nav: LinearLayout
-    private val fmt = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
-    private val io = Executors.newSingleThreadExecutor()
+    internal val fmt: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
+    internal val io = Executors.newSingleThreadExecutor()
 
-    private var tab = "home"
+    internal var tab = "home"
     private var tasksTab = "todo"
     private var pickingPhotoFor: String? = null
-    private var leavingForSystemScreen = false
+    internal var leavingForSystemScreen = false
+    private var pendingShare: String? = null
+    private var pendingLetter: String? = null
+    private var renderedTab = ""
+
+    internal val letter by lazy { LetterHelper(this) }
+    internal val messages by lazy { MessagesPage(this) }
+    internal val community by lazy { CommunityPage(this) }
 
     companion object {
         private const val REQ_PHOTO = 4402
+        /** key, name, icon. The user can drag them into another order (long-press a tab). */
         val TABS = listOf(
-            Triple("home", "Home", "🏠"), Triple("pet", "Pet", "🐾"), Triple("tasks", "Tasks", "✅"),
-            Triple("files", "Files", "📄"), Triple("vault", "Vault", "🔒"), Triple("feedback", "Feedback", "💬")
+            Triple("home", "Home", "🏠"), Triple("pet", "Pet", "🐾"), Triple("tasks", "Tasks", "✅"), Triple("files", "Files", "📄"),
+            Triple("messages", "Messages", "💬"), Triple("vault", "Vault", "🔒"), Triple("feedback", "Community", "👥")
         )
     }
 
-    private fun dp(v: Int) = ui.dp(v)
+    internal fun dp(v: Int) = ui.dp(v)
     private fun LinearLayout.put(v: View, top: Int = 10) = addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) })
-    private fun add(v: View, top: Int = 14) = content.addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) })
-    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
+    internal fun add(v: View, top: Int = 14) = content.addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) })
+    internal fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
     private fun granted(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,8 +99,13 @@ class MainActivity : Activity() {
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(28)) }
         scroll = ScrollView(this).apply { addView(content); isFillViewport = true }
         nav = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; setPadding(dp(6), dp(6), dp(6), dp(8))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(6), dp(6), dp(6), dp(8))
             setBackgroundColor(Color.WHITE); elevation = dp(12).toFloat()
+            layoutTransition = LayoutTransition().apply {
+                enableTransitionType(LayoutTransition.CHANGING)
+                disableTransitionType(LayoutTransition.APPEARING); disableTransitionType(LayoutTransition.DISAPPEARING)
+                setDuration(220)
+            }
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(Ui.BG); fitsSystemWindows = true
@@ -89,23 +113,58 @@ class MainActivity : Activity() {
             addView(nav, LinearLayout.LayoutParams(-1, -2))
         }
         setContentView(root)
-        intent?.getStringExtra("tab")?.let { tab = it }
+        handleIntent(intent)
     }
 
-    override fun onNewIntent(intent: Intent?) { super.onNewIntent(intent); intent?.getStringExtra("tab")?.let { tab = it } }
-    override fun onResume() { super.onResume(); leavingForSystemScreen = false; render() }
+    override fun onNewIntent(intent: Intent?) { super.onNewIntent(intent); setIntent(intent); handleIntent(intent) }
+
+    /** Opens a page, a letter request from the pet, or a message shared to BigD AI from another app. */
+    private fun handleIntent(i: Intent?) {
+        if (i == null) return
+        i.getStringExtra("tab")?.let { tab = it }
+        i.getStringExtra("letter")?.let { tab = "files"; pendingLetter = it; i.removeExtra("letter") }
+        if (i.action == Intent.ACTION_SEND && i.type?.startsWith("text/") == true) {
+            val t = i.getStringExtra(Intent.EXTRA_TEXT)?.trim()
+            if (!t.isNullOrBlank()) { tab = "messages"; pendingShare = t }
+            i.action = Intent.ACTION_MAIN
+        }
+    }
+
+    override fun onResume() {
+        super.onResume(); leavingForSystemScreen = false; render()
+        if (store.onboarded) {
+            pendingShare?.let { pendingShare = null; messages.checkShared(it) }
+            pendingLetter?.let { pendingLetter = null; letter.start(it) }
+        }
+    }
 
     override fun onPause() {
         super.onPause()
+        letter.stop(); stopListening(); stopTalking()
         if (pickingPhotoFor == null && !leavingForSystemScreen) VaultLock.lock()
     }
 
-    private fun go(t: String) { tab = t; render(); scroll.scrollTo(0, 0) }
+    override fun onDestroy() {
+        try { tts?.shutdown() } catch (e: Exception) { }
+        try { rec?.destroy() } catch (e: Exception) { }
+        super.onDestroy()
+    }
+
+    internal fun go(t: String) { tab = t; render(); scroll.scrollTo(0, 0) }
+    internal fun scrollTop() { scroll.post { scroll.scrollTo(0, 0) } }
+    /** Scrolls so that [v] is in view (a little below the top). */
+    internal fun scrollToView(v: View) {
+        scroll.post {
+            val r = Rect(); v.getDrawingRect(r)
+            try { scroll.offsetDescendantRectToMyCoords(v, r); scroll.smoothScrollTo(0, maxOf(0, r.top - dp(140))) } catch (e: Exception) { }
+        }
+    }
 
     // =================== frame ===================
-    private fun render() {
+    internal fun render() {
+        val keepY = if (renderedTab == tab) scroll.scrollY else 0
         content.removeAllViews()
-        if (!store.onboarded) { nav.visibility = View.GONE; secure(false); renderSetup(); return }
+        if (!store.onboarded) { nav.visibility = View.GONE; secure(false); renderSetup(); renderedTab = ""; return }
         nav.visibility = View.VISIBLE
         buildNav()
         secure(tab == "vault")
@@ -113,10 +172,13 @@ class MainActivity : Activity() {
             "pet" -> petPage()
             "tasks" -> tasksPage()
             "files" -> filesPage()
+            "messages" -> messages.build()
             "vault" -> vaultPage()
-            "feedback" -> feedbackPage()
+            "feedback" -> community.build()
             else -> homePage()
         }
+        renderedTab = tab
+        if (keepY > 0) scroll.post { scroll.scrollTo(0, keepY) }
     }
 
     /** Blocks screenshots and hides the app preview in Recents while the Vault is on screen. */
@@ -124,27 +186,87 @@ class MainActivity : Activity() {
         if (on) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
+    // ---------- bottom tabs: the chosen tab grows into a pill with its name; long-press a tab to drag it ----------
+    private var navOrder: List<String> = emptyList()
+    private val navItems = LinkedHashMap<String, LinearLayout>()
+    private var dragKey: String? = null
+
+    private fun tabOrder(): List<String> {
+        val all = TABS.map { it.first }
+        val out = store.tabOrder.filter { it in all }.distinct().toMutableList()
+        for (k in all) if (k !in out) out.add(minOf(all.indexOf(k), out.size), k)   // new tabs go to their usual place
+        return out
+    }
+
     private fun buildNav() {
-        nav.removeAllViews()
-        TABS.forEach { (key, label, icon) ->
-            val on = key == tab
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(0, dp(2), 0, dp(2))
-                addView(TextView(this@MainActivity).apply {
-                    text = icon; textSize = 19f; gravity = Gravity.CENTER
-                    background = if (on) ui.round(Ui.TEAL_SOFT, 16) else null
-                    setPadding(dp(14), dp(3), dp(14), dp(3))
-                })
-                addView(ui.text(label, 11f, if (on) Ui.TEAL_DARK else Ui.MUTED, bold = on).apply { gravity = Gravity.CENTER })
-                contentDescription = label
-                setOnClickListener { go(key) }
-            }
-            nav.addView(item, LinearLayout.LayoutParams(0, -2, 1f))
+        val order = tabOrder()
+        if (order != navOrder || nav.childCount != order.size) {
+            navOrder = order; nav.removeAllViews(); navItems.clear()
+            order.forEach { key -> navItem(key).also { navItems[key] = it; nav.addView(it, LinearLayout.LayoutParams(0, dp(48), 1f).apply { setMargins(dp(2), 0, dp(2), 0) }) } }
+        }
+        updateNav()
+    }
+
+    private fun navItem(key: String): LinearLayout {
+        val (_, label, icon) = TABS.first { it.first == key }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; tag = key
+            addView(TextView(this@MainActivity).apply { text = icon; textSize = 20f; gravity = Gravity.CENTER })
+            addView(TextView(this@MainActivity).apply {
+                text = label; textSize = 13.5f; setTextColor(Ui.TEAL_DARK); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, 0, 0)
+            })
+            contentDescription = label
+            setOnClickListener { if (tab != key) go(key) else scrollTop() }
+            setOnLongClickListener { v -> startTabDrag(v, key); true }
+            setOnDragListener { v, e -> onTabDrag(v, e) }
         }
     }
 
-    private fun pageHeader(title: String, sub: String) {
+    private fun updateNav() {
+        navItems.forEach { (key, item) ->
+            val on = key == tab
+            item.background = if (on) ui.round(Ui.TEAL_SOFT, 24, Ui.TEAL) else null
+            item.getChildAt(1).visibility = if (on) View.VISIBLE else View.GONE
+            item.alpha = if (key == dragKey) 0.35f else 1f
+            (item.layoutParams as? LinearLayout.LayoutParams)?.let { lp -> val w = if (on) 2.8f else 1f; if (lp.weight != w) { lp.weight = w; item.layoutParams = lp } }
+        }
+    }
+
+    private fun startTabDrag(v: View, key: String) {
+        v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        dragKey = key
+        toast("Move it left or right, then let go")
+        try { v.startDragAndDrop(ClipData.newPlainText("tab", key), View.DragShadowBuilder(v), key, 0) } catch (e: Exception) { dragKey = null }
+        updateNav()
+    }
+
+    private fun onTabDrag(v: View, e: DragEvent): Boolean {
+        val moving = dragKey ?: return false
+        when (e.action) {
+            DragEvent.ACTION_DRAG_ENTERED -> {
+                val over = v.tag as? String
+                if (over != null && over != moving) nav.post {
+                    // move the dragged tab into the place of the tab under the finger (after the drag event is handled)
+                    val list = navOrder.toMutableList()
+                    val to = list.indexOf(over)
+                    if (to >= 0 && list.remove(moving)) {
+                        list.add(to, moving); navOrder = list
+                        navItems[moving]?.let { dv -> val lp = dv.layoutParams; nav.removeView(dv); nav.addView(dv, to, lp) }
+                    }
+                }
+            }
+            DragEvent.ACTION_DRAG_ENDED -> if (dragKey != null) {
+                dragKey = null; store.tabOrder = navOrder
+                val keep = LinkedHashMap<String, LinearLayout>(); navOrder.forEach { k -> navItems[k]?.let { keep[k] = it } }
+                navItems.clear(); navItems.putAll(keep)
+                updateNav()
+            }
+        }
+        return true
+    }
+
+    internal fun pageHeader(title: String, sub: String) {
         add(ui.title(title), 4)
         add(ui.text(sub, 14f, Ui.MUTED), 2)
     }
@@ -219,12 +341,16 @@ class MainActivity : Activity() {
         add(pair(tile("🎤", "Talk now", "Ask anything by voice") { talkNow() },
             tile("📄", "Make a file", "Word letter or Excel sheet") { go("files") }), 8)
         add(pair(tile("⏰", "Add reminder", "Once or repeating") { tasksTab = "rem"; go("tasks") },
-            tile("🔒", "My Vault", "Cards and documents") { go("vault") }), 10)
+            tile("🛡️", "Check a message", "Safe, or a fraud?") { go("messages") }), 10)
+        add(pair(tile("🔒", "My Vault", "Cards and documents") { go("vault") },
+            tile("👥", "Community", "Ideas and feedback") { go("feedback") }), 10)
 
         val tips = listOfNotNull(
             "Say \"remind me to take medicine every day at 8 am\"",
             "Say \"make a leave letter for 2 days as a Word file\"",
             "Hold the pet for the menu: type, photo, lists",
+            "Long-press a tab at the bottom and drag it to move it",
+            "Got a strange message? Copy it and check it on the Messages tab",
             if (BuildConfig.MESSAGE_REPLIES) "Turn on WhatsApp replies in the Pet page" else null,
             "Drag the pet down to ✕ to close it"
         )
@@ -274,13 +400,16 @@ class MainActivity : Activity() {
                     addView(ui.chip(label, store.lang == code) { store.lang = code; render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(8) })
                 }
             }, 12)
-
-        add(voiceCard(), 12)
         }, 12)
+        add(voiceCard(), 12)
 
         add(ui.section("Permissions · అనుమతులు").apply { permissionRows(this) }, 12)
-        // "Reply to messages" exists only in the full (Play Store) edition. See build.gradle.kts.
-        if (BuildConfig.MESSAGE_REPLIES) add(messagesCard(), 12)
+        // Message replies and danger alerts now live on the Messages tab.
+        add(ui.card(Ui.TEAL_SOFT).apply {
+            addView(ui.line(ui.stack(ui.text("💬 Messages and danger alerts", 15f, Ui.TEAL_DARK, bold = true),
+                ui.text("Check messages for fraud" + if (BuildConfig.MESSAGE_REPLIES) ", reply settings and auto-reply" else "", 12.5f, Ui.MUTED)),
+                ui.button("Open", "primary") { go("messages") }))
+        }, 12)
         if (BuildConfig.HANDS_FREE) add(handsFreeCard(), 12)
         add(briefingCard(), 12)
 
@@ -303,6 +432,11 @@ class MainActivity : Activity() {
                 if (!v.startsWith("https://")) toast("The address must start with https://") else { store.server = v; toast("Saved") }
             }), 8)
             put(ui.button("Show the setup guide again", "ghost") { store.onboarded = false; setupStep = 0; render() }, 12)
+            put(ui.button("Put the bottom tabs back in the usual order", "ghost") { store.tabOrder = emptyList(); navOrder = emptyList(); render(); toast("Tabs reset") }, 8)
+            put(ui.text("BigD team password (only for the app's team, to reply to community posts)", 13f, Ui.MUTED), 14)
+            val team = ui.input("Team password", store.teamKey).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+            put(team, 6)
+            put(ui.row(ui.button("Save password") { store.teamKey = team.text.toString(); community.load(true); toast(if (store.teamKey.isBlank()) "Removed" else "Saved") }), 8)
         }, 12)
     }
 
@@ -398,7 +532,7 @@ class MainActivity : Activity() {
             }), 12)
     }
 
-    private fun messagesCard() = ui.section("Reply to messages · మెసేజ్ రిప్లైలు",
+    internal fun messagesCard() = ui.section("Reply to messages · మెసేజ్ రిప్లైలు",
         "When a WhatsApp or SMS message comes, your pet shows it and writes a reply. Nothing is sent until you tap Send, unless Auto-reply is on.").apply {
         val access = MessageHub.accessGranted(this@MainActivity)
         put(ui.line(ui.stack(ui.text((if (access) "✅  " else "◻️  ") + "Notification access", 15f, Ui.INK, bold = true),
@@ -574,39 +708,12 @@ class MainActivity : Activity() {
 
     // =================== 4. FILES ===================
     private fun filesPage() {
-        pageHeader("Files", "Word letters and Excel sheets made by your pet")
-        val ask = ui.input("Describe the file, e.g. \"Leave letter for 2 days, as Word\" or \"Monthly expenses list in Excel\"", multi = true)
-        val status = ui.text("", 13f, Ui.MUTED)
-        add(ui.section("Make a new file").apply {
-            put(ask, 10)
-            put(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                listOf("Word letter", "Excel table", "Report").forEachIndexed { i, s ->
-                    addView(ui.chip(s, false) {
-                        ask.setText(when (s) { "Word letter" -> "Write a letter as a Word file: "; "Excel table" -> "Make an Excel sheet with columns: "; else -> "Write a report as a Word file about: " })
-                        ask.setSelection(ask.text.length); ask.requestFocus()
-                    }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(6) })
-                }
-            }, 10)
-            put(ui.button("✨ Make file", "primary") {
-                val q = ask.text.toString().trim()
-                if (q.length < 8) { toast("Tell me a little more about the file."); return@button }
-                status.text = "Writing your file… this can take up to a minute."
-                val acts = Actions(this@MainActivity) { t, body -> AlertDialog.Builder(this@MainActivity).setTitle(t).setMessage(body).setPositiveButton("OK", null).show() }
-                Brain(store).ask("$q (make it as a file)", onReply = { json ->
-                    val list = json.optJSONArray("actions")
-                    var made = false
-                    if (list != null) for (i in 0 until list.length()) { val a = list.optJSONObject(i) ?: continue; acts.run(a)?.let { if (a.optString("type") == "download") made = true } }
-                    status.text = if (made) "✅ Done. Your file is downloading." else json.optString("reply")
-                    if (made) { ask.setText(""); content.postDelayed({ if (tab == "files") render() }, 1500) }
-                }, onError = { err -> status.text = "⚠️ $err" })
-            }, 12)
-            put(status, 8)
-        }, 12)
+        pageHeader("Files", "Letters and Excel sheets, made step by step with you")
+        letter.build()
 
         val files = store.files().sortedByDescending { it.at }
         add(ui.label("Your files"), 18)
-        if (files.isEmpty()) add(ui.text("No files yet. Ask above, or tell your pet \"make an Excel list of my cases\".", 14f, Ui.MUTED), 8)
+        if (files.isEmpty()) add(ui.text("No files yet. Ask above, or tell your pet \"make an Excel list of my monthly expenses\".", 14f, Ui.MUTED), 8)
         val dm = getSystemService(DownloadManager::class.java)
         files.forEach { f ->
             val xl = f.format == "xlsx"
@@ -778,48 +885,18 @@ class MainActivity : Activity() {
         d.show()
     }
 
-    // =================== 6. FEEDBACK ===================
-    private fun feedbackPage() {
-        pageHeader("Feedback", "Tell us what to fix or add. We read every message.")
-        var rating = 0; var kind = "Idea"
-        val stars = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun drawStars() {
-            stars.removeAllViews()
-            for (i in 1..5) stars.addView(ui.text(if (i <= rating) "★" else "☆", 34f, if (i <= rating) Ui.SUN else Ui.LINE).apply {
-                setPadding(dp(4), 0, dp(4), 0); setOnClickListener { rating = i; drawStars() }
-            })
-        }
-        drawStars()
-        val kinds = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun drawKinds() {
-            kinds.removeAllViews()
-            listOf("Idea" to "💡 Idea", "Problem" to "🐞 Problem", "Praise" to "❤️ Praise").forEachIndexed { i, (k, l) ->
-                kinds.addView(ui.chip(l, kind == k) { kind = k; drawKinds() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(6) })
-            }
-        }
-        drawKinds()
-        val msg = ui.input("Write here, in Telugu or English…", multi = true)
-        val status = ui.text("", 13.5f, Ui.MUTED)
-        add(ui.section("How is BigD AI?").apply {
-            put(stars, 8); put(kinds, 12); put(msg, 12)
-            put(ui.button("Send feedback", "primary") {
-                val text = msg.text.toString().trim()
-                if (text.isEmpty() && rating == 0) { toast("Add a rating or a message."); return@button }
-                status.text = "Sending…"
-                sendFeedback(rating, kind, text) { ok -> status.text = if (ok) "✅ Thank you! Your feedback was sent." else "⚠️ Couldn't send. Check your internet and try again."; if (ok) msg.setText("") }
-            }, 12)
-            put(status, 8)
-        }, 14)
-
+    // =================== 7. COMMUNITY (see Community.kt) ===================
+    /** "Share BigD AI" and "About", at the end of the Community page. */
+    internal fun shareAndAbout() {
         add(ui.section("Share BigD AI", "Know someone who would like a pet friend on their phone?").apply {
             put(ui.row(ui.button("Share with friends", "sun") {
                 leavingForSystemScreen = true
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
                     .putExtra(Intent.EXTRA_TEXT, "Try BigD AI 🐾 – a cute pet on your phone screen that talks in Telugu and English, " +
-                        (if (BuildConfig.MESSAGE_REPLIES) "sets reminders, writes letters and replies to WhatsApp." else "sets reminders and writes letters.") +
+                        (if (BuildConfig.MESSAGE_REPLIES) "sets reminders, writes letters, warns you about fraud messages and replies to WhatsApp." else "sets reminders, writes letters and warns you about fraud messages.") +
                         " ${store.server}"), "Share BigD AI"))
             }), 10)
-        }, 12)
+        }, 18)
 
         add(ui.section("About").apply {
             put(ui.text("BigD AI is an AI and can make mistakes. Check important things before you rely on them.", 13.5f, Ui.MUTED), 6)
@@ -832,7 +909,7 @@ class MainActivity : Activity() {
         }, 12)
     }
 
-    private fun sendFeedback(rating: Int, kind: String, text: String, done: (Boolean) -> Unit) {
+    internal fun sendFeedback(rating: Int, kind: String, text: String, done: (Boolean) -> Unit) {
         val body = JSONObject().put("rating", rating).put("kind", kind).put("text", text)
             .put("version", try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "" })
             .put("android", Build.VERSION.RELEASE).put("pet", store.petKind).toString()
@@ -848,6 +925,74 @@ class MainActivity : Activity() {
             runOnUiThread { done(ok) }
         }
     }
+
+    // =================== voice typing and reading aloud (letter helper, community) ===================
+    private var rec: SpeechRecognizer? = null
+    private var listenDone: ((String?) -> Unit)? = null
+    private var tts: TextToSpeech? = null
+    private var ttsOk = false
+
+    /** Listens once. [onPartial] gets the words while you speak; [onDone] gets the final text, or null. */
+    internal fun listen(onPartial: (String) -> Unit, onDone: (String?) -> Unit) {
+        if (!granted(Manifest.permission.RECORD_AUDIO)) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7); toast("Allow the microphone, then tap 🎤 again."); onDone(null); return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) { toast("Voice typing isn't available on this phone. Please type instead."); onDone(null); return }
+        stopTalking(); stopListening()
+        val r = rec ?: SpeechRecognizer.createSpeechRecognizer(this).also { rec = it }
+        fun finish(t: String?) { if (listenDone === onDone) { listenDone = null; onDone(t) } }
+        listenDone = onDone
+        r.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) {
+                if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) toast("No internet for voice typing.")
+                finish(null)
+            }
+            override fun onPartialResults(partial: Bundle?) { partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) onPartial(it) } }
+            override fun onResults(results: Bundle?) { finish(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()) }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (store.lang == "en") "en-IN" else "te-IN")
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        try { r.startListening(i) } catch (e: Exception) { finish(null) }
+    }
+
+    /** Stops listening; whoever was listening gets null. */
+    internal fun stopListening() {
+        try { rec?.cancel() } catch (e: Exception) { }
+        listenDone?.let { listenDone = null; it(null) }
+    }
+
+    /** Reads [text] aloud with the phone's voice, then calls [onDone]. */
+    internal fun speakOut(text: String, onDone: (() -> Unit)? = null) {
+        val t = tts
+        if (t == null) {
+            tts = TextToSpeech(this) { st -> ttsOk = st == TextToSpeech.SUCCESS; runOnUiThread { if (ttsOk) speakOut(text, onDone) else onDone?.invoke() } }
+            return
+        }
+        if (!ttsOk) { onDone?.invoke(); return }
+        val te = text.any { it in 'ఀ'..'౿' }
+        val res = t.setLanguage(Locale.forLanguageTag(if (te) "te-IN" else "en-IN"))
+        if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) { onDone?.invoke(); return }
+        t.setPitch(1f); t.setSpeechRate(0.95f)
+        val id = "say" + System.nanoTime()
+        t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(u: String?) {}
+            override fun onDone(u: String?) { if (u == id) runOnUiThread { onDone?.invoke() } }
+            @Deprecated("Deprecated in Java")
+            override fun onError(u: String?) { if (u == id) runOnUiThread { onDone?.invoke() } }
+        })
+        t.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+    }
+
+    internal fun stopTalking() { try { tts?.stop() } catch (e: Exception) { } }
 
     // =================== first-time setup guide ===================
     private var setupStep = 0
@@ -913,11 +1058,12 @@ class MainActivity : Activity() {
     }
 
     // =================== system results ===================
-    private fun showMessageDisclosure() {
+    internal fun showMessageDisclosure() {
         AlertDialog.Builder(this)
             .setTitle("Read message notifications?")
-            .setMessage("To suggest and send replies, BigD AI reads new message notifications from the chat apps you choose (for example WhatsApp or SMS).\n\n" +
-                "For each new message, the sender's name and the message text are sent to the BigD AI server and to Anthropic's Claude AI to write a reply. They are not stored on the server.\n\n" +
+            .setMessage("To warn you about fraud and to suggest replies, BigD AI reads new message notifications from the chat apps you choose (for example WhatsApp or SMS).\n\n" +
+                "Every new message is first checked on your phone. Messages with warning signs (links, OTP or money requests…) are sent to the BigD AI server and to Anthropic's Claude AI for a safety check. " +
+                "To write a reply, the sender's name and message text are sent the same way. They are not stored on the server. The list of checked messages stays only on your phone.\n\n" +
                 "Nothing is sent to the other person unless you tap Send or switch on Auto-reply. You can turn this off at any time.")
             .setPositiveButton("Agree and continue") { _, _ -> store.msgWatch = true; leavingForSystemScreen = true; MessageHub.openAccessSettings(this) }
             .setNegativeButton("Not now", null)

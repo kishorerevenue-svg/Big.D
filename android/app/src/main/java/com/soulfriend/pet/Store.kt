@@ -108,6 +108,48 @@ class Store(context: Context) {
         get() = p.getBoolean("autoTag", true)
         set(v) { p.edit().putBoolean("autoTag", v).apply() }
 
+    // ---- message safety (danger alerts) ----
+    /** Show a red warning when a message looks like fraud or danger. */
+    var scamAlerts: Boolean
+        get() = p.getBoolean("scamAlerts", true)
+        set(v) { p.edit().putBoolean("scamAlerts", v).apply() }
+    /** Recently checked messages (newest last), kept only on this phone. */
+    fun msgLog(): List<JSONObject> {
+        val a = JSONArray(p.getString("msgLog", "[]")); return (0 until a.length()).map { a.getJSONObject(it) }
+    }
+    @Synchronized fun putMsg(o: JSONObject) {
+        val id = o.optString("id")
+        val list = msgLog().filter { it.optString("id") != id } + o
+        val a = JSONArray(); list.takeLast(80).forEach { a.put(it) }
+        p.edit().putString("msgLog", a.toString()).apply()
+    }
+    @Synchronized fun removeMsg(id: String) {
+        val a = JSONArray(); msgLog().filter { it.optString("id") != id }.forEach { a.put(it) }
+        p.edit().putString("msgLog", a.toString()).apply()
+    }
+    fun clearMsgs() { p.edit().putString("msgLog", "[]").apply() }
+
+    // ---- bottom tabs ----
+    /** Tab keys in the order the user arranged them (empty = default order). */
+    var tabOrder: List<String>
+        get() = (p.getString("tabOrder", "") ?: "").split(",").filter { it.isNotBlank() }
+        set(v) { p.edit().putString("tabOrder", v.joinToString(",")).apply() }
+
+    // ---- community ----
+    var feedName: String
+        get() = p.getString("feedName", "") ?: ""
+        set(v) { p.edit().putString("feedName", v.trim().take(30)).apply() }
+    var feedAgreed: Boolean
+        get() = p.getBoolean("feedAgreed", false)
+        set(v) { p.edit().putBoolean("feedAgreed", v).apply() }
+    /** BigD team password (only for the app's owner), to reply to and remove posts. */
+    var teamKey: String
+        get() = p.getString("teamKey", "") ?: ""
+        set(v) { p.edit().putString("teamKey", v.trim()).apply() }
+    var blockedUsers: Set<String>
+        get() = p.getStringSet("blockedUsers", emptySet()) ?: emptySet()
+        set(v) { p.edit().putStringSet("blockedUsers", HashSet(v)).apply() }
+
     var petX: Int
         get() = p.getInt("petX", -1)
         set(v) { p.edit().putInt("petX", v).apply() }

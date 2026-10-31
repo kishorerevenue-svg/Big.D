@@ -44,6 +44,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
             "remember" -> { store.remember(a.optString("text")); "I'll remember that" }
             "forget" -> if (store.forget(a.optString("text"))) "Forgotten" else "I didn't have that saved"
             "download" -> download(a.optString("url"), a.optString("name", "BigD-file"))
+            "letter" -> openLetterHelper(a.optString("request"))
             else -> null
         }
     } catch (e: Exception) { "Sorry, I couldn't do that on this phone" }
@@ -51,15 +52,29 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
     /** Saves a Word/Excel file the server made into Downloads › BigD AI. */
     private fun download(url: String, name: String): String {
         if (!url.startsWith(store.server + "/files/")) return "That file link didn't come from your BigD server"
+        downloadFile(url, name) ?: return "Couldn't save the file on this phone"
+        val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "BigD-file" }
+        return "📄 $safe is ready. Open it from the download notification or the Files page in the BigD AI app."
+    }
+
+    /** Starts the download and remembers the file. Returns the phone's download id. */
+    fun downloadFile(url: String, name: String): Long? {
+        if (!url.startsWith(store.server + "/files/")) return null
         val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "BigD-file" }
         val req = DownloadManager.Request(Uri.parse(url))
             .setTitle(safe).setDescription("From BigD AI")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
         if (Build.VERSION.SDK_INT >= 29) req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "BigD AI/$safe")
         else req.setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, safe)
-        val id = ctx.getSystemService(DownloadManager::class.java).enqueue(req)
+        val id = try { ctx.getSystemService(DownloadManager::class.java).enqueue(req) } catch (e: Exception) { return null }
         store.addFile(SavedFile(id, safe, if (safe.endsWith(".xlsx")) "xlsx" else "docx", System.currentTimeMillis()))
-        return "📄 $safe is ready. Open it from the download notification or the Files page in the BigD AI app."
+        return id
+    }
+
+    /** "Make a letter" without the details: open the letter helper, which asks for each detail. */
+    private fun openLetterHelper(request: String): String {
+        val i = Intent(ctx, MainActivity::class.java).putExtra("tab", "files").putExtra("letter", request.ifBlank { "letter" })
+        return if (start(i)) "📝 Opening the letter helper. Answer a few questions and I'll write it." else "Open the BigD AI app › Files to make the letter"
     }
 
     private fun parseTime(s: String): Long? {
@@ -122,17 +137,26 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
     }
 
     private fun whatsapp(number: String, contact: String, message: String): String {
-        var n = digits(number).ifBlank { lookup(contact)?.let { digits(it) } ?: "" }.removePrefix("+")
+        val found = lookup(contact)
+        var n = digits(number).ifBlank { found?.let { digits(it) } ?: "" }.removePrefix("+")
+        if (n.length == 11 && n.startsWith("0")) n = n.drop(1)
         if (n.length == 10) n = "91$n"
         val enc = URLEncoder.encode(message, "UTF-8").replace("+", "%20")
         if (n.isNotBlank()) {
             val i = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$n?text=$enc"))
             if (installed("com.whatsapp")) i.setPackage("com.whatsapp")
-            if (start(i)) return "Opening WhatsApp. Check the message and tap Send."
+            if (start(i)) return "WhatsApp is open with your message. Tap the green ➤ Send button to send it."
+        }
+        if (contact.isNotBlank() && found == null && number.isBlank()) {
+            val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message)
+            if (installed("com.whatsapp")) share.setPackage("com.whatsapp")
+            val why = if (ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
+                "Allow Contacts in the BigD AI app so I can find people. " else "I couldn't find $contact in your contacts. "
+            return if (start(share)) why + "In WhatsApp, choose $contact, then tap ➤ Send." else "WhatsApp is not installed"
         }
         val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message)
         if (installed("com.whatsapp")) share.setPackage("com.whatsapp")
-        return if (start(share)) "Opening WhatsApp. Pick the chat and tap Send." else "WhatsApp is not installed"
+        return if (start(share)) "In WhatsApp, choose the chat, then tap ➤ Send." else "WhatsApp is not installed"
     }
 
     private fun openApp(name: String): String {

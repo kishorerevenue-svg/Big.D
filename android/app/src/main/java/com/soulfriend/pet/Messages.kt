@@ -13,8 +13,9 @@ import android.os.Looper
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import org.json.JSONObject
 
-/** A new chat message seen in a notification, with the app's own "Reply" button. */
+/** A new chat message seen in a notification, with the app's own "Reply" button (if it has one). */
 data class Incoming(
     val key: String,
     val pkg: String,
@@ -23,9 +24,13 @@ data class Incoming(
     val sender: String,
     val text: String,
     val group: Boolean,
-    val action: Notification.Action,
-    val at: Long = System.currentTimeMillis()
-)
+    val action: Notification.Action?,
+    val at: Long = System.currentTimeMillis(),
+    val warn: String = ""
+) {
+    /** Id used in the Messages page list. */
+    val id get() = (pkg + "|" + chat + "|" + text).hashCode().toString() + "_" + at / 1000
+}
 
 /** Knows the chat apps, reads their notifications and sends replies through them. */
 object MessageHub {
@@ -45,6 +50,15 @@ object MessageHub {
     /** The pet shows new messages through this. [autoSent] is the text if it was auto-replied. */
     @Volatile var listener: ((Incoming, String?) -> Unit)? = null
     @Volatile var latest: Incoming? = null
+    /** Recent messages that can still be answered from the pet (newest last). */
+    private val recentList = ArrayList<Incoming>()
+    @Synchronized fun keep(m: Incoming) { recentList.removeAll { it.id == m.id }; recentList.add(m); while (recentList.size > 30) recentList.removeAt(0) }
+    @Synchronized fun recent(id: String): Incoming? = recentList.lastOrNull { it.id == id }
+    /** The newest message from a person or chat with this name that still has a Reply button. */
+    @Synchronized fun recentFrom(name: String): Incoming? {
+        val q = name.trim().lowercase(); if (q.length < 2) return null
+        return recentList.lastOrNull { it.action != null && !it.group && (it.chat.lowercase().contains(q) || q.contains(it.chat.lowercase())) && System.currentTimeMillis() - it.at < 6 * 3600_000L }
+    }
 
     private val seen = LinkedHashSet<String>()
     private val sentTexts = LinkedHashSet<String>()
@@ -65,16 +79,16 @@ object MessageHub {
         catch (e: Exception) { ctx.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
-    /** Reads one notification. Returns null if it is not a new message we can reply to. */
+    /** Reads one notification. Returns null if it is not a new chat message. [Incoming.action] is null when it can't be answered. */
     fun parse(ctx: Context, sbn: StatusBarNotification): Incoming? {
         if (sbn.packageName == ctx.packageName || groupOf(sbn.packageName) == null) return null
         val n = sbn.notification ?: return null
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return null
-        val actions = n.actions ?: return null
+        val actions = n.actions ?: emptyArray()
         val reply = actions.firstOrNull { a ->
             a.remoteInputs?.any { it.allowFreeFormInput } == true &&
                 (Build.VERSION.SDK_INT < 28 || a.semanticAction == Notification.Action.SEMANTIC_ACTION_REPLY || a.semanticAction == Notification.Action.SEMANTIC_ACTION_NONE)
-        } ?: actions.firstOrNull { a -> a.remoteInputs?.any { it.allowFreeFormInput } == true } ?: return null
+        } ?: actions.firstOrNull { a -> a.remoteInputs?.any { it.allowFreeFormInput } == true }
 
         val ex = n.extras ?: return null
         var sender = ex.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
@@ -115,13 +129,14 @@ object MessageHub {
 
     /** Sends [reply] through the app's own notification Reply button. */
     fun send(ctx: Context, m: Incoming, reply: String): Boolean {
-        val inputs = m.action.remoteInputs ?: return false
+        val action = m.action ?: return false
+        val inputs = action.remoteInputs ?: return false
         return try {
             val intent = Intent()
             val results = Bundle().apply { inputs.forEach { putCharSequence(it.resultKey, reply) } }
             RemoteInput.addResultsToIntent(inputs, intent, results)
             if (Build.VERSION.SDK_INT >= 28) RemoteInput.setResultsSource(intent, RemoteInput.SOURCE_FREE_FORM_INPUT)
-            m.action.actionIntent.send(ctx, 0, intent)
+            action.actionIntent.send(ctx, 0, intent)
             synchronized(this) { sentTexts.add(reply); while (sentTexts.size > 30) sentTexts.remove(sentTexts.first()) }
             true
         } catch (e: Exception) { false }
@@ -142,6 +157,8 @@ object MessageHub {
 class MessageListener : NotificationListenerService() {
     private val main = Handler(Looper.getMainLooper())
 
+    private val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val store = Store(this)
         if (!store.msgWatch) return
@@ -149,9 +166,31 @@ class MessageListener : NotificationListenerService() {
         if (MessageHub.groupOf(m.pkg) !in store.msgApps) return
         if (!MessageHub.isNew(m)) return
         MessageHub.latest = m
-        if (store.autoReply && MessageHub.autoAllowed(m)) autoReply(store, m)
-        else main.post { MessageHub.listener?.invoke(m, null) }
+        MessageHub.keep(m)
+        val (score, _) = ScamCheck.quick(m.text, m.sender)
+        if (score == 0 || !store.scamAlerts) {
+            // nothing suspicious: list it as safe and carry on as before
+            ScamCheck.log(store, m.id, m.app, m.sender, m.text, if (score == 0) ScamCheck.safeVerdict(store) else null, "auto")
+            if (m.action == null) return
+            if (score == 0 && store.autoReply && MessageHub.autoAllowed(m)) autoReply(store, m)
+            else main.post { MessageHub.listener?.invoke(m, null) }
+            return
+        }
+        // warning signs: check it carefully before anything else (never auto-reply to these)
+        ScamCheck.log(store, m.id, m.app, m.sender, m.text, null, "auto")
+        pool.execute {
+            val v = ScamCheck.checkBlocking(store, m.text, m.sender, m.app)
+            ScamCheck.log(store, m.id, m.app, m.sender, m.text, v, "auto")
+            val item = JSONObject().put("id", m.id).put("app", m.app).put("sender", m.sender).put("text", m.text).put("v", v.toJson())
+            when (v.level) {
+                "danger" -> main.post { ScamCheck.alert(this, item) }
+                "careful" -> if (m.action != null) main.post { MessageHub.listener?.invoke(m.copy(warn = v.title), null) }
+                else -> if (m.action != null) main.post { MessageHub.listener?.invoke(m, null) }
+            }
+        }
     }
+
+    override fun onDestroy() { pool.shutdownNow(); super.onDestroy() }
 
     private fun autoReply(store: Store, m: Incoming) {
         val base = store.autoMessage.ifBlank { "I'm busy right now, I'll reply soon." }

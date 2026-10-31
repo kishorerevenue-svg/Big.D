@@ -38,7 +38,13 @@ module.exports = function makeFiles({ DATA_DIR }) {
     const blocks = Array.isArray(doc.blocks) ? doc.blocks.slice(0, 200) : [];
     for (const b of blocks) {
       if (!b || typeof b !== "object") continue;
-      if (b.h) children.push(new Paragraph({ children: runs(b.h, { bold: true, size: 28 }), heading: HeadingLevel.HEADING_2, alignment: b.align === "left" ? AlignmentType.LEFT : AlignmentType.CENTER, spacing: { before: 120, after: 160 } }));
+      if (b.head) children.push(new Paragraph({ children: runs(b.head, { bold: true, size: 30 }), alignment: AlignmentType.CENTER, spacing: { after: 240 },
+        border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: "1C2140", space: 6 } } }));
+      else if (b.sub) children.push(new Paragraph({ children: [new docx.TextRun({ text: "Sub:\t", bold: true, font: FONT, size: 24 }), ...runs(b.sub, { bold: true })],
+        indent: { left: 1440, hanging: 1440 }, tabStops: [{ type: "left", position: 1440 }], spacing: { before: 120, after: 120 } }));
+      else if (b.ref) children.push(new Paragraph({ children: [new docx.TextRun({ text: "Ref:\t", bold: true, font: FONT, size: 24 }), ...runs(b.ref)],
+        indent: { left: 1440, hanging: 1440 }, tabStops: [{ type: "left", position: 1440 }], spacing: { after: 160 } }));
+      else if (b.h) children.push(new Paragraph({ children: runs(b.h, { bold: true, size: 28 }), heading: HeadingLevel.HEADING_2, alignment: b.align === "left" ? AlignmentType.LEFT : AlignmentType.CENTER, spacing: { before: 120, after: 160 } }));
       else if (b.right) children.push(new Paragraph({ children: runs(b.right), alignment: AlignmentType.RIGHT, spacing: { after: 80 } }));
       else if (b.center) children.push(new Paragraph({ children: runs(b.center), alignment: AlignmentType.CENTER, spacing: { after: 80 } }));
       else if (b.sign) children.push(new Paragraph({ children: runs(b.sign, { bold: true }), alignment: AlignmentType.RIGHT, spacing: { before: 480 } }));

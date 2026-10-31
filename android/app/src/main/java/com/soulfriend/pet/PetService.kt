@@ -55,6 +55,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_SCREEN_DONE = "com.soulfriend.pet.SCREEN_DONE"
         const val ACTION_REMOTE = "com.soulfriend.pet.REMOTE"
         const val ACTION_VOICE_MODE = "com.soulfriend.pet.VOICE_MODE"
+        const val ACTION_DANGER = "com.soulfriend.pet.DANGER"
+        const val ACTION_REPLY = "com.soulfriend.pet.REPLY"
         private const val CHANNEL = "puppy"
     }
 
@@ -124,6 +126,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             ACTION_PHOTO -> { showPetAgain(); intent.getStringExtra("path")?.let { sendPhoto(it, intent.getBooleanExtra("screen", false)) } }
             ACTION_REMOTE -> { if (store.remoteOn) showRemote() else hideRemote() }
             ACTION_VOICE_MODE -> startVoiceMode()
+            ACTION_DANGER -> intent.getStringExtra("item")?.let { try { showDanger(JSONObject(it)) } catch (e: Exception) { } }
+            ACTION_REPLY -> {
+                val m = MessageHub.recent(intent.getStringExtra("id") ?: "")
+                if (m?.action != null) { openMsgCard(m); draft(m, "") }
+                else showBubble("This message can't be answered from here any more. Open the chat app to reply.", 5000)
+            }
             ACTION_SCREEN_DONE -> {
                 showPetAgain(); photoQuestion = ""
                 if (intent.getBooleanExtra("failed", false)) { pet.mood = PuppyView.Mood.SAD; showBubble("I couldn't read the screen this time. Please try again.", 5000) }
@@ -142,7 +150,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         main.removeCallbacksAndMessages(null)
         try { recognizer?.destroy() } catch (e: Exception) { }
         tts?.shutdown()
-        removeBubble(); closePanel(); hideCloseTarget(); hideRemote(); voiceMode = false
+        removeBubble(); closePanel(); hideCloseTarget(); hideRemote(); closeDanger(); voiceMode = false
         try { wm.removeView(pet) } catch (e: Exception) { }
         super.onDestroy()
     }
@@ -496,12 +504,22 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         lastReply = reply
         val done = mutableListOf<String>()
         val arr = json.optJSONArray("actions")
-        if (arr != null) for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { a -> actions.run(a)?.let { done.add(it) } }
+        var replyTo: Pair<Incoming, String>? = null
+        if (arr != null) for (i in 0 until arr.length()) {
+            val a = arr.optJSONObject(i) ?: continue
+            // "send Ravi …": if Ravi just messaged, answer right here with one tap (no need to open WhatsApp)
+            if (a.optString("type") == "whatsapp" && a.optString("number").isBlank() && replyTo == null) {
+                val m = MessageHub.recentFrom(a.optString("contact"))
+                if (m != null) { replyTo = m to a.optString("message"); done.add("Your message to ${m.chat} is ready below. Tap Send ➤"); continue }
+            }
+            actions.run(a)?.let { done.add(it) }
+        }
         var extra = if (done.isEmpty()) "" else "\n\n" + done.joinToString("\n") { "✓ $it" }
         val src = json.optJSONArray("sources")
         if (src != null && src.length() > 0)
             extra += "\n\nSources:\n" + (0 until src.length()).joinToString("\n") { i -> src.optJSONObject(i)?.let { "• " + it.optString("title") + "\n  " + it.optString("url") } ?: "" }
         say(reply, PuppyView.moodOf(json.optString("emotion")), extra)
+        replyTo?.let { (m, text) -> openMsgCard(m); msgInput?.setText(text); msgInput?.setSelection(text.length) }
         panelText?.let { if (panel != null && panelContent.isEmpty()) { it.text = reply + extra; panelTools?.visibility = View.VISIBLE } }
     }
 
@@ -757,12 +775,13 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             showBubble("🤖 Auto-replied to ${m.chat}: $autoSent", 7000)
             return
         }
-        pet.mood = PuppyView.Mood.SURPRISED
+        pet.mood = if (m.warn.isNotBlank()) PuppyView.Mood.SCARED else PuppyView.Mood.SURPRISED
         val who = if (m.group) "${m.sender} (${m.chat})" else m.chat
         showBubble("💬 $who · ${m.app}\n${m.text}", 8000)
         if (store.msgReadAloud && !listening) speak(if (isTelugu(m.text)) "${m.sender}: ${m.text}" else "${m.sender} says: ${m.text}")
         openMsgCard(m)
         draft(m, "")
+        if (m.warn.isNotBlank()) { msgWarn?.text = "🟡 Be careful: ${m.warn}"; msgWarn?.visibility = View.VISIBLE }
     }
 
     private fun draft(m: Incoming, instruction: String) {
@@ -859,6 +878,51 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun closeMsgCard() {
         msgCard?.let { try { wm.removeView(it) } catch (e: Exception) { } }
         msgCard = null; msgText = null; msgInput = null; msgWarn = null; msgAutoBtn = null; msgCurrent = null; replyVoice = false
+    }
+
+    // ---------------- danger alert: a red window for fraud and dangerous messages ----------------
+    private var dangerCard: View? = null
+
+    private fun showDanger(item: JSONObject) {
+        closeDanger()
+        val v = ScamCheck.Verdict.from(item.optJSONObject("v") ?: JSONObject())
+        wake(); pet.mood = PuppyView.Mood.SCARED
+        val red = Color.parseColor("#C62828")
+        val ink = Color.parseColor("#3B0D0D")
+        fun t(s: String, size: Float, color: Int = ink, bold: Boolean = false) = TextView(this).apply {
+            text = s; textSize = size; setTextColor(color); setLineSpacing(0f, 1.15f); if (bold) setTypeface(typeface, Typeface.BOLD)
+        }
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply { setColor(Color.parseColor("#FFF6F6")); cornerRadius = dp(22).toFloat(); setStroke(dp(3), red) }
+            elevation = dp(12).toFloat()
+        }
+        card.addView(t("⚠️  DANGER · ప్రమాదం", 19f, Color.WHITE, true).apply {
+            setPadding(dp(12), dp(8), dp(12), dp(8)); background = GradientDrawable().apply { setColor(red); cornerRadius = dp(12).toFloat() }
+        })
+        card.addView(t(v.title.ifBlank { "This looks like a fraud message" }, 17f, red, true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        card.addView(t("From: ${item.optString("sender")} · ${item.optString("app")}", 13f, Color.parseColor("#7A4A4A")), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+        card.addView(t("“" + item.optString("text").take(240) + "”", 14f).apply {
+            setPadding(dp(10), dp(8), dp(10), dp(8)); background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(12).toFloat() }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        if (v.reasons.isNotEmpty()) card.addView(t("Why · ఎందుకు:\n" + v.reasons.joinToString("\n") { "• $it" }, 14f), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        if (v.advice.isNotEmpty()) card.addView(t("What to do · ఏం చేయాలి:\n" + v.advice.joinToString("\n") { "✓ $it" }, 14f, Color.parseColor("#1D5E3A"), true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        card.addView(row(
+            pill("📞 1930") { closeDanger(); try { startActivity(Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:1930")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { } },
+            pill("🚩 Report") { closeDanger(); try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://sancharsaathi.gov.in/sfc/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { } },
+            pill("OK, I understand", primary = true) { closeDanger(); pet.mood = PuppyView.Mood.HAPPY }
+        ), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
+        val p = overlayParams(minOf(screenW - dp(24), dp(400)), WindowManager.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; x = 0; y = dp(48)
+        }
+        try { wm.addView(card, p); dangerCard = card } catch (e: Exception) { }
+        if (store.voiceOn) speak(if (store.lang == "en") "Careful! This message looks like a fraud. Don't click any link, and never share your OTP."
+            else "జాగ్రత్త! ఈ మెసేజ్ మోసపూరితంగా ఉంది. లింక్ నొక్కవద్దు, OTP ఎవరికీ చెప్పవద్దు.")
+    }
+
+    private fun closeDanger() {
+        dangerCard?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        dangerCard = null
     }
 
     private fun openApp(tab: String = "pet") {
