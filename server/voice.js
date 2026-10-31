@@ -15,6 +15,16 @@ module.exports = function makeVoice({ DATA_DIR }) {
     puppy: ["Puck", 1.05], kitten: ["Leda", 1.05], bunny: ["Aoede", 1.08], panda: ["Kore", 0.95], bear: ["Orus", 0.92],
     fox: ["Zephyr", 1.05], robot: ["Charon", 1.0], parrot: ["Laomedeia", 1.1], mochi: ["Leda", 1.0], kitty: ["Aoede", 1.05]
   };
+  // Bill guard: stop asking Google after this many characters in a month (1 million are free).
+  // Then the pet simply uses the phone's voice until the 1st of next month.
+  const MONTH_CAP = Number(process.env.TTS_MONTHLY_CHARS || 900000);
+  const USAGE_FILE = path.join(DATA_DIR, "tts-usage.json");
+  const thisMonth = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 7); // India month
+  let usage = { month: thisMonth(), chars: 0 };
+  try { usage = JSON.parse(fs.readFileSync(USAGE_FILE, "utf8")); } catch (e) { }
+  function used() { if (usage.month !== thisMonth()) usage = { month: thisMonth(), chars: 0 }; return usage.chars; }
+  function addUsed(n) { used(); usage.chars += n; try { fs.writeFileSync(USAGE_FILE, JSON.stringify(usage)); } catch (e) { } }
+
   const MOOD_SPEED = { excited: 1.06, laughing: 1.06, love: 1.04, proud: 1.04, surprised: 1.08, scared: 1.08, sad: 0.9, crying: 0.9, sleepy: 0.88, yawning: 0.88 };
 
   function clean(text) {
@@ -37,6 +47,7 @@ module.exports = function makeVoice({ DATA_DIR }) {
     const id = crypto.createHash("sha1").update([name, rate, t].join("|")).digest("hex");
     const file = path.join(DIR, id + ".mp3");
     if (fs.existsSync(file)) { fs.utimesSync(file, new Date(), new Date()); return { file }; }
+    if (used() + t.length > MONTH_CAP) throw Object.assign(new Error("monthly voice limit"), { cap: true });
 
     const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
     let r;
@@ -48,6 +59,7 @@ module.exports = function makeVoice({ DATA_DIR }) {
     } finally { clearTimeout(timer); }
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.audioContent) throw new Error((data.error && data.error.message) || ("tts_error " + r.status));
+    addUsed(t.length);
     fs.writeFileSync(file, Buffer.from(data.audioContent, "base64"));
     return { file };
   }
@@ -58,5 +70,5 @@ module.exports = function makeVoice({ DATA_DIR }) {
     for (const f of fs.readdirSync(DIR)) { const p = path.join(DIR, f); try { if (now - fs.statSync(p).mtimeMs > 7 * 86400e3) fs.unlinkSync(p); } catch (e) { } }
   }, 6 * 3600e3).unref();
 
-  return { enabled: !!KEY, speak };
+  return { enabled: !!KEY, speak, usage: () => ({ month: thisMonth(), chars: used(), cap: MONTH_CAP }) };
 };

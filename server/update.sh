@@ -9,7 +9,7 @@ BACKUP_DIR=/root/backups
 
 echo "== $(date) =="
 mkdir -p "$BACKUP_DIR"
-tar czf "$BACKUP_DIR/bigd-$(date +%F).tgz" -C "$SERVER_DIR" .env data 2>/dev/null && echo "backup saved"
+tar czf "$BACKUP_DIR/bigd-$(date +%F).tgz" -C "$SERVER_DIR" --exclude=data/tts .env data 2>/dev/null && echo "backup saved"
 ls -1t "$BACKUP_DIR"/bigd-*.tgz 2>/dev/null | tail -n +8 | xargs -r rm -f
 
 cd "$REPO_DIR" || exit 1
