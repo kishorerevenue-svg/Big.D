@@ -307,10 +307,11 @@ class MainActivity : Activity() {
     }
 
     /** Natural voice on/off, its status on the server, and a test button. */
-    private fun voiceCard() = ui.section("Voice 🔊", "Each pet has its own voice, and it changes with the pet's mood.").apply {
+    private fun voiceCard() = ui.section("Voice 🔊", "A clear, grown-up voice that speeds up a little when your pet is excited and slows down when it's sad.").apply {
         val status = ui.text("Checking the natural voice…", 12.5f, Ui.MUTED)
         put(ui.check("Natural voice (sounds like a real person, Telugu and English)", store.naturalVoice) { store.naturalVoice = it }, 10)
         put(status, 4)
+        put(ui.check("🧸 Cute cartoon voice (higher, like a cartoon character)", store.cuteVoice) { store.cuteVoice = it }, 8)
         put(ui.row(ui.button("▶ Test voice", "primary") {
             if (!Settings.canDrawOverlays(this@MainActivity)) { toast("First allow \"Show over other apps\" below."); return@button }
             if (!PetService.running) startForegroundService(Intent(this@MainActivity, PetService::class.java))
@@ -327,7 +328,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 status.text = when (on) {
                     true -> "✅ Natural voice is ready on your server."
-                    false -> "Natural voice isn't set up on your server yet, so your pet uses the phone's voice for now."
+                    false -> "The natural voice isn't switched on yet: your server needs a free Google key. Until then your pet uses the phone's own voice."
                     null -> "Couldn't reach your server to check the natural voice."
                 }
             }

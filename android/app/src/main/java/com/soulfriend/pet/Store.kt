@@ -51,6 +51,10 @@ class Store(context: Context) {
     var naturalVoice: Boolean
         get() = p.getBoolean("naturalVoice", true)
         set(v) { p.edit().putBoolean("naturalVoice", v).apply() }
+    /** Off = a normal grown-up voice. On = a high, cute cartoon voice. */
+    var cuteVoice: Boolean
+        get() = p.getBoolean("cuteVoice", false)
+        set(v) { p.edit().putBoolean("cuteVoice", v).apply() }
 
     /** Show the Reels remote buttons on screen (Plus edition). */
     var remoteOn: Boolean

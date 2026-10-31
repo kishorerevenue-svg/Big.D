@@ -14,19 +14,26 @@ object PetVoice {
         PuppyView.Kind.KITTY to (1.5f to 1.05f), PuppyView.Kind.CHAMELEON to (1.42f to 1.08f)
     )
 
-    /** (pitch, speed) for the phone's own voice. */
-    fun phone(kind: PuppyView.Kind, mood: PuppyView.Mood): Pair<Float, Float> {
-        val (p, r) = BASE[kind] ?: (1.35f to 1.0f)
-        return when (mood) {
-            PuppyView.Mood.EXCITED, PuppyView.Mood.LAUGHING, PuppyView.Mood.LOVE, PuppyView.Mood.PROUD -> p * 1.06f to r * 1.08f
-            PuppyView.Mood.SAD, PuppyView.Mood.CRYING, PuppyView.Mood.SLEEPY, PuppyView.Mood.YAWNING -> p * 0.94f to r * 0.9f
-            PuppyView.Mood.SCARED, PuppyView.Mood.SURPRISED -> p * 1.04f to r * 1.1f
-            else -> p to r
+    /**
+     * (pitch, speed) for the phone's own voice. [cute] = the high cartoon voice; otherwise a normal
+     * grown-up voice that only changes its speed a little with the mood.
+     */
+    fun phone(kind: PuppyView.Kind, mood: PuppyView.Mood, cute: Boolean): Pair<Float, Float> {
+        val (bp, r) = BASE[kind] ?: (1.35f to 1.0f)
+        val p = if (cute) bp else 1f
+        val speed = if (cute) r else 1f + (r - 1f) * 0.5f
+        val (mp, ms) = when (mood) {
+            PuppyView.Mood.EXCITED, PuppyView.Mood.LAUGHING, PuppyView.Mood.LOVE, PuppyView.Mood.PROUD -> 1.06f to 1.08f
+            PuppyView.Mood.SAD, PuppyView.Mood.CRYING, PuppyView.Mood.SLEEPY, PuppyView.Mood.YAWNING -> 0.94f to 0.9f
+            PuppyView.Mood.SCARED, PuppyView.Mood.SURPRISED -> 1.04f to 1.1f
+            else -> 1f to 1f
         }
+        return if (cute) p * mp to speed * ms else 1f to speed * (1f + (ms - 1f) * 0.6f)
     }
 
-    /** Pitch for the natural (human) voice: only a gentle shift, so it stays clear. */
-    fun naturalPitch(kind: PuppyView.Kind, mood: PuppyView.Mood): Float = 1f + (phone(kind, mood).first - 1f) * 0.35f
+    /** Pitch for the natural (human) voice: unchanged, or a gentle lift for the cute voice. */
+    fun naturalPitch(kind: PuppyView.Kind, mood: PuppyView.Mood, cute: Boolean): Float =
+        if (cute) 1f + (phone(kind, mood, true).first - 1f) * 0.35f else 1f
 }
 
 /** Plays the natural voice made by the server (an MP3), with the pet's pitch. */

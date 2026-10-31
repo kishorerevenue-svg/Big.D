@@ -358,7 +358,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     if (seq != speakSeq) { f?.delete(); return@post }
                     if (f == null) { speakPhone(text); return@post }
                     try { tts?.stop() } catch (e: Exception) { }
-                    natural.play(f, PetVoice.naturalPitch(kind, mood),
+                    natural.play(f, PetVoice.naturalPitch(kind, mood, store.cuteVoice),
                         onStart = { pet.talking = true },
                         onDone = { if (seq == speakSeq) pet.talking = false },
                         onFail = { if (seq == speakSeq) speakPhone(text) })
@@ -382,7 +382,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             fakeTalk(text); return
         }
-        val (pitch, rate) = PetVoice.phone(pet.kind, pet.mood)
+        val (pitch, rate) = PetVoice.phone(pet.kind, pet.mood, store.cuteVoice)
         t.setPitch(pitch); t.setSpeechRate(rate)
         t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "u" + (++utter))
     }
