@@ -52,6 +52,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_LISTEN = "com.soulfriend.pet.LISTEN"
         const val ACTION_PHOTO = "com.soulfriend.pet.PHOTO"
         const val ACTION_PET = "com.soulfriend.pet.PET"
+        const val ACTION_SCREEN_DONE = "com.soulfriend.pet.SCREEN_DONE"
         private const val CHANNEL = "puppy"
     }
 
@@ -114,7 +115,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 intent.getStringExtra("mood")?.let { PuppyView.moodOf(it) } ?: PuppyView.Mood.SURPRISED,
                 prefix = intent.getStringExtra("prefix") ?: "⏰ ")
             ACTION_LISTEN -> startListening()
-            ACTION_PHOTO -> intent.getStringExtra("path")?.let { sendPhoto(it) }
+            ACTION_PHOTO -> { showPetAgain(); intent.getStringExtra("path")?.let { sendPhoto(it, intent.getBooleanExtra("screen", false)) } }
+            ACTION_SCREEN_DONE -> {
+                showPetAgain(); photoQuestion = ""
+                if (intent.getBooleanExtra("failed", false)) { pet.mood = PuppyView.Mood.SAD; showBubble("I couldn't read the screen this time. Please try again.", 5000) }
+                else { pet.mood = PuppyView.Mood.HAPPY; showBubble("Okay, I won't look at your screen.", 3000) }
+            }
             ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble("Hi! I'm your ${pet.kind.label.lowercase()} now!", 4000) }
         }
         return START_STICKY
@@ -405,6 +411,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     // ---------------- asking the brain ----------------
     private fun send(text: String) {
+        if (ScreenCaptureService.wantsScreen(text)) { readScreen(text); return }
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
         showBubble("“$text”\n…", 0)
@@ -413,14 +420,29 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         })
     }
 
-    private fun sendPhoto(path: String) {
+    /** "Read my screen": hide the pet, let Android ask permission, take one picture of the screen. */
+    private fun readScreen(question: String) {
+        photoQuestion = question
+        closePanel(); closeMsgCard(); removeBubble(); hush()
+        pet.visibility = View.INVISIBLE
+        main.postDelayed({ showPetAgain() }, 40_000)
+        try { ScreenCaptureService.start(this) } catch (e: Exception) { showPetAgain(); showBubble("Screen reading isn't available on this phone.", 5000) }
+    }
+
+    private fun showPetAgain() { pet.visibility = View.VISIBLE }
+
+    private fun sendPhoto(path: String, screen: Boolean = false) {
         val b64 = try { android.util.Base64.encodeToString(java.io.File(path).readBytes(), android.util.Base64.NO_WRAP) } catch (e: Exception) { null }
-        if (b64 == null) { showBubble("I couldn't open that photo.", 5000); return }
-        val q = photoQuestion.ifBlank { if (store.lang == "te") "ఈ ఫోటోలో ఏముందో సులభంగా చెప్పు." else "What is in this photo? Explain it simply." }
+        try { if (screen) java.io.File(path).delete() } catch (e: Exception) { }
+        if (b64 == null) { showBubble("I couldn't open that picture.", 5000); return }
+        val ask = photoQuestion.ifBlank { if (store.lang == "te") "నా స్క్రీన్‌పై ఏముందో చెప్పు" else "What is on my screen?" }
+        val q = if (screen) {
+            "[This picture is a screenshot of my phone screen. Ignore the status bar.] $ask\nExplain simply. If a message is in another language, translate it. If it looks like a scam, fake news or asks for OTP/money, warn me clearly."
+        } else photoQuestion.ifBlank { if (store.lang == "te") "ఈ ఫోటోలో ఏముందో సులభంగా చెప్పు." else "What is in this photo? Explain it simply." }
         photoQuestion = ""
         lastQuestion = q
         pet.mood = PuppyView.Mood.THINKING
-        showBubble("📷 “$q”\n…", 0)
+        showBubble((if (screen) "📱 “$ask”" else "📷 “$q”") + "\n…", 0)
         brain.ask(q, onReply = { json -> handleReply(json) }, onError = { err -> pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }, photo = Pair("image/jpeg", b64))
     }
 
@@ -510,7 +532,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         card.addView(tools, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
 
         val input = EditText(this).apply {
-            hint = "Type, or ask about a photo…"; textSize = 15f; setSingleLine(false); maxLines = 3
+            hint = "Type, or ask about a photo 📷 or your screen 📱…"; textSize = 15f; setSingleLine(false); maxLines = 3
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             imeOptions = EditorInfo.IME_ACTION_SEND
             setTextColor(Color.parseColor("#1C2140")); setHintTextColor(Color.parseColor("#8A90B0"))
@@ -528,11 +550,16 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             photoQuestion = input.text.toString().trim(); input.setText(""); hideKeyboard(input); closePanel()
             try { startActivity(Intent(this, PhotoActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
         }
+        val screen = pill("📱") {
+            val q = input.text.toString().trim(); input.setText(""); hideKeyboard(input)
+            readScreen(q)
+        }
         val sendBtn = pill("Send", primary = true) { sendIt() }
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(input, LinearLayout.LayoutParams(0, -2, 1f))
             addView(photo, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+            addView(screen, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
             addView(mic, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
             addView(sendBtn, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
         }
