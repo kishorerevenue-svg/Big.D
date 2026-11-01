@@ -86,61 +86,63 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
     } catch (e) { return null; }
   }
   const host = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
-  /** Opens a link the way a phone browser would. Returns the HTTP status (0 = it didn't open). */
-  async function pageStatus(u) {
-    try {
-      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 9000);
-      const r = await fetch(u, { redirect: "follow", signal: ctl.signal, headers: {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml", "Accept-Language": "te-IN,te;q=0.9,en-IN;q=0.8" } });
-      clearTimeout(t);
-      try { if (r.body) await r.body.cancel(); } catch (e) { }
-      return r.status;
-    } catch (e) { return 0; }
-  }
   /** The same page, ignoring "#…", tracking codes and a last "/". */
   const norm = u => { try { const x = new URL(u); x.hash = ""; [...x.searchParams.keys()].filter(k => /^utm_|^fbclid$|^gclid$/.test(k)).forEach(k => x.searchParams.delete(k)); return x.toString().replace(/\/$/, ""); } catch (e) { return ""; } };
 
   // ---------- asking Claude (with web search) ----------
-  async function claude(system, user, searches) {
-    const body = { model: MEDIA_MODEL, max_tokens: 9000, system, messages: [{ role: "user", content: user }] };
+  async function claude(system, user, searches, maxTokens = 9000) {
+    const body = { model: MEDIA_MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] };
     if (searches > 0) body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: searches, user_location: { type: "approximate", country: "IN", timezone: "Asia/Kolkata" } }];
-    const urls = new Set(); let data = null;
+    const pages = new Map(); let data = null; const texts = [];
     for (let round = 0; round < 3; round++) {
       const r = await fetch(API_BASE + "/v1/messages", { method: "POST",
         headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify(body) });
       data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error((data.error && data.error.message) || "api_error " + r.status);
       for (const c of data.content || []) {
-        if (c.type === "web_search_tool_result" && Array.isArray(c.content)) c.content.forEach(x => x && x.url && urls.add(x.url));
-        for (const cit of c.citations || []) if (cit.url) urls.add(cit.url);
+        if (c.type === "web_search_tool_result" && Array.isArray(c.content)) c.content.forEach(x => x && x.url && !pages.has(x.url) && pages.set(x.url, str(x.title, 160)));
+        if (c.type === "text") texts.push(c.text);
       }
       if (data.stop_reason !== "pause_turn") break;
       body.messages = body.messages.concat([{ role: "assistant", content: data.content }]);
     }
-    const content = data.content || [];
-    let last = -1; content.forEach((c, i) => { if (c.type === "web_search_tool_result") last = i; });
-    let text = content.slice(last + 1).filter(c => c.type === "text").map(c => c.text).join("").trim();
-    if (!text.includes("{")) text = content.filter(c => c.type === "text").map(c => c.text).join("").trim();
-    text = text.replace(/```(?:json)?/gi, "");
-    let obj = null;
-    try { obj = JSON.parse(text); } catch (e) { const a = text.indexOf("{"), b = text.lastIndexOf("}"); if (a >= 0 && b > a) { try { obj = JSON.parse(text.slice(a, b + 1)); } catch (e2) { } } }
-    return { obj, urls };
+    return { text: texts.join("").trim(), pages: [...pages].map(([url, title]) => ({ url, title })), stop: data && data.stop_reason };
+  }
+  function parseJson(text) {
+    const t = String(text || "").replace(/```(?:json)?/gi, "");
+    try { return JSON.parse(t); } catch (e) { }
+    const a = t.indexOf("{"), b = t.lastIndexOf("}");
+    if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) { } }
+    return null;
   }
 
-  function prompt(key, n, recent) {
+  const TELUGU = "simple, everyday Telugu (Telugu script; English only for names, numbers and words people normally say in English)";
+  const SAFE = "Be accurate: never invent facts, dates, numbers, names or quotes. Nothing hateful, no political attacks, nothing adult or unsafe for families.";
+
+  /** Step 1 (sections that use the internet): search and write research notes. */
+  function researchPrompt(key, n, recent) {
     const c = CATS[key];
-    const date = istNow().toISOString().slice(0, 10);
+    return `You are a careful researcher for BigD AI, a Telugu app for ordinary people in Andhra Pradesh and Telangana.
+Section: ${c.en}. ${c.brief}
+Today's date: ${istNow().toISOString().slice(0, 10)}.
+Search the internet and find ${n + 2} different, real, recent stories or facts for this section.${key === "movies" ? " Also search YouTube for the official trailers of these films." : ""}
+Then write short research notes in English: for each story, the key facts (what, who, where, when, numbers) and the exact URL of the page it came from. Leave out anything you are not sure about.
+Skip stories already covered: ${recent.length ? recent.join(" | ") : "(none yet)"}`;
+  }
+
+  /** Step 2 (or the only step for kids and health): write the Telugu posts as JSON. */
+  function writePrompt(key, n, recent, research) {
+    const c = CATS[key];
     return `You write posts for the "Media" page of BigD AI, a Telugu app used by ordinary people in Andhra Pradesh and Telangana, including elders.
 Section: ${c.en} (${c.te}). ${c.brief}
-Today's date: ${date}.
-Write ${n} different posts in simple, everyday Telugu (Telugu script; English only for names, numbers and words people normally say in English).
-${c.search ? `Search the internet for real, recent information first. Every post must be based on a page you found, written completely in your own words (never copy sentences). Put that page's URL in "url" and the website's name in "source". If you find an official YouTube video that really belongs with a post (an official trailer, or a news channel's own video), put its full https://www.youtube.com/watch?v=... link in "youtube"; only links you actually saw, otherwise leave it empty.`
-  : `Write original content, not copied from anywhere. Leave "url", "source" and "youtube" empty.`}
-Be accurate: never invent facts, dates, numbers, names, quotes or links. Nothing hateful, political attacks, adult or unsafe content.
+Today's date: ${istNow().toISOString().slice(0, 10)}.
+Write ${n} different posts in ${TELUGU}.
+${research ? `Use ONLY the facts in the research notes you are given, written fully in your own words. For each post set "src" to the number of the page (from the numbered page list) that the facts came from. If the list has an official YouTube video for that post (an official trailer, or a news channel's own video), set "video" to its number, otherwise 0.`
+  : `Write original content, not copied from anywhere. Set "src" and "video" to 0.`}
+${SAFE}
 Do not repeat these recent posts: ${recent.length ? recent.join(" | ") : "(none yet)"}
-Reply with only a JSON object:
-{"posts":[{"title":"<Telugu title, at most 12 words>","body":"<Telugu text, 50 to 110 words>","emoji":"<one emoji that fits>","source":"<website name or empty>","url":"<https link or empty>","youtube":"<YouTube link or empty>"}]}`;
+Reply with only a JSON object, no other text:
+{"posts":[{"title":"<Telugu title, at most 12 words>","body":"<Telugu text, 50 to 110 words>","emoji":"<one emoji that fits>","src":<page number or 0>,"video":<page number or 0>}]}`;
   }
 
   async function generate(key, n) {
@@ -150,43 +152,50 @@ Reply with only a JSON object:
     if (db.calls.n >= MAX_CALLS_DAY) return 0;
     db.calls.n++; save();
     const recent = db.items.filter(i => i.cat === key).sort((a, b) => b.at - a.at).slice(0, 25).map(i => i.title);
-    const { obj, urls } = await claude(prompt(key, n, recent), `Write ${n} new ${c.en} posts now.`, c.search);
-    const key2 = u => { const n0 = norm(u); try { return decodeURIComponent(n0).toLowerCase(); } catch (e) { return n0.toLowerCase(); } };
-    const found = new Set([...urls].map(key2));
-    const foundHosts = new Set([...urls].map(host));
-    const why = { link: 0, repeat: 0, short: 0 }; let example = "";
+
+    let pages = [], obj = null, info = "";
+    if (c.search) {
+      const r1 = await claude(researchPrompt(key, n, recent), `Find ${n + 2} ${c.en} stories for today.`, c.search, 6000);
+      pages = r1.pages.slice(0, 40);
+      if (!pages.length || r1.text.length < 40) { console.log(`Media: added 0 ${key} post(s) · the search found nothing (stop: ${r1.stop})`); return 0; }
+      const list = pages.map((p, i) => `${i + 1}. ${p.title} — ${p.url}`).join("\n");
+      const r2 = await claude(writePrompt(key, n, recent, true), `Numbered page list:\n${list}\n\nResearch notes:\n${r1.text.slice(0, 12000)}`, 0);
+      obj = parseJson(r2.text); info = ` · found ${pages.length} pages`;
+      if (!obj) console.log(`Media: ${key} answer was not in the right format (stop: ${r2.stop}): ${r2.text.slice(0, 160).replace(/\s+/g, " ")}`);
+    } else {
+      const r = await claude(writePrompt(key, n, recent, false), `Write ${n} new ${c.en} posts now.`, 0);
+      obj = parseJson(r.text);
+      if (!obj) console.log(`Media: ${key} answer was not in the right format (stop: ${r.stop}): ${r.text.slice(0, 160).replace(/\s+/g, " ")}`);
+    }
+
     const seenTitles = new Set(db.items.filter(i => i.cat === key).map(i => i.title.replace(/\s+/g, "")));
     const seenUrls = new Set(db.items.filter(i => i.url).map(i => i.url));
-    let added = 0;
+    const why = { link: 0, repeat: 0, short: 0 };
     const posts = obj && Array.isArray(obj.posts) ? obj.posts : [];
+    let added = 0;
     for (const p of posts.slice(0, n + 2)) {
       const title = str(p && p.title, 140), body = str(p && p.body, 1400);
       if (title.length < 4 || body.length < 30) { why.short++; continue; }
       if (seenTitles.has(title.replace(/\s+/g, ""))) { why.repeat++; continue; }
-      let url = str(p.url, 500); let source = str(p.source, 60);
+      let url = "", source = "", yt = null;
       if (c.search) {
-        // keep only real pages: one the search found, or one that really opens (no made-up links)
-        let ok = /^https?:\/\//.test(url) && found.has(key2(url));
-        if (!ok && /^https?:\/\//.test(url)) {
-          const st = await pageStatus(url);
-          ok = (st >= 200 && st < 400) || (foundHosts.has(host(url)) && [401, 403, 429].includes(st));
-        }
-        if (!ok) { why.link++; if (!example) example = url || "(no link)"; continue; }
-        url = norm(url) || url;   // without tracking codes
+        // the link is picked by number from the pages the search really found, so it can't be made up
+        const pg = pages[Number(p.src) - 1];
+        if (!pg || ytId(pg.url)) { why.link++; continue; }
+        url = norm(pg.url) || pg.url; source = host(url);
         if (seenUrls.has(url)) { why.repeat++; continue; }
-        if (!source) source = host(url);
-      } else { url = ""; source = ""; }
-      let yt = null;
-      const vid = ytId(p.youtube);
-      if (vid && c.search) yt = await checkVideo(vid);
+        const vp = pages[Number(p.video) - 1];
+        const vid = vp ? ytId(vp.url) : "";
+        if (vid) yt = await checkVideo(vid);
+      }
       const item = { id: db.next++, cat: key, at: Date.now() - added * 1000, title, body, emoji: str(p.emoji, 8), source, url, yt, by: "auto", likes: [] };
       db.items.push(item); seenTitles.add(title.replace(/\s+/g, "")); if (url) seenUrls.add(url);
       added++;
       if (added >= n) break;
     }
     prune(); save();
-    console.log(`Media: added ${added} ${key} post(s)` + (c.search ? ` · AI wrote ${posts.length}, searched ${urls.size} pages` : ` · AI wrote ${posts.length}`) +
-      (why.link || why.repeat || why.short ? ` · skipped: ${why.link} bad link, ${why.repeat} repeat, ${why.short} too short` : "") + (example ? ` · e.g. ${example.slice(0, 120)}` : ""));
+    console.log(`Media: added ${added} ${key} post(s)${info} · AI wrote ${posts.length}` +
+      (why.link || why.repeat || why.short ? ` · skipped: ${why.link} no source, ${why.repeat} repeat, ${why.short} too short` : ""));
     return added;
   }
 
