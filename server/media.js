@@ -14,7 +14,7 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
   const FILE = path.join(DATA_DIR, "media.json");
   const AUTO = String(process.env.MEDIA_AUTO || "true") !== "false";
   const SEED = Number(process.env.MEDIA_SEED || 12);
-  const MAX_CALLS_DAY = Number(process.env.MEDIA_MAX_CALLS_DAY || 30);
+  const MAX_CALLS_DAY = Number(process.env.MEDIA_MAX_CALLS_DAY || 40);
   const MEDIA_MODEL = process.env.MEDIA_MODEL || MODEL;
   const YT_OEMBED = process.env.YT_OEMBED_BASE || "https://www.youtube.com";
   const str = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
@@ -44,7 +44,7 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
   };
 
   // ---------- storage ----------
-  let db = { next: 1, items: [], calls: { day: "", n: 0 }, lastDaily: "", seedTries: { day: "" } };
+  let db = { next: 1, items: [], calls: { day: "", n: 0 }, lastDaily: "", seedTries2: { day: "" } };
   try { db = Object.assign(db, JSON.parse(fs.readFileSync(FILE, "utf8"))); } catch (e) { }
   let saveTimer = null;
   function save() {
@@ -86,12 +86,24 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
     } catch (e) { return null; }
   }
   const host = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
+  /** Opens a link the way a phone browser would. Returns the HTTP status (0 = it didn't open). */
+  async function pageStatus(u) {
+    try {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 9000);
+      const r = await fetch(u, { redirect: "follow", signal: ctl.signal, headers: {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml", "Accept-Language": "te-IN,te;q=0.9,en-IN;q=0.8" } });
+      clearTimeout(t);
+      try { if (r.body) await r.body.cancel(); } catch (e) { }
+      return r.status;
+    } catch (e) { return 0; }
+  }
   /** The same page, ignoring "#…", tracking codes and a last "/". */
   const norm = u => { try { const x = new URL(u); x.hash = ""; [...x.searchParams.keys()].filter(k => /^utm_|^fbclid$|^gclid$/.test(k)).forEach(k => x.searchParams.delete(k)); return x.toString().replace(/\/$/, ""); } catch (e) { return ""; } };
 
   // ---------- asking Claude (with web search) ----------
   async function claude(system, user, searches) {
-    const body = { model: MEDIA_MODEL, max_tokens: 6000, system, messages: [{ role: "user", content: user }] };
+    const body = { model: MEDIA_MODEL, max_tokens: 9000, system, messages: [{ role: "user", content: user }] };
     if (searches > 0) body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: searches, user_location: { type: "approximate", country: "IN", timezone: "Asia/Kolkata" } }];
     const urls = new Set(); let data = null;
     for (let round = 0; round < 3; round++) {
@@ -108,7 +120,9 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
     }
     const content = data.content || [];
     let last = -1; content.forEach((c, i) => { if (c.type === "web_search_tool_result") last = i; });
-    const text = content.slice(last + 1).filter(c => c.type === "text").map(c => c.text).join("").trim();
+    let text = content.slice(last + 1).filter(c => c.type === "text").map(c => c.text).join("").trim();
+    if (!text.includes("{")) text = content.filter(c => c.type === "text").map(c => c.text).join("").trim();
+    text = text.replace(/```(?:json)?/gi, "");
     let obj = null;
     try { obj = JSON.parse(text); } catch (e) { const a = text.indexOf("{"), b = text.lastIndexOf("}"); if (a >= 0 && b > a) { try { obj = JSON.parse(text.slice(a, b + 1)); } catch (e2) { } } }
     return { obj, urls };
@@ -137,18 +151,29 @@ Reply with only a JSON object:
     db.calls.n++; save();
     const recent = db.items.filter(i => i.cat === key).sort((a, b) => b.at - a.at).slice(0, 25).map(i => i.title);
     const { obj, urls } = await claude(prompt(key, n, recent), `Write ${n} new ${c.en} posts now.`, c.search);
-    const found = new Set([...urls].map(norm));
+    const key2 = u => { const n0 = norm(u); try { return decodeURIComponent(n0).toLowerCase(); } catch (e) { return n0.toLowerCase(); } };
+    const found = new Set([...urls].map(key2));
+    const foundHosts = new Set([...urls].map(host));
+    const why = { link: 0, repeat: 0, short: 0 }; let example = "";
     const seenTitles = new Set(db.items.filter(i => i.cat === key).map(i => i.title.replace(/\s+/g, "")));
     const seenUrls = new Set(db.items.filter(i => i.url).map(i => i.url));
     let added = 0;
-    for (const p of (obj && Array.isArray(obj.posts) ? obj.posts : []).slice(0, n + 2)) {
+    const posts = obj && Array.isArray(obj.posts) ? obj.posts : [];
+    for (const p of posts.slice(0, n + 2)) {
       const title = str(p && p.title, 140), body = str(p && p.body, 1400);
-      if (title.length < 4 || body.length < 30 || seenTitles.has(title.replace(/\s+/g, ""))) continue;
+      if (title.length < 4 || body.length < 30) { why.short++; continue; }
+      if (seenTitles.has(title.replace(/\s+/g, ""))) { why.repeat++; continue; }
       let url = str(p.url, 500); let source = str(p.source, 60);
       if (c.search) {
-        // only pages that really came back from the search (no made-up links)
-        if (!/^https?:\/\//.test(url) || !found.has(norm(url))) continue;
-        if (seenUrls.has(url)) continue;
+        // keep only real pages: one the search found, or one that really opens (no made-up links)
+        let ok = /^https?:\/\//.test(url) && found.has(key2(url));
+        if (!ok && /^https?:\/\//.test(url)) {
+          const st = await pageStatus(url);
+          ok = (st >= 200 && st < 400) || (foundHosts.has(host(url)) && [401, 403, 429].includes(st));
+        }
+        if (!ok) { why.link++; if (!example) example = url || "(no link)"; continue; }
+        url = norm(url) || url;   // without tracking codes
+        if (seenUrls.has(url)) { why.repeat++; continue; }
         if (!source) source = host(url);
       } else { url = ""; source = ""; }
       let yt = null;
@@ -160,7 +185,8 @@ Reply with only a JSON object:
       if (added >= n) break;
     }
     prune(); save();
-    console.log(`Media: added ${added} ${key} post(s)`);
+    console.log(`Media: added ${added} ${key} post(s)` + (c.search ? ` · AI wrote ${posts.length}, searched ${urls.size} pages` : ` · AI wrote ${posts.length}`) +
+      (why.link || why.repeat || why.short ? ` · skipped: ${why.link} bad link, ${why.repeat} repeat, ${why.short} too short` : "") + (example ? ` · e.g. ${example.slice(0, 120)}` : ""));
     return added;
   }
 
@@ -182,13 +208,14 @@ Reply with only a JSON object:
   /** Fill empty sections, and add the morning posts once a day after 6 AM (India time). */
   function tick() {
     if (!AUTO || !API_KEY) return;
-    if (!db.seedTries || db.seedTries.day !== today()) db.seedTries = { day: today() };
-    for (const key of Object.keys(CATS)) {
+    if (!db.seedTries2 || db.seedTries2.day !== today()) db.seedTries2 = { day: today() };
+    const tries = db.seedTries2;
+    for (const [key, c] of Object.entries(CATS)) {
       const have = db.items.filter(i => i.cat === key).length;
       // fill a section that has few posts (at most 3 tries a day, so a hard topic can't use up the credit)
-      if (have < SEED && (db.seedTries[key] || 0) < 3 && !queue.some(q => q.key === key)) {
-        db.seedTries[key] = (db.seedTries[key] || 0) + 1; save();
-        enqueue(key, Math.min(6, SEED - have));
+      if (have < SEED && (tries[key] || 0) < 3 && !queue.some(q => q.key === key)) {
+        tries[key] = (tries[key] || 0) + 1; save();
+        enqueue(key, Math.min(c.search ? 5 : 6, SEED - have));
       }
     }
     if (db.lastDaily !== today() && istNow().getUTCHours() >= 6) {
