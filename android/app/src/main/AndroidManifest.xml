@@ -73,6 +73,32 @@
             </intent-filter>
         </activity>
 
+        <!-- Share › "Post on BigD Media": text, a link (YouTube, Instagram, Facebook, X…) or photos -->
+        <activity-alias
+            android:name=".PostToMedia"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:label="Post on BigD Media">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Media: photos and videos full screen (swipe up and down) -->
+        <activity
+            android:name=".MediaViewer"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
         <activity
             android:name=".PhotoActivity"
             android:exported="false"

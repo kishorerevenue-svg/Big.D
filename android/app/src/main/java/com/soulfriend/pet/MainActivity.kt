@@ -20,6 +20,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -51,7 +52,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 
-/** The BigD AI app: Home, Pet, Tasks, Files, Messages, Vault and Community pages with a bottom menu. */
+/** The BigD AI app: Home, Pet, Tasks, Files, Messages, Vault and Media pages with a bottom menu. */
 class MainActivity : Activity() {
 
     internal lateinit var store: Store
@@ -60,6 +61,7 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
     private lateinit var nav: LinearLayout
+    private lateinit var fab: TextView
     internal val fmt: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
     internal val io = Executors.newSingleThreadExecutor()
 
@@ -69,15 +71,18 @@ class MainActivity : Activity() {
     internal var leavingForSystemScreen = false
     private var pendingShare: String? = null
     private var pendingLetter: String? = null
+    private var pendingPost: Pair<String, List<Uri>>? = null
+    private var backCb: Any? = null
     private var renderedTab = ""
 
     internal val letter by lazy { LetterHelper(this) }
     internal val messages by lazy { MessagesPage(this) }
-    internal val community by lazy { CommunityPage(this) }
-    internal val media by lazy { MediaPage(this) }
+    private var socialPage: SocialPage? = null
+    internal val social: SocialPage get() = socialPage ?: SocialPage(this).also { socialPage = it }
 
     companion object {
         private const val REQ_PHOTO = 4402
+        private const val REQ_SOCIAL_PHOTO = 4403
         /** key, name, icon. The user can drag them into another order (long-press a tab). */
         val TABS = listOf(
             Triple("home", "Home", "🏠"), Triple("pet", "Pet", "🐾"), Triple("tasks", "Tasks", "✅"), Triple("files", "Files", "📄"),
@@ -108,9 +113,22 @@ class MainActivity : Activity() {
                 setDuration(220)
             }
         }
+        // the round + button on the Media page (write a post)
+        fab = TextView(this).apply {
+            text = "+"; textSize = 30f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; includeFontPadding = false
+            typeface = Typeface.DEFAULT_BOLD; contentDescription = "New post"; visibility = View.GONE
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.TEAL) }
+            elevation = dp(8).toFloat()
+            setOnClickListener { social.startCompose() }
+        }
+        scroll.setOnScrollChangeListener { _, _, _, _, _ -> if (tab == "feedback") socialPage?.checkSeen() }
+        val body = FrameLayout(this).apply {
+            addView(scroll, FrameLayout.LayoutParams(-1, -1))
+            addView(fab, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(18), dp(18)) })
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(Ui.BG); fitsSystemWindows = true
-            addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+            addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
             addView(nav, LinearLayout.LayoutParams(-1, -2))
         }
         setContentView(root)
@@ -119,16 +137,34 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent?) { super.onNewIntent(intent); setIntent(intent); handleIntent(intent) }
 
-    /** Opens a page, a letter request from the pet, or a message shared to BigD AI from another app. */
+    /** Opens a page, a letter request from the pet, or something shared to BigD AI from another app. */
     private fun handleIntent(i: Intent?) {
         if (i == null) return
         i.getStringExtra("tab")?.let { tab = it }
         i.getStringExtra("letter")?.let { tab = "files"; pendingLetter = it; i.removeExtra("letter") }
-        if (i.action == Intent.ACTION_SEND && i.type?.startsWith("text/") == true) {
+        val toMedia = i.component?.className?.endsWith(".PostToMedia") == true
+        if (toMedia && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
+            // Share › "Post on BigD Media": text, a link (YouTube, Instagram…) or photos
+            val t = i.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+            val pics = if (i.type?.startsWith("image/") == true) sharedImages(i) else emptyList()
+            if (t.isNotBlank() || pics.isNotEmpty()) { tab = "feedback"; pendingPost = t to pics }
+            i.action = Intent.ACTION_MAIN
+        } else if (i.action == Intent.ACTION_SEND && i.type?.startsWith("text/") == true) {
             val t = i.getStringExtra(Intent.EXTRA_TEXT)?.trim()
             if (!t.isNullOrBlank()) { tab = "messages"; pendingShare = t }
             i.action = Intent.ACTION_MAIN
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun sharedImages(i: Intent): List<Uri> {
+        val out = ArrayList<Uri>()
+        try {
+            if (i.action == Intent.ACTION_SEND_MULTIPLE) i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let { out.addAll(it) }
+            else i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { out.add(it) }
+            if (out.isEmpty()) i.clipData?.let { c -> for (k in 0 until c.itemCount) c.getItemAt(k).uri?.let { out.add(it) } }
+        } catch (e: Exception) { }
+        return out.take(4)
     }
 
     override fun onResume() {
@@ -136,11 +172,13 @@ class MainActivity : Activity() {
         if (store.onboarded) {
             pendingShare?.let { pendingShare = null; messages.checkShared(it) }
             pendingLetter?.let { pendingLetter = null; letter.start(it) }
+            pendingPost?.let { pendingPost = null; social.fromShare(it.first, it.second) }
         }
     }
 
     override fun onPause() {
         super.onPause()
+        socialPage?.flushViews()
         letter.stop(); stopListening(); stopTalking()
         if (pickingPhotoFor == null && !leavingForSystemScreen) VaultLock.lock()
     }
@@ -153,6 +191,8 @@ class MainActivity : Activity() {
 
     internal fun go(t: String) { tab = t; render(); scroll.scrollTo(0, 0) }
     internal fun scrollTop() { scroll.post { scroll.scrollTo(0, 0) } }
+    internal val scrollY: Int get() = scroll.scrollY
+    internal fun scrollToY(y: Int) { scroll.post { scroll.scrollTo(0, y) } }
     /** Scrolls so that [v] is in view (a little below the top). */
     internal fun scrollToView(v: View) {
         scroll.post {
@@ -165,7 +205,7 @@ class MainActivity : Activity() {
     internal fun render() {
         val keepY = if (renderedTab == tab) scroll.scrollY else 0
         content.removeAllViews()
-        if (!store.onboarded) { nav.visibility = View.GONE; secure(false); renderSetup(); renderedTab = ""; return }
+        if (!store.onboarded) { nav.visibility = View.GONE; fab.visibility = View.GONE; secure(false); renderSetup(); renderedTab = ""; updateBack(); return }
         nav.visibility = View.VISIBLE
         buildNav()
         secure(tab == "vault")
@@ -175,11 +215,38 @@ class MainActivity : Activity() {
             "files" -> filesPage()
             "messages" -> messages.build()
             "vault" -> vaultPage()
-            "feedback" -> media.build()
+            "feedback" -> social.build()
             else -> homePage()
         }
         renderedTab = tab
         if (keepY > 0) scroll.post { scroll.scrollTo(0, keepY) }
+        fab.visibility = if (tab == "feedback" && social.showFab) View.VISIBLE else View.GONE
+        if (tab == "feedback") scroll.post { socialPage?.checkSeen() }
+        updateBack()
+    }
+
+    /** Back inside Media (from a profile, a post or the composer) goes to the previous Media screen. */
+    private fun updateBack() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val sub = socialPage?.screen
+        val want = store.onboarded && tab == "feedback" && sub != null && sub != "feed"
+        if (want && backCb == null) {
+            val cb = android.window.OnBackInvokedCallback { if (socialPage?.back() != true) dropBack() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+            backCb = cb
+        } else if (!want) dropBack()
+    }
+
+    private fun dropBack() {
+        if (Build.VERSION.SDK_INT < 33) return
+        (backCb as? android.window.OnBackInvokedCallback)?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
+        backCb = null
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (store.onboarded && tab == "feedback" && social.back()) return
+        @Suppress("DEPRECATION") super.onBackPressed()
     }
 
     /** Blocks screenshots and hides the app preview in Recents while the Vault is on screen. */
@@ -220,7 +287,7 @@ class MainActivity : Activity() {
                 if (two) setLineSpacing(0f, 0.95f)
             })
             contentDescription = label.replace("\n", " ")
-            setOnClickListener { if (tab != key) go(key) else scrollTop() }
+            setOnClickListener { if (tab != key) go(key) else if (key == "feedback") social.home() else scrollTop() }
             setOnLongClickListener { v -> startTabDrag(v, key); true }
             setOnDragListener { v, e -> onTabDrag(v, e) }
         }
@@ -436,10 +503,10 @@ class MainActivity : Activity() {
             }), 8)
             put(ui.button("Show the setup guide again", "ghost") { store.onboarded = false; setupStep = 0; render() }, 12)
             put(ui.button("Put the bottom tabs back in the usual order", "ghost") { store.tabOrder = emptyList(); navOrder = emptyList(); render(); toast("Tabs reset") }, 8)
-            put(ui.text("BigD team password (only for the app's team, to reply to community posts)", 13f, Ui.MUTED), 14)
+            put(ui.text("BigD team password (only for the app's team: post as the official accounts and remove posts)", 13f, Ui.MUTED), 14)
             val team = ui.input("Team password", store.teamKey).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
             put(team, 6)
-            put(ui.row(ui.button("Save password") { store.teamKey = team.text.toString(); media.refresh(); toast(if (store.teamKey.isBlank()) "Removed" else "Saved") }), 8)
+            put(ui.row(ui.button("Save password") { store.teamKey = team.text.toString(); socialPage?.refresh(); toast(if (store.teamKey.isBlank()) "Removed" else "Saved") }), 8)
         }, 12)
     }
 
@@ -888,8 +955,22 @@ class MainActivity : Activity() {
         d.show()
     }
 
-    // =================== 7. COMMUNITY (see Community.kt) ===================
-    /** "Share BigD AI" and "About", at the end of the Community page. */
+    // =================== 7. MEDIA (see Social.kt and MediaViewer.kt) ===================
+    /** Opens the phone's photo picker for Media (up to [max] photos). */
+    internal fun pickPhotos(max: Int) {
+        leavingForSystemScreen = true
+        val i = if (Build.VERSION.SDK_INT >= 33) Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*").apply {
+                if (max > 1) putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, minOf(max, MediaStore.getPickImagesMaxLimit()))
+            }
+            else Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_ALLOW_MULTIPLE, max > 1)
+        try { startActivityForResult(i, REQ_SOCIAL_PHOTO) }
+        catch (e: Exception) {
+            try { startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_SOCIAL_PHOTO) }
+            catch (e2: Exception) { leavingForSystemScreen = false; toast("Couldn't open your photos.") }
+        }
+    }
+
+    /** "Share BigD AI" and "About", at the end of the Media page. */
     internal fun shareAndAbout() {
         add(ui.section("Share BigD AI", "Know someone who would like a pet friend on their phone?").apply {
             put(ui.row(ui.button("Share with friends", "sun") {
@@ -929,7 +1010,7 @@ class MainActivity : Activity() {
         }
     }
 
-    // =================== voice typing and reading aloud (letter helper, community) ===================
+    // =================== voice typing and reading aloud (letter helper, media) ===================
     private var rec: SpeechRecognizer? = null
     private var listenDone: ((String?) -> Unit)? = null
     private var tts: TextToSpeech? = null
@@ -1081,6 +1162,13 @@ class MainActivity : Activity() {
         @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             VaultLock.REQ_UNLOCK -> { if (resultCode == RESULT_OK) VaultLock.markOpen(); render() }
+            REQ_SOCIAL_PHOTO -> {
+                if (resultCode != RESULT_OK || data == null) return
+                val list = ArrayList<Uri>()
+                data.clipData?.let { c -> for (k in 0 until c.itemCount) c.getItemAt(k).uri?.let { list.add(it) } }
+                if (list.isEmpty()) data.data?.let { list.add(it) }
+                if (list.isNotEmpty()) social.onPhotos(list)
+            }
             REQ_PHOTO -> {
                 val id = pickingPhotoFor; pickingPhotoFor = null
                 val uri = data?.data

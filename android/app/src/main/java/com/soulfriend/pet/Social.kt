@@ -1,0 +1,1223 @@
+package com.soulfriend.pet
+
+import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.Rect
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.media.ExifInterface
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.text.InputType
+import android.text.TextUtils
+import android.util.Base64
+import android.util.LruCache
+import android.view.Gravity
+import android.view.View
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import java.util.concurrent.Executors
+
+/** Loads pictures from the internet (photos, video thumbnails, link pictures), keeping recent ones in memory. */
+object Images {
+    private val cache = object : LruCache<String, Bitmap>(minOf(40L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 8).toInt()) {
+        override fun sizeOf(key: String, value: Bitmap) = value.byteCount
+    }
+    private val pool = Executors.newFixedThreadPool(3)
+    private val main = Handler(Looper.getMainLooper())
+
+    /** Shows the picture at [url] in [into], at most [maxPx] wide or high. */
+    fun load(url: String, into: ImageView, maxPx: Int = 1080) {
+        val key = "$maxPx|$url"
+        into.tag = key
+        if (url.isBlank()) { into.setImageDrawable(null); return }
+        cache.get(key)?.let { into.setImageBitmap(it); return }
+        into.setImageDrawable(null)
+        pool.execute {
+            val bmp = try { fetch(url, maxPx) } catch (e: Throwable) { null }
+            if (bmp != null) cache.put(key, bmp)
+            main.post { if (into.tag == key && bmp != null) into.setImageBitmap(bmp) }
+        }
+    }
+
+    private fun fetch(url: String, maxPx: Int): Bitmap? {
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.connectTimeout = 10_000; c.readTimeout = 20_000; c.instanceFollowRedirects = true
+        c.setRequestProperty("User-Agent", "BigDAI/1.0 (Android)")
+        val bytes = try {
+            if (c.responseCode !in 200..299) return null
+            c.inputStream.use { inp ->
+                val out = ByteArrayOutputStream(); val buf = ByteArray(16 * 1024); var total = 0
+                while (true) {
+                    val n = inp.read(buf); if (n < 0) break
+                    total += n; if (total > 8 * 1024 * 1024) return null
+                    out.write(buf, 0, n)
+                }
+                out.toByteArray()
+            }
+        } finally { c.disconnect() }
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+        if (o.outWidth <= 0 || o.outHeight <= 0) return null
+        var s = 1; while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= maxPx) s *= 2
+        val raw = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s }) ?: return null
+        val k = maxPx.toFloat() / maxOf(raw.width, raw.height)
+        return if (k < 0.8f) Bitmap.createScaledBitmap(raw, maxOf(1, (raw.width * k).toInt()), maxOf(1, (raw.height * k).toInt()), true) else raw
+    }
+
+    /** Makes a photo ready to upload: at most 1280 px, the right way up, saved again as JPEG (this also removes hidden details such as the place it was taken). */
+    fun prepare(ctx: Context, uri: Uri): ByteArray? {
+        try {
+            val r = ctx.contentResolver
+            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            r.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) }
+            if (o.outWidth <= 0 || o.outHeight <= 0) return null
+            var s = 1; while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= 1280) s *= 2
+            val raw = r.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = s }) } ?: return null
+            var bmp: Bitmap = raw
+            val k = 1280f / maxOf(bmp.width, bmp.height)
+            if (k < 1f) bmp = Bitmap.createScaledBitmap(bmp, maxOf(1, (bmp.width * k).toInt()), maxOf(1, (bmp.height * k).toInt()), true)
+            val turn = try { r.openInputStream(uri)?.use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) } ?: 1 } catch (e: Exception) { 1 }
+            val deg = when (turn) { ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f }
+            if (deg != 0f) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(deg) }, true)
+            val out = ByteArrayOutputStream(); bmp.compress(Bitmap.CompressFormat.JPEG, 82, out)
+            return out.toByteArray()
+        } catch (e: Throwable) { return null }
+    }
+}
+
+class SUser(val uid: String, val name: String, val handle: String, val bio: String, val avatar: String, val emoji: String, val verified: Boolean,
+            val official: Boolean, var followers: Int, val following: Int, val posts: Int, var followed: Boolean, val me: Boolean) {
+    companion object {
+        fun from(o: JSONObject?) = if (o == null) SUser("", "BigD friend", "", "", "", "🐾", false, false, 0, 0, 0, false, false)
+            else SUser(o.optString("uid"), o.optString("name", "BigD friend"), o.optString("handle"), o.optString("bio"), o.optString("avatar"), o.optString("emoji", "🐾"),
+                o.optBoolean("verified"), o.optBoolean("official"), o.optInt("followers"), o.optInt("following"), o.optInt("posts"), o.optBoolean("followed"), o.optBoolean("me"))
+    }
+}
+
+class SPost(val key: String, val author: SUser, val at: Long, val title: String, val text: String, val photos: List<String>, val ytId: String, val ytCh: String,
+            val linkUrl: String, val linkTitle: String, val linkSite: String, val linkImage: String, val sourceName: String, val sourceUrl: String,
+            val cat: String, val emoji: String, var likes: Int, var liked: Boolean, val views: Int, var comments: Int, val mine: Boolean) {
+    companion object {
+        fun from(o: JSONObject): SPost {
+            val ph = o.optJSONArray("photos"); val yt = o.optJSONObject("yt"); val ln = o.optJSONObject("link"); val src = o.optJSONObject("source")
+            return SPost(o.optString("key"), SUser.from(o.optJSONObject("author")), o.optLong("at"), o.optString("title"), o.optString("text"),
+                if (ph == null) emptyList() else (0 until ph.length()).map { ph.optString(it) }.filter { it.isNotBlank() },
+                yt?.optString("id") ?: "", yt?.optString("ch") ?: "",
+                ln?.optString("url") ?: "", ln?.optString("title") ?: "", ln?.optString("site") ?: "", ln?.optString("image") ?: "",
+                src?.optString("name") ?: "", src?.optString("url") ?: "", o.optString("cat"), o.optString("emoji"),
+                o.optInt("likes"), o.optBoolean("liked"), o.optInt("views"), o.optInt("comments"), o.optBoolean("mine"))
+        }
+    }
+}
+
+class SComment(val id: Int, val at: Long, val text: String, val author: SUser, val mine: Boolean)
+
+/**
+ * Media · మీడియా, like X (Twitter): For you / Following / People / sections; profiles with ✓ for our official accounts;
+ * posts with photos, YouTube videos and links from other apps; comments, likes, views, follow, report and hide;
+ * and a full-screen viewer (MediaViewer) to swipe up and down through every photo and video.
+ */
+class SocialPage(private val m: MainActivity) {
+    companion object {
+        private val BLUE = Color.parseColor("#1D9BF0")
+        private val PINK = Color.parseColor("#F91880")
+        private val SOFT = Color.parseColor("#E9EEF0")
+        private val CAT_COLOR = mapOf("news" to "#3B82F6", "movies" to "#F97316", "jobs" to "#6366F1", "devotional" to "#FB923C", "kids" to "#F472B6",
+            "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B")
+    }
+
+    private class Tab(val key: String, val label: String)
+    private class Step(val screen: String, val profile: SUser?, val post: SPost?, val y: Int)
+
+    private val tabs = listOf(Tab("foryou", "✨ For you"), Tab("following", "Following"), Tab("people", "👥 ప్రజలు"),
+        Tab("news", "📰 వార్తలు"), Tab("movies", "🎬 సినిమా"), Tab("jobs", "💼 ఉద్యోగాలు"), Tab("devotional", "🛕 భక్తి"), Tab("kids", "🧒 పిల్లలు"),
+        Tab("health", "🩺 ఆరోగ్యం"), Tab("farming", "🌾 వ్యవసాయం"), Tab("realestate", "🏠 రియల్ ఎస్టేట్"), Tab("crypto", "🪙 క్రిప్టో"))
+    private val sectionKeys = setOf("news", "movies", "jobs", "devotional", "kids", "health", "farming", "realestate", "crypto")
+
+    var screen = "feed"
+        private set
+    private var tab = "foryou"
+    private val history = ArrayList<Step>()
+    private val feeds = HashMap<String, MutableList<SPost>>()
+    private val more = HashMap<String, Boolean>()
+    private val loadedAt = HashMap<String, Long>()
+    private val busy = HashSet<String>()
+    private var error = ""
+    private var admin = false
+    private var me: SUser? = null
+    private var meCode = ""
+    private var meState = 0            // 0 not asked yet, 1 asking, 2 known
+    private var suggest: List<SUser> = emptyList()
+    private var suggestAt = 0L
+    private var profile: SUser? = null
+    private var profileView = "posts"
+    private var commentsFor: SPost? = null
+    private val comments = mutableListOf<SComment>()
+    private var commentsLoading = false
+    private var commentText = ""
+    private val opened = HashSet<String>()
+    private var chipsX = 0
+    private var listening = ""
+    private var speaking = ""
+    private val io = Executors.newFixedThreadPool(3)
+    private val main = Handler(Looper.getMainLooper())
+    // views: a post counts as seen when it is really on the screen
+    private val rows = ArrayList<Pair<String, View>>()
+    private var lastRow: View? = null
+    private val viewed = HashSet<String>()
+    private val pendingViews = LinkedHashSet<String>()
+    private val seenRect = Rect()
+    private val flushLater = Runnable { flushViews() }
+    // writing a post
+    private var cText = ""
+    private val cPhotos = mutableListOf<Pair<String, String>>()   // upload id, picture address
+    private var cLink = ""
+    private var cAs = ""
+    private var cPreview: JSONObject? = null
+    private var previewFor = ""
+    private var previewBox: LinearLayout? = null
+    private val previewLater = Runnable { fetchPreview() }
+    private var posting = false
+    private var uploading = 0
+    private var photoFor = "post"
+    // editing the profile
+    private var eName = ""
+    private var eHandle = ""
+    private var eBio = ""
+    private var eEmoji = "🐾"
+    private var eAvatar = ""
+    private var eAvatarUrl = ""
+    private var eAvatarChanged = false
+    private var saving = false
+
+    private val ui get() = m.ui
+    private val store get() = m.store
+    private fun dp(v: Int) = m.dp(v)
+    private fun LinearLayout.put(v: View, top: Int = 10) = addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) })
+    private fun headers() = if (store.teamKey.isNotBlank()) mapOf("X-Admin-Key" to store.teamKey) else emptyMap()
+    private fun abs(u: String) = if (u.startsWith("/")) store.server.trimEnd('/') + u else u
+    private fun refreshIf(vararg screens: String) { if (m.tab == "feedback" && screen in screens) m.render() }
+    private fun samePosts(key: String): List<SPost> = (feeds.values.flatten() + listOfNotNull(commentsFor)).filter { it.key == key }
+    private fun postByKey(key: String) = samePosts(key).firstOrNull()
+    private fun placeholderMe() = SUser("", "", "", "", "", "👤", false, false, 0, 0, 0, false, true)
+
+    // ============================== screens ==============================
+    fun build() {
+        rows.clear(); lastRow = null; previewBox = null
+        if (meState == 0) loadMe()
+        when (screen) {
+            "profile" -> buildProfile()
+            "edit" -> buildEdit()
+            "compose" -> buildCompose()
+            "comments" -> buildComments()
+            else -> buildFeed()
+        }
+    }
+
+    /** The round + button (write a post) shows on the feed and on profiles. */
+    val showFab get() = screen == "feed" || screen == "profile"
+
+    private fun go(s: String, set: () -> Unit = {}) {
+        if (listening.isNotEmpty()) m.stopListening()
+        history.add(Step(screen, profile, commentsFor, m.scrollY))
+        if (history.size > 30) history.removeAt(0)
+        set(); screen = s
+        m.render(); m.scrollTop()
+    }
+
+    /** Back to the previous Media screen. Returns false when already on the feed. */
+    fun back(): Boolean {
+        if (screen == "feed" && history.isEmpty()) return false
+        if (listening.isNotEmpty()) m.stopListening()
+        val st = if (history.isEmpty()) Step("feed", null, null, 0) else history.removeAt(history.lastIndex)
+        screen = st.screen; profile = st.profile
+        if (screen == "comments" && st.post != null && st.post.key != commentsFor?.key) { commentsFor = st.post; loadComments(st.post) } else commentsFor = st.post
+        m.render(); m.scrollToY(st.y)
+        return true
+    }
+
+    /** Tapping the Media tab again: back to the top of the feed. */
+    fun home() {
+        if (screen != "feed" || history.isNotEmpty()) { if (listening.isNotEmpty()) m.stopListening(); history.clear(); screen = "feed"; m.render() }
+        m.scrollTop()
+    }
+
+    fun refresh() { feeds.clear(); loadedAt.clear(); meState = 0; suggestAt = 0 }
+
+    private fun backBar(title: String) {
+        m.add(LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(TextView(m).apply {
+                text = "←"; textSize = 22f; setTextColor(Ui.INK); gravity = Gravity.CENTER
+                background = ui.round(Color.WHITE, 22, Ui.LINE); setOnClickListener { back() }; contentDescription = "Back"
+            }, LinearLayout.LayoutParams(dp(44), dp(44)))
+            addView(ui.text(title, 19f, Ui.INK, bold = true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(12), 0, 0, 0) },
+                LinearLayout.LayoutParams(0, -2, 1f))
+        }, 4)
+    }
+
+    // ------------------------------ feed ------------------------------
+    private fun buildFeed() {
+        val mine = me
+        m.add(LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(ui.stack(ui.title("Media · మీడియా"), ui.text("వార్తలు, వీడియోలు, అందరి పోస్టులు · News, videos and everyone's posts", 13f, Ui.MUTED)),
+                LinearLayout.LayoutParams(0, -2, 1f))
+            addView(avatar(mine ?: placeholderMe(), 44) { if (mine != null) openProfile(mine.uid) else startEdit() },
+                LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(10) })
+        }, 4)
+        chips()
+        if (mine == null && meState == 2) m.add(ui.card(Ui.SUN_SOFT).apply {
+            addView(ui.text("👤 మీ ప్రొఫైల్ · Make your profile", 15f, Ui.INK, bold = true))
+            put(ui.text("Add your name, a photo and a line about you. Then you can post photos and videos, comment and follow people.", 13.5f, Ui.MUTED), 4)
+            put(ui.row(ui.button("Make my profile", "primary") { startEdit() }), 10)
+        }, 12)
+        note(tab)?.let { m.add(ui.text(it, 12.5f, Ui.MUTED), 10) }
+        if (admin && tab in sectionKeys) m.add(ui.row(ui.button("🔄 AI posts now") { generate(tab) }, ui.button("✍️ Post here", "primary") { startCompose(asUid = "s_$tab") }), 10)
+        val blocked = store.blockedUsers
+        val all = feeds[tab]
+        val list = all?.filter { it.author.uid !in blocked }
+        if (error.isNotBlank() && list.isNullOrEmpty()) m.add(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
+        if (list.isNullOrEmpty()) {
+            m.add(ui.text(when {
+                all == null || tab in busy -> "Loading…"
+                tab == "following" -> "You don't follow anyone yet. Follow the profiles you like, and their posts appear here."
+                tab == "people" -> "No posts yet. Be the first: tap + to write one."
+                else -> "Nothing here yet."
+            }, 14f, Ui.MUTED), 14)
+            if (tab == "foryou" || tab == "following") whoToFollow()
+        }
+        list?.forEachIndexed { i, p ->
+            m.add(postRow(p), 10)
+            if (i == 3 && tab == "foryou") whoToFollow()
+        }
+        if (!list.isNullOrEmpty() && list.size <= 3 && tab == "foryou") whoToFollow()
+        if (more[tab] == true) m.add(ui.button(if (tab in busy) "Loading…" else "Show more", "ghost") { load(tab, false) }, 12)
+        else if (!list.isNullOrEmpty()) m.add(ui.text("· అంతే · You're all caught up ·", 12.5f, Ui.MUTED).apply { gravity = Gravity.CENTER }, 16)
+        m.add(ui.text("Posts are public and checked for safety. Be kind; no phone numbers or private details. Rules: ${store.server}/rules", 11.5f, Ui.MUTED), 16)
+        m.shareAndAbout()
+        val stale = System.currentTimeMillis() - (loadedAt[tab] ?: 0L) > 5 * 60_000L
+        if (tab !in busy && (all == null || stale)) load(tab, true)
+        if (System.currentTimeMillis() - suggestAt > 10 * 60_000L) loadSuggest()
+    }
+
+    private fun note(t: String) = when (t) {
+        "news" -> "🤖 Posts with ✓ are short summaries written by AI from news websites. Tap the link for the full story."
+        "jobs" -> "💼 Always check the details and apply only on the official website."
+        "movies" -> "🎬 What critics say, in short, with links to the reviews."
+        "crypto", "realestate" -> "ℹ️ ఇది సమాచారం మాత్రమే, ఆర్థిక సలహా కాదు · Information only, not financial advice."
+        "health" -> "ℹ️ ఆరోగ్య సమస్యలకు డాక్టర్‌ను సంప్రదించండి · Simple tips, not medical advice."
+        "kids" -> "👨‍👩‍👧 Stories and rhymes for parents to read to children."
+        "people" -> "👥 Posts from people using BigD AI."
+        else -> null
+    }
+
+    private fun chips() {
+        val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
+        tabs.forEachIndexed { i, t ->
+            row.addView(ui.chip(t.label, tab == t.key) { if (tab != t.key) { tab = t.key; error = ""; m.render(); m.scrollTop() } },
+                LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(6) })
+        }
+        m.add(HorizontalScrollView(m).apply {
+            isHorizontalScrollBarEnabled = false; addView(row)
+            setOnScrollChangeListener { _, x, _, _, _ -> chipsX = x }
+            post { scrollTo(chipsX, 0) }
+        }, 12)
+    }
+
+    // ------------------------------ one post ------------------------------
+    private fun ago(at: Long): String {
+        val s = (System.currentTimeMillis() - at) / 1000
+        return when {
+            s < 60 -> "now"; s < 3600 -> "${s / 60}m"; s < 86400 -> "${s / 3600}h"; s < 7 * 86400 -> "${s / 86400}d"
+            else -> DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH).format(Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()))
+        }
+    }
+
+    private fun num(n: Int) = when {
+        n < 1000 -> "$n"
+        n < 1_000_000 -> String.format(Locale.ENGLISH, "%.1fK", n / 1000f).replace(".0K", "K")
+        else -> String.format(Locale.ENGLISH, "%.1fM", n / 1_000_000f).replace(".0M", "M")
+    }
+
+    /** A round profile picture: the photo, or the person's emoji on a soft circle. */
+    private fun avatar(u: SUser, size: Int, onClick: (() -> Unit)? = null): View {
+        val box = FrameLayout(m).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (u.official) Color.parseColor("#E6F0FF") else Ui.TEAL_SOFT) }
+            clipToOutline = true
+            if (onClick != null) setOnClickListener { onClick() }
+        }
+        if (u.avatar.isNotBlank()) box.addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load(abs(u.avatar), this, 320) }, FrameLayout.LayoutParams(-1, -1))
+        else box.addView(TextView(m).apply { text = u.emoji.ifBlank { "🐾" }; textSize = size * 0.42f; gravity = Gravity.CENTER; includeFontPadding = false }, FrameLayout.LayoutParams(-1, -1))
+        return box
+    }
+
+    private fun badge() = TextView(m).apply {
+        text = "✓"; textSize = 10f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; includeFontPadding = false
+        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(BLUE) }
+    }
+
+    private fun nameLine(u: SUser, at: Long, onMore: (() -> Unit)?) = LinearLayout(m).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        addView(ui.text(u.name, 15f, Ui.INK, bold = true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+        if (u.verified) addView(badge(), LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginStart = dp(4) })
+        addView(ui.text((if (u.handle.isNotBlank()) " @${u.handle}" else "") + " · ${ago(at)}", 13.5f, Ui.MUTED).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        if (onMore != null) addView(ui.text("⋯", 20f, Ui.MUTED).apply { setPadding(dp(12), 0, dp(4), 0); setOnClickListener { onMore() }; contentDescription = "More" })
+    }
+
+    private fun postRow(p: SPost, full: Boolean = false): View {
+        val row = LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(12), dp(12), dp(4))
+            background = ui.round(Color.WHITE, 18, Ui.LINE)
+        }
+        row.addView(avatar(p.author, 44) { openProfile(p.author.uid) }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        val col = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
+        col.addView(nameLine(p.author, p.at) { menu(p) }.apply { setOnClickListener { openProfile(p.author.uid) } })
+        if (p.title.isNotBlank()) col.put(ui.text(p.title, 16f, Ui.INK, bold = true), 4)
+        if (p.text.isNotBlank()) {
+            val open = full || p.key in opened
+            col.put(ui.text(p.text, 15f, Ui.INK).apply { if (open) setTextIsSelectable(true) else { maxLines = 6; ellipsize = TextUtils.TruncateAt.END } }, 4)
+            if (!open && (p.text.length > 260 || p.text.count { it == '\n' } > 5)) col.put(ui.text("ఇంకా చదవండి · Show more", 13.5f, BLUE, bold = true).apply {
+                setOnClickListener { opened.add(p.key); m.render() } }, 2)
+        }
+        val linkCardShown = mediaBlock(p)?.let { col.put(it, 8); p.ytId.isBlank() && p.linkUrl.isNotBlank() } ?: false
+        if (p.sourceUrl.isNotBlank() && !(linkCardShown && p.linkUrl == p.sourceUrl))
+            col.put(ui.text("మూలం · Source: ${p.sourceName.ifBlank { "link" }} ↗", 12.5f, BLUE).apply { setOnClickListener { open(p.sourceUrl) } }, 6)
+        if (p.author.official) when (p.cat) {
+            "crypto", "realestate" -> col.put(ui.text("ఆర్థిక సలహా కాదు · Not financial advice", 11.5f, Ui.MUTED), 4)
+            "health" -> col.put(ui.text("వైద్య సలహా కాదు · Not medical advice", 11.5f, Ui.MUTED), 4)
+        }
+        col.put(actions(p), 2)
+        row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+        if (!full) row.setOnClickListener { openComments(p) }
+        rows.add(p.key to row); lastRow = row
+        return row
+    }
+
+    private fun act(label: String, color: Int = Ui.MUTED, onClick: (() -> Unit)?) = TextView(m).apply {
+        text = label; textSize = 13.5f; setTextColor(color); gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(2), dp(9), dp(6), dp(9))
+        if (onClick != null) setOnClickListener { onClick() }
+    }
+
+    private fun counted(icon: String, n: Int) = if (n > 0) "$icon ${num(n)}" else icon
+    private fun likeLabel(p: SPost) = counted(if (p.liked) "❤️" else "🤍", p.likes)
+
+    private fun actions(p: SPost) = LinearLayout(m).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        val likeV = act(likeLabel(p), if (p.liked) PINK else Ui.MUTED, null)
+        likeV.setOnClickListener { like(p) { likeV.text = likeLabel(p); likeV.setTextColor(if (p.liked) PINK else Ui.MUTED) } }
+        listOf(
+            act(counted("💬", p.comments)) { openComments(p) },
+            likeV,
+            act(counted("👁", p.views), Ui.MUTED, null),
+            act(if (speaking == p.key) "⏹" else "🔊") { listen(p) },
+            act("📤") { share(p) }
+        ).forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
+    }
+
+    /** Photos (1 to 4), a YouTube video or a link card, one under the other. */
+    private fun mediaBlock(p: SPost): View? {
+        val parts = ArrayList<View>()
+        if (p.photos.isNotEmpty()) parts.add(photoGrid(p))
+        if (p.ytId.isNotBlank()) {
+            parts.add(videoCard(p))
+            if (p.linkTitle.isNotBlank()) parts.add(ui.text("▶ " + p.linkTitle, 13.5f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END })
+        } else if (p.linkUrl.isNotBlank()) parts.add(linkCard(p.linkSite, p.linkTitle.ifBlank { if (p.author.official) "పూర్తి వార్త చదవండి · Read the full story" else "" }, p.linkImage, p.linkUrl))
+        if (parts.isEmpty() && p.author.official) parts.add(sectionArt(p))
+        if (parts.isEmpty()) return null
+        if (parts.size == 1) return parts[0]
+        return LinearLayout(m).apply {
+            orientation = LinearLayout.VERTICAL
+            parts.forEachIndexed { i, v -> addView(v, LinearLayout.LayoutParams(-1, -2).apply { if (i > 0) topMargin = dp(6) }) }
+        }
+    }
+
+    private fun photoGrid(p: SPost): View {
+        fun img(i: Int) = ImageView(m).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(SOFT); contentDescription = "Photo ${i + 1}"
+            Images.load(abs(p.photos[i]), this, if (p.photos.size == 1) 1080 else 640)
+            setOnClickListener { openViewer(p, i) }
+        }
+        val gap = dp(3)
+        val box = FrameLayout(m).apply { background = ui.round(SOFT, 16); clipToOutline = true }
+        when (p.photos.size) {
+            1 -> box.addView(img(0), FrameLayout.LayoutParams(-1, dp(250)))
+            2 -> box.addView(LinearLayout(m).apply {
+                addView(img(0), LinearLayout.LayoutParams(0, -1, 1f))
+                addView(img(1), LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = gap })
+            }, FrameLayout.LayoutParams(-1, dp(190)))
+            3 -> box.addView(LinearLayout(m).apply {
+                addView(img(0), LinearLayout.LayoutParams(0, -1, 1f))
+                addView(LinearLayout(m).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(img(1), LinearLayout.LayoutParams(-1, 0, 1f))
+                    addView(img(2), LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = gap })
+                }, LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = gap })
+            }, FrameLayout.LayoutParams(-1, dp(230)))
+            else -> box.addView(LinearLayout(m).apply {
+                orientation = LinearLayout.VERTICAL
+                for (r in 0..1) addView(LinearLayout(m).apply {
+                    addView(img(r * 2), LinearLayout.LayoutParams(0, -1, 1f))
+                    addView(img(r * 2 + 1), LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = gap })
+                }, LinearLayout.LayoutParams(-1, 0, 1f).apply { if (r == 1) topMargin = gap })
+            }, FrameLayout.LayoutParams(-1, dp(250)))
+        }
+        return box
+    }
+
+    private fun ytChannel(ch: String) = ch.removePrefix("YouTube · ").removePrefix("YouTube").trim()
+
+    private fun videoCard(p: SPost): View = FrameLayout(m).apply {
+        background = ui.round(Color.BLACK, 16); clipToOutline = true; contentDescription = "Play video"
+        addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load("https://i.ytimg.com/vi/${p.ytId}/hqdefault.jpg", this, 640) },
+            FrameLayout.LayoutParams(-1, dp(200)))
+        addView(TextView(m).apply { text = "▶"; textSize = 22f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; background = ui.round(Color.parseColor("#E62117"), 14) },
+            FrameLayout.LayoutParams(dp(64), dp(44), Gravity.CENTER))
+        val ch = ytChannel(p.ytCh)
+        addView(TextView(m).apply {
+            text = "YouTube" + (if (ch.isNotBlank()) " · $ch" else ""); textSize = 12f; setTextColor(Color.WHITE)
+            maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(8), dp(3), dp(8), dp(3)); background = ui.round(Color.parseColor("#99000000"), 8)
+        }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(8), 0, dp(8), dp(8)) })
+        setOnClickListener { openViewer(p, -1) }
+    }
+
+    private fun hostOf(u: String) = try { Uri.parse(u).host?.removePrefix("www.")?.removePrefix("m.") ?: "" } catch (e: Exception) { "" }
+
+    private fun linkCard(site: String, title: String, image: String, url: String, onClick: (() -> Unit)? = null): View = LinearLayout(m).apply {
+        orientation = LinearLayout.VERTICAL; background = ui.round(Color.WHITE, 16, Ui.LINE); clipToOutline = true
+        if (image.isNotBlank()) addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(SOFT); Images.load(image, this, 900) },
+            LinearLayout.LayoutParams(-1, dp(170)))
+        addView(ui.stack(
+            ui.text("🔗 " + site.ifBlank { hostOf(url) }, 12f, Ui.MUTED).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
+            ui.text(title.ifBlank { url }, 14f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
+        ).apply { setPadding(dp(12), dp(8), dp(12), dp(10)) })
+        setOnClickListener { if (onClick != null) onClick() else open(url) }
+    }
+
+    private fun sectionArt(p: SPost): View = FrameLayout(m).apply {
+        val c = Color.parseColor(CAT_COLOR[p.cat] ?: "#19A39A")
+        background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.TEAL_DARK, c)).apply { cornerRadius = dp(16).toFloat() }
+        addView(TextView(m).apply { text = p.emoji.ifBlank { p.author.emoji }; textSize = 42f; gravity = Gravity.CENTER }, FrameLayout.LayoutParams(-1, dp(100)))
+    }
+
+    // ------------------------------ who to follow ------------------------------
+    private fun followButton(u: SUser) = ui.button(if (u.followed) "Following ✓" else "Follow", if (u.followed) "ghost" else "primary") { follow(u) }
+
+    private fun whoToFollow() {
+        val list = suggest.filter { !it.followed && it.uid !in store.blockedUsers }
+        if (list.isEmpty()) return
+        val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL }
+        list.forEachIndexed { i, u ->
+            row.addView(LinearLayout(m).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(10), dp(14), dp(10), dp(12))
+                background = ui.round(Color.WHITE, 18, Ui.LINE)
+                setOnClickListener { openProfile(u.uid) }
+                addView(avatar(u, 64) { openProfile(u.uid) }, LinearLayout.LayoutParams(dp(64), dp(64)))
+                addView(LinearLayout(m).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+                    addView(ui.text(u.name, 14f, Ui.INK, bold = true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+                    if (u.verified) addView(badge(), LinearLayout.LayoutParams(dp(15), dp(15)).apply { marginStart = dp(3) })
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+                if (u.handle.isNotBlank()) addView(ui.text("@${u.handle}", 12.5f, Ui.MUTED).apply { gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+                addView(ui.text(u.bio, 12f, Ui.MUTED).apply { gravity = Gravity.CENTER; minLines = 2; maxLines = 2; ellipsize = TextUtils.TruncateAt.END },
+                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+                addView(followButton(u), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            }, LinearLayout.LayoutParams(dp(164), -2).apply { if (i > 0) marginStart = dp(8) })
+        }
+        m.add(ui.text("Who to follow · ఎవరిని ఫాలో అవ్వాలి", 16f, Ui.INK, bold = true), 18)
+        m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(row) }, 8)
+    }
+
+    // ------------------------------ profile ------------------------------
+    fun openProfile(uid: String) {
+        if (uid.isBlank()) return
+        val guess = feeds.values.flatten().firstOrNull { it.author.uid == uid }?.author ?: suggest.firstOrNull { it.uid == uid }
+            ?: me?.takeIf { it.uid == uid } ?: SUser(uid, "…", "", "", "", "🐾", false, false, 0, 0, 0, false, false)
+        loadedAt.remove("user:$uid")
+        go("profile") { profile = guess; profileView = "posts" }
+        io.execute {
+            val r = Net.get(store, "/api/social/profile?uid=${Uri.encode(uid)}", headers())
+            m.runOnUiThread {
+                if (r.ok && profile?.uid == uid) { profile = SUser.from(r.json.optJSONObject("user")); refreshIf("profile") }
+                else if (!r.ok && profile?.uid == uid && r.code == 404) { m.toast(r.error("This profile is not there.")); if (screen == "profile") back() }
+            }
+        }
+    }
+
+    private fun buildProfile() {
+        val u = profile ?: run { screen = "feed"; buildFeed(); return }
+        backBar(u.name)
+        val head = FrameLayout(m).apply { background = ui.round(Color.WHITE, 20, Ui.LINE); clipToOutline = true }
+        val tint = if (u.official) Color.parseColor(CAT_COLOR[u.uid.removePrefix("s_")] ?: "#19A39A") else Ui.TEAL
+        head.addView(View(m).apply { background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.TEAL_DARK, tint)) }, FrameLayout.LayoutParams(-1, dp(96)))
+        head.addView(FrameLayout(m).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            addView(avatar(u, 80) { if (u.avatar.isNotBlank()) openPhoto(abs(u.avatar), u) }, FrameLayout.LayoutParams(-1, -1))
+        }, FrameLayout.LayoutParams(dp(88), dp(88), Gravity.TOP or Gravity.START).apply { setMargins(dp(14), dp(52), 0, 0) })
+        val btn = when { u.me -> ui.button("✏️ Edit profile", "ghost") { startEdit() }; u.uid.isNotBlank() && u.name != "…" -> followButton(u); else -> null }
+        if (btn != null) head.addView(btn, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(104), dp(14), 0) })
+        head.addView(LinearLayout(m).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), 0, dp(16), dp(16))
+            addView(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(ui.text(u.name, 21f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END })
+                if (u.verified) addView(badge(), LinearLayout.LayoutParams(dp(19), dp(19)).apply { marginStart = dp(6) })
+            })
+            if (u.handle.isNotBlank()) addView(ui.text("@${u.handle}", 14f, Ui.MUTED))
+            if (u.bio.isNotBlank()) addView(ui.text(u.bio, 15f, Ui.INK).apply { setTextIsSelectable(true) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            if (u.official) addView(ui.text("BigD official account · posts written by AI from real websites", 12.5f, Ui.MUTED), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            addView(ui.text("${num(u.following)} Following  ·  ${num(u.followers)} Followers  ·  ${num(u.posts)} Posts", 13.5f, Ui.MUTED),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }, FrameLayout.LayoutParams(-1, -2).apply { topMargin = dp(148) })
+        m.add(head, 8)
+        if (u.me) m.add(ui.row(ui.button("✍️ New post", "primary") { startCompose() }, ui.button("🔑 Backup code") { showCode(false) }), 10)
+        if (u.uid in store.blockedUsers) m.add(ui.card(Ui.SUN_SOFT).apply {
+            addView(ui.text("You hid posts from ${u.name}.", 14.5f, Ui.INK, bold = true))
+            put(ui.row(ui.button("Show their posts again") { store.blockedUsers = store.blockedUsers - u.uid; m.render() }), 8)
+        }, 10)
+        m.add(ui.row(ui.chip("Posts", profileView == "posts") { profileView = "posts"; m.render() },
+            ui.chip("📷 Photos & videos", profileView == "media") { profileView = "media"; m.render() }), 16)
+        val key = "user:${u.uid}"
+        val all = feeds[key]
+        val list = if (u.uid in store.blockedUsers) emptyList() else all
+        if (profileView == "media") mediaGrid(list ?: emptyList(), all == null || key in busy)
+        else {
+            if (list.isNullOrEmpty()) m.add(ui.text(if (all == null || key in busy) "Loading…" else "No posts yet.", 14f, Ui.MUTED), 10)
+            list?.forEach { m.add(postRow(it), 10) }
+        }
+        if (more[key] == true) m.add(ui.button(if (key in busy) "Loading…" else "Show more", "ghost") { load(key, false) }, 12)
+        if (key !in busy && (all == null || System.currentTimeMillis() - (loadedAt[key] ?: 0L) > 5 * 60_000L)) load(key, true)
+    }
+
+    /** All photos and videos of a profile, three in a row; tap one to open the full-screen viewer. */
+    private fun mediaGrid(list: List<SPost>, loading: Boolean) {
+        val tiles = ArrayList<Triple<SPost, Int, String>>()   // post, photo number (-1 = video), picture
+        for (p in list) {
+            p.photos.forEachIndexed { i, u -> tiles.add(Triple(p, i, abs(u))) }
+            if (p.ytId.isNotBlank()) tiles.add(Triple(p, -1, "https://i.ytimg.com/vi/${p.ytId}/hqdefault.jpg"))
+        }
+        if (tiles.isEmpty()) { m.add(ui.text(if (loading) "Loading…" else "No photos or videos yet.", 14f, Ui.MUTED), 10); return }
+        val side = (m.resources.displayMetrics.widthPixels - dp(32) - dp(8)) / 3
+        tiles.chunked(3).forEachIndexed { r, chunk ->
+            m.add(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL
+                chunk.forEachIndexed { i, (p, which, pic) ->
+                    addView(FrameLayout(m).apply {
+                        background = ui.round(SOFT, 10); clipToOutline = true
+                        addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load(pic, this, 400) }, FrameLayout.LayoutParams(-1, -1))
+                        if (which < 0) addView(TextView(m).apply { text = "▶"; textSize = 16f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; background = ui.round(Color.parseColor("#99000000"), 14) },
+                            FrameLayout.LayoutParams(dp(34), dp(28), Gravity.CENTER))
+                        setOnClickListener { openViewer(p, which) }
+                    }, LinearLayout.LayoutParams(side, side).apply { if (i > 0) marginStart = dp(4) })
+                }
+            }, if (r == 0) 10 else 4)
+        }
+    }
+
+    private fun showCode(first: Boolean) {
+        if (meCode.isBlank()) { m.toast("Make your profile first."); return }
+        AlertDialog.Builder(m).setTitle("🔑 Your backup code")
+            .setMessage((if (first) "Your profile is ready! " else "") + "Your backup code is:\n\n$meCode\n\nKeep it private, like a password. If you get a new phone, open Media › Make your profile › Move from another phone, and type this code to get your profile back.")
+            .setPositiveButton("Copy") { _, _ ->
+                try { m.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("BigD backup code", meCode)); m.toast("Copied") } catch (e: Exception) { }
+            }
+            .setNegativeButton("Close", null).show()
+    }
+
+    // ------------------------------ edit profile ------------------------------
+    private fun startEdit() {
+        val u = me
+        go("edit") {
+            eName = u?.name ?: store.feedName; eHandle = u?.handle ?: ""; eBio = u?.bio ?: ""; eEmoji = u?.emoji ?: "🐾"
+            eAvatar = ""; eAvatarUrl = u?.avatar ?: ""; eAvatarChanged = false
+        }
+    }
+
+    private fun buildEdit() {
+        backBar(if (me == null) "Make your profile" else "Edit profile")
+        m.add(ui.section("మీ ప్రొఫైల్ · Your profile", "Your photo, name and tagline can be seen by everyone.").apply {
+            put(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(avatar(SUser("", eName, "", "", eAvatarUrl, eEmoji, false, false, 0, 0, 0, false, true), 84), LinearLayout.LayoutParams(dp(84), dp(84)))
+                addView(LinearLayout(m).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(ui.button(if (uploading > 0 && photoFor == "avatar") "Checking photo…" else "📷 Choose photo", "primary") {
+                        if (uploading == 0) { photoFor = "avatar"; m.pickPhotos(1) }
+                    })
+                    if (eAvatarUrl.isNotBlank()) addView(ui.button("Use an emoji instead", "ghost") { eAvatar = ""; eAvatarUrl = ""; eAvatarChanged = true; m.render() },
+                        LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(14) })
+            }, 12)
+            if (eAvatarUrl.isBlank()) put(HorizontalScrollView(m).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(LinearLayout(m).apply {
+                    listOf("🐾", "🦎", "🐶", "🐱", "🦜", "🌸", "🌾", "⭐", "🙏", "😎", "🎉", "📚", "🏏", "🎵").forEach { e ->
+                        addView(TextView(m).apply {
+                            text = e; textSize = 24f; gravity = Gravity.CENTER
+                            background = if (e == eEmoji) ui.round(Ui.TEAL_SOFT, 12, Ui.TEAL) else null
+                            setOnClickListener { eEmoji = e; m.render() }
+                        }, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(4) })
+                    }
+                })
+            }, 10)
+            put(ui.text("Name · పేరు", 14f, Ui.INK, bold = true), 14)
+            put(ui.input("Your name", eName).apply { onText { eName = it } }, 6)
+            put(ui.text("@name (optional: small English letters, numbers, _)", 14f, Ui.INK, bold = true), 12)
+            put(ui.input("e.g. kishore_vizag", eHandle).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS; onText { eHandle = it } }, 6)
+            put(ui.text("Tagline / status · మీ గురించి ఒక మాట", 14f, Ui.INK, bold = true), 12)
+            put(ui.input("e.g. \"Farmer from Pendurthi 🌾\"", eBio, multi = true).apply { onText { eBio = it } }, 6)
+            put(ui.button(if (saving) "Saving…" else "Save profile", "primary") { if (!saving) saveProfile() }, 16)
+            put(ui.text("Your profile is linked to this phone. After saving you get a backup code to move it to a new phone.", 12f, Ui.MUTED), 8)
+        }, 12)
+        if (me == null) m.add(ui.section("Move from another phone", "Had a BigD profile on another phone? Type its backup code.").apply {
+            val code = ui.input("Backup code, e.g. 7F3A9C21B4", "").apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }
+            put(code, 10)
+            put(ui.row(ui.button("Use this code") { restore(code.text.toString()) }), 8)
+        }, 12)
+    }
+
+    private fun saveProfile() {
+        if (eName.trim().length < 2) { m.toast("Write your name (at least 2 letters)."); return }
+        if (uploading > 0) { m.toast("Wait for the photo check to finish."); return }
+        saving = true; m.render()
+        val body = JSONObject().put("name", eName.trim()).put("handle", eHandle.trim().removePrefix("@")).put("bio", eBio.trim()).put("emoji", eEmoji)
+        if (eAvatarChanged) body.put("avatar", eAvatar)
+        io.execute {
+            val r = Net.post(store, "/api/social/me", body, headers(), 45_000)
+            m.runOnUiThread {
+                saving = false
+                if (r.ok) {
+                    val first = me == null
+                    me = SUser.from(r.json.optJSONObject("profile")); meCode = r.json.optString("code"); meState = 2; store.feedName = eName.trim()
+                    feeds.clear(); loadedAt.clear(); suggestAt = 0
+                    m.toast(if (first) "Profile ready ✓" else "Profile saved ✓")
+                    back()
+                    if (first) showCode(true)
+                } else { m.toast(r.error("Couldn't save. Try again.")); refreshIf("edit") }
+            }
+        }
+    }
+
+    private fun restore(code: String) {
+        if (code.trim().length < 8) { m.toast("Type the full backup code."); return }
+        io.execute {
+            val r = Net.post(store, "/api/social/restore", JSONObject().put("code", code.trim()), headers(), 20_000)
+            m.runOnUiThread {
+                if (r.ok) {
+                    me = SUser.from(r.json.optJSONObject("profile")); meCode = r.json.optString("code"); meState = 2
+                    feeds.clear(); loadedAt.clear(); suggestAt = 0
+                    m.toast("Welcome back, ${me?.name}! ✓"); back()
+                } else m.toast(r.error("That code didn't work."))
+            }
+        }
+    }
+
+    // ------------------------------ writing a post ------------------------------
+    /** Opens the composer, as yourself or (team) as an official account. */
+    fun startCompose(asUid: String = "") {
+        if (me == null && asUid.isBlank() && meState == 2) { m.toast("First make your profile."); startEdit(); return }
+        if (screen == "compose") { cAs = asUid; m.render(); return }
+        go("compose") { cAs = asUid }
+    }
+
+    /** Something shared to "Post on BigD Media" from another app: text, a link, or photos. */
+    fun fromShare(text: String, uris: List<Uri>) {
+        if (listening.isNotEmpty()) m.stopListening()
+        history.clear(); history.add(Step("feed", null, null, 0)); screen = "compose"; cAs = ""
+        val url = Regex("https?://\\S+").find(text)?.value ?: ""
+        if (url.isNotBlank()) { cLink = url; previewFor = ""; cPreview = null }
+        val rest = (if (url.isNotBlank()) text.replace(url, "") else text).trim()
+        if (rest.isNotBlank()) cText = if (cText.isBlank()) rest.take(1000) else cText
+        m.render(); m.scrollTop()
+        if (uris.isNotEmpty()) { photoFor = "post"; onPhotos(uris) }
+        if (cLink.isNotBlank()) main.postDelayed(previewLater, 300)
+    }
+
+    private fun buildCompose() {
+        backBar("New post · కొత్త పోస్ట్")
+        if (me == null && cAs.isBlank()) {
+            if (meState != 2) m.add(ui.text("Loading…", 14f, Ui.MUTED), 12)
+            else m.add(ui.card(Ui.SUN_SOFT).apply {
+                addView(ui.text("👤 First make your profile (just your name). Your post stays here.", 14.5f, Ui.INK, bold = true))
+                put(ui.row(ui.button("Make my profile", "primary") { startEdit() }), 10)
+            }, 12)
+        }
+        m.add(ui.card().apply {
+            if (admin) {
+                put(ui.text("Post as", 13f, Ui.MUTED), 0)
+                val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL }
+                (listOf("" to "🙂 Me") + tabs.filter { it.key in sectionKeys }.map { "s_${it.key}" to it.label }).forEachIndexed { i, (k, l) ->
+                    row.addView(ui.chip(l, cAs == k) { cAs = k; m.render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(6) })
+                }
+                put(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(row) }, 6)
+            } else me?.let { u ->
+                put(LinearLayout(m).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    addView(avatar(u, 38), LinearLayout.LayoutParams(dp(38), dp(38)))
+                    addView(ui.text(u.name, 15f, Ui.INK, bold = true).apply { setPadding(dp(10), 0, 0, 0) })
+                }, 0)
+            }
+            val box = ui.input("What's happening? · ఏం జరుగుతోంది?", cText, multi = true).apply { minLines = 4; maxLines = 12; onText { cText = it } }
+            put(box, 12)
+            put(ui.row(mic("compose", box)), 6)
+            // photos
+            put(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                cPhotos.forEachIndexed { i, (_, url) ->
+                    addView(FrameLayout(m).apply {
+                        background = ui.round(SOFT, 10); clipToOutline = true
+                        addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load(abs(url), this, 300) }, FrameLayout.LayoutParams(-1, -1))
+                        addView(TextView(m).apply {
+                            text = "✕"; setTextColor(Color.WHITE); textSize = 13f; gravity = Gravity.CENTER; background = ui.round(Color.parseColor("#99000000"), 11)
+                            contentDescription = "Remove photo"; setOnClickListener { cPhotos.removeAt(i); m.render() }
+                        }, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(2), dp(2), 0) })
+                    }, LinearLayout.LayoutParams(dp(64), dp(64)).apply { marginEnd = dp(6) })
+                }
+                if (cPhotos.size + uploading < 4) addView(ui.button(if (uploading > 0 && photoFor == "post") "Checking…" else "📷 Photos", "soft") {
+                    if (uploading == 0) { photoFor = "post"; m.pickPhotos(4 - cPhotos.size) }
+                })
+            }, 12)
+            if (uploading > 0 && photoFor == "post") put(ui.text("🛡️ Checking your photo for safety…", 12.5f, Ui.MUTED), 6)
+            // a link from another app
+            put(ui.text("🔗 Video or post link from YouTube, Instagram, Facebook, X… (optional)", 13f, Ui.MUTED), 14)
+            val link = ui.input("https://…", cLink).apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+                onText { v -> cLink = v; main.removeCallbacks(previewLater); main.postDelayed(previewLater, 900) }
+            }
+            put(link, 6)
+            put(ui.row(ui.button("📋 Paste link", "ghost") {
+                val clip = try { m.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(m)?.toString() } catch (e: Exception) { null }
+                val u = clip?.let { Regex("https?://\\S+").find(it)?.value }
+                if (u == null) m.toast("No link copied. In the other app tap Share › Copy link, then come back.") else link.setText(u)
+            }), 6)
+            val pv = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL }
+            previewBox = pv
+            put(pv, 8)
+            showPreview()
+            put(ui.button(if (posting) "Posting…" else "📢 Post", "primary") { if (!posting) post() }, 16)
+            put(ui.text("Posts are public and checked for safety. No phone numbers or private details. Videos from other apps are shared as links.", 11.5f, Ui.MUTED), 8)
+        }, 10)
+        if (cLink.isNotBlank() && cLink.trim() != previewFor) main.postDelayed(previewLater, 300)
+    }
+
+    private fun fetchPreview() {
+        val u = cLink.trim()
+        if (!Regex("^https?://\\S+$").matches(u)) { cPreview = null; previewFor = ""; showPreview(); return }
+        if (u == previewFor) return
+        previewFor = u
+        io.execute {
+            val r = Net.post(store, "/api/social/preview", JSONObject().put("url", u), headers(), 20_000)
+            m.runOnUiThread { if (previewFor == u) { cPreview = if (r.ok) r.json.optJSONObject("link") else null; showPreview() } }
+        }
+    }
+
+    private fun showPreview() {
+        val box = previewBox ?: return
+        box.removeAllViews()
+        val o = cPreview ?: return
+        if (o.optString("url") != cLink.trim()) return
+        val title = if (o.optString("yt").isNotBlank()) "▶ " + o.optString("title").ifBlank { "YouTube video" } else o.optString("title")
+        box.addView(linkCard(o.optString("site"), title, o.optString("image"), o.optString("url")) { }, LinearLayout.LayoutParams(-1, -2))
+    }
+
+    /** Photos chosen in the phone's gallery (or shared from another app). */
+    fun onPhotos(uris: List<Uri>) {
+        val list = if (photoFor == "avatar") uris.take(1) else uris.take(maxOf(0, 4 - cPhotos.size - uploading))
+        if (list.isEmpty()) { if (photoFor != "avatar") m.toast("You can add up to 4 photos."); return }
+        val target = photoFor
+        uploading += list.size; m.render()
+        io.execute {
+            for (u in list) {
+                val bytes = Images.prepare(m, u)
+                val r = if (bytes == null) null else Net.post(store, "/api/social/upload", JSONObject().put("data", Base64.encodeToString(bytes, Base64.NO_WRAP)), headers(), 90_000)
+                m.runOnUiThread {
+                    uploading = maxOf(0, uploading - 1)
+                    when {
+                        r == null -> m.toast("Couldn't open that photo.")
+                        !r.ok -> m.toast("Photo not added: " + r.error("please try another photo."))
+                        target == "avatar" -> { eAvatar = r.json.optString("id"); eAvatarUrl = r.json.optString("url"); eAvatarChanged = true }
+                        else -> if (cPhotos.size < 4) cPhotos.add(r.json.optString("id") to r.json.optString("url"))
+                    }
+                    refreshIf(if (target == "avatar") "edit" else "compose")
+                }
+            }
+        }
+    }
+
+    private fun post() {
+        if (me == null && cAs.isBlank()) { m.toast("First make your profile."); startEdit(); return }
+        if (uploading > 0) { m.toast("Wait for the photo check to finish."); return }
+        if (cText.isBlank() && cPhotos.isEmpty() && cLink.isBlank()) { m.toast("Write something, or add a photo or link."); return }
+        if (cLink.isNotBlank() && !Regex("^https?://\\S+$").matches(cLink.trim())) { m.toast("The link must start with https://"); return }
+        if (!store.feedAgreed) {
+            AlertDialog.Builder(m).setTitle("Community rules · నియమాలు")
+                .setMessage("Posts are public: everyone using BigD AI can see them, with your profile.\n\n• Be kind and respectful.\n• No bad words, hate, adult or violent content.\n• No phone numbers, addresses or ID numbers.\n• No ads, scams or fake news.\n• Share only photos you are allowed to share.\n\nPosts that break the rules are removed. You can delete your posts at any time.\n\nFull rules: ${store.server}/rules")
+                .setPositiveButton("I agree") { _, _ -> store.feedAgreed = true; post() }.setNegativeButton("Cancel", null).show()
+            return
+        }
+        if (listening.isNotEmpty()) m.stopListening()
+        posting = true; m.render()
+        val body = JSONObject().put("text", cText.trim()).put("photos", JSONArray(cPhotos.map { it.first })).put("link", cLink.trim())
+        if (cAs.isNotBlank()) body.put("as", cAs)
+        io.execute {
+            val r = Net.post(store, "/api/social/post", body, headers(), 60_000)
+            m.runOnUiThread {
+                posting = false
+                if (r.ok) {
+                    m.toast("Posted ✓")
+                    val target = if (cAs.startsWith("s_")) cAs.removePrefix("s_") else if (tab in sectionKeys || tab == "following") "foryou" else tab
+                    r.json.optJSONObject("post")?.let { o ->
+                        val p = SPost.from(o)
+                        val keys = mutableListOf("foryou", "user:${p.author.uid}")
+                        if (p.author.official) keys.add(p.cat) else keys.add("people")
+                        keys.forEach { k -> feeds[k]?.add(0, p) }
+                    }
+                    cText = ""; cPhotos.clear(); cLink = ""; cPreview = null; previewFor = ""; cAs = ""
+                    tab = target; history.clear(); screen = "feed"; m.render(); m.scrollTop()
+                } else { m.toast(r.error("Couldn't post. Try again.")); refreshIf("compose") }
+            }
+        }
+    }
+
+    // ------------------------------ comments ------------------------------
+    private fun openComments(p: SPost) {
+        go("comments") { commentsFor = p; comments.clear(); commentsLoading = true }
+        loadComments(p)
+    }
+
+    private fun loadComments(p: SPost) {
+        comments.clear(); commentsLoading = true
+        io.execute {
+            val r = Net.get(store, "/api/social/comments?key=${Uri.encode(p.key)}", headers())
+            m.runOnUiThread {
+                if (commentsFor?.key != p.key) return@runOnUiThread
+                commentsLoading = false; comments.clear()
+                if (r.ok) r.json.optJSONArray("comments")?.let { a ->
+                    for (i in 0 until a.length()) a.optJSONObject(i)?.let { o ->
+                        comments.add(SComment(o.optInt("id"), o.optLong("at"), o.optString("text"), SUser.from(o.optJSONObject("author")), o.optBoolean("mine")))
+                    }
+                } else m.toast(r.error("Couldn't load comments."))
+                refreshIf("comments")
+            }
+        }
+    }
+
+    private fun buildComments() {
+        val p = commentsFor ?: run { screen = "feed"; buildFeed(); return }
+        backBar("Post")
+        m.add(postRow(p, full = true), 8)
+        m.add(ui.label("Comments · వ్యాఖ్యలు"), 18)
+        val shown = comments.filter { it.author.uid !in store.blockedUsers }
+        if (commentsLoading) m.add(ui.text("Loading…", 14f, Ui.MUTED), 8)
+        else if (shown.isEmpty()) m.add(ui.text("No comments yet. Be the first!", 14f, Ui.MUTED), 8)
+        shown.forEach { c ->
+            m.add(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(10), dp(12), dp(10)); background = ui.round(Color.WHITE, 16, Ui.LINE)
+                addView(avatar(c.author, 36) { openProfile(c.author.uid) }, LinearLayout.LayoutParams(dp(36), dp(36)))
+                addView(ui.stack(nameLine(c.author, c.at) { commentMenu(c) }, ui.text(c.text, 14.5f, Ui.INK).apply { setTextIsSelectable(true) }).apply { setPadding(dp(10), 0, 0, 0) },
+                    LinearLayout.LayoutParams(0, -2, 1f))
+            }, 8)
+        }
+        if (me == null) { m.add(ui.button("Make your profile to comment", "primary") { startEdit() }, 14); return }
+        val box = ui.input("Write a comment… · మీ అభిప్రాయం", commentText, multi = true).apply { onText { commentText = it } }
+        m.add(box, 16)
+        m.add(ui.row(mic("comment", box), ui.button("Send ➤", "primary") { sendComment() }), 8)
+    }
+
+    private fun sendComment() {
+        val p = commentsFor ?: return
+        val t = commentText.trim(); if (t.isEmpty()) { m.toast("Write a comment first."); return }
+        if (listening.isNotEmpty()) m.stopListening()
+        io.execute {
+            val r = Net.post(store, "/api/social/comment", JSONObject().put("key", p.key).put("text", t), headers(), 30_000)
+            m.runOnUiThread {
+                if (r.ok) {
+                    r.json.optJSONObject("comment")?.let { o -> comments.add(SComment(o.optInt("id"), o.optLong("at"), o.optString("text"), SUser.from(o.optJSONObject("author")), true)) }
+                    samePosts(p.key).forEach { it.comments += 1 }
+                    commentText = ""; refreshIf("comments")
+                } else m.toast(r.error("Couldn't send. Try again."))
+            }
+        }
+    }
+
+    private fun commentMenu(c: SComment) {
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        items.add("👤 Open profile" to { openProfile(c.author.uid) })
+        if (c.mine || admin) items.add("🗑 Delete comment" to {
+            call("/api/social/delete", JSONObject().put("comment", c.id), "Deleted.") {
+                comments.remove(c); commentsFor?.let { p -> samePosts(p.key).forEach { it.comments = maxOf(0, it.comments - 1) } }
+            }
+        })
+        if (!c.mine) {
+            items.add("🚩 Report comment" to { call("/api/social/report", JSONObject().put("comment", c.id), "Thank you. The BigD team will check it.") { comments.remove(c) } })
+            items.add("🚫 Hide posts from ${c.author.name}" to { block(c.author) })
+        }
+        AlertDialog.Builder(m).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
+    }
+
+    // ------------------------------ actions ------------------------------
+    /** 🎤 button: speak instead of typing (easy for elders too). */
+    private fun mic(id: String, box: EditText): View {
+        val b = ui.button(if (listening == id) "● Listening… tap to stop" else "🎤 Speak", if (listening == id) "danger" else "soft") { }
+        fun paint(on: Boolean) {
+            b.text = if (on) "● Listening… tap to stop" else "🎤 Speak"
+            b.background = ui.round(if (on) Ui.DANGER_SOFT else Ui.TEAL_SOFT, 24); b.setTextColor(if (on) Ui.DANGER else Ui.TEAL_DARK)
+        }
+        b.setOnClickListener {
+            if (listening == id) { m.stopListening(); return@setOnClickListener }
+            val before = box.text.toString().trim()
+            listening = id; paint(true)
+            m.listen(onPartial = { p -> box.setText(if (before.isEmpty()) p else "$before $p"); box.setSelection(box.text.length) }, onDone = { heard ->
+                if (listening == id) listening = ""
+                if (!heard.isNullOrBlank()) { val v = if (before.isEmpty()) heard else "$before $heard"; box.setText(v); box.setSelection(v.length) }
+                paint(false)
+            })
+        }
+        return b
+    }
+
+    private fun like(p: SPost, paint: () -> Unit = {}) {
+        val now = !p.liked
+        val copies = (samePosts(p.key) + p).distinct()
+        copies.forEach { it.liked = now; it.likes = maxOf(0, it.likes + if (now) 1 else -1) }
+        paint()
+        io.execute {
+            val r = Net.post(store, "/api/social/like", JSONObject().put("key", p.key), headers(), 15_000)
+            m.runOnUiThread {
+                val likes = if (r.ok) r.json.optInt("likes", p.likes) else maxOf(0, p.likes + if (now) -1 else 1)
+                val liked = if (r.ok) r.json.optBoolean("liked", p.liked) else !now
+                if (!r.ok) m.toast(r.error("Couldn't like. Try again."))
+                (samePosts(p.key) + p).distinct().forEach { it.likes = likes; it.liked = liked }
+                paint()
+            }
+        }
+    }
+
+    private fun follow(u: SUser) {
+        if (me == null && meState == 2) { m.toast("First make your profile."); startEdit(); return }
+        val now = !u.followed
+        fun mark(f: Boolean, n: Int?) {
+            val all = feeds.values.flatten().map { it.author } + suggest + listOfNotNull(profile, commentsFor?.author) + u
+            all.filter { it.uid == u.uid }.distinct().forEach { x -> x.followed = f; x.followers = n ?: maxOf(0, x.followers + if (f) 1 else -1) }
+        }
+        mark(now, null); refreshIf("feed", "profile")
+        io.execute {
+            val r = Net.post(store, "/api/social/follow", JSONObject().put("uid", u.uid), headers(), 15_000)
+            m.runOnUiThread {
+                if (r.ok) { mark(r.json.optBoolean("followed", now), r.json.optInt("followers", u.followers)); loadedAt.remove("following"); if (now) m.toast("Following ${u.name} ✓") }
+                else { mark(!now, null); m.toast(r.error("Couldn't follow. Try again.")) }
+                refreshIf("feed", "profile")
+            }
+        }
+    }
+
+    private fun listen(p: SPost) {
+        if (speaking == p.key) { m.stopTalking(); speaking = ""; refreshIf("feed", "profile", "comments"); return }
+        speaking = p.key; refreshIf("feed", "profile", "comments")
+        m.speakOut(listOf(p.title, p.text).filter { it.isNotBlank() }.joinToString(". ")) {
+            if (speaking == p.key) { speaking = ""; refreshIf("feed", "profile", "comments") }
+        }
+    }
+
+    private fun share(p: SPost) {
+        val t = listOf(p.title, p.text).filter { it.isNotBlank() }.joinToString("\n\n").take(1500) +
+            (if (p.photos.isNotEmpty()) "\n\n" + p.photos.joinToString("\n") { abs(it) } else "") +
+            (if (p.ytId.isNotBlank()) "\n\n▶ https://youtu.be/${p.ytId}" else if (p.linkUrl.isNotBlank()) "\n\n${p.linkUrl}" else "") +
+            (if (p.sourceUrl.isNotBlank() && p.sourceUrl != p.linkUrl) "\n\n${p.sourceUrl}" else "") +
+            "\n\n— ${p.author.name} · BigD AI 🐾 ${store.server}"
+        m.leavingForSystemScreen = true
+        try { m.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t.trim()), "Share")) } catch (e: Exception) { }
+    }
+
+    private fun open(url: String) {
+        m.leavingForSystemScreen = true
+        try { m.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (e: Exception) { m.toast("Couldn't open the link.") }
+    }
+
+    private fun block(u: SUser) {
+        store.blockedUsers = store.blockedUsers + u.uid
+        m.toast("You won't see posts from ${u.name}. You can undo this on their profile.")
+        refreshIf("feed", "profile", "comments")
+    }
+
+    private fun confirm(q: String, yes: () -> Unit) {
+        AlertDialog.Builder(m).setMessage(q).setPositiveButton("Yes") { _, _ -> yes() }.setNegativeButton("No", null).show()
+    }
+
+    private fun report(p: SPost) {
+        val reasons = arrayOf("Bad words or insults", "Adult or violent content", "Harm to a child", "Spam, ads or a scam", "Fake news", "Personal details of someone", "Something else")
+        AlertDialog.Builder(m).setTitle("Why are you reporting it?").setItems(reasons) { _, i ->
+            call("/api/social/report", JSONObject().put("key", p.key).put("reason", reasons[i]), "Thank you. The BigD team will check it.") { }
+        }.show()
+    }
+
+    private fun removePost(key: String) {
+        feeds.values.forEach { l -> l.removeAll { it.key == key } }
+        if (screen == "comments" && commentsFor?.key == key) back()
+    }
+
+    private fun menu(p: SPost) {
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        items.add("👤 Open profile" to { openProfile(p.author.uid) })
+        if (p.mine || admin) items.add("🗑 Delete post" to { confirm("Delete this post?") { call("/api/social/delete", JSONObject().put("key", p.key), "Deleted.") { removePost(p.key) } } })
+        if (!p.mine) {
+            items.add("🚩 Report post" to { report(p) })
+            if (!p.author.official) items.add("🚫 Hide posts from ${p.author.name}" to { block(p.author) })
+        }
+        if (admin && !p.author.official && p.author.uid.isNotBlank() && !p.mine) {
+            items.add("🛡 Team: stop this person posting" to {
+                confirm("Stop ${p.author.name} from posting and commenting?") {
+                    call("/api/social/admin", JSONObject().put("action", "ban").put("uid", p.author.uid), "Done. Their posts are hidden.") { refresh() }
+                }
+            })
+            items.add((if (p.author.verified) "Team: remove the ✓" else "Team: give a ✓") to {
+                call("/api/social/admin", JSONObject().put("action", if (p.author.verified) "unverify" else "verify").put("uid", p.author.uid), "Done.") { refresh() }
+            })
+        }
+        AlertDialog.Builder(m).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
+    }
+
+    private fun call(path: String, body: JSONObject, okMsg: String, onOk: () -> Unit) {
+        io.execute {
+            val r = Net.post(store, path, body, headers(), 20_000)
+            m.runOnUiThread {
+                if (r.ok) { onOk(); m.toast(okMsg); refreshIf("feed", "profile", "comments") }
+                else m.toast(r.error("Couldn't do that. Try again."))
+            }
+        }
+    }
+
+    private fun generate(cat: String) {
+        io.execute {
+            val r = Net.post(store, "/api/media/generate", JSONObject().put("cat", cat), headers(), 20_000)
+            m.runOnUiThread { m.toast(if (r.ok) "Writing new posts… they appear in a few minutes." else r.error("Couldn't start.")) }
+        }
+    }
+
+    // ------------------------------ full-screen viewer ------------------------------
+    /** Opens [p]'s photo number [which] (-1 = its video) full screen, with every other photo and video of this list above and below it. */
+    private fun openViewer(p: SPost, which: Int) {
+        val src: List<SPost> = when (screen) { "profile" -> feeds["user:${profile?.uid}"]; "comments" -> null; else -> feeds[tab] }
+            ?.takeIf { l -> l.any { it.key == p.key } } ?: listOf(p)
+        val blocked = store.blockedUsers
+        val items = ArrayList<MediaViewer.Item>(); var start = 0
+        for (x in src) {
+            if (x.author.uid in blocked) continue
+            val who = x.author.name + (if (x.author.verified) " ✓" else "") + (if (x.author.handle.isNotBlank()) "  @${x.author.handle}" else "")
+            val words = listOf(x.title, x.text).filter { it.isNotBlank() }.joinToString("\n")
+            x.photos.forEachIndexed { i, u -> if (x.key == p.key && i == which) start = items.size; items.add(MediaViewer.Item("photo", abs(u), x.key, who, words, x.likes, x.liked)) }
+            if (x.ytId.isNotBlank()) { if (x.key == p.key && which < 0) start = items.size; items.add(MediaViewer.Item("video", x.ytId, x.key, who, words, x.likes, x.liked)) }
+        }
+        if (items.isEmpty()) return
+        MediaViewer.items = items; MediaViewer.start = start; MediaViewer.server = store.server
+        MediaViewer.onLike = { key -> postByKey(key)?.let { like(it) } }
+        MediaViewer.onComments = { key -> postByKey(key)?.let { openComments(it) } }
+        m.leavingForSystemScreen = true
+        m.startActivity(Intent(m, MediaViewer::class.java))
+    }
+
+    /** A profile photo, full screen. */
+    private fun openPhoto(url: String, u: SUser) {
+        MediaViewer.items = listOf(MediaViewer.Item("photo", url, "", u.name + if (u.verified) " ✓" else "", u.bio, 0, false))
+        MediaViewer.start = 0; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
+        m.leavingForSystemScreen = true
+        m.startActivity(Intent(m, MediaViewer::class.java))
+    }
+
+    // ------------------------------ loading ------------------------------
+    private fun loadMe() {
+        meState = 1
+        io.execute {
+            val r = Net.get(store, "/api/social/me", headers())
+            m.runOnUiThread {
+                if (r.ok) {
+                    me = r.json.optJSONObject("profile")?.let { SUser.from(it) }; meCode = r.json.optString("code"); admin = r.json.optBoolean("admin"); meState = 2
+                    refreshIf("feed", "compose", "profile", "comments")
+                } else meState = 0   // offline: ask again the next time the page is shown
+            }
+        }
+    }
+
+    private fun loadSuggest() {
+        suggestAt = System.currentTimeMillis()
+        io.execute {
+            val r = Net.get(store, "/api/social/suggest", headers())
+            m.runOnUiThread {
+                if (r.ok) {
+                    r.json.optJSONArray("users")?.let { a -> suggest = (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> SUser.from(o) } } }
+                    refreshIf("feed")
+                } else suggestAt = 0
+            }
+        }
+    }
+
+    private fun load(key: String, fresh: Boolean) {
+        if (key in busy) return
+        busy.add(key); if (key == tab) error = ""
+        val before = if (fresh) "" else feeds[key]?.minOfOrNull { it.at }?.let { "&before=$it" } ?: ""
+        io.execute {
+            val r = Net.get(store, "/api/social/feed?tab=${Uri.encode(key)}&limit=20$before", headers())
+            m.runOnUiThread {
+                busy.remove(key); loadedAt[key] = System.currentTimeMillis()
+                if (r.ok) {
+                    val a = r.json.optJSONArray("posts")
+                    val got = if (a == null) emptyList() else (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> SPost.from(o) } }
+                    val now = if (fresh) mutableListOf() else (feeds[key] ?: mutableListOf())
+                    got.forEach { p -> if (now.none { it.key == p.key }) now.add(p) }
+                    feeds[key] = now; more[key] = r.json.optBoolean("more"); admin = r.json.optBoolean("admin", admin)
+                } else {
+                    if (key == tab) error = r.error("Couldn't load posts.")
+                    if (feeds[key] == null) feeds[key] = mutableListOf()
+                }
+                val showing = (screen == "feed" && key == tab) || (screen == "profile" && key == "user:${profile?.uid}")
+                if (showing && m.tab == "feedback") m.render()
+            }
+        }
+    }
+
+    // ------------------------------ views ------------------------------
+    /** Called while the page scrolls: counts the posts that are really on the screen, and loads more at the end. */
+    fun checkSeen() {
+        if (m.tab != "feedback") return
+        for ((key, v) in rows) {
+            if (key in viewed) continue
+            if (v.isShown && v.getGlobalVisibleRect(seenRect) && seenRect.height() >= minOf(v.height, dp(200)) * 0.6f) { viewed.add(key); pendingViews.add(key) }
+        }
+        if (pendingViews.isNotEmpty()) { main.removeCallbacks(flushLater); main.postDelayed(flushLater, 4000) }
+        val last = lastRow
+        val key = if (screen == "feed") tab else if (screen == "profile") "user:${profile?.uid}" else ""
+        if (key.isNotEmpty() && last != null && more[key] == true && key !in busy && last.isShown && last.getGlobalVisibleRect(seenRect)) load(key, false)
+    }
+
+    fun flushViews() {
+        main.removeCallbacks(flushLater)
+        if (pendingViews.isEmpty()) return
+        val keys = pendingViews.take(60); pendingViews.removeAll(keys.toSet())
+        io.execute { Net.post(store, "/api/social/views", JSONObject().put("keys", JSONArray(keys)), headers(), 15_000) }
+    }
+}

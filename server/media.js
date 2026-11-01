@@ -6,6 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { preview } = require("./preview.js");
 
 module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, h }) {
   const { send, readBody, allowed, clientIp } = h;
@@ -199,6 +200,7 @@ Reply with only a JSON object, no other text:
       if (added >= n) break;
     }
     prune(); save();
+    if (added) setTimeout(fillPictures, 2000);
     console.log(`Media: added ${added} ${key} post(s)${info} · AI wrote ${posts.length}` +
       (why.link || why.repeat || why.short ? ` · skipped: ${why.link} no source, ${why.repeat} repeat, ${why.short} too short` : ""));
     return added;
@@ -219,8 +221,29 @@ Reply with only a JSON object, no other text:
     running = false;
   }
 
+  // ---------- pictures: the main picture of each source page, shown like a link card on X ----------
+  let filling = false;
+  async function fillPictures() {
+    if (filling) return;
+    filling = true;
+    try {
+      const todo = db.items.filter(i => i.url && i.img === undefined).sort((a, b) => b.at - a.at).slice(0, 25);
+      let found = 0;
+      for (const it of todo) {
+        const p = await preview(it.url).catch(() => null);
+        if (!db.items.includes(it)) continue;
+        it.img = (p && p.image) || ""; if (it.img) found++;
+        save();
+        await new Promise(r => setTimeout(r, 1200));
+      }
+      if (todo.length) console.log(`Media: pictures found for ${found} of ${todo.length} post(s)`);
+    } catch (e) { console.error("Media pictures error:", e.message); }
+    filling = false;
+  }
+
   /** Fill empty sections, and add the morning posts once a day after 6 AM (India time). */
   function tick() {
+    fillPictures();
     if (!AUTO || !API_KEY) return;
     if (!db.seedTries2 || db.seedTries2.day !== today()) db.seedTries2 = { day: today() };
     const tries = db.seedTries2;

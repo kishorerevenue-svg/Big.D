@@ -7,8 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const dns = require("dns").promises;
-const net = require("net");
+const { preview } = require("./preview.js");
 
 module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, media, h }) {
   const { send, readBody, allowed, clientIp } = h;
@@ -81,7 +80,11 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
 
   // ---------- posts (user posts "p12" and AI section posts "m34" together) ----------
   const stat = key => db.stats[key] || (db.stats[key] = { likes: [], views: 0, comments: 0 });
-  function mediaToPost(i) { return { key: "m" + i.id, uid: "s_" + i.cat, at: i.at, title: i.title, text: i.body, photos: [], yt: i.yt || null, link: null, source: i.url ? { name: i.source, url: i.url } : null, cat: i.cat, emoji: i.emoji || "" }; }
+  function mediaToPost(i) {
+    return { key: "m" + i.id, uid: "s_" + i.cat, at: i.at, title: i.title, text: i.body, photos: [], yt: i.yt || null,
+      link: i.url && i.img ? { url: i.url, site: i.source || "", title: "", image: i.img, yt: "" } : null,   // the source page's own picture, like a link card on X
+      source: i.url ? { name: i.source, url: i.url } : null, cat: i.cat, emoji: i.emoji || "" };
+  }
   function userPostToPost(p) { return { key: "p" + p.id, uid: p.uid, at: p.at, title: "", text: p.text, photos: (p.photos || []).map(fileUrl), yt: p.link && p.link.yt ? { id: p.link.yt, ch: p.link.site || "" } : null, link: p.link || null, source: null, cat: OFFICIAL[p.uid] ? OFFICIAL[p.uid].cat : "", emoji: "" }; }
   function postView(x, me, counts) {
     const s = x.key[0] === "p" ? db.posts.find(p => "p" + p.id === x.key) : null;
@@ -145,60 +148,6 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (!API_KEY) return { ok: false, reason: "Photos can't be checked right now. Please try later." };
     const o = await claude(PHOTO_RULES, [{ type: "image", source: { type: "base64", media_type: type, data: b64 } }, { type: "text", text: "Check this photo." }]);
     return { ok: o.ok === true, reason: str(o.reason, 200) || "This photo can't be shown." };
-  }
-
-  // ---------- link previews (YouTube, Instagram, Facebook, X, any site) ----------
-  const ytId = u => { const m = String(u || "").match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/); return m ? m[1] : ""; };
-  const hostOf = u => { try { return new URL(u).hostname.replace(/^www\.|^m\./, ""); } catch (e) { return ""; } };
-  async function publicHost(u) {
-    try {
-      const url = new URL(u); if (!/^https?:$/.test(url.protocol)) return false;
-      const ips = await dns.lookup(url.hostname, { all: true });
-      return ips.every(({ address: a }) => !(net.isIPv4(a) ? /^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) : /^(::1$|fc|fd|fe80)/i.test(a)));
-    } catch (e) { return false; }
-  }
-  const ent = s => String(s || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(Number(d))).replace(/&#x([0-9a-f]+);/gi, (m, x) => String.fromCodePoint(parseInt(x, 16)));
-  const SITE = { "youtube.com": "YouTube", "youtu.be": "YouTube", "instagram.com": "Instagram", "facebook.com": "Facebook", "fb.watch": "Facebook", "x.com": "X", "twitter.com": "X", "sharechat.com": "ShareChat", "moj.video": "Moj", "threads.net": "Threads" };
-  async function preview(u) {
-    const url = str(u, 600); if (!/^https?:\/\//.test(url)) return null;
-    const host = hostOf(url); const site = SITE[host] || host;
-    const out = { url, site, title: "", image: "", yt: "" };
-    const vid = ytId(url);
-    if (vid) {
-      out.yt = vid; out.image = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
-      try { const r = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent("https://www.youtube.com/watch?v=" + vid)}`, { signal: AbortSignal.timeout(8000) });
-        if (r.ok) { const j = await r.json(); out.title = str(j.title, 200); out.site = "YouTube · " + str(j.author_name, 60); } } catch (e) { }
-      return out;
-    }
-    try {
-      // follow at most 4 redirects, and never to the server's own network
-      let at = url, r = null;
-      for (let hop = 0; hop < 5; hop++) {
-        if (!(await publicHost(at))) return out;
-        r = await fetch(at, { redirect: "manual", signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 (compatible; BigDAI-preview/1.0; +https://bigdai.tech)", "Accept": "text/html" } });
-        const loc = r.status >= 300 && r.status < 400 && r.headers.get("location");
-        if (!loc) break;
-        at = new URL(loc, at).toString(); r = null;
-      }
-      if (!r || !r.body) return out;
-      // read at most 400 KB of the page
-      const reader = r.body.getReader(); const parts = []; let size = 0;
-      while (size < 400_000) { const { done, value } = await reader.read(); if (done) break; parts.push(Buffer.from(value)); size += value.length; }
-      try { await reader.cancel(); } catch (e) { }
-      const html = Buffer.concat(parts).toString("utf8");
-      const meta = {};
-      for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
-        const k = (tag.match(/\b(?:property|name)\s*=\s*["']([^"']+)["']/i) || [])[1];
-        const v = (tag.match(/\bcontent\s*=\s*["']([^"']*)["']/i) || [])[1];
-        if (k && v != null && !(k.toLowerCase() in meta)) meta[k.toLowerCase()] = ent(v);
-      }
-      out.title = str(meta["og:title"] || meta["twitter:title"] || ent((html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1]), 200);
-      const img = meta["og:image"] || meta["twitter:image"] || "";
-      if (/^https:\/\//.test(img)) out.image = str(img, 600);
-      if (meta["og:site_name"] && !SITE[host]) out.site = str(meta["og:site_name"], 60);
-    } catch (e) { }
-    return out;
   }
 
   // ---------- import the old community posts once ----------
