@@ -11,7 +11,7 @@ if ! [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]] || [ -z "$value" ]; then
 fi
 touch .env
 { grep -v "^$name=" .env || true; printf '%s=%s\n' "$name" "$value"; } > .env.new && mv .env.new .env && chmod 600 .env
-echo "SAVED $name (ends with ...${value: -4})"
+if [ ${#value} -le 6 ]; then echo "SAVED $name = $value"; else echo "SAVED $name (ends with ...${value: -4})"; fi
 pm2 restart soul-friend --update-env > /dev/null && echo "server restarted"
 sleep 3
 port="$(grep -E '^PORT=' .env | tail -1 | cut -d= -f2)"
