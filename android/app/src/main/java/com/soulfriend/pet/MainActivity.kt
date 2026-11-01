@@ -74,13 +74,14 @@ class MainActivity : Activity() {
     internal val letter by lazy { LetterHelper(this) }
     internal val messages by lazy { MessagesPage(this) }
     internal val community by lazy { CommunityPage(this) }
+    internal val media by lazy { MediaPage(this) }
 
     companion object {
         private const val REQ_PHOTO = 4402
         /** key, name, icon. The user can drag them into another order (long-press a tab). */
         val TABS = listOf(
             Triple("home", "Home", "🏠"), Triple("pet", "Pet", "🐾"), Triple("tasks", "Tasks", "✅"), Triple("files", "Files", "📄"),
-            Triple("messages", "Messages", "💬"), Triple("vault", "Vault", "🔒"), Triple("feedback", "Community", "👥")
+            Triple("messages", "Messages", "💬"), Triple("vault", "Vault", "🔒"), Triple("feedback", "Media\nమీడియా", "📺")
         )
     }
 
@@ -174,7 +175,7 @@ class MainActivity : Activity() {
             "files" -> filesPage()
             "messages" -> messages.build()
             "vault" -> vaultPage()
-            "feedback" -> community.build()
+            "feedback" -> media.build()
             else -> homePage()
         }
         renderedTab = tab
@@ -212,11 +213,13 @@ class MainActivity : Activity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; tag = key
             addView(TextView(this@MainActivity).apply { text = icon; textSize = 20f; gravity = Gravity.CENTER })
+            val two = label.contains("\n")
             addView(TextView(this@MainActivity).apply {
-                text = label; textSize = 13f; setTextColor(Ui.TEAL_DARK); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, 0, 0)
+                text = label; textSize = if (two) 11.5f else 13f; setTextColor(Ui.TEAL_DARK); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                maxLines = if (two) 2 else 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, 0, 0)
+                if (two) setLineSpacing(0f, 0.95f)
             })
-            contentDescription = label
+            contentDescription = label.replace("\n", " ")
             setOnClickListener { if (tab != key) go(key) else scrollTop() }
             setOnLongClickListener { v -> startTabDrag(v, key); true }
             setOnDragListener { v, e -> onTabDrag(v, e) }
@@ -343,7 +346,7 @@ class MainActivity : Activity() {
         add(pair(tile("⏰", "Add reminder", "Once or repeating") { tasksTab = "rem"; go("tasks") },
             tile("🛡️", "Check a message", "Safe, or a fraud?") { go("messages") }), 10)
         add(pair(tile("🔒", "My Vault", "Cards and documents") { go("vault") },
-            tile("👥", "Community", "Ideas and feedback") { go("feedback") }), 10)
+            tile("📺", "Media · మీడియా", "News, movies, jobs and more") { go("feedback") }), 10)
 
         val tips = listOfNotNull(
             "Say \"remind me to take medicine every day at 8 am\"",
@@ -436,7 +439,7 @@ class MainActivity : Activity() {
             put(ui.text("BigD team password (only for the app's team, to reply to community posts)", 13f, Ui.MUTED), 14)
             val team = ui.input("Team password", store.teamKey).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
             put(team, 6)
-            put(ui.row(ui.button("Save password") { store.teamKey = team.text.toString(); community.load(true); toast(if (store.teamKey.isBlank()) "Removed" else "Saved") }), 8)
+            put(ui.row(ui.button("Save password") { store.teamKey = team.text.toString(); media.refresh(); toast(if (store.teamKey.isBlank()) "Removed" else "Saved") }), 8)
         }, 12)
     }
 
@@ -980,7 +983,10 @@ class MainActivity : Activity() {
         if (!ttsOk) { onDone?.invoke(); return }
         val te = text.any { it in 'ఀ'..'౿' }
         val res = t.setLanguage(Locale.forLanguageTag(if (te) "te-IN" else "en-IN"))
-        if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) { onDone?.invoke(); return }
+        if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+            if (te) toast("To hear Telugu, install the Telugu voice: Pet page › Permissions › Telugu voice.")
+            onDone?.invoke(); return
+        }
         t.setPitch(1f); t.setSpeechRate(0.95f)
         val id = "say" + System.nanoTime()
         t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {

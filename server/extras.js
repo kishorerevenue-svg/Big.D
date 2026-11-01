@@ -8,6 +8,8 @@ const crypto = require("crypto");
 
 module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h }) {
   const { send, readBody, allowed, dailyCheck, clientIp, baseUrl } = h;
+  const reads = new Map(); // reading the feed has its own, bigger limit (it costs nothing)
+  setInterval(() => { const now = Date.now(); for (const [k, l] of reads) if (!l.some(t => now - t < 600000)) reads.delete(k); }, 600000).unref();
   const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10); // India date
   const str = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
   const device = req => String(req.headers["x-device"] || "").replace(/[^\w-]/g, "").slice(0, 64) || "ip:" + clientIp(req);
@@ -217,7 +219,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (!p.startsWith("/api/letter/") && p !== "/api/scan" && !p.startsWith("/api/feed")) return false;
 
     if (req.method === "GET" && p === "/api/feed") {
-      if (!allowed(clientIp(req))) { send(res, 429, { error: "Too many requests." }, origin); return true; }
+      if (!allowed("f:" + clientIp(req), reads, 400)) { send(res, 429, { error: "Too many requests." }, origin); return true; }
       send(res, 200, feedList(url, req), origin); return true;
     }
     if (req.method !== "POST") { send(res, 404, { error: "Not found" }, origin); return true; }

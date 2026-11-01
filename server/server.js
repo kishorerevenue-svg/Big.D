@@ -331,6 +331,10 @@ function cleanMessages(list) {
   return out;
 }
 
+// ---------- Media page (starts its morning posts on its own) ----------
+const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL,
+  adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
+
 // ---------- web server ----------
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin || "";
@@ -341,8 +345,9 @@ const server = http.createServer(async (req, res) => {
   if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY,
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
+  if (await media.handle(req, res, url, origin)) return;
 
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}) }, origin);
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), media: media.stats() }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);

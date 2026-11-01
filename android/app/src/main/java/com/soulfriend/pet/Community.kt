@@ -48,8 +48,9 @@ class CommunityPage(private val m: MainActivity) {
     private fun petIcon(p: String) = mapOf("puppy" to "🐶", "kitten" to "🐱", "bunny" to "🐰", "panda" to "🐼", "bear" to "🧸", "fox" to "🦊",
         "robot" to "🤖", "parrot" to "🦜", "mochi" to "🍡", "kitty" to "😺", "chameleon" to "🦎")[p] ?: "🐾"
 
-    fun build() {
-        m.pageHeader("Community · కమ్యూనిటీ", "Share ideas, problems and thanks. Everyone can read the posts, and the BigD team replies.")
+    /** The "People" section of the Media page: everyone's posts, ideas and feedback. */
+    fun buildPeople() {
+        m.add(ui.text("Share ideas, problems and thanks. Everyone can read these posts, and the BigD team replies.", 13.5f, Ui.MUTED), 10)
         composer()
         m.add(ui.line(ui.label(if (admin) "Latest posts · team view" else "Latest posts"), ui.button(if (loading) "…" else "↻ Refresh", "ghost") { load(true) }), 20)
         if (error.isNotBlank()) m.add(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 8)
@@ -58,7 +59,6 @@ class CommunityPage(private val m: MainActivity) {
         if (shown.isEmpty()) m.add(ui.text(if (loading || !loaded) "Loading posts…" else "No posts yet. Be the first to share an idea!", 14f, Ui.MUTED), 8)
         shown.forEach { m.add(card(it), 10) }
         if (more) m.add(ui.button(if (loading) "Loading…" else "Show more posts", "ghost") { if (!loading) load(false) }, 12)
-        m.shareAndAbout()
         if (!loaded && !loading) load(true)
     }
 
