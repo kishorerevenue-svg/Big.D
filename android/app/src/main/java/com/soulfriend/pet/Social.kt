@@ -555,6 +555,7 @@ class SocialPage(private val m: MainActivity) {
     // ------------------------------ profile ------------------------------
     fun openProfile(uid: String) {
         if (uid.isBlank()) return
+        if (screen == "profile" && profile?.uid == uid) { m.scrollTop(); return }
         val guess = feeds.values.flatten().firstOrNull { it.author.uid == uid }?.author ?: suggest.firstOrNull { it.uid == uid }
             ?: me?.takeIf { it.uid == uid } ?: SUser(uid, "…", "", "", "", "🐾", false, false, 0, 0, 0, false, false)
         loadedAt.remove("user:$uid")
@@ -704,6 +705,7 @@ class SocialPage(private val m: MainActivity) {
     private fun saveProfile() {
         if (eName.trim().length < 2) { m.toast("Write your name (at least 2 letters)."); return }
         if (uploading > 0) { m.toast("Wait for the photo check to finish."); return }
+        if (!rulesOk { saveProfile() }) return
         saving = true; m.render()
         val body = JSONObject().put("name", eName.trim()).put("handle", eHandle.trim().removePrefix("@")).put("bio", eBio.trim()).put("emoji", eEmoji)
         if (eAvatarChanged) body.put("avatar", eAvatar)
@@ -752,7 +754,7 @@ class SocialPage(private val m: MainActivity) {
         val url = Regex("https?://\\S+").find(text)?.value ?: ""
         if (url.isNotBlank()) { cLink = url; previewFor = ""; cPreview = null }
         val rest = (if (url.isNotBlank()) text.replace(url, "") else text).trim()
-        if (rest.isNotBlank()) cText = if (cText.isBlank()) rest.take(1000) else cText
+        if (rest.isNotBlank()) cText = (if (cText.isBlank()) rest else cText.trimEnd() + "\n" + rest).take(1000)
         m.render(); m.scrollTop()
         if (uris.isNotEmpty()) { photoFor = "post"; onPhotos(uris) }
         if (cLink.isNotBlank()) main.postDelayed(previewLater, 300)
@@ -874,12 +876,7 @@ class SocialPage(private val m: MainActivity) {
         if (uploading > 0) { m.toast("Wait for the photo check to finish."); return }
         if (cText.isBlank() && cPhotos.isEmpty() && cLink.isBlank()) { m.toast("Write something, or add a photo or link."); return }
         if (cLink.isNotBlank() && !Regex("^https?://\\S+$").matches(cLink.trim())) { m.toast("The link must start with https://"); return }
-        if (!store.feedAgreed) {
-            AlertDialog.Builder(m).setTitle("Community rules · నియమాలు")
-                .setMessage("Posts are public: everyone using BigD AI can see them, with your profile.\n\n• Be kind and respectful.\n• No bad words, hate, adult or violent content.\n• No phone numbers, addresses or ID numbers.\n• No ads, scams or fake news.\n• Share only photos you are allowed to share.\n\nPosts that break the rules are removed. You can delete your posts at any time.\n\nFull rules: ${store.server}/rules")
-                .setPositiveButton("I agree") { _, _ -> store.feedAgreed = true; post() }.setNegativeButton("Cancel", null).show()
-            return
-        }
+        if (!rulesOk { post() }) return
         if (listening.isNotEmpty()) m.stopListening()
         posting = true; m.render()
         val body = JSONObject().put("text", cText.trim()).put("photos", JSONArray(cPhotos.map { it.first })).put("link", cLink.trim())
@@ -904,8 +901,18 @@ class SocialPage(private val m: MainActivity) {
         }
     }
 
+    /** The community rules, agreed once before the first post, comment or profile. Returns true if already agreed. */
+    private fun rulesOk(then: () -> Unit): Boolean {
+        if (store.feedAgreed) return true
+        AlertDialog.Builder(m).setTitle("Community rules · నియమాలు")
+            .setMessage("Posts, comments and profiles are public: everyone using BigD AI can see them.\n\n• Be kind and respectful.\n• No bad words, hate, adult or violent content.\n• No phone numbers, addresses or ID numbers.\n• No ads, scams or fake news.\n• Share only photos you are allowed to share.\n• Nothing that harms children, ever.\n\nPosts that break the rules are removed and the person can be blocked. You can delete your posts at any time.\n\nFull rules: ${store.server}/rules")
+            .setPositiveButton("I agree") { _, _ -> store.feedAgreed = true; then() }.setNegativeButton("Cancel", null).show()
+        return false
+    }
+
     // ------------------------------ comments ------------------------------
     private fun openComments(p: SPost) {
+        if (screen == "comments" && commentsFor?.key == p.key) return
         go("comments") { commentsFor = p; comments.clear(); commentsLoading = true }
         loadComments(p)
     }
@@ -952,6 +959,7 @@ class SocialPage(private val m: MainActivity) {
     private fun sendComment() {
         val p = commentsFor ?: return
         val t = commentText.trim(); if (t.isEmpty()) { m.toast("Write a comment first."); return }
+        if (!rulesOk { sendComment() }) return
         if (listening.isNotEmpty()) m.stopListening()
         io.execute {
             val r = Net.post(store, "/api/social/comment", JSONObject().put("key", p.key).put("text", t), headers(), 30_000)
