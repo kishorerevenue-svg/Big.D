@@ -35,7 +35,7 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
       brief: "Real estate news for Andhra Pradesh and Telangana (Amaravati, Visakhapatnam, Vijayawada, Tirupati, Hyderabad…), RERA rules, home loans, buying tips and land/plot fraud warnings. No investment advice." },
     jobs: { te: "ఉద్యోగాలు", en: "Jobs", search: 3, daily: 2, keepDays: 45,
       brief: "Real, recent job notifications useful for Telugu people: APPSC, TGPSC, SSC, Railways (RRB), banks (IBPS, SBI), police, DSC/TET, central government and big private hiring drives. Say who can apply, the last date and the official website. Only notifications you found." },
-    devotional: { te: "భక్తి", en: "Devotional", search: 1, daily: 1, keepDays: 365,
+    devotional: { te: "భక్తి", en: "Devotional", search: 1, daily: 1, keepDays: 365, free: true,
       brief: "Upcoming festivals and their meaning, famous temples of Andhra Pradesh and Telangana (Tirumala, Srisailam, Simhachalam, Yadadri, Bhadrachalam…), simple devotional stories and good thoughts. Respectful to every faith." },
     farming: { te: "వ్యవసాయం", en: "Farming", search: 2, daily: 1, keepDays: 120,
       brief: "Useful farming tips for this season in Andhra Pradesh and Telangana, crop and market price news, government schemes for farmers (PM-KISAN, state schemes, crop insurance) and weather advice for farmers." },
@@ -126,7 +126,7 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
 Section: ${c.en}. ${c.brief}
 Today's date: ${istNow().toISOString().slice(0, 10)}.
 Search the internet and find ${n + 2} different, real, recent stories or facts for this section.${key === "movies" ? " Also search YouTube for the official trailers of these films." : ""}
-Then write short research notes in English: for each story, the key facts (what, who, where, when, numbers) and the exact URL of the page it came from. Leave out anything you are not sure about.
+Use a different page for each story. Then write short research notes in English: for each story, the key facts (what, who, where, when, numbers) and the exact URL of the page it came from. Leave out anything you are not sure about.
 Skip stories already covered: ${recent.length ? recent.join(" | ") : "(none yet)"}`;
   }
 
@@ -137,7 +137,7 @@ Skip stories already covered: ${recent.length ? recent.join(" | ") : "(none yet)
 Section: ${c.en} (${c.te}). ${c.brief}
 Today's date: ${istNow().toISOString().slice(0, 10)}.
 Write ${n} different posts in ${TELUGU}.
-${research ? `Use ONLY the facts in the research notes you are given, written fully in your own words. For each post set "src" to the number of the page (from the numbered page list) that the facts came from. If the list has an official YouTube video for that post (an official trailer, or a news channel's own video), set "video" to its number, otherwise 0.`
+${research ? `Use ONLY the facts in the research notes you are given, written fully in your own words. For each post set "src" to the number of the page (from the numbered page list) that the facts came from; use a different page for each post. If the list has an official YouTube video for that post (an official trailer, or a news channel's own video), set "video" to its number, otherwise 0.${c.free ? ` You may also write a simple story or good thought that needs no facts from the notes: for those, set "src" to 0.` : ""}`
   : `Write original content, not copied from anywhere. Set "src" and "video" to 0.`}
 ${SAFE}
 Do not repeat these recent posts: ${recent.length ? recent.join(" | ") : "(none yet)"}
@@ -171,6 +171,7 @@ Reply with only a JSON object, no other text:
     const seenTitles = new Set(db.items.filter(i => i.cat === key).map(i => i.title.replace(/\s+/g, "")));
     const seenUrls = new Set(db.items.filter(i => i.url).map(i => i.url));
     const why = { link: 0, repeat: 0, short: 0 };
+    const batchUrls = new Map();   // a page may give at most 2 posts in one go
     const posts = obj && Array.isArray(obj.posts) ? obj.posts : [];
     let added = 0;
     for (const p of posts.slice(0, n + 2)) {
@@ -181,15 +182,19 @@ Reply with only a JSON object, no other text:
       if (c.search) {
         // the link is picked by number from the pages the search really found, so it can't be made up
         const pg = pages[Number(p.src) - 1];
-        if (!pg || ytId(pg.url)) { why.link++; continue; }
-        url = norm(pg.url) || pg.url; source = host(url);
-        if (seenUrls.has(url)) { why.repeat++; continue; }
+        if (c.free && !Number(p.src)) { /* a story or good thought: no source needed */ }
+        else {
+          if (!pg || ytId(pg.url)) { why.link++; continue; }
+          url = norm(pg.url) || pg.url; source = host(url);
+          if (seenUrls.has(url) || (batchUrls.get(url) || 0) >= 2) { why.repeat++; continue; }
+          batchUrls.set(url, (batchUrls.get(url) || 0) + 1);
+        }
         const vp = pages[Number(p.video) - 1];
         const vid = vp ? ytId(vp.url) : "";
         if (vid) yt = await checkVideo(vid);
       }
       const item = { id: db.next++, cat: key, at: Date.now() - added * 1000, title, body, emoji: str(p.emoji, 8), source, url, yt, by: "auto", likes: [] };
-      db.items.push(item); seenTitles.add(title.replace(/\s+/g, "")); if (url) seenUrls.add(url);
+      db.items.push(item); seenTitles.add(title.replace(/\s+/g, ""));
       added++;
       if (added >= n) break;
     }
