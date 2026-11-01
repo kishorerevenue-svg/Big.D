@@ -297,6 +297,9 @@ class LetterHelper(private val m: MainActivity) {
         }, 12)
         m.add(ui.button("✏️ Change my answers and make it again") { stage = "questions"; result = null; m.render(); m.scrollTop() }, 12)
         m.add(ui.button("➕ New letter", "ghost") { reset() }, 8)
+        m.add(ui.text("🚩 Something wrong or offensive in this letter? Report it", 13f, Ui.MUTED).apply {
+            setPadding(0, m.dp(6), 0, m.dp(6)); setOnClickListener { m.reportAi("letter helper", preview.ifBlank { name }, request) }
+        }, 14)
     }
 
     private fun mime(xl: Boolean) = if (xl) "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

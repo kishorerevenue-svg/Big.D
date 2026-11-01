@@ -336,6 +336,7 @@ const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // profiles, posts with photos and links, comments, likes, follows (the Media tab works like X)
 const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, media,
+  forgetOldFeed: req => (extras && extras.forgetDevice ? extras.forgetDevice(req) : ""),
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 
 // ---------- web server ----------
@@ -529,6 +530,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/privacy") p = "/privacy.html";
     if (p === "/teach") p = "/teach.html";
     if (p === "/rules" || p === "/child-safety") p = "/rules.html";
+    if (p === "/delete-account" || p === "/delete") p = "/delete-account.html";
     const file = path.normalize(path.join(PUBLIC_DIR, p));
     if (file.startsWith(PUBLIC_DIR) && fs.existsSync(file) && fs.statSync(file).isFile()) {
       const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json" };

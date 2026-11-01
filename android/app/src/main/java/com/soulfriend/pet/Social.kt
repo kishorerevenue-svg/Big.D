@@ -211,6 +211,10 @@ class SocialPage(private val m: MainActivity) {
     private var eAvatarUrl = ""
     private var eAvatarChanged = false
     private var saving = false
+    // the team's list of reported posts and comments
+    private var repPosts: List<Pair<SPost, JSONObject>> = emptyList()
+    private var repComments: List<JSONObject> = emptyList()
+    private var repLoading = false
 
     private val ui get() = m.ui
     private val store get() = m.store
@@ -232,6 +236,7 @@ class SocialPage(private val m: MainActivity) {
             "edit" -> buildEdit()
             "compose" -> buildCompose()
             "comments" -> buildComments()
+            "reports" -> buildReports()
             else -> buildFeed()
         }
     }
@@ -254,6 +259,7 @@ class SocialPage(private val m: MainActivity) {
         val st = if (history.isEmpty()) Step("feed", null, null, 0) else history.removeAt(history.lastIndex)
         screen = st.screen; profile = st.profile
         if (screen == "comments" && st.post != null && st.post.key != commentsFor?.key) { commentsFor = st.post; loadComments(st.post) } else commentsFor = st.post
+        if (screen == "reports") loadReports()
         m.render(); m.scrollToY(st.y)
         return true
     }
@@ -295,6 +301,7 @@ class SocialPage(private val m: MainActivity) {
             put(ui.row(ui.button("Make my profile", "primary") { startEdit() }), 10)
         }, 12)
         note(tab)?.let { m.add(ui.text(it, 12.5f, Ui.MUTED), 10) }
+        if (admin) m.add(ui.row(ui.button("🛡 Reports", "ghost") { openReports() }), 10)
         if (admin && tab in sectionKeys) m.add(ui.row(ui.button("🔄 AI posts now") { generate(tab) }, ui.button("✍️ Post here", "primary") { startCompose(asUid = "s_$tab") }), 10)
         val blocked = store.blockedUsers
         val all = feeds[tab]
@@ -695,6 +702,9 @@ class SocialPage(private val m: MainActivity) {
             put(ui.button(if (saving) "Saving…" else "Save profile", "primary") { if (!saving) saveProfile() }, 16)
             put(ui.text("Your profile is linked to this phone. After saving you get a backup code to move it to a new phone.", 12f, Ui.MUTED), 8)
         }, 12)
+        if (me != null) m.add(ui.section("Delete my profile · ప్రొఫైల్ తొలగించు", "Deletes your profile, all your posts and photos, your comments, likes and follows, for ever.").apply {
+            put(ui.row(ui.button("🗑 Delete my profile", "danger") { deleteProfile() }), 10)
+        }, 12)
         if (me == null) m.add(ui.section("Move from another phone", "Had a BigD profile on another phone? Type its backup code.").apply {
             val code = ui.input("Backup code, e.g. 7F3A9C21B4", "").apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }
             put(code, 10)
@@ -901,6 +911,93 @@ class SocialPage(private val m: MainActivity) {
         }
     }
 
+    /** Deletes this phone's Media profile and everything linked to it, after asking. Works from any page. */
+    fun deleteProfile() {
+        AlertDialog.Builder(m).setTitle("Delete your profile? · ప్రొఫైల్ తొలగించాలా?")
+            .setMessage("This deletes for ever:\n\n• your profile (name, photo, @name, tagline) and backup code\n• all your posts and their photos\n• your comments, likes and follows\n\nThis can't be undone. The rest of BigD AI keeps working as before.")
+            .setPositiveButton("Delete") { _, _ ->
+                io.execute {
+                    val r = Net.post(store, "/api/social/delete-me", JSONObject().put("confirm", "DELETE"), headers(), 30_000)
+                    m.runOnUiThread {
+                        if (r.ok) {
+                            me = null; meCode = ""; meState = 2; store.feedName = ""; store.feedAgreed = false
+                            feeds.clear(); loadedAt.clear(); suggestAt = 0; comments.clear(); commentsFor = null; profile = null
+                            cText = ""; cPhotos.clear(); cLink = ""; cPreview = null; previewFor = ""; cAs = ""
+                            history.clear(); screen = "feed"
+                            m.toast("Your profile and everything in it is deleted.")
+                            m.render(); if (m.tab == "feedback") m.scrollTop()
+                        } else m.toast(r.error("Couldn't delete. Check your internet and try again."))
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    // ------------------------------ team: reports ------------------------------
+    private fun openReports() { go("reports") { repLoading = true }; loadReports() }
+
+    private fun loadReports() {
+        repLoading = true
+        io.execute {
+            val r = Net.get(store, "/api/social/reports", headers())
+            m.runOnUiThread {
+                repLoading = false
+                if (r.ok) {
+                    val a = r.json.optJSONArray("posts"); val c = r.json.optJSONArray("comments")
+                    repPosts = if (a == null) emptyList() else (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> SPost.from(o) to o } }
+                    repComments = if (c == null) emptyList() else (0 until c.length()).mapNotNull { c.optJSONObject(it) }
+                } else m.toast(r.error("Couldn't load the reports."))
+                refreshIf("reports")
+            }
+        }
+    }
+
+    private fun reportLine(o: JSONObject): String {
+        val a = o.optJSONArray("reasons")
+        val why = if (a == null) "" else (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.groupingBy { it }.eachCount()
+            .entries.joinToString(", ") { if (it.value > 1) "${it.key} ×${it.value}" else it.key }
+        return "🚩 ${o.optInt("reports")} report" + (if (o.optInt("reports") == 1) "" else "s") + (if (o.optBoolean("hidden")) " · hidden now" else "") + (if (why.isNotBlank()) " · $why" else "")
+    }
+
+    private fun scrollRow(vararg views: View) = HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(ui.row(*views)) }
+
+    private fun stopPerson(u: SUser) {
+        confirm("Stop ${u.name} from posting and commenting? Their posts will be hidden.") {
+            call("/api/social/admin", JSONObject().put("action", "ban").put("uid", u.uid), "Done. Their posts are hidden.") { refresh(); if (screen == "reports") loadReports() }
+        }
+    }
+
+    private fun buildReports() {
+        backBar("🛡 Reports · ఫిర్యాదులు")
+        m.add(ui.text("Check each one: Keep it if it's fine, or Remove it. Posts and comments with 3 reports stay hidden until you decide.", 13f, Ui.MUTED), 8)
+        if (repLoading) { m.add(ui.text("Loading…", 14f, Ui.MUTED), 12); return }
+        if (repPosts.isEmpty() && repComments.isEmpty()) { m.add(ui.text("No reports right now 👍", 15f, Ui.INK), 14); return }
+        repPosts.forEach { (p, o) ->
+            m.add(ui.text(reportLine(o), 13.5f, Ui.DANGER, bold = true), 18)
+            m.add(postRow(p, full = true), 6)
+            val keep = ui.button("✓ Keep") {
+                call("/api/social/admin", JSONObject().put("action", "unhide").put("key", p.key), "Kept. It shows again.") { repPosts = repPosts.filter { it.first.key != p.key }; refresh() }
+            }
+            val remove = ui.button("🗑 Remove", "danger") {
+                confirm("Remove this post for everyone?") { call("/api/social/delete", JSONObject().put("key", p.key), "Removed.") { repPosts = repPosts.filter { it.first.key != p.key }; removePost(p.key) } }
+            }
+            m.add(if (p.author.official) scrollRow(keep, remove) else scrollRow(keep, remove, ui.button("🛡 Stop person", "ghost") { stopPerson(p.author) }), 6)
+        }
+        if (repComments.isNotEmpty()) m.add(ui.label("Reported comments"), 20)
+        repComments.forEach { c ->
+            val id = c.optInt("id"); val author = SUser.from(c.optJSONObject("author"))
+            m.add(ui.card().apply {
+                addView(ui.text(reportLine(c), 13.5f, Ui.DANGER, bold = true))
+                put(nameLine(author, c.optLong("at"), null).apply { setOnClickListener { openProfile(author.uid) } }, 8)
+                put(ui.text(c.optString("text"), 14.5f, Ui.INK).apply { setTextIsSelectable(true) }, 4)
+                put(scrollRow(
+                    ui.button("✓ Keep") { call("/api/social/admin", JSONObject().put("action", "unhide").put("comment", id), "Kept.") { repComments = repComments.filter { it.optInt("id") != id } } },
+                    ui.button("🗑 Remove", "danger") { call("/api/social/delete", JSONObject().put("comment", id), "Removed.") { repComments = repComments.filter { it.optInt("id") != id } } },
+                    ui.button("🛡 Stop person", "ghost") { stopPerson(author) }), 10)
+            }, 10)
+        }
+    }
+
     /** The community rules, agreed once before the first post, comment or profile. Returns true if already agreed. */
     private fun rulesOk(then: () -> Unit): Boolean {
         if (store.feedAgreed) return true
@@ -1098,11 +1195,7 @@ class SocialPage(private val m: MainActivity) {
             if (!p.author.official) items.add("🚫 Hide posts from ${p.author.name}" to { block(p.author) })
         }
         if (admin && !p.author.official && p.author.uid.isNotBlank() && !p.mine) {
-            items.add("🛡 Team: stop this person posting" to {
-                confirm("Stop ${p.author.name} from posting and commenting?") {
-                    call("/api/social/admin", JSONObject().put("action", "ban").put("uid", p.author.uid), "Done. Their posts are hidden.") { refresh() }
-                }
-            })
+            items.add("🛡 Team: stop this person posting" to { stopPerson(p.author) })
             items.add((if (p.author.verified) "Team: remove the ✓" else "Team: give a ✓") to {
                 call("/api/social/admin", JSONObject().put("action", if (p.author.verified) "unverify" else "verify").put("uid", p.author.uid), "Done.") { refresh() }
             })
@@ -1114,7 +1207,7 @@ class SocialPage(private val m: MainActivity) {
         io.execute {
             val r = Net.post(store, path, body, headers(), 20_000)
             m.runOnUiThread {
-                if (r.ok) { onOk(); m.toast(okMsg); refreshIf("feed", "profile", "comments") }
+                if (r.ok) { onOk(); m.toast(okMsg); refreshIf("feed", "profile", "comments", "reports") }
                 else m.toast(r.error("Couldn't do that. Try again."))
             }
         }

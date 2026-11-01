@@ -273,7 +273,7 @@ Reply with only a JSON object, no other text:
     const cat = url.searchParams.get("cat") || "all";
     const before = Number(url.searchParams.get("before")) || Infinity;
     const limit = Math.min(40, Number(url.searchParams.get("limit")) || 20);
-    const pool = db.items.filter(i => (cat === "all" || i.cat === cat) && i.id < before).sort((a, b) => b.id - a.id);
+    const pool = db.items.filter(i => !i.hidden && (cat === "all" || i.cat === cat) && i.id < before).sort((a, b) => b.id - a.id);
     const dev = me(req);
     const cats = Object.entries(CATS).map(([key, c]) => ({ key, te: c.te, en: c.en, count: db.items.filter(i => i.cat === key).length }));
     return { items: pool.slice(0, limit).map(i => view(i, dev)), more: pool.length > limit, cats, admin: isAdmin(req) };
@@ -327,7 +327,9 @@ Reply with only a JSON object, no other text:
 
   /** For the social feed: all section posts (read-only), and removing one (team). */
   function allItems() { return db.items; }
+  /** Removes this phone's likes (old app versions liked posts here). */
+  function forgetDevice(req) { const d = me(req); let n = 0; for (const i of db.items) { const k = (i.likes || []).indexOf(d); if (k >= 0) { i.likes.splice(k, 1); n++; } } if (n) save(); return n; }
   function removeItem(id) { const n = db.items.length; db.items = db.items.filter(i => i.id !== Number(id)); if (db.items.length !== n) save(); return db.items.length !== n; }
 
-  return { handle, stats, generate, CATS, allItems, removeItem };
+  return { handle, stats, generate, CATS, allItems, removeItem, forgetDevice, changed: save };
 };

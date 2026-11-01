@@ -214,7 +214,18 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
   function findPost(id) { return feed.posts.find(p => p.id === Number(id)); }
 
   // ============ router ============
-  return async function handle(req, res, url, origin) {
+  /** Deletes everything this phone did on the old Community page; returns its old id (so the copies shown in Media can be deleted too). */
+  function forgetDevice(req) {
+    const me = hashDev(device(req));
+    const before = feed.posts.length;
+    feed.posts = feed.posts.filter(p => p.dev !== me);
+    for (const p of feed.posts) { p.likes = (p.likes || []).filter(x => x !== me); p.reports = (p.reports || []).filter(x => x !== me); }
+    saveFeed();
+    if (feed.posts.length !== before) console.log(`Feed: deleted ${before - feed.posts.length} old post(s) of a phone`);
+    return me;
+  }
+
+  const handle = async function handle(req, res, url, origin) {
     const p = url.pathname;
     if (!p.startsWith("/api/letter/") && p !== "/api/scan" && !p.startsWith("/api/feed")) return false;
 
@@ -275,4 +286,6 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
       send(res, 502, { error: "The AI is busy right now. Please try again." }, origin); return true;
     }
   };
+  handle.forgetDevice = forgetDevice;
+  return handle;
 };

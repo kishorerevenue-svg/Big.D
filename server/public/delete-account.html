@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Delete your BigD AI profile</title>
+<style>
+:root{--bg:#fff;--ink:#1C2140;--muted:#5F6688;--box:#F7F8FD;--line:#D8DDF0;--accent:#0E6B6B;--danger:#C63B3F;--ok:#1D8A5B}
+@media (prefers-color-scheme:dark){:root{--bg:#0F1226;--ink:#ECEEFB;--muted:#A3A9CC;--box:#171B36;--line:#2B3157;--accent:#5CC8C0;--danger:#FF7B7F;--ok:#5FD39A}}
+body{font-family:system-ui,"Noto Sans Telugu",sans-serif;max-width:680px;margin:0 auto;padding:24px 16px;line-height:1.65;color:var(--ink);background:var(--bg)}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 6px}
+.muted{color:var(--muted);font-size:14px}
+.box{border:1px solid var(--line);border-radius:14px;padding:12px 16px;background:var(--box)}
+ol,ul{padding-left:22px}
+label{display:block;font-weight:600;margin:6px 0}
+input{box-sizing:border-box;width:100%;font-size:18px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);letter-spacing:2px;text-transform:uppercase}
+button{margin-top:12px;font-size:16px;font-weight:600;padding:12px 20px;border:0;border-radius:24px;background:var(--danger);color:#fff;cursor:pointer}
+button:disabled{opacity:.6}
+#out{margin-top:12px;font-weight:600}
+#out.bad{color:var(--danger)}#out.good{color:var(--ok)}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<h1>Delete your BigD AI profile</h1>
+<p class="muted">మీ BigD AI ప్రొఫైల్‌ను తొలగించండి · App: BigD AI (బిగ్ డి) · Developer: Kishore Kumar</p>
+
+<p>You can delete your Media profile in BigD AI at any time. This deletes your profile and everything linked to it, for ever. You don't need to do anything else: the rest of the app works without a profile.</p>
+
+<h2>1. In the app (the easy way)</h2>
+<ol>
+<li>Open <strong>BigD AI</strong> and go to the <strong>Media · మీడియా</strong> tab.</li>
+<li>Tap your round picture at the top, then <strong>✏️ Edit profile</strong>.</li>
+<li>At the bottom, tap <strong>🗑 Delete my profile</strong>, then <strong>Delete</strong>.</li>
+</ol>
+<p class="muted">You can also find it in the app on the <strong>Pet</strong> page › <strong>Privacy</strong> › <strong>Delete my Media profile</strong>.</p>
+
+<h2>2. Here, with your backup code</h2>
+<div class="box">
+<p>Your backup code is in the app: Media › your profile › <strong>🔑 Backup code</strong>. It was also shown when you made your profile.</p>
+<form id="f" autocomplete="off">
+<label for="code">Backup code</label>
+<input id="code" name="code" maxlength="20" placeholder="e.g. 7F3A9C21B4" inputmode="text" autocapitalize="characters" spellcheck="false">
+<button id="btn" type="submit">Delete my profile</button>
+<div id="out" role="status"></div>
+</form>
+</div>
+
+<h2>3. No app and no code?</h2>
+<p>Email <a href="mailto:bigdai.new@gmail.com?subject=Delete%20my%20BigD%20AI%20profile">bigdai.new@gmail.com</a> with your name and @name in BigD AI. We may ask you a question to make sure the profile is yours, and then delete it within 7 days.</p>
+
+<h2>What is deleted</h2>
+<ul>
+<li>Your profile: name, @name, tagline, profile photo and backup code.</li>
+<li>All your posts and the photos in them, and all comments on your posts.</li>
+<li>Your comments on other posts, your likes, the people you follow, and your reports.</li>
+<li>The link between your phone and the profile.</li>
+<li>When you delete from the app: also your old posts and likes from the earlier Community page.</li>
+</ul>
+
+<h2>What is kept</h2>
+<ul>
+<li>Nothing that says who you are. Copies inside our automatic nightly backups are deleted within 7 days.</li>
+<li>View counts on other people's posts stay as plain numbers (they don't say who viewed).</li>
+<li>If the BigD team had stopped your profile for breaking the <a href="/rules">community rules</a>, we keep a scrambled code of your phone, so the same phone can't simply start posting again.</li>
+</ul>
+<p class="muted">Things BigD AI saves only on your phone (reminders, notes, your Vault, what the pet remembers) are not on our server; they are removed when you uninstall the app. See the <a href="/privacy">privacy policy</a>.</p>
+
+<script>
+(function () {
+  var f = document.getElementById("f"), btn = document.getElementById("btn"), out = document.getElementById("out"), box = document.getElementById("code");
+  function show(t, bad) { out.textContent = t; out.className = bad ? "bad" : "good"; }
+  f.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var code = box.value.replace(/[^A-Za-z0-9]/g, "");
+    if (code.length < 8) { show("Please type the full backup code.", true); return; }
+    if (!window.confirm("Delete this profile and all its posts, photos and comments for ever? This can't be undone.")) return;
+    btn.disabled = true; show("Deleting…", false);
+    fetch("/api/social/delete-by-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (x.ok) { show("Done. The profile" + (x.j.name ? " “" + x.j.name + "”" : "") + " and everything linked to it is deleted.", false); box.value = ""; }
+        else show(x.j.error || "Something went wrong. Please try again.", true);
+      })
+      .catch(function () { show("No connection. Please try again.", true); })
+      .then(function () { btn.disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>

@@ -95,6 +95,10 @@ class MessagesPage(private val m: MainActivity) {
         if (v.advice.isNotEmpty()) put(ui.text("What to do · ఏం చేయాలి\n" + v.advice.joinToString("\n") { "✓ $it" }, 14f, Ui.INK), 8)
         if (v.level == "danger") put(helpButtons(), 12)
         if (v.offline) put(ui.text("Checked on your phone only. Connect to the internet for a full check.", 12f, Ui.MUTED), 8)
+        else put(ui.text("🚩 Wrong result? Tell the BigD team", 12.5f, Ui.MUTED).apply {
+            setPadding(0, m.dp(4), 0, m.dp(4))
+            setOnClickListener { m.reportAi("message check", listOf(ScamCheck.label(v.level), v.title, v.reasons.joinToString("; "), v.advice.joinToString("; ")).filter { it.isNotBlank() }.joinToString("\n"), "") }
+        }, 10)
     }
 
     private fun helpButtons() = ui.row(

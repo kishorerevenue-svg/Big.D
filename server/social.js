@@ -9,7 +9,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { preview } = require("./preview.js");
 
-module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, media, h }) {
+module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, media, forgetOldFeed, h }) {
   const { send, readBody, allowed, clientIp } = h;
   const FILE = path.join(DATA_DIR, "social.json");
   const UP = path.join(DATA_DIR, "uploads");
@@ -19,7 +19,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
   const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
 
   // ---------- storage ----------
-  let db = { nextPost: 1, nextComment: 1, users: {}, devices: {}, uploads: {}, posts: [], comments: [], follows: {}, stats: {}, imported: false };
+  let db = { nextPost: 1, nextComment: 1, users: {}, devices: {}, uploads: {}, posts: [], comments: [], follows: {}, stats: {}, imported: false, bannedDevices: [] };
   try { db = Object.assign(db, JSON.parse(fs.readFileSync(FILE, "utf8"))); } catch (e) { }
   let saveTimer = null;
   function save() {
@@ -94,7 +94,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
   }
   function allPosts() {
     return db.posts.filter(p => !p.removed && !p.hidden && !(db.users[p.uid] && db.users[p.uid].banned)).map(userPostToPost)
-      .concat(media.allItems().map(mediaToPost));
+      .concat(media.allItems().filter(i => !i.hidden).map(mediaToPost));
   }
   function feed(tab, before, limit, me) {
     let list = allPosts();
@@ -148,6 +148,47 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (!API_KEY) return { ok: false, reason: "Photos can't be checked right now. Please try later." };
     const o = await claude(PHOTO_RULES, [{ type: "image", source: { type: "base64", media_type: type, data: b64 } }, { type: "text", text: "Check this photo." }]);
     return { ok: o.ok === true, reason: str(o.reason, 200) || "This photo can't be shown." };
+  }
+
+  // ---------- deleting a profile and everything linked to it ----------
+  const unlinkPhoto = id => { try { fs.unlinkSync(path.join(UP, id + ".jpg")); } catch (e) { } delete db.uploads[id]; };
+  /** Deletes the profile [uid]: its posts and photos, comments, likes, follows, reports, uploads and the phones linked to it. */
+  function deleteUser(uid) {
+    if (!uid || OFFICIAL[uid]) return { posts: 0, comments: 0 };
+    const u = db.users[uid];
+    if (u && u.banned) for (const [d, x] of Object.entries(db.devices)) if (x === uid && !db.bannedDevices.includes(d)) db.bannedDevices.push(d);  // a stopped person can't simply start again
+    const mine = db.posts.filter(p => p.uid === uid);
+    const gone = new Set(mine.map(p => "p" + p.id));
+    for (const p of mine) for (const ph of p.photos || []) unlinkPhoto(ph);
+    db.posts = db.posts.filter(p => p.uid !== uid);
+    for (const k of gone) delete db.stats[k];
+    // comments they wrote (other posts lose one from their count), and all comments on their deleted posts
+    let comments = 0;
+    for (const c of db.comments) {
+      if (c.uid !== uid || gone.has(c.key)) continue;
+      comments++;
+      if (c.removed) continue;
+      const up = c.key[0] === "p" ? db.posts.find(q => "p" + q.id === c.key) : null;
+      if (up) up.comments = Math.max(0, (up.comments || 1) - 1); else if (db.stats[c.key]) db.stats[c.key].comments = Math.max(0, (db.stats[c.key].comments || 1) - 1);
+    }
+    db.comments = db.comments.filter(c => c.uid !== uid && !gone.has(c.key));
+    // their likes and reports on other people's posts and comments
+    const drop = list => Array.isArray(list) ? list.filter(x => x !== uid) : list;
+    for (const p of db.posts) { p.likes = drop(p.likes); p.reports = drop(p.reports); }
+    for (const st of Object.values(db.stats)) st.likes = drop(st.likes);
+    for (const c of db.comments) { c.likes = drop(c.likes); c.reports = drop(c.reports); }
+    for (const i of media.allItems()) if (Array.isArray(i.reports)) i.reports = drop(i.reports);
+    // who they follow, and who follows them
+    delete db.follows[uid];
+    for (const list of Object.values(db.follows)) { const i = list.indexOf(uid); if (i >= 0) list.splice(i, 1); }
+    // their photos (profile photo, unused photos) and the phones linked to the profile
+    for (const [id, x] of Object.entries(db.uploads)) if (x.uid === uid) unlinkPhoto(id);
+    for (const [d, x] of Object.entries(db.devices)) if (x === uid) delete db.devices[d];
+    for (const k of viewSeen) if (k.startsWith(uid + "|")) viewSeen.delete(k);
+    delete db.users[uid];
+    save(); if (media.changed) media.changed();
+    console.log(`Social: deleted profile ${uid} (${mine.length} posts, ${comments} comments)`);
+    return { posts: mine.length, comments };
   }
 
   // ---------- import the old community posts once ----------
@@ -226,6 +267,19 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         const off = Object.keys(OFFICIAL).filter(u => !mine.has(u));
         send(res, 200, { users: off.concat(people).slice(0, 14).map(u => userView(u, me, counts)) }, origin); return true;
       }
+      if (p === "/api/social/reports") {
+        // the team's list of reported posts and comments, newest report first
+        if (!admin) { send(res, 401, { error: "Wrong team password." }, origin); return true; }
+        const counts = followerCounts();
+        const extra = x => ({ reports: (x.reports || []).length, reasons: x.reasons || [], hidden: !!x.hidden, reportedAt: x.reportedAt || 0 });
+        const posts = db.posts.filter(q => !q.removed && (q.reports || []).length).map(q => Object.assign(postView(userPostToPost(q), me, counts), extra(q)))
+          .concat(media.allItems().filter(i => (i.reports || []).length).map(i => Object.assign(postView(mediaToPost(i), me, counts), extra(i))))
+          .sort((a, b) => b.reportedAt - a.reportedAt).slice(0, 100);
+        const comments = db.comments.filter(c => !c.removed && (c.reports || []).length)
+          .map(c => Object.assign({ id: c.id, key: c.key, at: c.at, text: c.text, author: userView(c.uid, me, counts) }, extra(c)))
+          .sort((a, b) => b.reportedAt - a.reportedAt).slice(0, 100);
+        send(res, 200, { posts, comments }, origin); return true;
+      }
       if (p === "/api/social/comments") {
         const key = str(url.searchParams.get("key"), 20);
         const counts = followerCounts();
@@ -240,9 +294,20 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (!allowed(clientIp(req))) { send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); return true; }
     let body;
     try { body = await readBody(req, p === "/api/social/upload" ? 4 * 1024 * 1024 : 64 * 1024); } catch (e) { send(res, 400, { error: e.message === "too_large" ? "That photo is too big." : "Bad request." }, origin); return true; }
+    if (p === "/api/social/delete-by-code") {
+      // from the web page bigdai.tech/delete-account: delete a profile with its backup code
+      const lim = limit(req, "delcode", 10, 3000); if (lim) { send(res, 429, { error: lim }, origin); return true; }
+      const code = str(body.code, 20).toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const u = code.length >= 8 && Object.values(db.users).find(x => x.code === code);
+      if (!u) { send(res, 404, { error: "That backup code is not right." }, origin); return true; }
+      const name = u.name || "";
+      try { const r = deleteUser(u.uid); send(res, 200, { ok: true, name, deleted: r }, origin); }
+      catch (e) { console.error("Social delete error:", e.message); send(res, 502, { error: "Something went wrong. Please try again." }, origin); }
+      return true;
+    }
     const uid = uidOf(req, true);
     const user = db.users[uid];
-    const banned = user && user.banned;
+    const banned = (user && user.banned) || db.bannedDevices.includes(devHash(req));
 
     try {
       if (p === "/api/social/upload") {
@@ -262,6 +327,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
       }
 
       if (p === "/api/social/me") {
+        if (banned) { send(res, 403, { error: "You can't change your profile." }, origin); return true; }
         const name = str(body.name, 30).replace(/[\r\n]/g, " "), bio = str(body.bio, 160).replace(/\n{3,}/g, "\n\n");
         if (name.length < 2) { send(res, 400, { error: "Write your name (at least 2 letters)." }, origin); return true; }
         const chk = await checkText(name + "\n" + bio);
@@ -306,6 +372,22 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         const post = { id: db.nextPost++, uid: as, at: Date.now(), text, photos, link, likes: [], views: 0, comments: 0, reports: [] };
         db.posts.push(post); save();
         send(res, 200, { post: postView(userPostToPost(post), uid) }, origin); return true;
+      }
+
+      if (p === "/api/social/delete-me") {
+        // from the app: delete this phone's profile and everything linked to it
+        if (str(body.confirm, 10) !== "DELETE") { send(res, 400, { error: "Please confirm." }, origin); return true; }
+        const r = user ? deleteUser(uid) : { posts: 0, comments: 0 };
+        if (!user) delete db.devices[devHash(req)];
+        // also anything this phone did on the old Community page and old likes
+        let old = 0;
+        try { if (media.forgetDevice) media.forgetDevice(req); } catch (e) { }
+        try {
+          const oldDev = forgetOldFeed ? forgetOldFeed(req) : "";
+          if (oldDev) { const lid = "l_" + crypto.createHash("sha256").update("old|" + oldDev).digest("hex").slice(0, 10); if (db.users[lid]) old = deleteUser(lid).posts; }
+        } catch (e) { }
+        save();
+        send(res, 200, { ok: true, deleted: { posts: r.posts + old, comments: r.comments } }, origin); return true;
       }
 
       if (p === "/api/social/preview") { send(res, 200, { link: await preview(body.url) }, origin); return true; }
@@ -355,15 +437,22 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
       }
 
       if (p === "/api/social/report") {
+        const reason = str(body.reason, 80) || "Reported";
+        // reports are kept (who and why) until the team checks them; 3 reports hide the post until then
+        const mark = x => {
+          x.reports = Array.isArray(x.reports) ? x.reports : [];
+          if (x.reports.includes(uid)) return;
+          x.reports.push(uid); x.reasons = (x.reasons || []).concat(reason).slice(-10); x.reportedAt = Date.now();
+          if (x.reports.length >= 3) x.hidden = true;
+        };
         if (body.comment) {
           const c = db.comments.find(x => x.id === Number(body.comment));
-          if (c && c.uid !== uid && !c.reports.includes(uid)) { c.reports.push(uid); if (c.reports.length >= 3) c.hidden = true; }
+          if (c && c.uid !== uid) mark(c);
         } else {
           const found = findPost(key);
-          if (found && found.user && found.user.uid !== uid && !found.user.reports.includes(uid)) {
-            found.user.reports.push(uid); if (found.user.reports.length >= 3) found.user.hidden = true;
-          }
-          console.log("Social report:", key, str(body.reason, 80));
+          if (found && found.user && found.user.uid !== uid) mark(found.user);
+          if (found && found.media) { mark(found.media); if (media.changed) media.changed(); }   // AI-written posts can be reported too
+          console.log("Social report:", key, reason);
         }
         save(); send(res, 200, { ok: true }, origin); return true;
       }
@@ -392,7 +481,12 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         if (a === "ban" || a === "unban" || a === "verify" || a === "unverify") {
           const u = db.users[target]; if (!u) { send(res, 404, { error: "No such user." }, origin); return true; }
           if (a === "ban") u.banned = true; if (a === "unban") u.banned = false; if (a === "verify") u.verified = true; if (a === "unverify") u.verified = false;
-        } else if (a === "unhide") { const fp = findPost(key); if (fp && fp.user) { fp.user.hidden = false; fp.user.reports = []; } }
+        } else if (a === "unhide") {
+          // the team checked it and it's fine: show it again and clear its reports
+          const ok = x => { x.hidden = false; x.reports = []; x.reasons = []; delete x.reportedAt; };
+          if (body.comment) { const c = db.comments.find(x => x.id === Number(body.comment)); if (c) ok(c); }
+          else { const fp = findPost(key); if (fp && fp.user) ok(fp.user); if (fp && fp.media) { ok(fp.media); if (media.changed) media.changed(); } }
+        }
         else { send(res, 400, { error: "Unknown action." }, origin); return true; }
         save(); send(res, 200, { ok: true }, origin); return true;
       }
@@ -403,6 +497,10 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     }
   }
 
-  function stats() { return { users: Object.values(db.users).filter(u => u.name).length, posts: db.posts.filter(x => !x.removed).length, photos: Object.keys(db.uploads).length }; }
+  function stats() {
+    const reported = db.posts.filter(x => !x.removed && (x.reports || []).length).length + db.comments.filter(c => !c.removed && (c.reports || []).length).length +
+      media.allItems().filter(i => (i.reports || []).length).length;
+    return { users: Object.values(db.users).filter(u => u.name).length, posts: db.posts.filter(x => !x.removed).length, photos: Object.keys(db.uploads).length, reported };
+  }
   return { handle, stats };
 };

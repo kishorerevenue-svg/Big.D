@@ -487,6 +487,11 @@ class MainActivity : Activity() {
             put(ui.check("Hide personal details before sending (Aadhaar, phone and PAN numbers become XXXX…1234)", store.hidePersonal) { store.hidePersonal = it }, 8)
         }, 12)
 
+        add(ui.section("Your Media profile", "Your public profile, posts, photos and comments in the Media tab.").apply {
+            put(ui.row(ui.button("🗑 Delete my Media profile", "danger") { social.deleteProfile() }), 10)
+            put(ui.text("Deletes your profile and everything in it, for ever. Also possible on the web: ${store.server}/delete-account", 12f, Ui.MUTED), 8)
+        }, 12)
+
         add(ui.section("What your pet remembers", "Saved only on this phone. Say \"forget that\" or tap ✕.").apply {
             val mems = store.memories()
             if (mems.isEmpty()) put(ui.text("Nothing yet. Tell it about yourself, for example \"My daughter's name is Sita\".", 13.5f, Ui.MUTED))
@@ -968,6 +973,19 @@ class MainActivity : Activity() {
             try { startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_SOCIAL_PHOTO) }
             catch (e2: Exception) { leavingForSystemScreen = false; toast("Couldn't open your photos.") }
         }
+    }
+
+    /** "Report" for an AI answer (letter helper, message check): sends the AI's answer to the BigD team after asking. */
+    internal fun reportAi(where: String, answer: String, question: String) {
+        AlertDialog.Builder(this).setTitle("Report this AI answer?")
+            .setMessage(if (question.isBlank()) "The AI's answer is sent to the BigD team so they can check it and make BigD AI better."
+                else "The AI's answer and your request are sent to the BigD team so they can check it and make BigD AI better.")
+            .setPositiveButton("Report") { _, _ ->
+                val body = JSONObject().put("reason", "Reported from $where").put("reply", answer.take(4000)).put("question", question.take(2000))
+                io.execute { Net.post(store, "/api/report", body, emptyMap(), 20_000) }
+                toast("Reported. Thank you!")
+            }
+            .setNegativeButton("Cancel", null).show()
     }
 
     /** "Share BigD AI" and "About", at the end of the Media page. */
