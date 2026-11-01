@@ -302,5 +302,9 @@ Reply with only a JSON object, no other text:
     send(res, 404, { error: "Not found" }, origin); return true;
   }
 
-  return { handle, stats, generate, CATS };
+  /** For the social feed: all section posts (read-only), and removing one (team). */
+  function allItems() { return db.items; }
+  function removeItem(id) { const n = db.items.length; db.items = db.items.filter(i => i.id !== Number(id)); if (db.items.length !== n) save(); return db.items.length !== n; }
+
+  return { handle, stats, generate, CATS, allItems, removeItem };
 };

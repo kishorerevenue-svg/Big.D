@@ -334,6 +334,9 @@ function cleanMessages(list) {
 // ---------- Media page (starts its morning posts on its own) ----------
 const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
+// profiles, posts with photos and links, comments, likes, follows (the Media tab works like X)
+const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, media,
+  adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 
 // ---------- web server ----------
 const server = http.createServer(async (req, res) => {
@@ -346,8 +349,9 @@ const server = http.createServer(async (req, res) => {
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
   if (await media.handle(req, res, url, origin)) return;
+  if (await social.handle(req, res, url, origin)) return;
 
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), media: media.stats() }, origin);
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), media: media.stats(), social: social.stats() }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
@@ -524,6 +528,7 @@ const server = http.createServer(async (req, res) => {
     let p = url.pathname === "/" ? "/index.html" : url.pathname;
     if (p === "/privacy") p = "/privacy.html";
     if (p === "/teach") p = "/teach.html";
+    if (p === "/rules" || p === "/child-safety") p = "/rules.html";
     const file = path.normalize(path.join(PUBLIC_DIR, p));
     if (file.startsWith(PUBLIC_DIR) && fs.existsSync(file) && fs.statSync(file).isFile()) {
       const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json" };
