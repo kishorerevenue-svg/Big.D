@@ -455,7 +455,9 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         const u = db.users[uid] || (db.users[uid] = { uid, at: Date.now(), code: crypto.randomBytes(5).toString("hex").toUpperCase() });
         if (!u.code) u.code = crypto.randomBytes(5).toString("hex").toUpperCase();
         u.name = name; u.bio = bio; u.emoji = str(body.emoji, 8) || u.emoji || "🐾";
-        let hd = str(body.handle, 20).toLowerCase().replace(/^@/, "");
+        // forgiving @name: "Kishore.Kumar" or "kishore kumar" becomes "kishore_kumar"
+        let hd = str(body.handle, 40).toLowerCase().replace(/^@/, "").replace(/[\s.\-]+/g, "_").replace(/[^a-z0-9_]/g, "")
+          .replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 20);
         if (hd && !/^[a-z0-9_]{3,20}$/.test(hd)) { send(res, 400, { error: "@name: use 3 to 20 small English letters, numbers or _." }, origin); return true; }
         if (hd && hd !== u.handle && (Object.values(db.users).some(x => x.handle === hd) || Object.values(OFFICIAL).some(x => x.handle === hd))) { send(res, 400, { error: "That @name is taken. Try another." }, origin); return true; }
         u.handle = hd || u.handle || handleFree(name);

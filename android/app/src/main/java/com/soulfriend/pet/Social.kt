@@ -744,8 +744,13 @@ class SocialPage(private val m: MainActivity) {
         if (eName.trim().length < 2) { m.toast("Write your name (at least 2 letters)."); return }
         if (uploading > 0) { m.toast("Wait for the photo check to finish."); return }
         if (!rulesOk { saveProfile() }) return
+        // a forgiving @name: "Kishore.Kumar" or "kishore kumar" becomes "kishore_kumar"
+        val hd = eHandle.trim().removePrefix("@").lowercase().replace(Regex("[\\s.\\-]+"), "_").replace(Regex("[^a-z0-9_]"), "")
+            .replace(Regex("_+"), "_").trim('_').take(20)
+        if (eHandle.isNotBlank() && hd.length < 3) { m.toast("@name: use 3 to 20 small English letters, numbers or _ (for example kishore_kumar)."); return }
+        eHandle = hd
         saving = true; m.render()
-        val body = JSONObject().put("name", eName.trim()).put("handle", eHandle.trim().removePrefix("@")).put("bio", eBio.trim()).put("emoji", eEmoji)
+        val body = JSONObject().put("name", eName.trim()).put("handle", hd).put("bio", eBio.trim()).put("emoji", eEmoji)
         if (eAvatarChanged) body.put("avatar", eAvatar)
         io.execute {
             val r = Net.post(store, "/api/social/me", body, headers(), 45_000)
