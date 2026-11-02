@@ -323,6 +323,7 @@ class SocialPage(private val m: MainActivity) {
             }, 14f, Ui.MUTED), 14)
             if (tab == "foryou" || tab == "following") whoToFollow()
         }
+        if (!list.isNullOrEmpty()) m.add(ui.button("⬆  ఒక్కొక్కటిగా స్వైప్ చేసి చదవండి · Swipe to read, one by one", "soft") { openReader(list[0]) }, 12)
         list?.forEachIndexed { i, p ->
             m.add(postRow(p), 10)
             if (i == 3 && tab == "foryou") whoToFollow()
@@ -426,7 +427,7 @@ class SocialPage(private val m: MainActivity) {
         }
         col.put(actions(p), 2)
         row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
-        if (!full) row.setOnClickListener { openComments(p) }
+        if (!full) row.setOnClickListener { openReader(p) }
         rows.add(p.key to row); lastRow = row
         return row
     }
@@ -461,7 +462,9 @@ class SocialPage(private val m: MainActivity) {
         if (p.ytId.isNotBlank()) {
             parts.add(videoCard(p))
             if (p.linkTitle.isNotBlank()) parts.add(ui.text("▶ " + p.linkTitle, 13.5f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END })
-        } else if (p.linkUrl.isNotBlank()) parts.add(linkCard(p.linkSite, p.linkTitle.ifBlank { if (p.author.official) "పూర్తి వార్త చదవండి · Read the full story" else "" }, p.linkImage, p.linkUrl))
+        } else if (p.linkUrl.isNotBlank()) parts.add(linkCard(p.linkSite, p.linkTitle.ifBlank { if (p.author.official) "పూర్తి వార్త చదవండి · Read the full story" else "" }, p.linkImage, p.linkUrl) {
+            if (screen == "comments") open(p.linkUrl) else openReader(p)
+        })
         if (parts.isEmpty() && p.author.official) parts.add(sectionArt(p))
         if (parts.isEmpty()) return null
         if (parts.size == 1) return parts[0]
@@ -475,7 +478,7 @@ class SocialPage(private val m: MainActivity) {
         fun img(i: Int) = ImageView(m).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(SOFT); contentDescription = "Photo ${i + 1}"
             Images.load(abs(p.photos[i]), this, if (p.photos.size == 1) 1080 else 640)
-            setOnClickListener { openViewer(p, i) }
+            setOnClickListener { if (screen == "comments") openViewer(p, i) else openReader(p) }
         }
         val gap = dp(3)
         val box = FrameLayout(m).apply { background = ui.round(SOFT, 16); clipToOutline = true }
@@ -517,7 +520,7 @@ class SocialPage(private val m: MainActivity) {
         addView(TextView(m).apply {
             text = clock(p.videoDur); textSize = 12f; setTextColor(Color.WHITE); setPadding(dp(8), dp(3), dp(8), dp(3)); background = ui.round(Color.parseColor("#99000000"), 8)
         }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(8), dp(8)) })
-        setOnClickListener { openViewer(p, -2) }
+        setOnClickListener { if (screen == "comments") openViewer(p, -2) else openReader(p) }
     }
 
     private fun ytChannel(ch: String) = ch.removePrefix("YouTube · ").removePrefix("YouTube").trim()
@@ -533,7 +536,7 @@ class SocialPage(private val m: MainActivity) {
             text = "YouTube" + (if (ch.isNotBlank()) " · $ch" else ""); textSize = 12f; setTextColor(Color.WHITE)
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(8), dp(3), dp(8), dp(3)); background = ui.round(Color.parseColor("#99000000"), 8)
         }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(8), 0, dp(8), dp(8)) })
-        setOnClickListener { openViewer(p, -1) }
+        setOnClickListener { if (screen == "comments") openViewer(p, -1) else openReader(p) }
     }
 
     private fun hostOf(u: String) = try { Uri.parse(u).host?.removePrefix("www.")?.removePrefix("m.") ?: "" } catch (e: Exception) { "" }
@@ -1252,13 +1255,17 @@ class SocialPage(private val m: MainActivity) {
     }
 
     private fun share(p: SPost) {
+        m.leavingForSystemScreen = true
+        try { m.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, shareText(p)), "Share")) } catch (e: Exception) { }
+    }
+
+    private fun shareText(p: SPost): String {
         val t = listOf(p.title, p.text).filter { it.isNotBlank() }.joinToString("\n\n").take(1500) +
             (if (p.photos.isNotEmpty()) "\n\n" + p.photos.joinToString("\n") { abs(it) } else "") +
             (if (p.ytId.isNotBlank()) "\n\n▶ https://youtu.be/${p.ytId}" else if (p.linkUrl.isNotBlank()) "\n\n${p.linkUrl}" else "") +
             (if (p.sourceUrl.isNotBlank() && p.sourceUrl != p.linkUrl) "\n\n${p.sourceUrl}" else "") +
             "\n\n— ${p.author.name} · BigD AI 🐾 ${store.server}"
-        m.leavingForSystemScreen = true
-        try { m.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t.trim()), "Share")) } catch (e: Exception) { }
+        return t.trim()
     }
 
     private fun open(url: String) {
@@ -1345,6 +1352,40 @@ class SocialPage(private val m: MainActivity) {
         m.startActivity(Intent(m, MediaViewer::class.java))
     }
 
+    /**
+     * Opens the story reader at [p]: one post per screen (picture or video on top, the full text in a box below);
+     * swipe up for the next post of this list. More posts load at the end.
+     */
+    private fun openReader(p: SPost) {
+        val key = if (screen == "profile") "user:${profile?.uid}" else tab
+        val blocked = store.blockedUsers
+        val src = (feeds[key]?.takeIf { l -> l.any { it.key == p.key } } ?: listOf(p)).filter { it.author.uid !in blocked || it.key == p.key }
+        StoryReader.posts = src.toList()
+        StoryReader.start = src.indexOfFirst { it.key == p.key }.coerceAtLeast(0)
+        StoryReader.server = store.server
+        StoryReader.host = object : StoryReader.Host {
+            override fun abs(u: String) = this@SocialPage.abs(u)
+            override fun like(p: SPost, paint: () -> Unit) = this@SocialPage.like(p, paint)
+            override fun comments(p: SPost) = openComments(p)
+            override fun profile(p: SPost) = openProfile(p.author.uid)
+            override fun report(p: SPost, reason: String) =
+                call("/api/social/report", JSONObject().put("key", p.key).put("reason", reason), "Thank you. The BigD team will check it.") { }
+            override fun shareText(p: SPost) = this@SocialPage.shareText(p)
+            override fun seen(key: String) {
+                if (!viewed.add(key)) return
+                pendingViews.add(key); main.removeCallbacks(flushLater); main.postDelayed(flushLater, 4000)
+            }
+            override fun more(done: (List<SPost>, Boolean) -> Unit) {
+                if (this@SocialPage.more[key] != true) { done(emptyList(), true); return }
+                load(key, false) { added, end -> done(added.filter { it.author.uid !in store.blockedUsers }, end) }
+            }
+            override fun speak(text: String, done: () -> Unit) = m.speakOut(text) { done() }
+            override fun stopSpeaking() = m.stopTalking()
+        }
+        m.leavingForSystemScreen = true
+        m.startActivity(Intent(m, StoryReader::class.java))
+    }
+
     /** A profile photo, full screen. */
     private fun openPhoto(url: String, u: SUser) {
         MediaViewer.items = listOf(MediaViewer.Item("photo", url, "", u.name + if (u.verified) " ✓" else "", u.bio, 0, false))
@@ -1380,8 +1421,9 @@ class SocialPage(private val m: MainActivity) {
         }
     }
 
-    private fun load(key: String, fresh: Boolean) {
-        if (key in busy) return
+    /** [after] (for the story reader) gets the posts that were added, and true when there are no more. */
+    private fun load(key: String, fresh: Boolean, after: ((List<SPost>, Boolean) -> Unit)? = null) {
+        if (key in busy) { after?.invoke(emptyList(), false); return }
         busy.add(key); if (key == tab) error = ""
         val before = if (fresh) "" else feeds[key]?.minOfOrNull { it.at }?.let { "&before=$it" } ?: ""
         io.execute {
@@ -1392,11 +1434,14 @@ class SocialPage(private val m: MainActivity) {
                     val a = r.json.optJSONArray("posts")
                     val got = if (a == null) emptyList() else (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> SPost.from(o) } }
                     val now = if (fresh) mutableListOf() else (feeds[key] ?: mutableListOf())
-                    got.forEach { p -> if (now.none { it.key == p.key }) now.add(p) }
+                    val added = ArrayList<SPost>()
+                    got.forEach { p -> if (now.none { it.key == p.key }) { now.add(p); added.add(p) } }
                     feeds[key] = now; more[key] = r.json.optBoolean("more"); admin = r.json.optBoolean("admin", admin)
+                    after?.invoke(added, more[key] != true)
                 } else {
                     if (key == tab) error = r.error("Couldn't load posts.")
                     if (feeds[key] == null) feeds[key] = mutableListOf()
+                    after?.invoke(emptyList(), false)
                 }
                 val showing = (screen == "feed" && key == tab) || (screen == "profile" && key == "user:${profile?.uid}")
                 if (showing && m.tab == "feedback") m.render()

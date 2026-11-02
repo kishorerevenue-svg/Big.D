@@ -20,6 +20,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.animation.DecelerateInterpolator
@@ -408,13 +409,21 @@ class MediaViewer : Activity() {
 }
 
 /** Vertical pages, each one full screen; a swipe moves to the next or the previous page. */
-private class SnapPager(ctx: Context) : ScrollView(ctx) {
+internal class SnapPager(ctx: Context) : ScrollView(ctx) {
     val box = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
     var page = 0
         private set
     /** True while a zoomed photo (or a pinch) is using the touches. */
     var locked = false
     var onPage: ((Int) -> Unit)? = null
+    /** Asked once per drag, with where the finger went down (screen x, y) and whether it moves up:
+     *  true = a box inside the page scrolls its own text, so the page stays (the story reader uses this). */
+    var childScrolls: ((Float, Float, Boolean) -> Boolean)? = null
+    private var childOwns = false
+    private var decided = false
+    private var downRawX = 0f
+    private var downRawY = 0f
+    private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
     private var startPage = 0
     private var flung = false
     private var anim: ObjectAnimator? = null
@@ -434,7 +443,20 @@ private class SnapPager(ctx: Context) : ScrollView(ctx) {
             val c = box.getChildAt(i); val lp = c.layoutParams
             if (lp.height != h) { lp.height = h; c.layoutParams = lp }
         }
-        post { anim?.cancel(); scrollTo(0, page * h) }
+        pendingPage = page
+        post { if (pendingPage < 0) return@post; requestLayout() }
+    }
+
+    /** The page to scroll to as soon as the pages are laid out at their real size. */
+    private var pendingPage = -1
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        super.onLayout(changed, l, t, r, b)
+        val p = pendingPage
+        if (p >= 0 && height > 0 && box.height >= (p + 1) * height) {
+            pendingPage = -1
+            anim?.cancel(); scrollTo(0, p * height)
+        }
     }
 
     /** A video inside a page must not stop the swipe; a zoomed photo uses [locked] instead. */
@@ -442,8 +464,15 @@ private class SnapPager(ctx: Context) : ScrollView(ctx) {
 
     override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { begin(); downX = e.x; downY = e.y }
-            MotionEvent.ACTION_MOVE -> if (Math.abs(e.x - downX) > Math.abs(e.y - downY)) return false
+            MotionEvent.ACTION_DOWN -> { begin(); downX = e.x; downY = e.y; downRawX = e.rawX; downRawY = e.rawY; childOwns = false; decided = false }
+            MotionEvent.ACTION_MOVE -> {
+                if (childOwns) return false
+                if (Math.abs(e.x - downX) > Math.abs(e.y - downY)) return false
+                if (!decided && Math.abs(e.y - downY) > slop) {
+                    decided = true
+                    if (childScrolls?.invoke(downRawX, downRawY, e.y < downY) == true) { childOwns = true; return false }
+                }
+            }
         }
         if (locked || e.pointerCount > 1) return false
         return super.onInterceptTouchEvent(e)
@@ -457,7 +486,7 @@ private class SnapPager(ctx: Context) : ScrollView(ctx) {
         return r
     }
 
-    private fun begin() { anim?.cancel(); anim = null; startPage = page; flung = false }
+    private fun begin() { anim?.cancel(); anim = null; startPage = page; flung = false; pendingPage = -1 }
 
     override fun fling(velocityY: Int) { flung = true; settle(if (velocityY > 0) startPage + 1 else startPage - 1) }
 
@@ -472,7 +501,9 @@ private class SnapPager(ctx: Context) : ScrollView(ctx) {
     /** Opens page [p] straight away (no animation). */
     fun jump(p: Int) {
         page = p; startPage = p
+        pendingPage = p
         if (height > 0) scrollTo(0, p * height)
+        requestLayout()
         onPage?.invoke(p)
     }
 }
@@ -539,7 +570,7 @@ private class ZoomImageView(ctx: Context, private val onLock: (Boolean) -> Unit,
 }
 
 /** A 16:9 box for videos, as wide as it can be while still fitting. */
-private class Box169(ctx: Context) : FrameLayout(ctx) {
+internal class Box169(ctx: Context) : FrameLayout(ctx) {
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         var w = MeasureSpec.getSize(widthMeasureSpec)
         var h = w * 9 / 16

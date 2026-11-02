@@ -123,6 +123,13 @@
             android:exported="false"
             android:grantUriPermissions="true" />
 
+        <!-- Media: one post per screen (picture or video on top, the text below); swipe up for the next -->
+        <activity
+            android:name=".StoryReader"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
         <activity
             android:name=".PhotoActivity"
             android:exported="false"
