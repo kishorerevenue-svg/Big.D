@@ -541,4 +541,6 @@ const server = http.createServer(async (req, res) => {
   send(res, 404, { error: "Not found" }, origin);
 });
 
+server.requestTimeout = 20 * 60 * 1000;   // videos from slow mobile networks can take several minutes to upload
+server.headersTimeout = 65 * 1000;
 server.listen(PORT, () => console.log(`BigD AI server running on port ${PORT} (model ${MODEL}, key ${API_KEY ? "set" : "MISSING"})`));

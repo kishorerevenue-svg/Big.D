@@ -12,6 +12,13 @@ mkdir -p "$BACKUP_DIR"
 tar czf "$BACKUP_DIR/bigd-$(date +%F).tgz" -C "$SERVER_DIR" --exclude=data/tts --exclude=data/files .env data 2>/dev/null && echo "backup saved"
 ls -1t "$BACKUP_DIR"/bigd-*.tgz 2>/dev/null | tail -n +8 | xargs -r rm -f
 
+# videos in Media need ffmpeg (installed once)
+if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+  echo "installing ffmpeg for videos..."
+  DEBIAN_FRONTEND=noninteractive apt-get update -y -q >/dev/null 2>&1
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg >/dev/null 2>&1 && echo "ffmpeg installed" || echo "ffmpeg install failed (will try again next time)"
+fi
+
 cd "$REPO_DIR" || exit 1
 old="$(git rev-parse HEAD)"
 git pull -q || { echo "git pull failed"; exit 1; }

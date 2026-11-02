@@ -32,16 +32,18 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.VideoView
 
 /**
  * Full-screen photos and videos from Media, like X or Instagram: swipe up or down to go through all of them,
  * pinch or double-tap a photo to zoom, and YouTube videos play right here.
  */
 class MediaViewer : Activity() {
-    class Item(val kind: String, val src: String, val key: String, val who: String, val words: String, var likes: Int, var liked: Boolean)
+    /** kind: "photo" (src = picture), "video" (src = YouTube id) or "file" (src = a video posted from a phone, with its [poster]). */
+    class Item(val kind: String, val src: String, val key: String, val who: String, val words: String, var likes: Int, var liked: Boolean, val poster: String = "")
 
     companion object {
-        /** What to show (set just before opening). "photo": src is the picture's address; "video": src is the YouTube video id. */
+        /** What to show (set just before opening). */
         var items: List<Item> = emptyList()
         var start = 0
         var server = "https://bigdai.tech"
@@ -165,6 +167,7 @@ class MediaViewer : Activity() {
         val prev = at
         at = i
         if (webAt >= 0 && webAt != i) stopVideo()
+        if (fileAt >= 0 && fileAt != i) stopFile()
         if (prev >= 0 && prev != i) (pages.getOrNull(prev)?.getChildAt(0) as? ZoomImageView)?.reset()
         pager.locked = false
         for (k in pages.indices) { if (k >= i - 1 && k <= i + 1) fill(k) else if (k < i - 2 || k > i + 2) clear(k) }
@@ -179,6 +182,7 @@ class MediaViewer : Activity() {
         paintLike()
         ytBtn.visibility = if (cur.kind == "video") View.VISIBLE else View.GONE
         if (cur.kind == "video") play(i)
+        if (cur.kind == "file") playFile(i)
     }
 
     private fun fill(k: Int) {
@@ -190,6 +194,21 @@ class MediaViewer : Activity() {
             z.contentDescription = "Photo"
             pg.addView(z, FrameLayout.LayoutParams(-1, -1))
             Images.load(item.src, z, 1600)
+        } else if (item.kind == "file") {
+            val poster = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; Images.load(item.poster, this, 1080) }
+            pg.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            val vv = VideoView(this).apply { contentDescription = "Video" }
+            pg.addView(vv, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+            val sign = TextView(this).apply {
+                text = "▶"; textSize = 26f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; visibility = View.GONE
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#88000000")) }
+            }
+            pg.addView(sign, FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER))
+            pg.tag = Triple(poster, vv, sign)
+            pg.setOnClickListener {
+                // tap: pause or play again
+                if (vv.isPlaying) { vv.pause(); sign.visibility = View.VISIBLE } else if (fileAt == k) { vv.start(); sign.visibility = View.GONE } else playFile(k)
+            }
         } else {
             val box = Box169(this).apply { setBackgroundColor(Color.BLACK); contentDescription = "Play video" }
             box.addView(ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load("https://i.ytimg.com/vi/${item.src}/hqdefault.jpg", this, 640) },
@@ -206,6 +225,8 @@ class MediaViewer : Activity() {
         val pg = pages[k]
         if (pg.childCount == 0) return
         if (webAt == k) stopVideo()
+        if (fileAt == k) stopFile()
+        pg.tag = null
         pg.removeAllViews(); pg.setOnClickListener(null)
     }
 
@@ -257,6 +278,30 @@ class MediaViewer : Activity() {
             "allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" allowfullscreen></iframe></body></html>"
         w.loadDataWithBaseURL("$origin/", html, "text/html", "utf-8", null)
         webAt = k
+    }
+
+    // ---------- videos posted from phones (played here, looping) ----------
+    private var fileAt = -1
+
+    @Suppress("UNCHECKED_CAST")
+    private fun playFile(k: Int) {
+        if (k != at) return
+        val parts = pages[k].tag as? Triple<ImageView, VideoView, TextView> ?: return
+        val (poster, vv, sign) = parts
+        if (fileAt == k) return   // already started
+        fileAt = k
+        sign.visibility = View.GONE
+        vv.setOnPreparedListener { mp -> mp.isLooping = true; if (fileAt == k) { vv.start(); poster.visibility = View.INVISIBLE } }
+        vv.setOnErrorListener { _, _, _ -> if (fileAt == k) { sign.text = "⚠"; sign.visibility = View.VISIBLE; poster.visibility = View.VISIBLE }; true }
+        vv.setVideoURI(Uri.parse(items[k].src))
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun stopFile() {
+        val k = fileAt; fileAt = -1
+        val parts = pages.getOrNull(k)?.tag as? Triple<ImageView, VideoView, TextView> ?: return
+        try { parts.second.stopPlayback() } catch (e: Exception) { }
+        parts.first.visibility = View.VISIBLE
     }
 
     private fun stopVideo() {
@@ -329,7 +374,7 @@ class MediaViewer : Activity() {
 
     private fun share() {
         val cur = items.getOrNull(at) ?: return
-        val link = if (cur.kind == "video") "https://youtu.be/${cur.src}" else cur.src
+        val link = when (cur.kind) { "video" -> "https://youtu.be/${cur.src}"; else -> cur.src }
         val t = listOf(cur.words.take(1200), link, "— ${cur.who.substringBefore("  @")} · BigD AI 🐾 $server").filter { it.isNotBlank() }.joinToString("\n\n")
         try { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share")) } catch (e: Exception) { }
     }
@@ -346,6 +391,12 @@ class MediaViewer : Activity() {
     override fun onPause() {
         super.onPause()
         if (webAt >= 0) stopVideo()
+        if (fileAt >= 0) stopFile()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (at >= 0 && items.getOrNull(at)?.kind == "file") playFile(at)
     }
 
     override fun onDestroy() {

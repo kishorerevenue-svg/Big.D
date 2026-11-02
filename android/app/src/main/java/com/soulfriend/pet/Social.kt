@@ -118,16 +118,18 @@ class SUser(val uid: String, val name: String, val handle: String, val bio: Stri
 
 class SPost(val key: String, val author: SUser, val at: Long, val title: String, val text: String, val photos: List<String>, val ytId: String, val ytCh: String,
             val linkUrl: String, val linkTitle: String, val linkSite: String, val linkImage: String, val sourceName: String, val sourceUrl: String,
-            val cat: String, val emoji: String, var likes: Int, var liked: Boolean, val views: Int, var comments: Int, val mine: Boolean) {
+            val cat: String, val emoji: String, var likes: Int, var liked: Boolean, val views: Int, var comments: Int, val mine: Boolean,
+            val videoUrl: String = "", val videoPoster: String = "", val videoDur: Int = 0, val videoW: Int = 0, val videoH: Int = 0) {
     companion object {
         fun from(o: JSONObject): SPost {
-            val ph = o.optJSONArray("photos"); val yt = o.optJSONObject("yt"); val ln = o.optJSONObject("link"); val src = o.optJSONObject("source")
+            val ph = o.optJSONArray("photos"); val yt = o.optJSONObject("yt"); val ln = o.optJSONObject("link"); val src = o.optJSONObject("source"); val vd = o.optJSONObject("video")
             return SPost(o.optString("key"), SUser.from(o.optJSONObject("author")), o.optLong("at"), o.optString("title"), o.optString("text"),
                 if (ph == null) emptyList() else (0 until ph.length()).map { ph.optString(it) }.filter { it.isNotBlank() },
                 yt?.optString("id") ?: "", yt?.optString("ch") ?: "",
                 ln?.optString("url") ?: "", ln?.optString("title") ?: "", ln?.optString("site") ?: "", ln?.optString("image") ?: "",
                 src?.optString("name") ?: "", src?.optString("url") ?: "", o.optString("cat"), o.optString("emoji"),
-                o.optInt("likes"), o.optBoolean("liked"), o.optInt("views"), o.optInt("comments"), o.optBoolean("mine"))
+                o.optInt("likes"), o.optBoolean("liked"), o.optInt("views"), o.optInt("comments"), o.optBoolean("mine"),
+                vd?.optString("url") ?: "", vd?.optString("poster") ?: "", vd?.optInt("dur") ?: 0, vd?.optInt("w") ?: 0, vd?.optInt("h") ?: 0)
         }
     }
 }
@@ -201,6 +203,11 @@ class SocialPage(private val m: MainActivity) {
     private val previewLater = Runnable { fetchPreview() }
     private var posting = false
     private var uploading = 0
+    private class VideoPick(val id: String, val poster: String, val dur: Int, val w: Int, val h: Int)
+    private var cVideo: VideoPick? = null
+    private var vState = ""            // "" | "uploading" | "checking"
+    private var vPct = 0
+    private var vStatus: TextView? = null
     private var photoFor = "post"
     // editing the profile
     private var eName = ""
@@ -449,7 +456,8 @@ class SocialPage(private val m: MainActivity) {
     /** Photos (1 to 4), a YouTube video or a link card, one under the other. */
     private fun mediaBlock(p: SPost): View? {
         val parts = ArrayList<View>()
-        if (p.photos.isNotEmpty()) parts.add(photoGrid(p))
+        if (p.videoUrl.isNotBlank()) parts.add(ownVideoCard(p))
+        else if (p.photos.isNotEmpty()) parts.add(photoGrid(p))
         if (p.ytId.isNotBlank()) {
             parts.add(videoCard(p))
             if (p.linkTitle.isNotBlank()) parts.add(ui.text("▶ " + p.linkTitle, 13.5f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END })
@@ -494,6 +502,22 @@ class SocialPage(private val m: MainActivity) {
             }, FrameLayout.LayoutParams(-1, dp(250)))
         }
         return box
+    }
+
+    /** A video someone posted from their phone: its poster with ▶ and its length; tap to play full screen. */
+    private fun ownVideoCard(p: SPost): View = FrameLayout(m).apply {
+        background = ui.round(Color.BLACK, 16); clipToOutline = true; contentDescription = "Play video"
+        val tall = p.videoH > p.videoW
+        addView(ImageView(m).apply { scaleType = if (tall) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP; Images.load(abs(p.videoPoster), this, 720) },
+            FrameLayout.LayoutParams(-1, dp(if (tall) 340 else 210)))
+        addView(TextView(m).apply {
+            text = "▶"; textSize = 24f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#99000000")) }
+        }, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.CENTER))
+        addView(TextView(m).apply {
+            text = clock(p.videoDur); textSize = 12f; setTextColor(Color.WHITE); setPadding(dp(8), dp(3), dp(8), dp(3)); background = ui.round(Color.parseColor("#99000000"), 8)
+        }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(8), dp(8)) })
+        setOnClickListener { openViewer(p, -2) }
     }
 
     private fun ytChannel(ch: String) = ch.removePrefix("YouTube · ").removePrefix("YouTube").trim()
@@ -626,6 +650,7 @@ class SocialPage(private val m: MainActivity) {
     private fun mediaGrid(list: List<SPost>, loading: Boolean) {
         val tiles = ArrayList<Triple<SPost, Int, String>>()   // post, photo number (-1 = video), picture
         for (p in list) {
+            if (p.videoUrl.isNotBlank()) tiles.add(Triple(p, -2, abs(p.videoPoster)))
             p.photos.forEachIndexed { i, u -> tiles.add(Triple(p, i, abs(u))) }
             if (p.ytId.isNotBlank()) tiles.add(Triple(p, -1, "https://i.ytimg.com/vi/${p.ytId}/hqdefault.jpg"))
         }
@@ -766,7 +791,9 @@ class SocialPage(private val m: MainActivity) {
         val rest = (if (url.isNotBlank()) text.replace(url, "") else text).trim()
         if (rest.isNotBlank()) cText = (if (cText.isBlank()) rest else cText.trimEnd() + "\n" + rest).take(1000)
         m.render(); m.scrollTop()
-        if (uris.isNotEmpty()) { photoFor = "post"; onPhotos(uris) }
+        val vids = uris.filter { (try { m.contentResolver.getType(it) } catch (e: Exception) { null })?.startsWith("video/") == true }
+        if (vids.isNotEmpty()) onVideo(vids[0])
+        else if (uris.isNotEmpty()) { photoFor = "post"; onPhotos(uris) }
         if (cLink.isNotBlank()) main.postDelayed(previewLater, 300)
     }
 
@@ -797,10 +824,21 @@ class SocialPage(private val m: MainActivity) {
             val box = ui.input("What's happening? · ఏం జరుగుతోంది?", cText, multi = true).apply { minLines = 4; maxLines = 12; onText { cText = it } }
             put(box, 12)
             put(ui.row(mic("compose", box)), 6)
-            // photos
+            // photos, or one video
+            val v = cVideo
             put(LinearLayout(m).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                cPhotos.forEachIndexed { i, (_, url) ->
+                if (v != null) addView(FrameLayout(m).apply {
+                    background = ui.round(Color.BLACK, 12); clipToOutline = true
+                    addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load(abs(v.poster), this, 400) }, FrameLayout.LayoutParams(-1, -1))
+                    addView(TextView(m).apply { text = "▶ " + clock(v.dur); setTextColor(Color.WHITE); textSize = 13f; setPadding(dp(8), dp(3), dp(8), dp(3)); background = ui.round(Color.parseColor("#99000000"), 8) },
+                        FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(6), 0, 0, dp(6)) })
+                    addView(TextView(m).apply {
+                        text = "✕"; setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER; background = ui.round(Color.parseColor("#99000000"), 13)
+                        contentDescription = "Remove video"; setOnClickListener { cVideo = null; m.render() }
+                    }, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(4), dp(4), 0) })
+                }, LinearLayout.LayoutParams(dp(if (v.h > v.w) 112 else 170), dp(if (v.h > v.w) 200 else 96)))
+                if (v == null) cPhotos.forEachIndexed { i, (_, url) ->
                     addView(FrameLayout(m).apply {
                         background = ui.round(SOFT, 10); clipToOutline = true
                         addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load(abs(url), this, 300) }, FrameLayout.LayoutParams(-1, -1))
@@ -810,11 +848,15 @@ class SocialPage(private val m: MainActivity) {
                         }, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(2), dp(2), 0) })
                     }, LinearLayout.LayoutParams(dp(64), dp(64)).apply { marginEnd = dp(6) })
                 }
-                if (cPhotos.size + uploading < 4) addView(ui.button(if (uploading > 0 && photoFor == "post") "Checking…" else "📷 Photos", "soft") {
+                if (v == null && vState.isEmpty() && cPhotos.size + uploading < 4) addView(ui.button(if (uploading > 0 && photoFor == "post") "Checking…" else "📷 Photos", "soft") {
                     if (uploading == 0) { photoFor = "post"; m.pickPhotos(4 - cPhotos.size) }
                 })
+                if (v == null && vState.isEmpty() && cPhotos.isEmpty() && uploading == 0) addView(ui.button("🎬 Video", "soft") { m.pickVideo() },
+                    LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
             }, 12)
             if (uploading > 0 && photoFor == "post") put(ui.text("🛡️ Checking your photo for safety…", 12.5f, Ui.MUTED), 6)
+            if (vState.isNotEmpty()) put(ui.text(videoStatusText(), 13f, Ui.TEAL_DARK, bold = true).also { vStatus = it }, 8)
+            if (v == null && vState.isEmpty() && cPhotos.isEmpty()) put(ui.text("Videos: up to 1 minute. They are made smaller and checked for safety before anyone sees them.", 11.5f, Ui.MUTED), 4)
             // a link from another app
             put(ui.text("🔗 Video or post link from YouTube, Instagram, Facebook, X… (optional)", 13f, Ui.MUTED), 14)
             val link = ui.input("https://…", cLink).apply {
@@ -881,15 +923,75 @@ class SocialPage(private val m: MainActivity) {
         }
     }
 
+    private fun clock(sec: Int) = String.format(Locale.ENGLISH, "%d:%02d", sec / 60, sec % 60)
+    private fun videoStatusText() = if (vState == "uploading") "⬆️ Sending your video… $vPct%" else "🛡️ Making your video smaller and checking it for safety (up to a minute)…"
+
+    /** A video chosen in the gallery or shared from another app: checked here, sent to the server, then prepared there. */
+    fun onVideo(uri: android.net.Uri) {
+        if (vState.isNotEmpty()) { m.toast("Wait for the first video to finish."); return }
+        val ms = try { android.media.MediaMetadataRetriever().run { try { setDataSource(m, uri); extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L } finally { release() } } } catch (e: Exception) { 0L }
+        val size = try { m.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L } catch (e: Exception) { -1L }
+        if (ms > 61_000) { m.toast("Please choose a video up to 1 minute long. You can trim it in your Gallery first."); return }
+        if (size > 100L * 1024 * 1024) { m.toast("That video is too big (over 100 MB). Please trim it in your Gallery first."); return }
+        val type = (try { m.contentResolver.getType(uri) } catch (e: Exception) { null }) ?: "video/mp4"
+        cPhotos.clear(); vState = "uploading"; vPct = 0
+        if (screen != "compose") startCompose() else m.render()
+        io.execute {
+            var id = ""; var err = ""
+            try {
+                val c = URL(store.server.trimEnd('/') + "/api/social/upload-video").openConnection() as HttpURLConnection
+                c.requestMethod = "POST"; c.connectTimeout = 15_000; c.readTimeout = 120_000; c.doOutput = true
+                c.setRequestProperty("Content-Type", if (type.startsWith("video/")) type else "video/mp4")
+                c.setRequestProperty("X-Device", store.deviceId)
+                headers().forEach { (k, v) -> c.setRequestProperty(k, v) }
+                if (size > 0) c.setFixedLengthStreamingMode(size) else c.setChunkedStreamingMode(64 * 1024)
+                m.contentResolver.openInputStream(uri)?.use { inp ->
+                    c.outputStream.use { out ->
+                        val buf = ByteArray(64 * 1024); var sent = 0L; var shown = -1
+                        while (true) {
+                            val n = inp.read(buf); if (n < 0) break
+                            out.write(buf, 0, n); sent += n
+                            val pct = if (size > 0) (sent * 100 / size).toInt() else 0
+                            if (pct != shown) { shown = pct; main.post { vPct = pct; vStatus?.text = videoStatusText() } }
+                        }
+                    }
+                } ?: throw java.io.IOException("can't open")
+                val code = c.responseCode
+                val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
+                c.disconnect()
+                val j = try { JSONObject(text) } catch (e: Exception) { JSONObject() }
+                if (code in 200..299) id = j.optString("id") else err = j.optString("error").ifBlank { "Couldn't send the video. Please try again." }
+            } catch (e: Exception) { err = "The video couldn't be sent. Check your internet and try again." }
+            if (id.isBlank()) { main.post { vState = ""; m.toast(err.ifBlank { "Couldn't send the video." }); refreshIf("compose") }; return@execute }
+            main.post { vState = "checking"; refreshIf("compose") }
+            // wait while the server makes it smaller and checks it
+            val until = System.currentTimeMillis() + 6 * 60_000L
+            while (System.currentTimeMillis() < until) {
+                Thread.sleep(3000)
+                val r = Net.get(store, "/api/social/upload-status?id=$id", headers())
+                val st = r.json.optString("status")
+                if (st == "ready") {
+                    val pick = VideoPick(id, r.json.optString("poster"), r.json.optInt("dur"), r.json.optInt("w"), r.json.optInt("h"))
+                    main.post { vState = ""; cVideo = pick; refreshIf("compose") }
+                    return@execute
+                }
+                if (st == "failed" || r.code == 404) { main.post { vState = ""; m.toast(r.json.optString("reason").ifBlank { "That video can't be posted." }); refreshIf("compose") }; return@execute }
+            }
+            main.post { vState = ""; m.toast("The video is taking too long. Please try a shorter video."); refreshIf("compose") }
+        }
+    }
+
     private fun post() {
         if (me == null && cAs.isBlank()) { m.toast("First make your profile."); startEdit(); return }
         if (uploading > 0) { m.toast("Wait for the photo check to finish."); return }
-        if (cText.isBlank() && cPhotos.isEmpty() && cLink.isBlank()) { m.toast("Write something, or add a photo or link."); return }
+        if (vState.isNotEmpty()) { m.toast("Wait for the video to finish."); return }
+        if (cText.isBlank() && cPhotos.isEmpty() && cVideo == null && cLink.isBlank()) { m.toast("Write something, or add a photo, video or link."); return }
         if (cLink.isNotBlank() && !Regex("^https?://\\S+$").matches(cLink.trim())) { m.toast("The link must start with https://"); return }
         if (!rulesOk { post() }) return
         if (listening.isNotEmpty()) m.stopListening()
         posting = true; m.render()
         val body = JSONObject().put("text", cText.trim()).put("photos", JSONArray(cPhotos.map { it.first })).put("link", cLink.trim())
+        cVideo?.let { body.put("video", it.id) }
         if (cAs.isNotBlank()) body.put("as", cAs)
         io.execute {
             val r = Net.post(store, "/api/social/post", body, headers(), 60_000)
@@ -904,7 +1006,7 @@ class SocialPage(private val m: MainActivity) {
                         if (p.author.official) keys.add(p.cat) else keys.add("people")
                         keys.forEach { k -> feeds[k]?.add(0, p) }
                     }
-                    cText = ""; cPhotos.clear(); cLink = ""; cPreview = null; previewFor = ""; cAs = ""
+                    cText = ""; cPhotos.clear(); cVideo = null; cLink = ""; cPreview = null; previewFor = ""; cAs = ""
                     tab = target; history.clear(); screen = "feed"; m.render(); m.scrollTop()
                 } else { m.toast(r.error("Couldn't post. Try again.")); refreshIf("compose") }
             }
@@ -922,7 +1024,7 @@ class SocialPage(private val m: MainActivity) {
                         if (r.ok) {
                             me = null; meCode = ""; meState = 2; store.feedName = ""; store.feedAgreed = false
                             feeds.clear(); loadedAt.clear(); suggestAt = 0; comments.clear(); commentsFor = null; profile = null
-                            cText = ""; cPhotos.clear(); cLink = ""; cPreview = null; previewFor = ""; cAs = ""
+                            cText = ""; cPhotos.clear(); cVideo = null; cLink = ""; cPreview = null; previewFor = ""; cAs = ""
                             history.clear(); screen = "feed"
                             m.toast("Your profile and everything in it is deleted.")
                             m.render(); if (m.tab == "feedback") m.scrollTop()
@@ -1231,6 +1333,7 @@ class SocialPage(private val m: MainActivity) {
             if (x.author.uid in blocked) continue
             val who = x.author.name + (if (x.author.verified) " ✓" else "") + (if (x.author.handle.isNotBlank()) "  @${x.author.handle}" else "")
             val words = listOf(x.title, x.text).filter { it.isNotBlank() }.joinToString("\n")
+            if (x.videoUrl.isNotBlank()) { if (x.key == p.key && which == -2) start = items.size; items.add(MediaViewer.Item("file", abs(x.videoUrl), x.key, who, words, x.likes, x.liked, abs(x.videoPoster))) }
             x.photos.forEachIndexed { i, u -> if (x.key == p.key && i == which) start = items.size; items.add(MediaViewer.Item("photo", abs(u), x.key, who, words, x.likes, x.liked)) }
             if (x.ytId.isNotBlank()) { if (x.key == p.key && which < 0) start = items.size; items.add(MediaViewer.Item("video", x.ytId, x.key, who, words, x.likes, x.liked)) }
         }

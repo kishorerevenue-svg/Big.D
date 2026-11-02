@@ -8,6 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { preview } = require("./preview.js");
+const video = require("./video.js");
 
 module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, media, forgetOldFeed, h }) {
   const { send, readBody, allowed, clientIp } = h;
@@ -15,6 +16,9 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
   const UP = path.join(DATA_DIR, "uploads");
   fs.mkdirSync(UP, { recursive: true });
   const MAX_UPLOADS = Number(process.env.SOCIAL_MAX_UPLOADS || 20000);
+  const MAX_VIDEO_MB = Number(process.env.SOCIAL_MAX_VIDEO_MB || 100);        // biggest video file a phone may send
+  const MAX_VIDEO_SEC = Number(process.env.SOCIAL_MAX_VIDEO_SEC || 60);       // longest video, in seconds
+  const MAX_VIDEO_GB = Number(process.env.SOCIAL_MAX_VIDEO_GB || 15);         // all videos together, on the server's disk
   const str = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
   const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
 
@@ -69,6 +73,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
     return db.posts.filter(p => p.uid === uid && !p.removed && !p.hidden).length;
   }
   const fileUrl = id => id ? `/u/${id}.jpg` : "";
+  const videoView = id => { const u = db.uploads[id]; return u && u.kind === "video" ? { url: `/u/${id}.mp4`, poster: `/u/${id}-p.jpg`, dur: Math.round(u.dur || 0), w: u.w || 0, h: u.h || 0 } : null; };
   function userView(uid, me, counts) {
     const u = userOf(uid);
     if (!u) return { uid, name: "BigD friend", handle: "", bio: "", avatar: "", emoji: "🐾", verified: false };
@@ -85,7 +90,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
       link: i.url && i.img ? { url: i.url, site: i.source || "", title: "", image: i.img, yt: "" } : null,   // the source page's own picture, like a link card on X
       source: i.url ? { name: i.source, url: i.url } : null, cat: i.cat, emoji: i.emoji || "" };
   }
-  function userPostToPost(p) { return { key: "p" + p.id, uid: p.uid, at: p.at, title: "", text: p.text, photos: (p.photos || []).map(fileUrl), yt: p.link && p.link.yt ? { id: p.link.yt, ch: p.link.site || "" } : null, link: p.link || null, source: null, cat: OFFICIAL[p.uid] ? OFFICIAL[p.uid].cat : "", emoji: "" }; }
+  function userPostToPost(p) { return { key: "p" + p.id, uid: p.uid, at: p.at, title: "", text: p.text, photos: (p.photos || []).map(fileUrl), video: p.video ? videoView(p.video) : null, yt: p.link && p.link.yt ? { id: p.link.yt, ch: p.link.site || "" } : null, link: p.link || null, source: null, cat: OFFICIAL[p.uid] ? OFFICIAL[p.uid].cat : "", emoji: "" }; }
   function postView(x, me, counts) {
     const s = x.key[0] === "p" ? db.posts.find(p => "p" + p.id === x.key) : null;
     const st = s || stat(x.key);
@@ -151,7 +156,11 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
   }
 
   // ---------- deleting a profile and everything linked to it ----------
-  const unlinkPhoto = id => { try { fs.unlinkSync(path.join(UP, id + ".jpg")); } catch (e) { } delete db.uploads[id]; };
+  /** Deletes an uploaded photo or video (with its poster) from the disk and the list. */
+  function unlinkUpload(id) {
+    for (const f of [id + ".jpg", id + ".mp4", id + "-p.jpg"]) { try { fs.unlinkSync(path.join(UP, f)); } catch (e) { } }
+    delete db.uploads[id];
+  }
   /** Deletes the profile [uid]: its posts and photos, comments, likes, follows, reports, uploads and the phones linked to it. */
   function deleteUser(uid) {
     if (!uid || OFFICIAL[uid]) return { posts: 0, comments: 0 };
@@ -159,7 +168,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (u && u.banned) for (const [d, x] of Object.entries(db.devices)) if (x === uid && !db.bannedDevices.includes(d)) db.bannedDevices.push(d);  // a stopped person can't simply start again
     const mine = db.posts.filter(p => p.uid === uid);
     const gone = new Set(mine.map(p => "p" + p.id));
-    for (const p of mine) for (const ph of p.photos || []) unlinkPhoto(ph);
+    for (const p of mine) { for (const ph of p.photos || []) unlinkUpload(ph); if (p.video) unlinkUpload(p.video); }
     db.posts = db.posts.filter(p => p.uid !== uid);
     for (const k of gone) delete db.stats[k];
     // comments they wrote (other posts lose one from their count), and all comments on their deleted posts
@@ -182,7 +191,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     delete db.follows[uid];
     for (const list of Object.values(db.follows)) { const i = list.indexOf(uid); if (i >= 0) list.splice(i, 1); }
     // their photos (profile photo, unused photos) and the phones linked to the profile
-    for (const [id, x] of Object.entries(db.uploads)) if (x.uid === uid) unlinkPhoto(id);
+    for (const [id, x] of Object.entries(db.uploads)) if (x.uid === uid) unlinkUpload(id);
     for (const [d, x] of Object.entries(db.devices)) if (x === uid) delete db.devices[d];
     for (const k of viewSeen) if (k.startsWith(uid + "|")) viewSeen.delete(k);
     delete db.users[uid];
@@ -228,17 +237,121 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     return h2;
   }
 
+  // ---------- videos ----------
+  /** Sends an uploaded file; videos support Range requests, so the player can start and jump anywhere. */
+  function serveFile(req, res, name, type) {
+    const file = path.join(UP, name);
+    let st; try { st = fs.statSync(file); } catch (e) { res.writeHead(404); res.end(); return; }
+    const size = st.size, head = { "Content-Type": type, "Cache-Control": "public, max-age=2592000", "Accept-Ranges": "bytes" };
+    const m = String(req.headers.range || "").match(/^bytes=(\d*)-(\d*)$/);
+    if (m && (m[1] || m[2])) {
+      let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+      let end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+      if (start >= size || start > end) { res.writeHead(416, { "Content-Range": `bytes */${size}` }); res.end(); return; }
+      res.writeHead(206, Object.assign(head, { "Content-Range": `bytes ${start}-${end}/${size}`, "Content-Length": end - start + 1 }));
+      if (req.method === "HEAD") { res.end(); return; }
+      fs.createReadStream(file, { start, end }).pipe(res); return;
+    }
+    res.writeHead(200, Object.assign(head, { "Content-Length": size }));
+    if (req.method === "HEAD") { res.end(); return; }
+    fs.createReadStream(file).pipe(res);
+  }
+
+  const vjobs = new Map();   // id -> { uid, status: "uploading" | "waiting" | "processing" | "failed", reason, at }
+  const vqueue = [];
+  let vbusy = false;
+  function videoBytes() {
+    let n = 0;
+    for (const [id, u] of Object.entries(db.uploads)) if (u.kind === "video") n += u.bytes || 0;
+    return n;
+  }
+  async function checkFrames(files) {
+    if (!API_KEY) return { ok: false, reason: "Videos can't be checked right now. Please try later." };
+    const content = files.map(f => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: fs.readFileSync(f).toString("base64") } }));
+    content.push({ type: "text", text: "These are 4 frames from one short video that someone wants to post. Check the video using the frames." });
+    const o = await claude(PHOTO_RULES, content);
+    return { ok: o.ok === true, reason: str(o.reason, 200) || "This video can't be shown." };
+  }
+  async function videoWorker() {
+    if (vbusy) return;
+    vbusy = true;
+    while (vqueue.length) {
+      const id = vqueue.shift(), job = vjobs.get(id);
+      if (!job) continue;
+      job.status = "processing";
+      const raw = path.join(UP, id + ".upload"), mp4 = path.join(UP, id + ".mp4"), poster = path.join(UP, id + "-p.jpg"), fp = path.join(UP, id + "-f");
+      let frames = [];
+      try {
+        const first = await video.probe(raw).catch(() => ({ video: false, dur: 0 }));
+        if (!first.video) throw Object.assign(new Error("bad"), { user: "That file isn't a video we can play. Please choose another video." });
+        if (first.dur > MAX_VIDEO_SEC + 1.5) throw Object.assign(new Error("long"), { user: `Please choose a video up to ${MAX_VIDEO_SEC} seconds long (trim it in your Gallery first).` });
+        const out = await video.convert(raw, mp4, poster, fp, MAX_VIDEO_SEC);
+        frames = out.frames;
+        const chk = await checkFrames(frames);
+        if (!chk.ok) throw Object.assign(new Error("unsafe"), { user: chk.reason });
+        db.uploads[id] = { uid: job.uid, at: Date.now(), kind: "video", dur: out.dur, w: out.w, h: out.h, bytes: fs.statSync(mp4).size };
+        save(); vjobs.delete(id);
+        console.log(`Social: video ${id} ready (${out.dur.toFixed(1)} s, ${out.w}x${out.h}, ${(db.uploads[id].bytes / 1048576).toFixed(1)} MB)`);
+      } catch (e) {
+        for (const x of [mp4, poster]) { try { fs.unlinkSync(x); } catch (e2) { } }
+        job.status = "failed"; job.reason = e.user || "Couldn't prepare that video. Please try another one.";
+        if (!e.user) console.error("Social video error:", id, e.message, e.stderr || "");
+      }
+      for (const x of frames.concat([raw])) { try { fs.unlinkSync(x); } catch (e) { } }
+    }
+    vbusy = false;
+  }
+  /** POST /api/social/upload-video: the phone sends the video file itself (not JSON); it is prepared in the background. */
+  async function uploadVideo(req, res, origin) {
+    const uid = uidOf(req, true), user = db.users[uid];
+    if ((user && user.banned) || db.bannedDevices.includes(devHash(req))) { send(res, 403, { error: "You can't post." }, origin); req.resume(); return; }
+    if (!(await video.available())) { send(res, 503, { error: "Videos can't be added yet. Please try again tomorrow." }, origin); req.resume(); return; }
+    const size = Number(req.headers["content-length"] || 0);   // 0 = sent in chunks, size unknown: the counter below still stops big files
+    if (size > MAX_VIDEO_MB * 1048576) { send(res, 413, { error: `Please choose a video smaller than ${MAX_VIDEO_MB} MB (up to ${MAX_VIDEO_SEC} seconds).` }, origin); req.resume(); return; }
+    if (videoBytes() > MAX_VIDEO_GB * 1073741824) { send(res, 507, { error: "Video space is full right now. Please try later." }, origin); req.resume(); return; }
+    if ([...vjobs.values()].filter(j => j.status !== "failed").length >= 6) { send(res, 503, { error: "Many videos are being prepared. Please try again in a few minutes." }, origin); req.resume(); return; }
+    const lim = limit(req, "video", 10, 20000, false); if (lim) { send(res, 429, { error: lim }, origin); req.resume(); return; }
+    const id = crypto.randomBytes(10).toString("hex"), raw = path.join(UP, id + ".upload");
+    vjobs.set(id, { uid, status: "uploading", at: Date.now() });
+    const out = fs.createWriteStream(raw);
+    let got = 0, failed = false;
+    const fail = (code, msg) => {
+      if (failed) return; failed = true; vjobs.delete(id);
+      try { out.destroy(); } catch (e) { } try { fs.unlinkSync(raw); } catch (e) { }
+      try { send(res, code, { error: msg }, origin); } catch (e) { }
+    };
+    req.on("data", c => { got += c.length; if (got > MAX_VIDEO_MB * 1048576) { fail(413, `Please choose a video smaller than ${MAX_VIDEO_MB} MB.`); req.destroy(); } });
+    req.on("close", () => { if (!req.complete) fail(400, "The upload stopped. Please try again."); });
+    req.on("error", () => fail(400, "The upload stopped. Please try again."));
+    out.on("error", () => fail(500, "Couldn't save the video. Please try again."));
+    out.on("finish", () => {
+      if (failed) return;
+      if (got < 10000) { fail(400, "That video is empty. Please choose another one."); return; }
+      limit(req, "video", 10, 20000);
+      const job = vjobs.get(id); job.status = "waiting";
+      vqueue.push(id); videoWorker();
+      send(res, 200, { id, status: "processing" }, origin);
+    });
+    req.pipe(out);
+  }
+  // forget old failures, and delete photos and videos that were uploaded but never used in a post or profile
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, j] of vjobs) if (now - j.at > 3600e3) { vjobs.delete(id); try { fs.unlinkSync(path.join(UP, id + ".upload")); } catch (e) { } }
+    const used = new Set();
+    for (const q of db.posts) { if (q.removed) continue; (q.photos || []).forEach(x => used.add(x)); if (q.video) used.add(q.video); }
+    for (const u of Object.values(db.users)) if (u.avatar) used.add(u.avatar);
+    let n = 0;
+    for (const [id, u] of Object.entries(db.uploads)) if (!used.has(id) && now - (u.at || 0) > 48 * 3600e3) { unlinkUpload(id); n++; }
+    if (n) { save(); console.log(`Social: removed ${n} unused upload(s)`); }
+  }, 3600e3).unref();
+
   // ---------- router ----------
   async function handle(req, res, url, origin) {
     const p = url.pathname;
     // photos people posted
-    const f = p.match(/^\/u\/([a-f0-9]{20})\.jpg$/);
-    if (req.method === "GET" && f) {
-      const file = path.join(UP, f[1] + ".jpg");
-      if (!fs.existsSync(file)) { res.writeHead(404); res.end(); return true; }
-      res.writeHead(200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=2592000" });
-      fs.createReadStream(file).pipe(res); return true;
-    }
+    const f = p.match(/^\/u\/([a-f0-9]{20})(-p)?\.(jpg|mp4)$/);
+    if ((req.method === "GET" || req.method === "HEAD") && f) { serveFile(req, res, f[1] + (f[2] || "") + "." + f[3], f[3] === "mp4" ? "video/mp4" : "image/jpeg"); return true; }
     if (!p.startsWith("/api/social/")) return false;
     const me = uidOf(req, false);
     const admin = isAdmin(req);
@@ -267,6 +380,12 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         const off = Object.keys(OFFICIAL).filter(u => !mine.has(u));
         send(res, 200, { users: off.concat(people).slice(0, 14).map(u => userView(u, me, counts)) }, origin); return true;
       }
+      if (p === "/api/social/upload-status") {
+        const id = str(url.searchParams.get("id"), 20), j = vjobs.get(id), u = db.uploads[id];
+        if (u && u.kind === "video" && u.uid === me) { send(res, 200, Object.assign({ status: "ready", id }, videoView(id)), origin); return true; }
+        if (j && j.uid === me) { send(res, 200, { status: j.status === "failed" ? "failed" : "processing", reason: j.reason || "", ahead: Math.max(0, vqueue.indexOf(id)) }, origin); return true; }
+        send(res, 404, { status: "failed", reason: "That video is not there any more. Please add it again." }, origin); return true;
+      }
       if (p === "/api/social/reports") {
         // the team's list of reported posts and comments, newest report first
         if (!admin) { send(res, 401, { error: "Wrong team password." }, origin); return true; }
@@ -291,7 +410,8 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     }
 
     if (req.method !== "POST") { send(res, 404, { error: "Not found" }, origin); return true; }
-    if (!allowed(clientIp(req))) { send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); return true; }
+    if (!allowed(clientIp(req))) { send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); req.resume(); return true; }
+    if (p === "/api/social/upload-video") { try { await uploadVideo(req, res, origin); } catch (e) { console.error("Social video upload error:", e.message); try { send(res, 500, { error: "Something went wrong. Please try again." }, origin); } catch (e2) { } } return true; }
     let body;
     try { body = await readBody(req, p === "/api/social/upload" ? 4 * 1024 * 1024 : 64 * 1024); } catch (e) { send(res, 400, { error: e.message === "too_large" ? "That photo is too big." : "Bad request." }, origin); return true; }
     if (p === "/api/social/delete-by-code") {
@@ -341,7 +461,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         u.handle = hd || u.handle || handleFree(name);
         if (body.avatar !== undefined) {
           const a = str(body.avatar, 20);
-          if (a && !(db.uploads[a] && db.uploads[a].uid === uid)) { send(res, 400, { error: "Upload the photo again." }, origin); return true; }
+          if (a && !(db.uploads[a] && db.uploads[a].uid === uid && db.uploads[a].kind !== "video")) { send(res, 400, { error: "Upload the photo again." }, origin); return true; }
           u.avatar = a;
         }
         save(); send(res, 200, { profile: userView(uid, uid), code: u.code }, origin); return true;
@@ -362,14 +482,17 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         if (as === uid && !(user && user.name)) { send(res, 400, { error: "First make your profile (name and photo)." }, origin); return true; }
         const lim = admin ? "" : limit(req, "post", 10, 10000, false); if (lim) { send(res, 429, { error: lim }, origin); return true; }
         const text = str(body.text, 1000).replace(/\n{3,}/g, "\n\n");
-        const photos = (Array.isArray(body.photos) ? body.photos : []).slice(0, 4).map(x => str(x, 20)).filter(x => db.uploads[x] && db.uploads[x].uid === uid);
+        const vid = str(body.video, 20);
+        const videoId = vid && db.uploads[vid] && db.uploads[vid].uid === uid && db.uploads[vid].kind === "video" ? vid : "";
+        if (vid && !videoId) { send(res, 400, { error: "The video isn't ready yet. Please wait a moment, or add it again." }, origin); return true; }
+        const photos = videoId ? [] : (Array.isArray(body.photos) ? body.photos : []).slice(0, 4).map(x => str(x, 20)).filter(x => db.uploads[x] && db.uploads[x].uid === uid && db.uploads[x].kind !== "video");
         const linkUrl = str(body.link, 600);
-        if (!text && !photos.length && !linkUrl) { send(res, 400, { error: "Write something, or add a photo or link." }, origin); return true; }
+        if (!text && !photos.length && !videoId && !linkUrl) { send(res, 400, { error: "Write something, or add a photo, video or link." }, origin); return true; }
         if (text) { const chk = await checkText(text); if (!chk.ok) { send(res, 400, { error: chk.reason || "This post can't be shown. Please keep it kind and safe." }, origin); return true; } }
         const link = linkUrl ? await preview(linkUrl) : null;
         if (linkUrl && !link) { send(res, 400, { error: "That link doesn't look right. Copy it again." }, origin); return true; }
         if (!admin) limit(req, "post", 10, 10000);
-        const post = { id: db.nextPost++, uid: as, at: Date.now(), text, photos, link, likes: [], views: 0, comments: 0, reports: [] };
+        const post = { id: db.nextPost++, uid: as, at: Date.now(), text, photos, video: videoId || undefined, link, likes: [], views: 0, comments: 0, reports: [] };
         db.posts.push(post); save();
         send(res, 200, { post: postView(userPostToPost(post), uid) }, origin); return true;
       }
@@ -471,7 +594,8 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         if (found.media) { if (!admin) { send(res, 403, { error: "Only the BigD team can remove this." }, origin); return true; } media.removeItem(found.media.id); send(res, 200, { ok: true }, origin); return true; }
         if (found.user.uid !== uid && !admin && !(OFFICIAL[found.user.uid] && admin)) { send(res, 403, { error: "You can delete only your own posts." }, origin); return true; }
         found.user.removed = true;
-        for (const ph of found.user.photos || []) { try { fs.unlinkSync(path.join(UP, ph + ".jpg")); } catch (e) { } delete db.uploads[ph]; }
+        for (const ph of found.user.photos || []) unlinkUpload(ph);
+        if (found.user.video) unlinkUpload(found.user.video);
         save(); send(res, 200, { ok: true }, origin); return true;
       }
 
@@ -500,7 +624,9 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
   function stats() {
     const reported = db.posts.filter(x => !x.removed && (x.reports || []).length).length + db.comments.filter(c => !c.removed && (c.reports || []).length).length +
       media.allItems().filter(i => (i.reports || []).length).length;
-    return { users: Object.values(db.users).filter(u => u.name).length, posts: db.posts.filter(x => !x.removed).length, photos: Object.keys(db.uploads).length, reported };
+    const vids = Object.values(db.uploads).filter(u => u.kind === "video");
+    return { users: Object.values(db.users).filter(u => u.name).length, posts: db.posts.filter(x => !x.removed).length, photos: Object.keys(db.uploads).length - vids.length,
+      videos: vids.length, videoMB: Math.round(vids.reduce((n, u) => n + (u.bytes || 0), 0) / 1048576), reported };
   }
   return { handle, stats };
 };

@@ -83,6 +83,7 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_PHOTO = 4402
         private const val REQ_SOCIAL_PHOTO = 4403
+        private const val REQ_SOCIAL_VIDEO = 4404
         /** key, name, icon. The user can drag them into another order (long-press a tab). */
         val TABS = listOf(
             Triple("home", "Home", "🏠"), Triple("pet", "Pet", "🐾"), Triple("tasks", "Tasks", "✅"), Triple("files", "Files", "📄"),
@@ -146,7 +147,7 @@ class MainActivity : Activity() {
         if (toMedia && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
             // Share › "Post on BigD Media": text, a link (YouTube, Instagram…) or photos
             val t = i.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
-            val pics = if (i.type?.startsWith("image/") == true) sharedImages(i) else emptyList()
+            val pics = if (i.type?.startsWith("image/") == true || i.type?.startsWith("video/") == true) sharedImages(i) else emptyList()
             if (t.isNotBlank() || pics.isNotEmpty()) { tab = "feedback"; pendingPost = t to pics }
             i.action = Intent.ACTION_MAIN
         } else if (i.action == Intent.ACTION_SEND && i.type?.startsWith("text/") == true) {
@@ -988,6 +989,18 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancel", null).show()
     }
 
+    /** Opens the phone's picker for one video for Media. */
+    internal fun pickVideo() {
+        leavingForSystemScreen = true
+        val i = if (Build.VERSION.SDK_INT >= 33) Intent(MediaStore.ACTION_PICK_IMAGES).setType("video/*")
+            else Intent(Intent.ACTION_GET_CONTENT).setType("video/*").addCategory(Intent.CATEGORY_OPENABLE)
+        try { startActivityForResult(i, REQ_SOCIAL_VIDEO) }
+        catch (e: Exception) {
+            try { startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("video/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_SOCIAL_VIDEO) }
+            catch (e2: Exception) { leavingForSystemScreen = false; toast("Couldn't open your videos.") }
+        }
+    }
+
     /** "Share BigD AI" and "About", at the end of the Media page. */
     internal fun shareAndAbout() {
         add(ui.section("Share BigD AI", "Know someone who would like a pet friend on their phone?").apply {
@@ -1180,6 +1193,7 @@ class MainActivity : Activity() {
         @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             VaultLock.REQ_UNLOCK -> { if (resultCode == RESULT_OK) VaultLock.markOpen(); render() }
+            REQ_SOCIAL_VIDEO -> { if (resultCode == RESULT_OK) data?.data?.let { social.onVideo(it) } }
             REQ_SOCIAL_PHOTO -> {
                 if (resultCode != RESULT_OK || data == null) return
                 val list = ArrayList<Uri>()
