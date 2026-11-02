@@ -127,7 +127,8 @@ class ReminderReceiver : BroadcastReceiver() {
             .build()
         try { nm.notify(1000 + id, n) } catch (e: SecurityException) { }
         if (PetService.running) {
-            try { ctx.startService(Intent(ctx, PetService::class.java).setAction(PetService.ACTION_SAY).putExtra("text", text)) } catch (e: Exception) { }
+            // medicine reminders (💊) are read by the phone's own voice, so medicine names never leave the phone
+            try { ctx.startService(Intent(ctx, PetService::class.java).setAction(PetService.ACTION_SAY).putExtra("text", text).putExtra("local", text.startsWith("💊"))) } catch (e: Exception) { }
         }
     }
 }

@@ -86,17 +86,17 @@ object Images {
         return if (k < 0.8f) Bitmap.createScaledBitmap(raw, maxOf(1, (raw.width * k).toInt()), maxOf(1, (raw.height * k).toInt()), true) else raw
     }
 
-    /** Makes a photo ready to upload: at most 1280 px, the right way up, saved again as JPEG (this also removes hidden details such as the place it was taken). */
-    fun prepare(ctx: Context, uri: Uri): ByteArray? {
+    /** Makes a photo ready to upload: at most [maxPx] (1280) px, the right way up, saved again as JPEG (this also removes hidden details such as the place it was taken). */
+    fun prepare(ctx: Context, uri: Uri, maxPx: Int = 1280): ByteArray? {
         try {
             val r = ctx.contentResolver
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             r.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) }
             if (o.outWidth <= 0 || o.outHeight <= 0) return null
-            var s = 1; while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= 1280) s *= 2
+            var s = 1; while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= maxPx) s *= 2
             val raw = r.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = s }) } ?: return null
             var bmp: Bitmap = raw
-            val k = 1280f / maxOf(bmp.width, bmp.height)
+            val k = maxPx.toFloat() / maxOf(bmp.width, bmp.height)
             if (k < 1f) bmp = Bitmap.createScaledBitmap(bmp, maxOf(1, (bmp.width * k).toInt()), maxOf(1, (bmp.height * k).toInt()), true)
             val turn = try { r.openInputStream(uri)?.use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) } ?: 1 } catch (e: Exception) { 1 }
             val deg = when (turn) { ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f }

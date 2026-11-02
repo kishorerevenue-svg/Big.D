@@ -20,6 +20,17 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Vault: open with fingerprint / face / phone lock -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Family & SOS: where you are, only when you press SOS or "Share my location".
+         It goes only into the SMS / WhatsApp message you send; never to the BigD server. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Family & SOS: call your first family member after the SOS countdown (only when you press SOS or 📞) -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Not needed to install: tablets without a SIM or GPS can still use the app -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
 
     <!-- Apps and services the puppy needs to see (Android 11+) -->
     <queries>
@@ -30,6 +41,11 @@
         <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <intent><action android:name="android.intent.action.DIAL" /></intent>
+        <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
         <intent><action android:name="android.intent.action.SET_ALARM" /></intent>
         <intent>
             <action android:name="android.intent.action.GET_CONTENT" />
@@ -99,6 +115,13 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <!-- Translate: the camera app saves the photo of a board or letter here (inside the app only) -->
+        <provider
+            android:name=".CameraFiles"
+            android:authorities="${applicationId}.camera"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <activity
             android:name=".PhotoActivity"

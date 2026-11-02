@@ -120,7 +120,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 if (intent.getBooleanExtra("test", false)) naturalNotSetUp = false // "Test voice" asks the server again
                 say(intent.getStringExtra("text") ?: "",
                     intent.getStringExtra("mood")?.let { PuppyView.moodOf(it) } ?: PuppyView.Mood.SURPRISED,
-                    prefix = intent.getStringExtra("prefix") ?: "⏰ ")
+                    prefix = intent.getStringExtra("prefix") ?: "⏰ ", local = intent.getBooleanExtra("local", false))
             }
             ACTION_LISTEN -> startListening()
             ACTION_PHOTO -> { showPetAgain(); intent.getStringExtra("path")?.let { sendPhoto(it, intent.getBooleanExtra("screen", false)) } }
@@ -343,11 +343,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     private fun isTelugu(s: String) = s.any { it in 'ఀ'..'౿' }
 
-    private fun say(text: String, mood: PuppyView.Mood, extra: String = "", prefix: String = "") {
+    /** [local] = read with the phone's own voice only (the text never goes to the server). */
+    private fun say(text: String, mood: PuppyView.Mood, extra: String = "", prefix: String = "", local: Boolean = false) {
         if (text.isBlank()) return
         pet.mood = mood
         showBubble(prefix + text + extra, keepMs = (6000 + text.length * 80L).coerceAtMost(30_000))
-        speak(text)
+        if (local) { ++speakSeq; speakPhone(text) } else speak(text)
     }
 
     // Natural voice (server) first when it is set up; otherwise the phone's own voice.

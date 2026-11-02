@@ -79,11 +79,23 @@ class MainActivity : Activity() {
     internal val messages by lazy { MessagesPage(this) }
     private var socialPage: SocialPage? = null
     internal val social: SocialPage get() = socialPage ?: SocialPage(this).also { socialPage = it }
+    internal val translate by lazy { TranslatePage(this) }
+    private var familyPage: FamilyPage? = null
+    internal val family: FamilyPage get() = familyPage ?: FamilyPage(this).also { familyPage = it }
+    internal val govt by lazy { GovtPage(this) }
 
     companion object {
         private const val REQ_PHOTO = 4402
         private const val REQ_SOCIAL_PHOTO = 4403
         private const val REQ_SOCIAL_VIDEO = 4404
+        const val REQ_TR_PHOTO = 4405
+        const val REQ_TR_CAMERA = 4406
+        const val REQ_CONTACT = 4407
+        const val REQ_LOCATION = 21
+        const val REQ_CALL = 22
+        const val REQ_NOTIFY = 23
+        /** Pages opened from Home tiles (not bottom tabs). Back and the Home tab return to Home. */
+        val TOOL_PAGES = setOf("translate", "family", "govt")
         /** key, name, icon. The user can drag them into another order (long-press a tab). */
         val TABS = listOf(
             Triple("home", "Home", "🏠"), Triple("pet", "Pet", "🐾"), Triple("tasks", "Tasks", "✅"), Triple("files", "Files", "📄"),
@@ -95,7 +107,7 @@ class MainActivity : Activity() {
     private fun LinearLayout.put(v: View, top: Int = 10) = addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) })
     internal fun add(v: View, top: Int = 14) = content.addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) })
     internal fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
-    private fun granted(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
+    internal fun granted(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -180,6 +192,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         socialPage?.flushViews()
+        familyPage?.onPause()
         letter.stop(); stopListening(); stopTalking()
         if (pickingPhotoFor == null && !leavingForSystemScreen) VaultLock.lock()
     }
@@ -191,6 +204,13 @@ class MainActivity : Activity() {
     }
 
     internal fun go(t: String) { tab = t; render(); scroll.scrollTo(0, 0) }
+    /** Opens the letter helper on the Files page with this request (e.g. "Application for a birth certificate"). */
+    internal fun openLetter(req: String) { tab = "files"; scroll.scrollTo(0, 0); letter.start(req) }
+    /** Opens a website in the phone's browser. */
+    internal fun openUrl(url: String) {
+        leavingForSystemScreen = true
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (e: Exception) { leavingForSystemScreen = false; toast("Couldn't open $url") }
+    }
     internal fun scrollTop() { scroll.post { scroll.scrollTo(0, 0) } }
     internal val scrollY: Int get() = scroll.scrollY
     internal fun scrollToY(y: Int) { scroll.post { scroll.scrollTo(0, y) } }
@@ -217,6 +237,9 @@ class MainActivity : Activity() {
             "messages" -> messages.build()
             "vault" -> vaultPage()
             "feedback" -> social.build()
+            "translate" -> translate.build()
+            "family" -> family.build()
+            "govt" -> govt.build()
             else -> homePage()
         }
         renderedTab = tab
@@ -226,13 +249,14 @@ class MainActivity : Activity() {
         updateBack()
     }
 
-    /** Back inside Media (from a profile, a post or the composer) goes to the previous Media screen. */
+    /** Back inside Media (from a profile, a post or the composer) goes to the previous Media screen;
+     *  Back on Translate, Family & SOS or Govt services goes to Home. */
     private fun updateBack() {
         if (Build.VERSION.SDK_INT < 33) return
         val sub = socialPage?.screen
-        val want = store.onboarded && tab == "feedback" && sub != null && sub != "feed"
+        val want = store.onboarded && ((tab == "feedback" && sub != null && sub != "feed") || tab in TOOL_PAGES)
         if (want && backCb == null) {
-            val cb = android.window.OnBackInvokedCallback { if (socialPage?.back() != true) dropBack() }
+            val cb = android.window.OnBackInvokedCallback { if (!pageBack()) dropBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
             backCb = cb
         } else if (!want) dropBack()
@@ -244,9 +268,20 @@ class MainActivity : Activity() {
         backCb = null
     }
 
+    /** Handles Back inside a page. Returns false when Back should leave the app as usual. */
+    private fun pageBack(): Boolean {
+        if (!store.onboarded) return false
+        return when (tab) {
+            "feedback" -> social.back()
+            "family" -> { if (!family.back()) go("home"); true }
+            in TOOL_PAGES -> { go("home"); true }
+            else -> false
+        }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (store.onboarded && tab == "feedback" && social.back()) return
+        if (pageBack()) return
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
@@ -296,7 +331,7 @@ class MainActivity : Activity() {
 
     private fun updateNav() {
         navItems.forEach { (key, item) ->
-            val on = key == tab
+            val on = key == tab || (key == "home" && tab in TOOL_PAGES)
             item.background = if (on) ui.round(Ui.TEAL_SOFT, 24, Ui.TEAL) else null
             item.getChildAt(1).visibility = if (on) View.VISIBLE else View.GONE
             item.alpha = if (key == dragKey) 0.35f else 1f
@@ -416,6 +451,12 @@ class MainActivity : Activity() {
         add(pair(tile("🔒", "My Vault", "Cards and documents") { go("vault") },
             tile("📺", "Media · మీడియా", "News, movies, jobs and more") { go("feedback") }), 10)
 
+        add(ui.label("More help"), 20)
+        add(pair(tile("🌐", "Translate · అనువాదం", "Telugu, English, Hindi. Even photos") { go("translate") },
+            tile("🆘", "Family & SOS", "One-touch help in an emergency") { go("family") }), 8)
+        add(pair(tile("🏛️", "Govt services", "Certificates, land, pensions") { go("govt") },
+            tile("💊", "Medicine reminder", "Never miss a dose") { family.focus = "medicine"; go("family") }), 10)
+
         val tips = listOfNotNull(
             "Say \"remind me to take medicine every day at 8 am\"",
             "Say \"make a leave letter for 2 days as a Word file\"",
@@ -423,7 +464,10 @@ class MainActivity : Activity() {
             "Long-press a tab at the bottom and drag it to move it",
             "Got a strange message? Copy it and check it on the Messages tab",
             if (BuildConfig.MESSAGE_REPLIES) "Turn on WhatsApp replies in the Pet page" else null,
-            "Drag the pet down to ✕ to close it"
+            "Drag the pet down to ✕ to close it",
+            "Can't read an English letter or board? Take a photo in Translate",
+            "Save your family's numbers in Family & SOS: hold SOS for 3 seconds to call them",
+            "Need a certificate? Govt services shows the official website and writes the application"
         )
         add(ui.card(Ui.TEAL_SOFT).apply {
             addView(ui.text("💡 Tip", 13f, Ui.TEAL_DARK, bold = true))
@@ -1047,8 +1091,9 @@ class MainActivity : Activity() {
     private var tts: TextToSpeech? = null
     private var ttsOk = false
 
-    /** Listens once. [onPartial] gets the words while you speak; [onDone] gets the final text, or null. */
-    internal fun listen(onPartial: (String) -> Unit, onDone: (String?) -> Unit) {
+    /** Listens once. [onPartial] gets the words while you speak; [onDone] gets the final text, or null.
+     *  [lang] (e.g. "hi-IN") overrides the app language. */
+    internal fun listen(onPartial: (String) -> Unit, onDone: (String?) -> Unit, lang: String? = null) {
         if (!granted(Manifest.permission.RECORD_AUDIO)) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7); toast("Allow the microphone, then tap 🎤 again."); onDone(null); return
         }
@@ -1073,7 +1118,7 @@ class MainActivity : Activity() {
         })
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (store.lang == "en") "en-IN" else "te-IN")
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang ?: if (store.lang == "en") "en-IN" else "te-IN")
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         try { r.startListening(i) } catch (e: Exception) { finish(null) }
@@ -1094,9 +1139,11 @@ class MainActivity : Activity() {
         }
         if (!ttsOk) { onDone?.invoke(); return }
         val te = text.any { it in 'ఀ'..'౿' }
-        val res = t.setLanguage(Locale.forLanguageTag(if (te) "te-IN" else "en-IN"))
+        val hi = !te && text.any { it in 'ऀ'..'ॿ' }
+        val res = t.setLanguage(Locale.forLanguageTag(if (te) "te-IN" else if (hi) "hi-IN" else "en-IN"))
         if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
             if (te) toast("To hear Telugu, install the Telugu voice: Pet page › Permissions › Telugu voice.")
+            else if (hi) toast("To hear Hindi, add the Hindi voice: phone Settings › Text-to-speech › Google › Install voice data › Hindi.")
             onDone?.invoke(); return
         }
         t.setPitch(1f); t.setSpeechRate(0.95f)
@@ -1107,7 +1154,7 @@ class MainActivity : Activity() {
             @Deprecated("Deprecated in Java")
             override fun onError(u: String?) { if (u == id) runOnUiThread { onDone?.invoke() } }
         })
-        t.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+        t.speak(text.take(3900), TextToSpeech.QUEUE_FLUSH, null, id)   // the phone's voice reads at most about 4000 letters at once
     }
 
     internal fun stopTalking() { try { tts?.stop() } catch (e: Exception) { } }
@@ -1194,6 +1241,9 @@ class MainActivity : Activity() {
         when (requestCode) {
             VaultLock.REQ_UNLOCK -> { if (resultCode == RESULT_OK) VaultLock.markOpen(); render() }
             REQ_SOCIAL_VIDEO -> { if (resultCode == RESULT_OK) data?.data?.let { social.onVideo(it) } }
+            REQ_TR_PHOTO -> { if (resultCode == RESULT_OK) data?.data?.let { translate.onPhoto(it) } }
+            REQ_TR_CAMERA -> { if (resultCode == RESULT_OK) translate.onCamera() }
+            REQ_CONTACT -> { if (resultCode == RESULT_OK) data?.data?.let { family.onContact(it) } }
             REQ_SOCIAL_PHOTO -> {
                 if (resultCode != RESULT_OK || data == null) return
                 val list = ArrayList<Uri>()
@@ -1226,6 +1276,9 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_LOCATION) family.onLocationAnswer()
+        if (requestCode == REQ_CALL && grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED)
+            toast("OK. SOS will open the phone app with the number ready, and you tap Call.")
         if (requestCode == 1 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && PetService.running) {
             stopService(Intent(this, PetService::class.java))
             content.postDelayed({ startForegroundService(Intent(this, PetService::class.java)) }, 500)

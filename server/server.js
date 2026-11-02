@@ -338,6 +338,8 @@ const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL,
 const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, media,
   forgetOldFeed: req => (extras && extras.forgetDevice ? extras.forgetDevice(req) : ""),
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
+// Translate page, and Govt services (official links + answers from official websites only)
+const tools = require("./tools.js")({ learn, API_KEY, MODEL, h: { send, readBody, allowed, clientIp } });
 
 // ---------- web server ----------
 const server = http.createServer(async (req, res) => {
@@ -351,6 +353,7 @@ const server = http.createServer(async (req, res) => {
   if (await extras(req, res, url, origin)) return;
   if (await media.handle(req, res, url, origin)) return;
   if (await social.handle(req, res, url, origin)) return;
+  if (await tools(req, res, url, origin)) return;
 
   if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), media: media.stats(), social: social.stats() }, origin);
 

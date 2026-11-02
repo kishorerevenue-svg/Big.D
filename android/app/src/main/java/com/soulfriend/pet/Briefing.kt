@@ -50,15 +50,22 @@ object Briefing {
         ctx.getSystemService(JobScheduler::class.java).schedule(job)
     }
 
-    /** Today's reminders as short lines, for the server. */
-    fun todaysReminders(store: Store): List<String> {
+    /** Today's reminders as short lines. [medicine] = only the 💊 ones (kept on the phone), otherwise all the others (sent to the server). */
+    fun todaysReminders(store: Store, medicine: Boolean = false): List<String> {
         val zone = ZoneId.systemDefault(); val today = LocalDate.now(zone)
-        return store.reminders().filter { java.time.Instant.ofEpochMilli(it.at).atZone(zone).toLocalDate() == today }
+        return store.reminders().filter { java.time.Instant.ofEpochMilli(it.at).atZone(zone).toLocalDate() == today && it.text.startsWith("💊") == medicine }
             .sortedBy { it.at }
-            .map { "%s %s".format(java.time.format.DateTimeFormatter.ofPattern("h:mm a").format(java.time.Instant.ofEpochMilli(it.at).atZone(zone)), it.text) }
+            .map { "%s %s".format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH).format(java.time.Instant.ofEpochMilli(it.at).atZone(zone)), it.text) }
     }
 
-    fun show(ctx: Context, text: String) {
+    /** The briefing from the server, plus today's medicines added here on the phone (medicine names are never sent). */
+    fun withMedicines(store: Store, text: String): String {
+        val meds = todaysReminders(store, medicine = true)
+        return if (meds.isEmpty()) text else text + "\n\n💊 Today's medicines:\n" + meds.joinToString("\n") { it.replace("💊 ", "") }
+    }
+
+    /** [local] = the pet reads it with the phone's own voice only (used when it lists your medicines). */
+    fun show(ctx: Context, text: String, local: Boolean = false) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null)
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Good-morning briefing", NotificationManager.IMPORTANCE_DEFAULT))
@@ -75,7 +82,7 @@ object Briefing {
         if (PetService.running) {
             try {
                 ctx.startService(Intent(ctx, PetService::class.java).setAction(PetService.ACTION_SAY)
-                    .putExtra("text", text).putExtra("mood", "excited").putExtra("prefix", "☀️ "))
+                    .putExtra("text", text).putExtra("mood", "excited").putExtra("prefix", "☀️ ").putExtra("local", local))
             } catch (e: Exception) { }
         }
     }
@@ -92,7 +99,7 @@ class BriefingJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         val store = Store(this)
         Brain(store).briefing(Briefing.todaysReminders(store),
-            onOk = { text -> Briefing.show(this, text); jobFinished(params, false) },
+            onOk = { text -> val full = Briefing.withMedicines(store, text); Briefing.show(this, full, local = full != text); jobFinished(params, false) },
             onError = { _ -> jobFinished(params, false) })
         return true
     }

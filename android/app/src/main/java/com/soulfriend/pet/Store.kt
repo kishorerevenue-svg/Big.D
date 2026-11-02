@@ -14,6 +14,8 @@ object Config {
 data class Todo(val text: String, val done: Boolean)
 /** A Word/Excel file BigD made; [id] is the phone's download id. */
 data class SavedFile(val id: Long, val name: String, val format: String, val at: Long)
+/** A family member for SOS. [relation] is optional, e.g. "Son". */
+data class FamilyContact(val name: String, val phone: String, val relation: String = "")
 /** [repeat] is "", "daily", "weekdays", "weekly" or "monthly". */
 data class Reminder(val id: Int, val at: Long, val text: String, val repeat: String = "")
 
@@ -149,6 +151,37 @@ class Store(context: Context) {
     var blockedUsers: Set<String>
         get() = p.getStringSet("blockedUsers", emptySet()) ?: emptySet()
         set(v) { p.edit().putStringSet("blockedUsers", HashSet(v)).apply() }
+
+    // ---- translate ----
+    /** The language to translate into: "te", "en" or "hi" ("" = not chosen yet). */
+    var trTo: String
+        get() = p.getString("trTo", "") ?: ""
+        set(v) { p.edit().putString("trTo", v).apply() }
+
+    // ---- govt services ----
+    /** "ap" (Andhra Pradesh) or "ts" (Telangana). */
+    var govtState: String
+        get() = p.getString("govtState", "ap") ?: "ap"
+        set(v) { p.edit().putString("govtState", v).apply() }
+    /** The list of official service links from the server, kept so the page also opens offline. */
+    var govtCache: String
+        get() = p.getString("govtCache", "") ?: ""
+        set(v) { p.edit().putString("govtCache", v).putLong("govtCacheAt", System.currentTimeMillis()).apply() }
+    val govtCacheAt: Long get() = p.getLong("govtCacheAt", 0L)
+
+    // ---- family & SOS (kept only on this phone) ----
+    fun family(): List<FamilyContact> {
+        val a = try { JSONArray(p.getString("family", "[]")) } catch (e: Exception) { JSONArray() }
+        return (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { FamilyContact(it.optString("name"), it.optString("phone"), it.optString("relation")) }
+    }
+    fun saveFamily(list: List<FamilyContact>) {
+        val a = JSONArray(); list.take(5).forEach { a.put(JSONObject().put("name", it.name).put("phone", it.phone).put("relation", it.relation)) }
+        p.edit().putString("family", a.toString()).apply()
+    }
+    /** SOS calls the first family member by itself after a 5-second countdown (otherwise the dialer opens with the number). */
+    var sosAutoCall: Boolean
+        get() = p.getBoolean("sosAutoCall", true)
+        set(v) { p.edit().putBoolean("sosAutoCall", v).apply() }
 
     var petX: Int
         get() = p.getInt("petX", -1)

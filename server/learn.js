@@ -74,9 +74,9 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
   }
 
   // ---------- calling Claude (with optional internet search) ----------
-  async function callClaude({ system, messages, maxTokens = 1500, search = WEB_SEARCH, model = MODEL }) {
+  async function callClaude({ system, messages, maxTokens = 1500, search = WEB_SEARCH, model = MODEL, domains = null, maxUses = 3, maxSources = 3 }) {
     const body = { model, max_tokens: maxTokens, system, messages: messages.slice() };
-    if (search) body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }];
+    if (search) body.tools = [Object.assign({ type: "web_search_20250305", name: "web_search", max_uses: maxUses }, domains ? { allowed_domains: domains } : {})];
     let data = null;
     for (let round = 0; round < 3; round++) {
       const r = await fetch(API_BASE + "/v1/messages", {
@@ -97,7 +97,7 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
       || content.filter(c => c.type === "text").map(c => c.text).join("").trim();
     const seen = new Set(), sources = [];
     for (const c of content) for (const cit of (c.citations || [])) {
-      if (cit.url && !seen.has(cit.url) && sources.length < 3) { seen.add(cit.url); sources.push({ title: String(cit.title || cit.url).slice(0, 120), url: cit.url }); }
+      if (cit.url && !seen.has(cit.url) && sources.length < maxSources) { seen.add(cit.url); sources.push({ title: String(cit.title || cit.url).slice(0, 120), url: cit.url }); }
     }
     return { text, sources, truncated: data.stop_reason === "max_tokens" };
   }
