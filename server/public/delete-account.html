@@ -13,7 +13,9 @@ h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 6px}
 .box{border:1px solid var(--line);border-radius:14px;padding:12px 16px;background:var(--box)}
 ol,ul{padding-left:22px}
 label{display:block;font-weight:600;margin:6px 0}
-input{box-sizing:border-box;width:100%;font-size:18px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);letter-spacing:2px;text-transform:uppercase}
+input{box-sizing:border-box;width:100%;font-size:18px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
+#code{letter-spacing:2px;text-transform:uppercase}
+.or{margin:18px 0 10px;font-weight:600;color:var(--muted)}
 button{margin-top:12px;font-size:16px;font-weight:600;padding:12px 20px;border:0;border-radius:24px;background:var(--danger);color:#fff;cursor:pointer}
 button:disabled{opacity:.6}
 #out{margin-top:12px;font-weight:600}
@@ -35,8 +37,18 @@ a{color:var(--accent)}
 </ol>
 <p class="muted">You can also find it in the app on the <strong>Pet</strong> page › <strong>Privacy</strong> › <strong>Delete my Media profile</strong>.</p>
 
-<h2>2. Here, with your backup code</h2>
+<h2>2. Here, with your login or your backup code</h2>
 <div class="box">
+<p>If you added a login to your profile, type its phone number or email and password:</p>
+<form id="g" autocomplete="off">
+<label for="lid">Mobile number or email</label>
+<input id="lid" name="lid" maxlength="100" placeholder="e.g. 98480 12345" inputmode="email" spellcheck="false">
+<label for="lpw" style="margin-top:10px">Password</label>
+<input id="lpw" name="lpw" type="password" maxlength="64">
+<button id="btn2" type="submit">Delete my profile</button>
+<div id="out2" role="status"></div>
+</form>
+<p class="or">Or with your backup code</p>
 <p>Your backup code is in the app: Media › your profile › <strong>🔑 Backup code</strong>. It was also shown when you made your profile.</p>
 <form id="f" autocomplete="off">
 <label for="code">Backup code</label>
@@ -46,12 +58,12 @@ a{color:var(--accent)}
 </form>
 </div>
 
-<h2>3. No app and no code?</h2>
+<h2>3. No app, no login and no code?</h2>
 <p>Email <a href="mailto:bigdai.new@gmail.com?subject=Delete%20my%20BigD%20AI%20profile">bigdai.new@gmail.com</a> with your name and @name in BigD AI. We may ask you a question to make sure the profile is yours, and then delete it within 7 days.</p>
 
 <h2>What is deleted</h2>
 <ul>
-<li>Your profile: name, @name, tagline, profile photo and backup code.</li>
+<li>Your profile: name, @name, tagline, profile photo, backup code, and your login (phone number or email and password), if you added one.</li>
 <li>All your posts and the photos in them, and all comments on your posts.</li>
 <li>Your comments on other posts, your likes, the people you follow, and your reports.</li>
 <li>The link between your phone and the profile.</li>
@@ -84,6 +96,24 @@ a{color:var(--accent)}
       })
       .catch(function () { show("No connection. Please try again.", true); })
       .then(function () { btn.disabled = false; });
+  });
+  // with the phone number / email and password
+  var g = document.getElementById("g"), btn2 = document.getElementById("btn2"), out2 = document.getElementById("out2");
+  var lid = document.getElementById("lid"), lpw = document.getElementById("lpw");
+  function show2(t, bad) { out2.textContent = t; out2.className = bad ? "bad" : "good"; }
+  g.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (lid.value.trim().length < 5 || lpw.value.length < 6) { show2("Please type your mobile number or email, and your password.", true); return; }
+    if (!window.confirm("Delete this profile and all its posts, photos and comments for ever? This can't be undone.")) return;
+    btn2.disabled = true; show2("Deleting…", false);
+    fetch("/api/social/delete-by-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lid.value.trim(), password: lpw.value }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (x.ok) { show2("Done. The profile" + (x.j.name ? " “" + x.j.name + "”" : "") + " and everything linked to it is deleted.", false); lid.value = ""; lpw.value = ""; }
+        else show2(x.j.error || "Something went wrong. Please try again.", true);
+      })
+      .catch(function () { show2("No connection. Please try again.", true); })
+      .then(function () { btn2.disabled = false; });
   });
 })();
 </script>

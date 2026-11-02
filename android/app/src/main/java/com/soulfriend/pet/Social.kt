@@ -170,6 +170,14 @@ class SocialPage(private val m: MainActivity) {
     private var admin = false
     private var me: SUser? = null
     private var meCode = ""
+    // log in with a phone number or email + password (to open the profile on a new phone)
+    private var meLogin: JSONObject? = null     // { kind, shown } when this profile has a login
+    private var lId = ""
+    private var lPw = ""
+    private var lShow = false
+    private var lBusy = false
+    private var lOpen = false                   // the form to add or change the login is open
+    private var focusLogin = false
     private var meState = 0            // 0 not asked yet, 1 asking, 2 known
     private var suggest: List<SUser> = emptyList()
     private var suggestAt = 0L
@@ -728,16 +736,99 @@ class SocialPage(private val m: MainActivity) {
             put(ui.text("Tagline / status · మీ గురించి ఒక మాట", 14f, Ui.INK, bold = true), 12)
             put(ui.input("e.g. \"Farmer from Pendurthi 🌾\"", eBio, multi = true).apply { onText { eBio = it } }, 6)
             put(ui.button(if (saving) "Saving…" else "Save profile", "primary") { if (!saving) saveProfile() }, 16)
-            put(ui.text("Your profile is linked to this phone. After saving you get a backup code to move it to a new phone.", 12f, Ui.MUTED), 8)
+            put(ui.text(if (me == null) "After saving, you can add your phone number or email and a password, to open your profile on a new phone."
+                else "Your profile is linked to this phone. To open it on another phone, add a login below.", 12f, Ui.MUTED), 8)
         }, 12)
-        if (me != null) m.add(ui.section("Delete my profile · ప్రొఫైల్ తొలగించు", "Deletes your profile, all your posts and photos, your comments, likes and follows, for ever.").apply {
-            put(ui.row(ui.button("🗑 Delete my profile", "danger") { deleteProfile() }), 10)
-        }, 12)
-        if (me == null) m.add(ui.section("Move from another phone", "Had a BigD profile on another phone? Type its backup code.").apply {
-            val code = ui.input("Backup code, e.g. 7F3A9C21B4", "").apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }
-            put(code, 10)
-            put(ui.row(ui.button("Use this code") { restore(code.text.toString()) }), 8)
-        }, 12)
+        if (me != null) {
+            val sec = ui.section("🔐 కొత్త ఫోన్‌లో లాగిన్ · Log in on a new phone",
+                "Add your phone number or email and a password. Then you can open your profile on any phone. Your number or email is never shown to anyone.")
+            val lg = meLogin
+            if (lg != null && !lOpen) {
+                sec.put(ui.text("✅ Login is on: " + lg.optString("shown"), 15f, Ui.GOOD, bold = true), 10)
+                sec.put(ui.row(ui.button("Change", "ghost") { lOpen = true; lId = ""; lPw = ""; m.render() }, ui.button("Remove", "danger") { removeLogin() }), 8)
+            } else {
+                loginForm(sec, "Save login") { setLogin() }
+                if (lg != null) sec.put(ui.button("Cancel", "ghost") { lOpen = false; lPw = ""; m.render() }, 6)
+            }
+            m.add(sec, 12)
+            if (focusLogin) { focusLogin = false; m.scrollToView(sec) }
+            m.add(ui.section("Delete my profile · ప్రొఫైల్ తొలగించు", "Deletes your profile, all your posts and photos, your comments, likes and follows, for ever.").apply {
+                put(ui.row(ui.button("🗑 Delete my profile", "danger") { deleteProfile() }), 10)
+            }, 12)
+        } else {
+            m.add(ui.section("🔐 ప్రొఫైల్ ఉందా? · Already have a profile?", "Log in with the phone number or email and password you added to it.").apply {
+                loginForm(this, "Log in") { doLogin() }
+            }, 12)
+            m.add(ui.section("Or use your backup code", "Had a BigD profile on another phone? Type its backup code.").apply {
+                val code = ui.input("Backup code, e.g. 7F3A9C21B4", "").apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }
+                put(code, 10)
+                put(ui.row(ui.button("Use this code") { restore(code.text.toString()) }), 8)
+            }, 12)
+        }
+    }
+
+    /** Phone number or email, and a password (with "Show password"). */
+    private fun loginForm(sec: LinearLayout, label: String, action: () -> Unit) {
+        sec.put(ui.input("Mobile number or email", lId).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS; onText { lId = it }
+        }, 10)
+        val pw = ui.input("Password (6 or more letters or numbers)", lPw)
+        fun kind() { pw.inputType = InputType.TYPE_CLASS_TEXT or (if (lShow) InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD else InputType.TYPE_TEXT_VARIATION_PASSWORD); pw.typeface = Typeface.DEFAULT }
+        kind(); pw.onText { lPw = it }
+        sec.put(pw, 8)
+        sec.put(ui.check("Show password", lShow) { on -> lShow = on; kind(); pw.setSelection(pw.text.length) }, 4)
+        sec.put(ui.button(if (lBusy) "Please wait…" else label, "primary") { if (!lBusy) action() }, 8)
+    }
+
+    private fun loginReady(): Boolean {
+        if (lId.trim().length < 5) { m.toast("Type your mobile number or email."); return false }
+        if (lPw.length < 6) { m.toast("The password needs 6 or more letters or numbers."); return false }
+        return true
+    }
+
+    private fun setLogin() {
+        if (!loginReady()) return
+        lBusy = true; m.render()
+        io.execute {
+            val r = Net.post(store, "/api/social/login-set", JSONObject().put("id", lId.trim()).put("password", lPw), headers(), 20_000)
+            m.runOnUiThread {
+                lBusy = false
+                if (r.ok) { meLogin = r.json.optJSONObject("login"); lOpen = false; lPw = ""; m.toast("Login saved ✓ Please remember your password.") }
+                else m.toast(r.error("Couldn't save. Try again."))
+                refreshIf("edit")
+            }
+        }
+    }
+
+    /** On a new phone: open the profile with its phone number or email and password. */
+    private fun doLogin() {
+        if (!loginReady()) return
+        lBusy = true; m.render()
+        io.execute {
+            val r = Net.post(store, "/api/social/login", JSONObject().put("id", lId.trim()).put("password", lPw), headers(), 20_000)
+            m.runOnUiThread {
+                lBusy = false
+                if (r.ok) {
+                    me = SUser.from(r.json.optJSONObject("profile")); meCode = r.json.optString("code"); meLogin = r.json.optJSONObject("login"); meState = 2
+                    feeds.clear(); loadedAt.clear(); suggestAt = 0; lPw = ""
+                    m.toast("Welcome back, ${me?.name}! ✓"); back()
+                } else { m.toast(r.error("Couldn't log in. Try again.")); refreshIf("edit") }
+            }
+        }
+    }
+
+    private fun removeLogin() {
+        confirm("Remove the phone number / email login? You can still use your backup code.") {
+            call("/api/social/login-remove", JSONObject(), "Login removed.") { meLogin = null; refreshIf("edit") }
+        }
+    }
+
+    /** Right after making a profile: offer to add a login, so the profile can be opened on a new phone. */
+    private fun askLogin() {
+        AlertDialog.Builder(m).setTitle("✅ Your profile is ready!")
+            .setMessage("To open your profile on a new phone later, add your phone number or email and a password. Your number or email is never shown to anyone.")
+            .setPositiveButton("Add now") { _, _ -> focusLogin = true; lOpen = true; lId = ""; lPw = ""; startEdit() }
+            .setNegativeButton("Later", null).show()
     }
 
     private fun saveProfile() {
@@ -758,11 +849,11 @@ class SocialPage(private val m: MainActivity) {
                 saving = false
                 if (r.ok) {
                     val first = me == null
-                    me = SUser.from(r.json.optJSONObject("profile")); meCode = r.json.optString("code"); meState = 2; store.feedName = eName.trim()
+                    me = SUser.from(r.json.optJSONObject("profile")); meCode = r.json.optString("code"); meLogin = r.json.optJSONObject("login"); meState = 2; store.feedName = eName.trim()
                     feeds.clear(); loadedAt.clear(); suggestAt = 0
                     m.toast(if (first) "Profile ready ✓" else "Profile saved ✓")
                     back()
-                    if (first) showCode(true)
+                    if (first) askLogin()
                 } else { m.toast(r.error("Couldn't save. Try again.")); refreshIf("edit") }
             }
         }
@@ -774,7 +865,7 @@ class SocialPage(private val m: MainActivity) {
             val r = Net.post(store, "/api/social/restore", JSONObject().put("code", code.trim()), headers(), 20_000)
             m.runOnUiThread {
                 if (r.ok) {
-                    me = SUser.from(r.json.optJSONObject("profile")); meCode = r.json.optString("code"); meState = 2
+                    me = SUser.from(r.json.optJSONObject("profile")); meCode = r.json.optString("code"); meLogin = r.json.optJSONObject("login"); meState = 2
                     feeds.clear(); loadedAt.clear(); suggestAt = 0
                     m.toast("Welcome back, ${me?.name}! ✓"); back()
                 } else m.toast(r.error("That code didn't work."))
@@ -1406,7 +1497,8 @@ class SocialPage(private val m: MainActivity) {
             val r = Net.get(store, "/api/social/me", headers())
             m.runOnUiThread {
                 if (r.ok) {
-                    me = r.json.optJSONObject("profile")?.let { SUser.from(it) }; meCode = r.json.optString("code"); admin = r.json.optBoolean("admin"); meState = 2
+                    me = r.json.optJSONObject("profile")?.let { SUser.from(it) }; meCode = r.json.optString("code"); meLogin = r.json.optJSONObject("login")
+                    admin = r.json.optBoolean("admin"); meState = 2
                     refreshIf("feed", "compose", "profile", "comments")
                 } else meState = 0   // offline: ask again the next time the page is shown
             }

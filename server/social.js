@@ -44,6 +44,45 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
     if (!uid && create) { uid = "u" + crypto.randomBytes(5).toString("hex"); db.devices[d] = uid; save(); }
     return uid || "";
   }
+  // ---------- optional log in with a phone number or email + a password (to use the profile on a new phone) ----------
+  // The number or email is never shown to anyone; the password is kept only as a scrambled scrypt hash.
+  const EASY = new Set(["123456", "1234567", "12345678", "123456789", "1234567890", "111111", "000000", "password", "password1", "qwerty",
+    "abc123", "654321", "112233", "123123", "666666", "888888", "999999", "121212", "iloveyou"]);
+  /** "98480 12345", "+91 98480-12345", "Kishore@Gmail.com" → { kind, id }, or null when it isn't a mobile number or email. */
+  function loginId(raw) {
+    const s = String(raw || "").trim().toLowerCase().slice(0, 100);
+    if (s.includes("@")) return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(s) ? { kind: "email", id: s } : null;
+    let d = s.replace(/\D/g, "");
+    if (s.startsWith("+") && !d.startsWith("91")) return d.length >= 8 && d.length <= 15 ? { kind: "phone", id: "+" + d } : null;
+    if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
+    if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+    return /^[6-9]\d{9}$/.test(d) ? { kind: "phone", id: d } : null;
+  }
+  const scrypt = (pw, salt) => new Promise((ok, bad) => crypto.scrypt(String(pw), salt, 32, (e, k) => e ? bad(e) : ok(k.toString("hex"))));
+  async function passwordOk(u, pw) {
+    if (!u || !u.login || !u.login.hash) return false;
+    const a = Buffer.from(await scrypt(pw, u.login.salt), "hex"), b = Buffer.from(u.login.hash, "hex");
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+  // wrong tries: 5 per number/email and 10 per phone in 15 minutes
+  const loginFails = new Map();
+  setInterval(() => { const now = Date.now(); for (const [k, f] of loginFails) if (now > f.until) loginFails.delete(k); }, 30 * 60 * 1000).unref();
+  const lockedOut = keys => keys.some(k => { const f = loginFails.get(k); return !!f && f.n >= (k.startsWith("dev|") ? 10 : 5) && Date.now() < f.until; });
+  const failedLogin = keys => keys.forEach(k => { const f = loginFails.get(k) || { n: 0, until: 0 }; f.n++; f.until = Date.now() + 15 * 60 * 1000; loginFails.set(k, f); });
+  const userByLogin = id => Object.values(db.users).find(x => x.login && x.login.id === id);
+  /** What the app shows: "••••••2345" or "ki•••@gmail.com". */
+  const loginShown = l => !l ? null : { kind: l.kind, shown: l.kind === "email" ? l.id.replace(/^(.{1,2})[^@]*(@.*)$/, "$1•••$2") : "••••••" + l.id.slice(-4) };
+  /** Checks a number/email + password from the web or a new phone. Returns the profile, or a { status, error } to send. */
+  async function checkLogin(req, body) {
+    const L = loginId(body.id);
+    const keys = ["dev|" + devHash(req)].concat(L ? ["id|" + L.id] : []);
+    if (lockedOut(keys)) return { status: 429, error: "Too many wrong tries. Please wait 15 minutes and try again." };
+    const u = L ? userByLogin(L.id) : null;
+    if (!u || !(await passwordOk(u, String(body.password || "").slice(0, 64)))) { failedLogin(keys); return { status: 401, error: "Wrong phone number / email or password." }; }
+    loginFails.delete("id|" + L.id);
+    return { user: u };
+  }
+
   function isAdmin(req) {
     const given = String(req.headers["x-admin-key"] || ""), pw = adminPassword();
     if (!pw || !given) return false;
@@ -371,7 +410,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
       }
       if (p === "/api/social/me") {
         const u = me && db.users[me];
-        send(res, 200, { uid: me, profile: u && u.name ? userView(me, me) : null, code: u ? u.code || "" : "", admin }, origin); return true;
+        send(res, 200, { uid: me, profile: u && u.name ? userView(me, me) : null, code: u ? u.code || "" : "", login: u ? loginShown(u.login) : null, admin }, origin); return true;
       }
       if (p === "/api/social/suggest") {
         const counts = followerCounts(), mine = new Set(db.follows[me] || []);
@@ -417,9 +456,17 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (p === "/api/social/delete-by-code") {
       // from the web page bigdai.tech/delete-account: delete a profile with its backup code
       const lim = limit(req, "delcode", 10, 3000); if (lim) { send(res, 429, { error: lim }, origin); return true; }
-      const code = str(body.code, 20).toUpperCase().replace(/[^A-Z0-9]/g, "");
-      const u = code.length >= 8 && Object.values(db.users).find(x => x.code === code);
-      if (!u) { send(res, 404, { error: "That backup code is not right." }, origin); return true; }
+      let u = null;
+      if (body.id) {
+        // or with the phone number / email and password
+        const c = await checkLogin(req, body);
+        if (!c.user) { send(res, c.status, { error: c.error }, origin); return true; }
+        u = c.user;
+      } else {
+        const code = str(body.code, 20).toUpperCase().replace(/[^A-Z0-9]/g, "");
+        u = code.length >= 8 && Object.values(db.users).find(x => x.code === code);
+        if (!u) { send(res, 404, { error: "That backup code is not right." }, origin); return true; }
+      }
       const name = u.name || "";
       try { const r = deleteUser(u.uid); send(res, 200, { ok: true, name, deleted: r }, origin); }
       catch (e) { console.error("Social delete error:", e.message); send(res, 502, { error: "Something went wrong. Please try again." }, origin); }
@@ -466,7 +513,36 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
           if (a && !(db.uploads[a] && db.uploads[a].uid === uid && db.uploads[a].kind !== "video")) { send(res, 400, { error: "Upload the photo again." }, origin); return true; }
           u.avatar = a;
         }
-        save(); send(res, 200, { profile: userView(uid, uid), code: u.code }, origin); return true;
+        save(); send(res, 200, { profile: userView(uid, uid), code: u.code, login: loginShown(u.login) }, origin); return true;
+      }
+
+      if (p === "/api/social/login-set") {
+        // add (or change) "log in with phone number or email + password" for this phone's profile
+        if (!(user && user.name)) { send(res, 400, { error: "First make your profile." }, origin); return true; }
+        const lim = limit(req, "loginset", 10, 2000); if (lim) { send(res, 429, { error: lim }, origin); return true; }
+        const L = loginId(body.id);
+        if (!L) { send(res, 400, { error: "Type a 10-digit mobile number or an email address." }, origin); return true; }
+        const pw = String(body.password || "");
+        if (pw.length < 6 || pw.length > 64) { send(res, 400, { error: "The password needs 6 or more letters or numbers." }, origin); return true; }
+        if (EASY.has(pw.toLowerCase())) { send(res, 400, { error: "That password is too easy to guess. Please choose another one." }, origin); return true; }
+        const other = userByLogin(L.id);
+        if (other && other.uid !== uid) { send(res, 400, { error: L.kind === "email" ? "This email is already used by another profile." : "This phone number is already used by another profile." }, origin); return true; }
+        const salt = crypto.randomBytes(16).toString("hex");
+        user.login = { kind: L.kind, id: L.id, salt, hash: await scrypt(pw, salt), at: Date.now() };
+        save(); send(res, 200, { ok: true, login: loginShown(user.login) }, origin); return true;
+      }
+
+      if (p === "/api/social/login-remove") {
+        if (user && user.login) { delete user.login; save(); }
+        send(res, 200, { ok: true }, origin); return true;
+      }
+
+      if (p === "/api/social/login") {
+        // on a new phone: log in with the phone number or email and the password; this phone is then linked to the profile
+        const c = await checkLogin(req, body);
+        if (!c.user) { send(res, c.status, { error: c.error }, origin); return true; }
+        db.devices[devHash(req)] = c.user.uid; save();
+        send(res, 200, { profile: userView(c.user.uid, c.user.uid), code: c.user.code, login: loginShown(c.user.login) }, origin); return true;
       }
 
       if (p === "/api/social/restore") {
@@ -475,7 +551,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         const u = code.length >= 8 && Object.values(db.users).find(x => x.code === code);
         if (!u) { send(res, 404, { error: "That backup code is not right." }, origin); return true; }
         db.devices[devHash(req)] = u.uid; save();
-        send(res, 200, { profile: userView(u.uid, u.uid), code: u.code }, origin); return true;
+        send(res, 200, { profile: userView(u.uid, u.uid), code: u.code, login: loginShown(u.login) }, origin); return true;
       }
 
       if (p === "/api/social/post") {
