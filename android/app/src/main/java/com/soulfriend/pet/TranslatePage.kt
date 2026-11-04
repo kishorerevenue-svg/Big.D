@@ -207,9 +207,7 @@ class TranslatePage(private val m: MainActivity) {
         val i = Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, uri)
             .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         i.clipData = ClipData.newRawUri("photo", uri)
-        m.leavingForSystemScreen = true
-        try { m.startActivityForResult(i, MainActivity.REQ_TR_CAMERA) }
-        catch (e: Exception) { m.leavingForSystemScreen = false; m.toast("No camera app found. Tap 🖼️ Photo to choose a picture instead.") }
+        m.startCamera(i, MainActivity.REQ_TR_CAMERA, "No camera app found. Tap 🖼️ Photo to choose a picture instead.")
     }
 
     fun onPhoto(uri: Uri) = usePhoto(uri)

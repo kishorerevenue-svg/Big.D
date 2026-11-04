@@ -491,6 +491,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         HandsFree.match(text)?.let { if (handsFree(it)) return }
         if (BuildConfig.HANDS_FREE && Regex("^(reels? mode|hands ?free( mode)?|రీల్స్ మోడ్|హ్యాండ్స్ ఫ్రీ)$", RegexOption.IGNORE_CASE).matches(text.trim().trimEnd('.', '!'))) { startVoiceMode(); return }
         if (ScreenCaptureService.wantsScreen(text)) { readScreen(text); return }
+        if (Regex("^(look at me|can you see me|see me|how do i look|how am i looking|నన్ను చూడు|నన్ను చూడండి|నేను ఎలా ఉన్నాను|nannu chudu)[.!?]*$", RegexOption.IGNORE_CASE).matches(text.trim())) {
+            say(if (isTelugu(text) || store.lang == "te") "👀 కెమెరా తెరుస్తున్నాను…" else "👀 Opening the camera…", PuppyView.Mood.EXCITED, local = true)
+            try { startActivity(Intent(this, MainActivity::class.java).putExtra("mirror", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+            return
+        }
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
         showBubble("“$text”\n…", 0)

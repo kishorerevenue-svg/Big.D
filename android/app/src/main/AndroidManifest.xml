@@ -26,6 +26,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Family & SOS: call your first family member after the SOS countdown (only when you press SOS or 📞) -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- the pet looks at you through the front camera (only after you say yes; one photo, not saved) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <!-- Not needed to install: tablets without a SIM or GPS can still use the app -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-feature android:name="android.hardware.location" android:required="false" />

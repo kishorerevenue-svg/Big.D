@@ -102,6 +102,8 @@ class MainActivity : Activity() {
         const val REQ_MSG_CAMERA = 4411
         const val REQ_MSG_PHOTO = 4412
         const val REQ_VAULT_CARDS = 4413
+        const val REQ_CAM_INTENT = 24
+        const val REQ_CAM_MIRROR = 25
         const val REQ_LOCATION = 21
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
@@ -193,6 +195,7 @@ class MainActivity : Activity() {
     private fun handleIntent(i: Intent?) {
         if (i == null) return
         i.getStringExtra("tab")?.let { tab = it }
+        if (i.getBooleanExtra("mirror", false)) { pendingMirror = true; i.removeExtra("mirror") }
         i.getStringExtra("letter")?.let { tab = "files"; pendingLetter = it; i.removeExtra("letter") }
         val toMedia = i.component?.className?.endsWith(".PostToMedia") == true
         if (toMedia && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
@@ -222,6 +225,9 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume(); leavingForSystemScreen = false; render()
         if (store.onboarded) {
+            if (pendingMirror) { pendingMirror = false; content.postDelayed({ lookAtMe(false) }, 500) }
+            else if (store.mirrorOn && (tab == "home" || tab == "pet") && System.currentTimeMillis() - store.mirrorAt > 3 * 3600_000L)
+                content.postDelayed({ if (!isFinishing && hasWindowFocus() && (tab == "home" || tab == "pet")) lookAtMe(true) }, 1500)
             pendingShare?.let { pendingShare = null; messages.checkShared(it) }
             pendingLetter?.let { pendingLetter = null; letter.start(it) }
             pendingPost?.let { pendingPost = null; social.fromShare(it.first, it.second) }
@@ -578,6 +584,11 @@ class MainActivity : Activity() {
             }, 12)
         }, 12)
         add(voiceCard(), 12)
+        add(ui.section("😊 Pet camera · కెమెరా", "Your pet looks at you through the front camera for 3 seconds and says something kind, with a tip if you look tired. The photo goes to Claude AI only for this and is not saved.").apply {
+            put(ui.button("😊 Look at me now", "primary") { lookAtMe(false) }, 10)
+            put(ui.check("👀 Look at me when I open the app (at most every 3 hours)", store.mirrorOn && store.mirrorAsked) { on -> store.mirrorOn = on; store.mirrorAsked = true; if (on && !granted(Manifest.permission.CAMERA)) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }, 8)
+            put(ui.text("You can also say \"look at me\" or \"నన్ను చూడు\" to your pet.", 12.5f, Ui.MUTED), 6)
+        }, 12)
 
         add(ui.section("Permissions · అనుమతులు").apply { permissionRows(this) }, 12)
         // Message replies and danger alerts now live on the Messages tab.
@@ -974,6 +985,104 @@ class MainActivity : Activity() {
                 setOnClickListener { if (!vaultOpenFolders.remove(name)) vaultOpenFolders.add(name); render() }
             }, 16)
             if (open) list.sortedBy { it.type }.forEach { add(vaultCard(it), 8) }
+        }
+    }
+
+    // =================== the camera ===================
+    private var pendingCamera: Pair<Intent, Int>? = null
+    private var pendingMirror = false
+    private var mirrorShowing = false
+    private val mirrorBrain by lazy { Brain(store) }
+
+    /** Opens the phone's camera app for a photo (the camera permission is asked first when needed). */
+    internal fun startCamera(i: Intent, req: Int, noCamera: String) {
+        if (!granted(Manifest.permission.CAMERA)) { pendingCamera = i to req; requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_INTENT); return }
+        leavingForSystemScreen = true
+        try { startActivityForResult(i, req) } catch (e: Exception) { leavingForSystemScreen = false; toast(noCamera) }
+    }
+
+    /** The pet looks at you: a round front-camera window, 3-2-1, one photo, then a kind comment from Claude (read aloud). */
+    internal fun lookAtMe(auto: Boolean) {
+        if (mirrorShowing || isFinishing) return
+        if (auto && !store.mirrorAsked) {
+            // the first time: ask before ever using the camera
+            store.mirrorAsked = true
+            AlertDialog.Builder(this).setTitle("👀 Can I look at you?")
+                .setMessage("When you open BigD AI, I can look at you through the front camera for 3 seconds and say something kind (and a tip if you look tired).\n\n" +
+                    "The photo goes to Claude AI only for this and is not saved. At most once every 3 hours. You can turn it off on the Pet page.")
+                .setPositiveButton("Yes, look at me") { _, _ -> store.mirrorOn = true; if (granted(Manifest.permission.CAMERA)) lookAtMe(false) else requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }
+                .setNegativeButton("No, thanks") { _, _ -> store.mirrorOn = false }
+                .show()
+            return
+        }
+        if (!granted(Manifest.permission.CAMERA)) { if (!auto) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR); return }
+        mirrorShowing = true; store.mirrorAt = System.currentTimeMillis()
+        val te = store.lang == "te"
+        val tv = android.view.TextureView(this)
+        val ring = FrameLayout(this).apply {
+            background = ui.round(Ui.TEAL_SOFT, 200); clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: View, o: android.graphics.Outline) { o.setOval(0, 0, v.width, v.height) } }
+            addView(tv, FrameLayout.LayoutParams(-1, -1))
+        }
+        val label = ui.text(if (te) "😊 నవ్వండి!" else "😊 Smile!", 17f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER }
+        val again = ui.button(if (te) "📷 మళ్ళీ" else "📷 Again") { }.apply { visibility = View.GONE }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(20), dp(20), dp(20), dp(6))
+            addView(ring, LinearLayout.LayoutParams(dp(220), dp(220)))
+            addView(label, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+            addView(again, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
+        }
+        val dlg = AlertDialog.Builder(this).setView(box).setNegativeButton(if (te) "మూసేయి" else "Close", null).create()
+        var cam: MirrorCam? = null
+        val ticks = ArrayList<Runnable>()
+        dlg.setOnDismissListener { ticks.forEach { content.removeCallbacks(it) }; cam?.cancel(); mirrorShowing = false; stopTalking() }
+        again.setOnClickListener { dlg.dismiss(); content.postDelayed({ lookAtMe(false) }, 300) }
+        tv.surfaceTextureListener = object : android.view.TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, h: Int) {
+                cam = MirrorCam(this@MainActivity, tv) { jpeg -> if (dlg.isShowing) mirrorPhoto(jpeg, label, ring, again) }.also { it.open() }
+                listOf(3, 2, 1).forEachIndexed { k, n ->
+                    val r = Runnable { if (dlg.isShowing) label.text = (if (te) "😊 నవ్వండి! " else "😊 Smile! ") + n }
+                    ticks.add(r); content.postDelayed(r, 700L + k * 900L)
+                }
+                val shot = Runnable { if (dlg.isShowing) { label.text = "📸"; cam?.snap() } }
+                ticks.add(shot); content.postDelayed(shot, 700L + 3 * 900L)
+            }
+            override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, w: Int, h: Int) {}
+            override fun onSurfaceTextureDestroyed(st: android.graphics.SurfaceTexture) = true
+            override fun onSurfaceTextureUpdated(st: android.graphics.SurfaceTexture) {}
+        }
+        dlg.show()
+    }
+
+    private fun mirrorPhoto(jpeg: ByteArray?, label: TextView, ring: FrameLayout, again: View) {
+        val te = store.lang == "te"
+        if (jpeg == null) { label.text = if (te) "📷 కెమెరా తెరవలేకపోయాను. వేరే కెమెరా యాప్ మూసి మళ్ళీ ప్రయత్నించండి." else "📷 I couldn't open the camera. Close other camera apps and try again."; again.visibility = View.VISIBLE; return }
+        label.text = if (te) "🐾 చూస్తున్నాను…" else "🐾 Looking at you…"
+        io.execute {
+            // upright, smaller, and without hidden details, before it goes anywhere
+            val f = java.io.File(cacheDir, "mirror.jpg")
+            val small = try { f.writeBytes(jpeg); Images.prepare(this, Uri.fromFile(f), 1024) } catch (e: Exception) { null } finally { f.delete() }
+            runOnUiThread {
+                if (!mirrorShowing) return@runOnUiThread
+                if (small == null) { label.text = "📷 Couldn't use that photo."; again.visibility = View.VISIBLE; return@runOnUiThread }
+                BitmapFactory.decodeByteArray(small, 0, small.size)?.let { bmp ->
+                    ring.removeAllViews(); ring.addView(ImageView(this).apply { setImageBitmap(bmp); scaleType = ImageView.ScaleType.CENTER_CROP; scaleX = -1f }, FrameLayout.LayoutParams(-1, -1))
+                }
+                val ask = (if (te) "[కెమెరా] ఇది ఇప్పుడు నా ఫోన్ ముందు కెమెరాలో నేను. " else "[Camera] This is me right now, from my phone's front camera. ") +
+                    "Look at me kindly like a caring friend and answer in 2 or 3 short sentences: say something positive and genuine about how I look or my mood today (a nice smile, a bright colour, looking fresh or calm). " +
+                    "If I look tired, sad or unwell, say it gently and give one caring tip (water, rest, a short walk, talk to someone). Then one small fun or useful idea for today. " +
+                    "Never comment negatively on my body, weight, skin colour, age or looks, never guess who I am or anything private, and don't describe the background." +
+                    (if (te) " తెలుగులో చెప్పు." else "")
+                mirrorBrain.ask(ask, onReply = { json ->
+                    if (!mirrorShowing) return@ask
+                    val reply = json.optString("reply")
+                    label.text = reply; again.visibility = View.VISIBLE
+                    val snd = json.optString("sound")
+                    val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
+                    content.postDelayed({ if (mirrorShowing) speakOut(reply) }, wait)
+                }, onError = { err -> if (mirrorShowing) { label.text = err; again.visibility = View.VISIBLE } },
+                    photo = "image/jpeg" to android.util.Base64.encodeToString(small, android.util.Base64.NO_WRAP), local = false)
+            }
         }
     }
 
@@ -1508,6 +1617,13 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val yes = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        if (requestCode == REQ_CAM_INTENT) {
+            val p = pendingCamera; pendingCamera = null
+            if (yes && p != null) { leavingForSystemScreen = true; try { startActivityForResult(p.first, p.second) } catch (e: Exception) { leavingForSystemScreen = false; toast("No camera app found.") } }
+            else if (!yes) toast("Allow the camera to take a photo here.")
+        }
+        if (requestCode == REQ_CAM_MIRROR) { if (yes) content.postDelayed({ lookAtMe(false) }, 300) else { store.mirrorOn = false; toast("OK. I won't use the camera.") } }
         if (requestCode == REQ_LOCATION) family.onLocationAnswer()
         if (requestCode == REQ_CALL && grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED)
             toast("OK. SOS will open the phone app with the number ready, and you tap Call.")

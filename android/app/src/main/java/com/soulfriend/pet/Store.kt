@@ -59,6 +59,17 @@ class Store(context: Context) {
         get() = p.getBoolean("cuteVoice", false)
         set(v) { p.edit().putBoolean("cuteVoice", v).apply() }
 
+    /** The pet looks at you through the front camera when you open the app (at most every 3 hours), after you said yes once. */
+    var mirrorOn: Boolean
+        get() = p.getBoolean("mirrorOn", true)
+        set(v) { p.edit().putBoolean("mirrorOn", v).apply() }
+    var mirrorAsked: Boolean
+        get() = p.getBoolean("mirrorAsked", false)
+        set(v) { p.edit().putBoolean("mirrorAsked", v).apply() }
+    var mirrorAt: Long
+        get() = p.getLong("mirrorAt", 0L)
+        set(v) { p.edit().putLong("mirrorAt", v).apply() }
+
     /** The pet's little sounds (tada, laugh, wow…) when they fit the moment. */
     var funSounds: Boolean
         get() = p.getBoolean("funSounds", true)
