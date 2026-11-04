@@ -20,16 +20,18 @@ import android.view.TextureView
 import kotlin.math.abs
 
 /**
- * The pet looks at you: the front camera shows in a small round window for a moment, then takes ONE photo.
- * The camera is closed right after (or when the window is closed). [done] gets the JPEG, or null if the camera couldn't be used.
+ * The pet looks at you: the front camera runs for a moment (in [view], or without any window when it is null),
+ * then takes ONE photo and is closed. [done] gets the JPEG, or null if the camera couldn't be used.
  */
-class MirrorCam(private val ctx: Context, private val view: TextureView, private val done: (ByteArray?) -> Unit) {
+class MirrorCam(private val ctx: Context, private val view: TextureView?, private val done: (ByteArray?) -> Unit) {
     private val thread = HandlerThread("bigd-mirror").apply { start() }
     private val bg = Handler(thread.looper)
     private val main = Handler(Looper.getMainLooper())
     private var device: CameraDevice? = null
     private var session: CameraCaptureSession? = null
     private var reader: ImageReader? = null
+    private var sink: ImageReader? = null      // no window: the camera's preview frames come here and are let go at once
+    private var small = Size(640, 480)
     private var sensor = 270
     @Volatile private var finished = false
 
@@ -45,6 +47,7 @@ class MirrorCam(private val ctx: Context, private val view: TextureView, private
             val still = map.getOutputSizes(ImageFormat.JPEG).filter { it.width * it.height <= 1600 * 1200 }.maxByOrNull { it.width * it.height } ?: Size(640, 480)
             val prev = map.getOutputSizes(SurfaceTexture::class.java).filter { it.width <= 1280 && it.height <= 960 }
                 .minByOrNull { abs(it.width.toFloat() / it.height - 4f / 3) * 10 + abs(it.width - 960) / 1000f } ?: Size(640, 480)
+            small = map.getOutputSizes(ImageFormat.YUV_420_888).filter { it.width >= 320 && it.width <= 800 }.minByOrNull { abs(it.width - 640) } ?: Size(640, 480)
             reader = ImageReader.newInstance(still.width, still.height, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ r ->
                     val img = r.acquireLatestImage() ?: return@setOnImageAvailableListener
@@ -62,13 +65,19 @@ class MirrorCam(private val ctx: Context, private val view: TextureView, private
 
     private fun preview(prev: Size) {
         try {
-            val st = view.surfaceTexture ?: return finish(null)
-            st.setDefaultBufferSize(prev.width, prev.height)
-            val surface = Surface(st)
+            val v = view
+            val surface: Surface = if (v != null) {
+                val st = v.surfaceTexture ?: return finish(null)
+                st.setDefaultBufferSize(prev.width, prev.height)
+                Surface(st)
+            } else ImageReader.newInstance(small.width, small.height, ImageFormat.YUV_420_888, 3).also { s ->
+                s.setOnImageAvailableListener({ r -> try { r.acquireLatestImage()?.close() } catch (e: Exception) { } }, bg)
+                sink = s
+            }.surface
             val d = device ?: return finish(null)
             val r = reader ?: return finish(null)
             val req = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply { addTarget(surface) }
-            main.post { fit(prev) }
+            if (v != null) main.post { fit(prev) }
             @Suppress("DEPRECATION")
             d.createCaptureSession(listOf(surface, r.surface), object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
@@ -82,6 +91,7 @@ class MirrorCam(private val ctx: Context, private val view: TextureView, private
 
     /** The round window shows the middle of the picture, not squeezed (in portrait the camera picture is turned, so width and height swap). */
     private fun fit(prev: Size) {
+        val view = view ?: return
         val vw = view.width.toFloat(); val vh = view.height.toFloat()
         if (vw <= 0 || vh <= 0) return
         val pw = minOf(prev.width, prev.height).toFloat(); val ph = maxOf(prev.width, prev.height).toFloat()
@@ -115,6 +125,7 @@ class MirrorCam(private val ctx: Context, private val view: TextureView, private
         try { session?.close() } catch (e: Exception) { }
         try { device?.close() } catch (e: Exception) { }
         try { reader?.close() } catch (e: Exception) { }
+        try { sink?.close() } catch (e: Exception) { }
         thread.quitSafely()
         main.post { done(b) }
     }

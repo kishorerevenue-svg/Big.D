@@ -65,6 +65,8 @@ class MainActivity : Activity() {
     private lateinit var navLeft: LinearLayout
     private lateinit var navRight: LinearLayout
     private lateinit var mediaFab: TextView       // the round Media button in the middle of the bottom bar
+    private lateinit var rootFrame: FrameLayout
+    @Volatile private var resumedNow = false
     private lateinit var mediaLabel: TextView
     private lateinit var fab: TextView
     internal val fmt: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
@@ -104,6 +106,7 @@ class MainActivity : Activity() {
         const val REQ_VAULT_CARDS = 4413
         const val REQ_CAM_INTENT = 24
         const val REQ_CAM_MIRROR = 25
+        const val REQ_CARD_PERM = 26
         const val REQ_LOCATION = 21
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
@@ -175,6 +178,7 @@ class MainActivity : Activity() {
             addView(nav, LinearLayout.LayoutParams(-1, -2))
         }
         val root = FrameLayout(this).apply {
+            rootFrame = this
             setBackgroundColor(Ui.BG); fitsSystemWindows = true
             addView(column, FrameLayout.LayoutParams(-1, -1))
             addView(mediaFab, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
@@ -223,7 +227,8 @@ class MainActivity : Activity() {
     }
 
     override fun onResume() {
-        super.onResume(); leavingForSystemScreen = false; render()
+        super.onResume(); resumedNow = true; leavingForSystemScreen = false; render()
+        if (BuildConfig.AUTO_CARDS && store.autoCards && AutoCards.allowed(this)) AutoCards.schedule(this)
         if (store.onboarded) {
             if (pendingMirror) { pendingMirror = false; content.postDelayed({ lookAtMe(false) }, 500) }
             else if (store.mirrorOn && (tab == "home" || tab == "pet") && System.currentTimeMillis() - store.mirrorAt > 3 * 3600_000L)
@@ -236,6 +241,8 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        resumedNow = false
+        mirrorBanner?.let { hideMirror() }
         socialPage?.flushViews()
         familyPage?.onPause()
         letter.stop(); stopListening(); stopTalking()
@@ -584,7 +591,7 @@ class MainActivity : Activity() {
             }, 12)
         }, 12)
         add(voiceCard(), 12)
-        add(ui.section("😊 Pet camera · కెమెరా", "Your pet looks at you through the front camera for 3 seconds and says something kind, with a tip if you look tired. The photo goes to Claude AI only for this and is not saved.").apply {
+        add(ui.section("😊 Pet camera · కెమెరా", "Your pet takes a quick look at you with the front camera (no camera window opens) and says something kind, with a tip if you look tired. The photo goes to Claude AI only for this and is not saved.").apply {
             put(ui.button("😊 Look at me now", "primary") { lookAtMe(false) }, 10)
             put(ui.check("👀 Look at me when I open the app (at most every 3 hours)", store.mirrorOn && store.mirrorAsked) { on -> store.mirrorOn = on; store.mirrorAsked = true; if (on && !granted(Manifest.permission.CAMERA)) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }, 8)
             put(ui.text("You can also say \"look at me\" or \"నన్ను చూడు\" to your pet.", 12.5f, Ui.MUTED), 6)
@@ -1001,14 +1008,15 @@ class MainActivity : Activity() {
         try { startActivityForResult(i, req) } catch (e: Exception) { leavingForSystemScreen = false; toast(noCamera) }
     }
 
-    /** The pet looks at you: a round front-camera window, 3-2-1, one photo, then a kind comment from Claude (read aloud). */
+    /** The pet looks at you: no camera window, just the pet's note at the top ("👀 Looking at you…"); one photo from the
+     *  front camera, then a kind comment from Claude, read aloud. (Android shows its own green camera dot meanwhile.) */
     internal fun lookAtMe(auto: Boolean) {
         if (mirrorShowing || isFinishing) return
         if (auto && !store.mirrorAsked) {
             // the first time: ask before ever using the camera
             store.mirrorAsked = true
             AlertDialog.Builder(this).setTitle("👀 Can I look at you?")
-                .setMessage("When you open BigD AI, I can look at you through the front camera for 3 seconds and say something kind (and a tip if you look tired).\n\n" +
+                .setMessage("When you open BigD AI, I can take a quick look at you with the front camera and say something kind (and a tip if you look tired). No camera window opens; Android shows its small green camera dot.\n\n" +
                     "The photo goes to Claude AI only for this and is not saved. At most once every 3 hours. You can turn it off on the Pet page.")
                 .setPositiveButton("Yes, look at me") { _, _ -> store.mirrorOn = true; if (granted(Manifest.permission.CAMERA)) lookAtMe(false) else requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }
                 .setNegativeButton("No, thanks") { _, _ -> store.mirrorOn = false }
@@ -1018,69 +1026,59 @@ class MainActivity : Activity() {
         if (!granted(Manifest.permission.CAMERA)) { if (!auto) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR); return }
         mirrorShowing = true; store.mirrorAt = System.currentTimeMillis()
         val te = store.lang == "te"
-        val tv = android.view.TextureView(this)
-        val ring = FrameLayout(this).apply {
-            background = ui.round(Ui.TEAL_SOFT, 200); clipToOutline = true
-            outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: View, o: android.graphics.Outline) { o.setOval(0, 0, v.width, v.height) } }
-            addView(tv, FrameLayout.LayoutParams(-1, -1))
+        val banner = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(12), dp(10), dp(12))
+            background = ui.round(Color.WHITE, 20, Ui.LINE); elevation = dp(10).toFloat()
+            addView(TextView(this@MainActivity).apply { text = "🐾"; textSize = 26f })
+            addView(ui.text(if (te) "👀 మిమ్మల్ని చూస్తున్నాను…" else "👀 Looking at you…", 15f, Ui.INK, bold = true),
+                LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(10) })
+            addView(TextView(this@MainActivity).apply { text = "✕"; textSize = 18f; setTextColor(Ui.MUTED); setPadding(dp(12), dp(4), dp(6), dp(4)); contentDescription = "Close" })
+            setOnClickListener { stopTalking(); hideMirror() }
         }
-        val label = ui.text(if (te) "😊 నవ్వండి!" else "😊 Smile!", 17f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER }
-        val again = ui.button(if (te) "📷 మళ్ళీ" else "📷 Again") { }.apply { visibility = View.GONE }
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(20), dp(20), dp(20), dp(6))
-            addView(ring, LinearLayout.LayoutParams(dp(220), dp(220)))
-            addView(label, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
-            addView(again, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
-        }
-        val dlg = AlertDialog.Builder(this).setView(box).setNegativeButton(if (te) "మూసేయి" else "Close", null).create()
-        var cam: MirrorCam? = null
-        val ticks = ArrayList<Runnable>()
-        dlg.setOnDismissListener { ticks.forEach { content.removeCallbacks(it) }; cam?.cancel(); mirrorShowing = false; stopTalking() }
-        again.setOnClickListener { dlg.dismiss(); content.postDelayed({ lookAtMe(false) }, 300) }
-        tv.surfaceTextureListener = object : android.view.TextureView.SurfaceTextureListener {
-            override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, h: Int) {
-                cam = MirrorCam(this@MainActivity, tv) { jpeg -> if (dlg.isShowing) mirrorPhoto(jpeg, label, ring, again) }.also { it.open() }
-                listOf(3, 2, 1).forEachIndexed { k, n ->
-                    val r = Runnable { if (dlg.isShowing) label.text = (if (te) "😊 నవ్వండి! " else "😊 Smile! ") + n }
-                    ticks.add(r); content.postDelayed(r, 700L + k * 900L)
-                }
-                val shot = Runnable { if (dlg.isShowing) { label.text = "📸"; cam?.snap() } }
-                ticks.add(shot); content.postDelayed(shot, 700L + 3 * 900L)
-            }
-            override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, w: Int, h: Int) {}
-            override fun onSurfaceTextureDestroyed(st: android.graphics.SurfaceTexture) = true
-            override fun onSurfaceTextureUpdated(st: android.graphics.SurfaceTexture) {}
-        }
-        dlg.show()
+        mirrorBanner = banner
+        rootFrame.addView(banner, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply { setMargins(dp(12), dp(10), dp(12), 0) })
+        val cam = MirrorCam(this, null) { jpeg -> if (mirrorBanner === banner) mirrorPhoto(jpeg, banner) }
+        mirrorCam = cam
+        cam.open()
+        content.postDelayed({ if (mirrorBanner === banner) cam.snap() }, 1800)     // a moment for the camera to adjust to the light
     }
 
-    private fun mirrorPhoto(jpeg: ByteArray?, label: TextView, ring: FrameLayout, again: View) {
+    private var mirrorBanner: LinearLayout? = null
+    private var mirrorCam: MirrorCam? = null
+    private fun mirrorSay(text: String) { (mirrorBanner?.getChildAt(1) as? TextView)?.text = text }
+    private fun hideMirror() {
+        mirrorCam?.cancel(); mirrorCam = null
+        mirrorBanner?.let { try { rootFrame.removeView(it) } catch (e: Exception) { } }
+        mirrorBanner = null; mirrorShowing = false
+    }
+
+    private fun mirrorPhoto(jpeg: ByteArray?, banner: LinearLayout) {
+        mirrorCam = null
         val te = store.lang == "te"
-        if (jpeg == null) { label.text = if (te) "📷 కెమెరా తెరవలేకపోయాను. వేరే కెమెరా యాప్ మూసి మళ్ళీ ప్రయత్నించండి." else "📷 I couldn't open the camera. Close other camera apps and try again."; again.visibility = View.VISIBLE; return }
-        label.text = if (te) "🐾 చూస్తున్నాను…" else "🐾 Looking at you…"
+        val gone = { content.postDelayed({ if (mirrorBanner === banner) hideMirror() }, 5000) }
+        if (jpeg == null) { mirrorSay(if (te) "📷 కెమెరా తెరవలేకపోయాను. వేరే కెమెరా యాప్ మూసి మళ్ళీ అడగండి." else "📷 I couldn't use the camera. Close other camera apps and ask me again."); gone(); return }
+        mirrorSay(if (te) "🐾 ఆలోచిస్తున్నాను…" else "🐾 Thinking…")
         io.execute {
             // upright, smaller, and without hidden details, before it goes anywhere
             val f = java.io.File(cacheDir, "mirror.jpg")
             val small = try { f.writeBytes(jpeg); Images.prepare(this, Uri.fromFile(f), 1024) } catch (e: Exception) { null } finally { f.delete() }
             runOnUiThread {
-                if (!mirrorShowing) return@runOnUiThread
-                if (small == null) { label.text = "📷 Couldn't use that photo."; again.visibility = View.VISIBLE; return@runOnUiThread }
-                BitmapFactory.decodeByteArray(small, 0, small.size)?.let { bmp ->
-                    ring.removeAllViews(); ring.addView(ImageView(this).apply { setImageBitmap(bmp); scaleType = ImageView.ScaleType.CENTER_CROP; scaleX = -1f }, FrameLayout.LayoutParams(-1, -1))
-                }
+                if (mirrorBanner !== banner) return@runOnUiThread
+                if (small == null) { mirrorSay("📷 Couldn't use that photo."); gone(); return@runOnUiThread }
                 val ask = (if (te) "[కెమెరా] ఇది ఇప్పుడు నా ఫోన్ ముందు కెమెరాలో నేను. " else "[Camera] This is me right now, from my phone's front camera. ") +
+                    "If you know my name from what you remember about me, call me by my name (don't try to recognise faces). " +
                     "Look at me kindly like a caring friend and answer in 2 or 3 short sentences: say something positive and genuine about how I look or my mood today (a nice smile, a bright colour, looking fresh or calm). " +
                     "If I look tired, sad or unwell, say it gently and give one caring tip (water, rest, a short walk, talk to someone). Then one small fun or useful idea for today. " +
-                    "Never comment negatively on my body, weight, skin colour, age or looks, never guess who I am or anything private, and don't describe the background." +
+                    "Never comment negatively on my body, weight, skin colour, age or looks, nothing private, and don't describe the background." +
                     (if (te) " తెలుగులో చెప్పు." else "")
                 mirrorBrain.ask(ask, onReply = { json ->
-                    if (!mirrorShowing) return@ask
+                    if (mirrorBanner !== banner) return@ask
                     val reply = json.optString("reply")
-                    label.text = reply; again.visibility = View.VISIBLE
+                    mirrorSay(reply)
                     val snd = json.optString("sound")
                     val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
-                    content.postDelayed({ if (mirrorShowing) speakOut(reply) }, wait)
-                }, onError = { err -> if (mirrorShowing) { label.text = err; again.visibility = View.VISIBLE } },
+                    content.postDelayed({ if (mirrorBanner === banner) speakOut(reply) { content.postDelayed({ if (mirrorBanner === banner) hideMirror() }, 4000) } }, wait)
+                }, onError = { err -> if (mirrorBanner === banner) { mirrorSay(err); gone() } },
                     photo = "image/jpeg" to android.util.Base64.encodeToString(small, android.util.Base64.NO_WRAP), local = false)
             }
         }
@@ -1088,36 +1086,79 @@ class MainActivity : Activity() {
 
     // =================== finding cards in screenshots (on this phone only) ===================
     private val vaultOpenFolders = HashSet<String>()
-    private class CardScan(val total: Int) { var done = 0; val added = ArrayList<VaultItem>(); var same = 0; var none = 0; var problem = ""; var finished = false; var stop = false }
+    private class CardScan(var total: Int) { var done = 0; val added = ArrayList<VaultItem>(); var same = 0; var none = 0; var problem = ""; var finished = false; var stop = false }
     private var cardScan: CardScan? = null
 
     private fun cardScanCard() {
         val sc = cardScan
         if (sc == null) {
-            add(ui.card(Ui.SUN_SOFT).apply {
-                addView(ui.text("🔍 Find my cards in screenshots", 15.5f, Ui.INK, bold = true))
-                put(ui.text("Choose screenshots or photos of Aadhaar, PAN, voter ID, licence, passport or ration cards (many at once). The phone reads them itself, nothing is sent anywhere, and each person's cards go in their own folder.", 13.5f, Ui.MUTED), 4)
-                put(ui.button("🖼️ Choose screenshots", "primary") { pickCardPictures() }, 10)
-            }, 12)
+            val choose = ui.text("🖼️ Or choose pictures yourself", 13.5f, Ui.TEAL_DARK, bold = true).apply { setPadding(0, dp(6), 0, dp(6)); setOnClickListener { pickCardPictures() } }
+            if (BuildConfig.AUTO_CARDS && store.autoCards && AutoCards.allowed(this)) {
+                val last = if (store.autoCardsAt > 0) " Last check: " + fmt.format(Instant.ofEpochMilli(store.autoCardsAt).atZone(ZoneId.systemDefault())) + "." else ""
+                add(ui.card(Ui.TEAL_SOFT).apply {
+                    addView(ui.text("🔍 Finding cards by itself: ON", 15.5f, Ui.TEAL_DARK, bold = true))
+                    put(ui.text("I look at new screenshots and WhatsApp pictures while the phone is charging, and file the cards for each person. Found so far: ${store.autoCardsFound}.$last", 13.5f, Ui.INK), 4)
+                    put(ui.row(ui.button("🔄 Check now", "primary") { startAutoScan() }, ui.button("Turn off", "ghost") { store.autoCards = false; AutoCards.cancel(this@MainActivity); render() }), 10)
+                    put(choose, 6)
+                }, 12)
+            } else if (BuildConfig.AUTO_CARDS) {
+                add(ui.card(Ui.SUN_SOFT).apply {
+                    addView(ui.text("🔍 Find my cards automatically", 15.5f, Ui.INK, bold = true))
+                    put(ui.text("I read your screenshots and WhatsApp pictures on this phone, find Aadhaar, PAN, voter ID, licence, passport and ration cards, and make a folder for each person. Nothing is sent anywhere. After the first look, new pictures are checked only while the phone charges.", 13.5f, Ui.MUTED), 4)
+                    put(ui.button("🔍 Start", "primary") { turnOnAutoCards() }, 10)
+                    put(choose, 6)
+                }, 12)
+            } else {
+                add(ui.card(Ui.SUN_SOFT).apply {
+                    addView(ui.text("🔍 Find my cards in screenshots", 15.5f, Ui.INK, bold = true))
+                    put(ui.text("Choose screenshots or photos of Aadhaar, PAN, voter ID, licence, passport or ration cards (many at once). The phone reads them itself, nothing is sent anywhere, and each person's cards go in their own folder. (Google Play lets only gallery apps read all your photos, so please choose them here.)", 13.5f, Ui.MUTED), 4)
+                    put(ui.button("🖼️ Choose screenshots", "primary") { pickCardPictures() }, 10)
+                }, 12)
+            }
             return
         }
+        val added = synchronized(sc.added) { ArrayList(sc.added) }
         add(ui.card(if (sc.finished) Ui.TEAL_SOFT else Ui.SUN_SOFT).apply {
             if (!sc.finished) {
-                addView(ui.text("🔍 Reading your pictures on this phone… ${sc.done} / ${sc.total}", 15f, Ui.INK, bold = true))
-                put(ui.text("Found so far: ${sc.added.size}", 13.5f, Ui.MUTED), 4)
+                addView(ui.text("🔍 Reading your pictures on this phone… " + (if (sc.total > 0) "${sc.done} / ${sc.total}" else ""), 15f, Ui.INK, bold = true))
+                put(ui.text("Found so far: ${added.size}. You can use other pages meanwhile.", 13.5f, Ui.MUTED), 4)
                 put(ui.button("Stop", "ghost") { sc.stop = true }, 8)
             } else {
-                addView(ui.text(if (sc.added.isEmpty()) "No new cards found" else "✅ Added ${sc.added.size} card${if (sc.added.size == 1) "" else "s"}", 15.5f, Ui.TEAL_DARK, bold = true))
+                addView(ui.text(if (added.isEmpty()) "No new cards found" else "✅ Added ${added.size} card${if (added.size == 1) "" else "s"}", 15.5f, Ui.TEAL_DARK, bold = true))
                 val byPerson = LinkedHashMap<String, MutableList<String>>()
-                sc.added.forEach { a -> val k = byPerson.keys.firstOrNull { CardFinder.samePerson(it, a.holder) } ?: a.holder.ifBlank { "Name not read" }; byPerson.getOrPut(k) { mutableListOf() }.add(VaultItem.label(a.type)) }
+                added.forEach { a -> val k = byPerson.keys.firstOrNull { CardFinder.samePerson(it, a.holder) } ?: a.holder.ifBlank { "Name not read" }; byPerson.getOrPut(k) { mutableListOf() }.add(VaultItem.label(a.type)) }
                 if (byPerson.isNotEmpty()) put(ui.text(byPerson.entries.joinToString("\n") { "👤 ${it.key}: ${it.value.joinToString(", ")}" }, 14f, Ui.INK), 6)
                 val rest = listOfNotNull(if (sc.same > 0) "${sc.same} already in your Vault" else null, if (sc.none > 0) "${sc.none} had no card" else null).joinToString(" · ")
                 if (rest.isNotBlank()) put(ui.text(rest, 13f, Ui.MUTED), 6)
                 if (sc.problem.isNotBlank()) put(ui.text("⚠️ " + sc.problem, 13f, Ui.DANGER), 6)
                 put(ui.text("Check each card: tap it to fix the name or number if the phone read it wrong. Bank cards are not added this way; add them with ＋ Add card.", 12.5f, Ui.MUTED), 6)
-                put(ui.row(ui.button("OK", "primary") { cardScan = null; render() }, ui.button("🖼️ More screenshots") { cardScan = null; pickCardPictures() }), 10)
+                put(ui.row(ui.button("OK", "primary") { cardScan = null; render() }), 10)
             }
         }, 12)
+    }
+
+    /** BigD AI Lite: allow Photos once, then the phone finds the cards by itself. */
+    private fun turnOnAutoCards() {
+        if (AutoCards.allowed(this)) { store.autoCards = true; AutoCards.schedule(this); startAutoScan(); return }
+        val perms = if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED")
+            else arrayOf(AutoCards.permission())
+        requestPermissions(perms, REQ_CARD_PERM)
+    }
+
+    private fun startAutoScan() {
+        if (cardScan?.finished == false) return
+        val sc = CardScan(0); cardScan = sc; render()
+        Thread {
+            AutoCards.scan(this, store, vault, if (store.autoCardsUpTo == 0L) AutoCards.FIRST_LOOK else 300) { done, total, o ->
+                sc.total = total; sc.done = done; sc.same = o.same; sc.none = o.none; sc.problem = o.problem
+                synchronized(sc.added) { sc.added.clear(); sc.added.addAll(o.added) }
+                if (resumedNow && tab == "vault") VaultLock.markOpen()          // still here, using the Vault
+                runOnUiThread { if (tab == "vault") render() }
+                !sc.stop
+            }
+            sc.finished = true
+            runOnUiThread { if (tab == "vault") render() }
+        }.start()
     }
 
     private fun pickCardPictures() {
@@ -1135,34 +1176,21 @@ class MainActivity : Activity() {
     private fun findCards(uris: List<Uri>) {
         if (uris.isEmpty() || !VaultLock.isOpen()) { render(); return }
         val sc = CardScan(uris.size); cardScan = sc; render()
-        io.execute {
+        Thread {
             for (u in uris) {
                 if (sc.stop) break
                 when (val r = CardFinder.find(this, u)) {
-                    is CardFinder.Result.Found -> {
-                        val c = r.card
-                        val have = vault.items()
-                        val dup = have.any { it.type == c.type && ((c.number.isNotBlank() && CardFinder.key(it.number) == CardFinder.key(c.number)) ||
-                            (c.number.isBlank() && c.holder.isNotBlank() && CardFinder.samePerson(it.holder, c.holder))) }
-                        if (dup) sc.same++ else {
-                            // the same person as a folder that is already there: use that folder's name
-                            val holder = have.map { it.holder }.firstOrNull { it.isNotBlank() && CardFinder.samePerson(it, c.holder) } ?: c.holder
-                            val id = "v" + System.currentTimeMillis() + (100..999).random()
-                            val item = VaultItem(id, c.type, VaultItem.label(c.type) + if (holder.isNotBlank()) " · " + holder.substringBefore(' ') else "",
-                                c.number, holder, notes = "Found in a screenshot. Please check the details.", photo = true)
-                            try { vault.savePhoto(id, r.jpeg); vault.put(item); sc.added.add(item) } catch (e: Exception) { sc.problem = "Couldn't save one card." }
-                        }
-                    }
+                    is CardFinder.Result.Found -> try { if (AutoCards.keep(vault, r.card, r.jpeg)?.let { synchronized(sc.added) { sc.added.add(it) } } == null) sc.same++ } catch (e: Exception) { sc.problem = "Couldn't save one card." }
                     is CardFinder.Result.NotACard -> sc.none++
                     is CardFinder.Result.Problem -> { sc.problem = r.message; if (r.message.contains("text reader")) { sc.none += uris.size - sc.done - 1; sc.done = uris.size; break } }
                 }
                 sc.done++
-                VaultLock.markOpen()                      // still here, using the Vault
+                if (resumedNow && tab == "vault") VaultLock.markOpen()   // still here, using the Vault
                 runOnUiThread { if (tab == "vault") render() }
             }
             sc.finished = true
             runOnUiThread { if (tab == "vault") render() }
-        }
+        }.start()
     }
 
     private fun unlockVault() {
@@ -1622,6 +1650,10 @@ class MainActivity : Activity() {
             val p = pendingCamera; pendingCamera = null
             if (yes && p != null) { leavingForSystemScreen = true; try { startActivityForResult(p.first, p.second) } catch (e: Exception) { leavingForSystemScreen = false; toast("No camera app found.") } }
             else if (!yes) toast("Allow the camera to take a photo here.")
+        }
+        if (requestCode == REQ_CARD_PERM) {
+            if (AutoCards.allowed(this)) { store.autoCards = true; AutoCards.schedule(this); startAutoScan() }
+            else toast("Allow Photos so I can look at your screenshots, or tap \"choose pictures yourself\".")
         }
         if (requestCode == REQ_CAM_MIRROR) { if (yes) content.postDelayed({ lookAtMe(false) }, 300) else { store.mirrorOn = false; toast("OK. I won't use the camera.") } }
         if (requestCode == REQ_LOCATION) family.onLocationAnswer()

@@ -59,6 +59,20 @@ class Store(context: Context) {
         get() = p.getBoolean("cuteVoice", false)
         set(v) { p.edit().putBoolean("cuteVoice", v).apply() }
 
+    /** BigD AI Lite: find cards in new screenshots by itself (checked while charging). */
+    var autoCards: Boolean
+        get() = p.getBoolean("autoCards", false)
+        set(v) { p.edit().putBoolean("autoCards", v).apply() }
+    var autoCardsUpTo: Long
+        get() = p.getLong("autoCardsUpTo", 0L)
+        set(v) { p.edit().putLong("autoCardsUpTo", v).apply() }
+    var autoCardsFound: Int
+        get() = p.getInt("autoCardsFound", 0)
+        set(v) { p.edit().putInt("autoCardsFound", v).apply() }
+    var autoCardsAt: Long
+        get() = p.getLong("autoCardsAt", 0L)
+        set(v) { p.edit().putLong("autoCardsAt", v).apply() }
+
     /** The pet looks at you through the front camera when you open the app (at most every 3 hours), after you said yes once. */
     var mirrorOn: Boolean
         get() = p.getBoolean("mirrorOn", true)

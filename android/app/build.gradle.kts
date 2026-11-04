@@ -36,12 +36,14 @@ android {
             dimension = "edition"
             buildConfigField("boolean", "MESSAGE_REPLIES", "true")
             buildConfigField("boolean", "HANDS_FREE", "false")
+            buildConfigField("boolean", "AUTO_CARDS", "false")   // Play Store: you choose the pictures (Google Play's photo rules)
         }
         create("plus") {
             dimension = "edition"
             versionNameSuffix = "-plus"
             buildConfigField("boolean", "MESSAGE_REPLIES", "true")
             buildConfigField("boolean", "HANDS_FREE", "true")
+            buildConfigField("boolean", "AUTO_CARDS", "false")
         }
         create("lite") {
             dimension = "edition"
@@ -49,6 +51,7 @@ android {
             versionNameSuffix = "-lite"
             buildConfigField("boolean", "MESSAGE_REPLIES", "false")
             buildConfigField("boolean", "HANDS_FREE", "false")
+            buildConfigField("boolean", "AUTO_CARDS", "true")    // finds cards in the screenshots by itself (not from the Play Store)
         }
     }
 

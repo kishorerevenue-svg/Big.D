@@ -29,14 +29,16 @@ object CardFinder {
     /** Reads one picture. Blocking: call it off the main thread. */
     fun find(ctx: Context, uri: Uri): Result {
         val bmp = decode(ctx, uri) ?: return Result.Problem("Couldn't open a picture.")
-        val qr = try { QrRead.decode(ctx, uri) } catch (e: Throwable) { "" }
+        var ocrOk = true
         val lines = try {
             val t = Tasks.await(recognizer.process(InputImage.fromBitmap(bmp, 0)), 40, TimeUnit.SECONDS)
             t.textBlocks.flatMap { it.lines }.sortedWith(compareBy({ it.boundingBox?.top ?: 0 }, { it.boundingBox?.left ?: 0 })).map { it.text }
-        } catch (e: Throwable) {
-            if (qr.isBlank()) return Result.Problem("The phone's text reader isn't ready yet (it comes with Google Play services and downloads by itself). Please try again in a few minutes.")
-            emptyList()
-        }
+        } catch (e: Throwable) { ocrOk = false; emptyList() }
+        // the QR code is read only when it can help (it takes a moment): an Aadhaar card, or when the words couldn't be read
+        val aadhaar = lines.any { re("aadhaar|aadhar|uidai|unique identification|government of india|आधार|ఆధార్").containsMatchIn(it) }
+        val qr = if (!ocrOk || aadhaar) (try { QrRead.decode(ctx, uri) } catch (e: Throwable) { "" }) else ""
+        if (!ocrOk && qr.isBlank()) return Result.Problem("The phone's text reader isn't ready yet (it comes with Google Play services and downloads by itself). Please try again in a few minutes.")
+        if (ocrOk && lines.size < 2 && qr.isBlank()) return Result.NotACard
         val card = classify(lines, qr) ?: return Result.NotACard
         val jpeg = Images.prepare(ctx, uri, 1600) ?: return Result.Problem("Couldn't save a picture.")
         return Result.Found(card, jpeg)
