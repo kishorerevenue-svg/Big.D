@@ -85,4 +85,6 @@ android {
 dependencies {
     // Reads QR codes inside a photo or screenshot on the phone (Messages › check a picture). Small, no Google services needed.
     implementation("com.google.zxing:core:3.5.3")
+    // Reads the words on ID cards in screenshots, on the phone (Vault › Find my cards). The model comes with Google Play services.
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
 }

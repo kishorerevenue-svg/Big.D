@@ -101,6 +101,7 @@ class MainActivity : Activity() {
         const val REQ_LETTER_PDF = 4410
         const val REQ_MSG_CAMERA = 4411
         const val REQ_MSG_PHOTO = 4412
+        const val REQ_VAULT_CARDS = 4413
         const val REQ_LOCATION = 21
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
@@ -949,13 +950,109 @@ class MainActivity : Activity() {
         }
         val items = vault.items()
         add(ui.row(ui.button("＋ Add document", "primary") { editVaultItem(null, "aadhaar") }, ui.button("＋ Add card / bank", "sun") { editVaultItem(null, "card") }), 14)
+        cardScanCard()
         add(ui.button("🔒 Lock now", "ghost") { VaultLock.lock(); render() }.apply { }, 10)
-        if (items.isEmpty()) add(ui.text("Empty. Add your Aadhaar, PAN, licence, bank cards and accounts.", 14f, Ui.MUTED), 16)
-        val groups = listOf("Bank cards & accounts" to items.filter { it.type == "card" || it.type == "bank" }, "Documents" to items.filter { it.type != "card" && it.type != "bank" })
-        groups.forEach { (name, list) ->
-            if (list.isEmpty()) return@forEach
-            add(ui.label(name), 18)
-            list.sortedBy { it.title.lowercase() }.forEach { add(vaultCard(it), 8) }
+        if (items.isEmpty()) add(ui.text("Empty. Add your Aadhaar, PAN, licence, bank cards and accounts, or let me find them in your screenshots.", 14f, Ui.MUTED), 16)
+        val money = items.filter { it.type == "card" || it.type == "bank" }
+        if (money.isNotEmpty()) {
+            add(ui.label("Bank cards & accounts"), 18)
+            money.sortedBy { it.title.lowercase() }.forEach { add(vaultCard(it), 8) }
+        }
+        // documents: one folder for each person
+        val people = LinkedHashMap<String, MutableList<VaultItem>>()
+        items.filter { it.type != "card" && it.type != "bank" }.sortedBy { it.holder.lowercase() }.forEach { d ->
+            val k = people.keys.firstOrNull { it.isNotBlank() && CardFinder.samePerson(it, d.holder) } ?: d.holder.trim()
+            people.getOrPut(k) { mutableListOf() }.add(d)
+        }
+        people.entries.sortedBy { if (it.key.isBlank()) "~" else it.key.lowercase() }.forEach { (name, list) ->
+            val open = vaultOpenFolders.contains(name) || people.size <= 1
+            add(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12)); background = ui.round(Ui.TEAL_SOFT, 16)
+                addView(ui.text((if (name.isBlank()) "📄 Other documents" else "👤 $name") + "  ·  ${list.size}", 15.5f, Ui.TEAL_DARK, bold = true), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(ui.text(if (open) "▲" else "▼", 14f, Ui.TEAL_DARK))
+                setOnClickListener { if (!vaultOpenFolders.remove(name)) vaultOpenFolders.add(name); render() }
+            }, 16)
+            if (open) list.sortedBy { it.type }.forEach { add(vaultCard(it), 8) }
+        }
+    }
+
+    // =================== finding cards in screenshots (on this phone only) ===================
+    private val vaultOpenFolders = HashSet<String>()
+    private class CardScan(val total: Int) { var done = 0; val added = ArrayList<VaultItem>(); var same = 0; var none = 0; var problem = ""; var finished = false; var stop = false }
+    private var cardScan: CardScan? = null
+
+    private fun cardScanCard() {
+        val sc = cardScan
+        if (sc == null) {
+            add(ui.card(Ui.SUN_SOFT).apply {
+                addView(ui.text("🔍 Find my cards in screenshots", 15.5f, Ui.INK, bold = true))
+                put(ui.text("Choose screenshots or photos of Aadhaar, PAN, voter ID, licence, passport or ration cards (many at once). The phone reads them itself, nothing is sent anywhere, and each person's cards go in their own folder.", 13.5f, Ui.MUTED), 4)
+                put(ui.button("🖼️ Choose screenshots", "primary") { pickCardPictures() }, 10)
+            }, 12)
+            return
+        }
+        add(ui.card(if (sc.finished) Ui.TEAL_SOFT else Ui.SUN_SOFT).apply {
+            if (!sc.finished) {
+                addView(ui.text("🔍 Reading your pictures on this phone… ${sc.done} / ${sc.total}", 15f, Ui.INK, bold = true))
+                put(ui.text("Found so far: ${sc.added.size}", 13.5f, Ui.MUTED), 4)
+                put(ui.button("Stop", "ghost") { sc.stop = true }, 8)
+            } else {
+                addView(ui.text(if (sc.added.isEmpty()) "No new cards found" else "✅ Added ${sc.added.size} card${if (sc.added.size == 1) "" else "s"}", 15.5f, Ui.TEAL_DARK, bold = true))
+                val byPerson = LinkedHashMap<String, MutableList<String>>()
+                sc.added.forEach { a -> val k = byPerson.keys.firstOrNull { CardFinder.samePerson(it, a.holder) } ?: a.holder.ifBlank { "Name not read" }; byPerson.getOrPut(k) { mutableListOf() }.add(VaultItem.label(a.type)) }
+                if (byPerson.isNotEmpty()) put(ui.text(byPerson.entries.joinToString("\n") { "👤 ${it.key}: ${it.value.joinToString(", ")}" }, 14f, Ui.INK), 6)
+                val rest = listOfNotNull(if (sc.same > 0) "${sc.same} already in your Vault" else null, if (sc.none > 0) "${sc.none} had no card" else null).joinToString(" · ")
+                if (rest.isNotBlank()) put(ui.text(rest, 13f, Ui.MUTED), 6)
+                if (sc.problem.isNotBlank()) put(ui.text("⚠️ " + sc.problem, 13f, Ui.DANGER), 6)
+                put(ui.text("Check each card: tap it to fix the name or number if the phone read it wrong. Bank cards are not added this way; add them with ＋ Add card.", 12.5f, Ui.MUTED), 6)
+                put(ui.row(ui.button("OK", "primary") { cardScan = null; render() }, ui.button("🖼️ More screenshots") { cardScan = null; pickCardPictures() }), 10)
+            }
+        }, 12)
+    }
+
+    private fun pickCardPictures() {
+        leavingForSystemScreen = true
+        val i = if (Build.VERSION.SDK_INT >= 33) Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*").putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, MediaStore.getPickImagesMaxLimit())
+            else Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        try { startActivityForResult(i, REQ_VAULT_CARDS) }
+        catch (e: Exception) {
+            try { startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true), REQ_VAULT_CARDS) }
+            catch (e2: Exception) { leavingForSystemScreen = false; toast("Couldn't open your photos.") }
+        }
+    }
+
+    /** Reads each chosen picture on the phone; a card becomes a Vault item (with its photo), filed under the person's name. */
+    private fun findCards(uris: List<Uri>) {
+        if (uris.isEmpty() || !VaultLock.isOpen()) { render(); return }
+        val sc = CardScan(uris.size); cardScan = sc; render()
+        io.execute {
+            for (u in uris) {
+                if (sc.stop) break
+                when (val r = CardFinder.find(this, u)) {
+                    is CardFinder.Result.Found -> {
+                        val c = r.card
+                        val have = vault.items()
+                        val dup = have.any { it.type == c.type && ((c.number.isNotBlank() && CardFinder.key(it.number) == CardFinder.key(c.number)) ||
+                            (c.number.isBlank() && c.holder.isNotBlank() && CardFinder.samePerson(it.holder, c.holder))) }
+                        if (dup) sc.same++ else {
+                            // the same person as a folder that is already there: use that folder's name
+                            val holder = have.map { it.holder }.firstOrNull { it.isNotBlank() && CardFinder.samePerson(it, c.holder) } ?: c.holder
+                            val id = "v" + System.currentTimeMillis() + (100..999).random()
+                            val item = VaultItem(id, c.type, VaultItem.label(c.type) + if (holder.isNotBlank()) " · " + holder.substringBefore(' ') else "",
+                                c.number, holder, notes = "Found in a screenshot. Please check the details.", photo = true)
+                            try { vault.savePhoto(id, r.jpeg); vault.put(item); sc.added.add(item) } catch (e: Exception) { sc.problem = "Couldn't save one card." }
+                        }
+                    }
+                    is CardFinder.Result.NotACard -> sc.none++
+                    is CardFinder.Result.Problem -> { sc.problem = r.message; if (r.message.contains("text reader")) { sc.none += uris.size - sc.done - 1; sc.done = uris.size; break } }
+                }
+                sc.done++
+                VaultLock.markOpen()                      // still here, using the Vault
+                runOnUiThread { if (tab == "vault") render() }
+            }
+            sc.finished = true
+            runOnUiThread { if (tab == "vault") render() }
         }
     }
 
@@ -1364,6 +1461,13 @@ class MainActivity : Activity() {
             REQ_LETTER_CAMERA -> { if (resultCode == RESULT_OK) letter.onCamera() }
             REQ_MSG_CAMERA -> { if (resultCode == RESULT_OK) messages.onCamera() }
             REQ_MSG_PHOTO -> { if (resultCode == RESULT_OK) data?.data?.let { messages.onPicture(it) } }
+            REQ_VAULT_CARDS -> {
+                if (resultCode != RESULT_OK || data == null) { render(); return }
+                val list = ArrayList<Uri>()
+                data.clipData?.let { c -> for (k in 0 until c.itemCount) c.getItemAt(k).uri?.let { list.add(it) } }
+                if (list.isEmpty()) data.data?.let { list.add(it) }
+                findCards(list)
+            }
             REQ_LETTER_PDF -> { if (resultCode == RESULT_OK) data?.data?.let { letter.onPdf(it) } }
             REQ_LETTER_PHOTOS -> {
                 if (resultCode != RESULT_OK || data == null) return

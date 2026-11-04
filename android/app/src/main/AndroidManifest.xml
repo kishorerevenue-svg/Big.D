@@ -122,6 +122,8 @@
             android:authorities="${applicationId}.camera"
             android:exported="false"
             android:grantUriPermissions="true" />
+        <!-- Google Play services downloads the on-phone text reader (for Vault › Find my cards) when the app is installed -->
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="ocr" />
         <provider
             android:name=".ShareFiles"
             android:authorities="${applicationId}.share"
