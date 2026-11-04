@@ -339,7 +339,7 @@ const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, medi
   forgetOldFeed: req => (extras && extras.forgetDevice ? extras.forgetDevice(req) : ""),
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Translate page, and Govt services (official links + answers from official websites only)
-const tools = require("./tools.js")({ learn, API_KEY, MODEL, h: { send, readBody, allowed, clientIp } });
+const tools = require("./tools.js")({ learn, API_KEY, MODEL, DATA_DIR, h: { send, readBody, allowed, clientIp } });
 
 // ---------- web server ----------
 const server = http.createServer(async (req, res) => {

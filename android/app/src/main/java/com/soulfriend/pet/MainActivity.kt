@@ -94,6 +94,8 @@ class MainActivity : Activity() {
         const val REQ_LETTER_CAMERA = 4408
         const val REQ_LETTER_PHOTOS = 4409
         const val REQ_LETTER_PDF = 4410
+        const val REQ_MSG_CAMERA = 4411
+        const val REQ_MSG_PHOTO = 4412
         const val REQ_LOCATION = 21
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
@@ -207,8 +209,9 @@ class MainActivity : Activity() {
     }
 
     internal fun go(t: String) { tab = t; render(); scroll.scrollTo(0, 0) }
-    /** Opens the letter helper on the Files page with this request (e.g. "Application for a birth certificate"). */
-    internal fun openLetter(req: String) { tab = "files"; scroll.scrollTo(0, 0); letter.start(req) }
+    /** Opens the letter helper on the Files page with this request (e.g. "Application for a birth certificate").
+     *  [mode] "public" or "office" switches the helper first (e.g. a police complaint from the Messages page is always "public"). */
+    internal fun openLetter(req: String, mode: String? = null) { tab = "files"; scroll.scrollTo(0, 0); letter.start(req, mode) }
     /** Opens a website in the phone's browser. */
     internal fun openUrl(url: String) {
         leavingForSystemScreen = true
@@ -1300,6 +1303,8 @@ class MainActivity : Activity() {
             REQ_TR_CAMERA -> { if (resultCode == RESULT_OK) translate.onCamera() }
             REQ_CONTACT -> { if (resultCode == RESULT_OK) data?.data?.let { family.onContact(it) } }
             REQ_LETTER_CAMERA -> { if (resultCode == RESULT_OK) letter.onCamera() }
+            REQ_MSG_CAMERA -> { if (resultCode == RESULT_OK) messages.onCamera() }
+            REQ_MSG_PHOTO -> { if (resultCode == RESULT_OK) data?.data?.let { messages.onPicture(it) } }
             REQ_LETTER_PDF -> { if (resultCode == RESULT_OK) data?.data?.let { letter.onPdf(it) } }
             REQ_LETTER_PHOTOS -> {
                 if (resultCode != RESULT_OK || data == null) return

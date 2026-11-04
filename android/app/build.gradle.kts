@@ -81,3 +81,8 @@ android {
         jvmTarget = "17"
     }
 }
+
+dependencies {
+    // Reads QR codes inside a photo or screenshot on the phone (Messages › check a picture). Small, no Google services needed.
+    implementation("com.google.zxing:core:3.5.3")
+}

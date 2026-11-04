@@ -20,7 +20,8 @@ data class FamilyContact(val name: String, val phone: String, val relation: Stri
 data class Reminder(val id: Int, val at: Long, val text: String, val repeat: String = "")
 
 class Store(context: Context) {
-    private val p: SharedPreferences = context.applicationContext.getSharedPreferences("soul_friend", Context.MODE_PRIVATE)
+    private val ctx: Context = context.applicationContext
+    private val p: SharedPreferences = ctx.getSharedPreferences("soul_friend", Context.MODE_PRIVATE)
 
     var server: String
         get() = p.getString("server", Config.DEFAULT_SERVER) ?: Config.DEFAULT_SERVER
@@ -115,21 +116,17 @@ class Store(context: Context) {
     var scamAlerts: Boolean
         get() = p.getBoolean("scamAlerts", true)
         set(v) { p.edit().putBoolean("scamAlerts", v).apply() }
-    /** Recently checked messages (newest last), kept only on this phone. */
-    fun msgLog(): List<JSONObject> {
-        val a = JSONArray(p.getString("msgLog", "[]")); return (0 until a.length()).map { a.getJSONObject(it) }
+    /** Checked messages of the last 7 days (newest last), kept only on this phone (see [MsgLog]). */
+    fun msgLog(): List<JSONObject> { moveOldLog(); return MsgLog.all(ctx) }
+    fun putMsg(o: JSONObject) { moveOldLog(); MsgLog.add(ctx, o) }
+    fun removeMsg(id: String) = MsgLog.remove(ctx, id)
+    fun clearMsgs() = MsgLog.clear(ctx)
+    /** Earlier versions kept the list inside the settings, which made every small setting change slow. */
+    private fun moveOldLog() {
+        val old = p.getString("msgLog", null) ?: return
+        p.edit().remove("msgLog").apply()
+        try { val a = JSONArray(old); for (i in 0 until a.length()) a.optJSONObject(i)?.let { MsgLog.add(ctx, it) } } catch (e: Exception) { }
     }
-    @Synchronized fun putMsg(o: JSONObject) {
-        val id = o.optString("id")
-        val list = msgLog().filter { it.optString("id") != id } + o
-        val a = JSONArray(); list.takeLast(80).forEach { a.put(it) }
-        p.edit().putString("msgLog", a.toString()).apply()
-    }
-    @Synchronized fun removeMsg(id: String) {
-        val a = JSONArray(); msgLog().filter { it.optString("id") != id }.forEach { a.put(it) }
-        p.edit().putString("msgLog", a.toString()).apply()
-    }
-    fun clearMsgs() { p.edit().putString("msgLog", "[]").apply() }
 
     // ---- bottom tabs ----
     /** Tab keys in the order the user arranged them (empty = default order). */
@@ -178,6 +175,12 @@ class Store(context: Context) {
         get() = p.getString("govtCache", "") ?: ""
         set(v) { p.edit().putString("govtCache", v).putLong("govtCacheAt", System.currentTimeMillis()).apply() }
     val govtCacheAt: Long get() = p.getLong("govtCacheAt", 0L)
+
+    /** This week's new scams (made on the server from the news), kept on the phone for 12 hours. */
+    var scamCache: JSONObject?
+        get() = try { p.getString("scamCache", null)?.let { JSONObject(it) } } catch (e: Exception) { null }
+        set(v) { p.edit().putString("scamCache", v?.toString()).putLong("scamCacheAt", System.currentTimeMillis()).apply() }
+    val scamCacheAt: Long get() = p.getLong("scamCacheAt", 0L)
 
     // ---- family & SOS (kept only on this phone) ----
     fun family(): List<FamilyContact> {
@@ -276,4 +279,61 @@ class Store(context: Context) {
     fun updateReminder(r: Reminder) { saveReminders(reminders().map { if (it.id == r.id) r else it }) }
     fun reminder(id: Int): Reminder? = reminders().firstOrNull { it.id == id }
     fun removeReminder(id: Int) { saveReminders(reminders().filter { it.id != id }) }
+}
+
+/**
+ * The list of checked messages, only on this phone, for 7 days. Each day has its own small file, and a new or
+ * changed message is just one line added at the end: cheap for the battery even with many messages a day.
+ */
+object MsgLog {
+    private const val DAYS = 7L
+    private const val MAX = 600
+    private val lock = Any()
+    @Volatile private var pruned = ""
+    private var cache: List<JSONObject>? = null
+
+    private fun dir(ctx: Context) = java.io.File(ctx.filesDir, "msglog").apply { mkdirs() }
+    private fun dayOf(t: Long) = java.time.Instant.ofEpochMilli(t).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+
+    fun add(ctx: Context, o: JSONObject) = synchronized(lock) {
+        try {
+            java.io.File(dir(ctx), dayOf(System.currentTimeMillis()) + ".jsonl").appendText(o.toString() + "\n")
+            pruneOnceADay(ctx)
+        } catch (e: Exception) { }
+        cache = null
+    }
+
+    fun remove(ctx: Context, id: String) = add(ctx, JSONObject().put("id", id).put("removed", true).put("at", System.currentTimeMillis()))
+
+    fun clear(ctx: Context) = synchronized(lock) { dir(ctx).listFiles()?.forEach { it.delete() }; cache = null }
+
+    /** The newest version of each message of the last 7 days, oldest first. Read from the files once, then kept in memory until something changes. */
+    fun all(ctx: Context): List<JSONObject> = synchronized(lock) {
+        val cutoff = System.currentTimeMillis() - DAYS * 86_400_000L
+        val list = cache ?: read(ctx).also { cache = it }
+        list.filter { it.optLong("at") >= cutoff }.takeLast(MAX)
+    }
+
+    private fun read(ctx: Context): List<JSONObject> {
+        val keep = LinkedHashMap<String, JSONObject>()
+        dir(ctx).listFiles { f -> f.name.endsWith(".jsonl") }?.sortedBy { it.name }?.forEach { f ->
+            try {
+                f.forEachLine { line ->
+                    val o = try { JSONObject(line) } catch (e: Exception) { null } ?: return@forEachLine
+                    val id = o.optString("id"); if (id.isEmpty()) return@forEachLine
+                    keep.remove(id)
+                    if (!o.optBoolean("removed")) keep[id] = o
+                }
+            } catch (e: Exception) { }
+        }
+        return keep.values.toList()
+    }
+
+    private fun pruneOnceADay(ctx: Context) {
+        val today = dayOf(System.currentTimeMillis())
+        if (pruned == today) return
+        pruned = today
+        val oldest = java.time.LocalDate.now().minusDays(DAYS).toString()
+        dir(ctx).listFiles()?.forEach { if (it.name.removeSuffix(".jsonl") < oldest) it.delete() }
+    }
 }

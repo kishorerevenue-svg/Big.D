@@ -82,7 +82,12 @@ class LetterHelper(private val m: MainActivity) {
     private fun LinearLayout.put(v: View, top: Int = 10) = addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = m.dp(top) })
 
     /** Called when the pet hears "make a letter…": start with this request. */
-    fun start(req: String) {
+    fun start(req: String, mode: String? = null) {
+        if (mode != null) {
+            // a fresh letter from another page: the right helper, and none of the papers of an earlier letter
+            if (store.letterMode != mode) { m.stopListening(); listeningId = ""; store.letterMode = mode }
+            papers.clear(); docsId = ""; notes = ""; summary = ""
+        }
         request = req.trim(); result = null; error = ""
         if (request.length >= 3) plan() else { stage = "start"; m.render() }
     }
