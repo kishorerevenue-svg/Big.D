@@ -152,6 +152,16 @@ class Store(context: Context) {
         get() = p.getStringSet("blockedUsers", emptySet()) ?: emptySet()
         set(v) { p.edit().putStringSet("blockedUsers", HashSet(v)).apply() }
 
+    // ---- letter helper ----
+    /** "public" (applications and letters for people) or "office" (official correspondence of a government office). */
+    var letterMode: String
+        get() = p.getString("letterMode", "public") ?: "public"
+        set(v) { p.edit().putString("letterMode", v).apply() }
+    /** The office's own details for office letters: desig, office, district, name, ref, contact (kept on this phone). */
+    var officeInfo: JSONObject
+        get() = try { JSONObject(p.getString("officeInfo", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+        set(v) { p.edit().putString("officeInfo", v.toString()).apply() }
+
     // ---- translate ----
     /** The language to translate into: "te", "en" or "hi" ("" = not chosen yet). */
     var trTo: String

@@ -1302,7 +1302,7 @@ class SocialPage(private val m: MainActivity) {
                 if (listening == id) listening = ""
                 if (!heard.isNullOrBlank()) { val v = if (before.isEmpty()) heard else "$before $heard"; box.setText(v); box.setSelection(v.length) }
                 paint(false)
-            })
+            }, continuous = true)
         }
         return b
     }

@@ -91,6 +91,9 @@ class MainActivity : Activity() {
         const val REQ_TR_PHOTO = 4405
         const val REQ_TR_CAMERA = 4406
         const val REQ_CONTACT = 4407
+        const val REQ_LETTER_CAMERA = 4408
+        const val REQ_LETTER_PHOTOS = 4409
+        const val REQ_LETTER_PDF = 4410
         const val REQ_LOCATION = 21
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
@@ -828,7 +831,7 @@ class MainActivity : Activity() {
 
     // =================== 4. FILES ===================
     private fun filesPage() {
-        pageHeader("Files", "Letters and Excel sheets, made step by step with you")
+        pageHeader("Files", "Applications, office letters, reports and Excel sheets, made step by step with you")
         letter.build()
 
         val files = store.files().sortedByDescending { it.at }
@@ -1087,21 +1090,41 @@ class MainActivity : Activity() {
 
     // =================== voice typing and reading aloud (letter helper, media) ===================
     private var rec: SpeechRecognizer? = null
-    private var listenDone: ((String?) -> Unit)? = null
     private var tts: TextToSpeech? = null
     private var ttsOk = false
 
-    /** Listens once. [onPartial] gets the words while you speak; [onDone] gets the final text, or null.
-     *  [lang] (e.g. "hi-IN") overrides the app language. */
-    internal fun listen(onPartial: (String) -> Unit, onDone: (String?) -> Unit, lang: String? = null) {
+    /** One time of listening. In [continuous] mode it keeps listening through pauses until you tap stop. */
+    private class VoiceSession(val onPartial: (String) -> Unit, val onDone: (String?) -> Unit, val lang: String, val continuous: Boolean) {
+        var text = ""        // the words heard so far (continuous mode adds each part)
+        var quiet = 0        // restarts in a row with no words
+        var errors = 0       // problems in a row (network, a busy voice service…)
+    }
+    private var voice: VoiceSession? = null
+    private fun joinWords(a: String, b: String) = if (a.isBlank()) b.trim() else if (b.isBlank()) a else a.trimEnd() + " " + b.trim()
+
+    /**
+     * Voice typing. [onPartial] gets all the words so far while you speak; [onDone] gets the final text, or null.
+     * [lang] (e.g. "hi-IN") overrides the app language. With [continuous], a pause doesn't stop it: it goes on
+     * listening (and adds to the text) until you tap stop, or after about half a minute of silence.
+     */
+    internal fun listen(onPartial: (String) -> Unit, onDone: (String?) -> Unit, lang: String? = null, continuous: Boolean = false) {
         if (!granted(Manifest.permission.RECORD_AUDIO)) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7); toast("Allow the microphone, then tap 🎤 again."); onDone(null); return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) { toast("Voice typing isn't available on this phone. Please type instead."); onDone(null); return }
         stopTalking(); stopListening()
-        val r = rec ?: SpeechRecognizer.createSpeechRecognizer(this).also { rec = it }
-        fun finish(t: String?) { if (listenDone === onDone) { listenDone = null; onDone(t) } }
-        listenDone = onDone
+        val s = VoiceSession(onPartial, onDone, lang ?: if (store.lang == "en") "en-IN" else "te-IN", continuous)
+        voice = s
+        startVoice(s)
+    }
+
+    /** Starts (or starts again) listening for [s], with a fresh recognizer each time: a reused one often gets stuck. */
+    private fun startVoice(s: VoiceSession) {
+        if (voice !== s) return
+        try { rec?.destroy() } catch (e: Exception) { }
+        val r = try { SpeechRecognizer.createSpeechRecognizer(this) } catch (e: Exception) { null }
+        rec = r
+        if (r == null) { toast("Voice typing isn't available right now. Please type instead."); finishVoice(s); return }
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
@@ -1109,25 +1132,57 @@ class MainActivity : Activity() {
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
-                if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) toast("No internet for voice typing.")
-                finish(null)
+                if (voice !== s) return
+                when (error) {
+                    // nothing heard: in continuous mode just listen again (a few times)
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                        if (s.continuous && ++s.quiet < 4) againVoice(s, 120) else finishVoice(s)
+                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER ->
+                        if (++s.errors <= 2) againVoice(s, 700) else { toast("Voice typing needs internet. Check your connection and tap 🎤 again."); finishVoice(s) }
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> { toast("Allow the microphone for BigD AI, then tap 🎤 again."); finishVoice(s) }
+                    // the voice service was busy or disconnected: start it again
+                    else -> if (++s.errors <= 3) againVoice(s, 450) else { toast("Voice typing stopped. Tap 🎤 to go on."); finishVoice(s) }
+                }
             }
-            override fun onPartialResults(partial: Bundle?) { partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) onPartial(it) } }
-            override fun onResults(results: Bundle?) { finish(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()) }
+            override fun onPartialResults(partial: Bundle?) {
+                if (voice !== s) return
+                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) s.onPartial(joinWords(s.text, it)) }
+            }
+            override fun onResults(results: Bundle?) {
+                if (voice !== s) return
+                val t = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                if (t.isNotBlank()) { s.text = joinWords(s.text, t); s.quiet = 0; s.errors = 0; s.onPartial(s.text) }
+                else s.quiet++
+                if (s.continuous && s.quiet < 4) againVoice(s, 120) else finishVoice(s)
+            }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang ?: if (store.lang == "en") "en-IN" else "te-IN")
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, s.lang)
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        try { r.startListening(i) } catch (e: Exception) { finish(null) }
+            .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            // wait longer before deciding you have finished (some phones follow these, others keep their own timing)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 5000L)
+        try { r.startListening(i) } catch (e: Exception) { if (++s.errors <= 2) againVoice(s, 500) else finishVoice(s) }
     }
 
-    /** Stops listening; whoever was listening gets null. */
-    internal fun stopListening() {
+    private fun againVoice(s: VoiceSession, delayMs: Long) { content.postDelayed({ startVoice(s) }, delayMs) }
+
+    private fun finishVoice(s: VoiceSession) {
+        if (voice !== s) return
+        voice = null
         try { rec?.cancel() } catch (e: Exception) { }
-        listenDone?.let { listenDone = null; it(null) }
+        s.onDone(s.text.ifBlank { null })
+    }
+
+    /** Stops listening; whoever was listening gets the words heard so far (or null). */
+    internal fun stopListening() {
+        val s = voice
+        if (s != null) finishVoice(s) else try { rec?.cancel() } catch (e: Exception) { }
     }
 
     /** Reads [text] aloud with the phone's voice, then calls [onDone]. */
@@ -1244,6 +1299,15 @@ class MainActivity : Activity() {
             REQ_TR_PHOTO -> { if (resultCode == RESULT_OK) data?.data?.let { translate.onPhoto(it) } }
             REQ_TR_CAMERA -> { if (resultCode == RESULT_OK) translate.onCamera() }
             REQ_CONTACT -> { if (resultCode == RESULT_OK) data?.data?.let { family.onContact(it) } }
+            REQ_LETTER_CAMERA -> { if (resultCode == RESULT_OK) letter.onCamera() }
+            REQ_LETTER_PDF -> { if (resultCode == RESULT_OK) data?.data?.let { letter.onPdf(it) } }
+            REQ_LETTER_PHOTOS -> {
+                if (resultCode != RESULT_OK || data == null) return
+                val list = ArrayList<Uri>()
+                data.clipData?.let { c -> for (k in 0 until c.itemCount) c.getItemAt(k).uri?.let { list.add(it) } }
+                if (list.isEmpty()) data.data?.let { list.add(it) }
+                if (list.isNotEmpty()) letter.onPhotos(list)
+            }
             REQ_SOCIAL_PHOTO -> {
                 if (resultCode != RESULT_OK || data == null) return
                 val list = ArrayList<Uri>()
