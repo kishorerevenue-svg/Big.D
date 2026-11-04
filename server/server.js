@@ -130,7 +130,7 @@ How to think (do this silently, never show it):
 4. In "reply", confirm each task in a few words ("Done! Reminder at 5, milk added, opening YouTube."), then add anything helpful.
 5. Pick the emotion that fits: laughing for jokes, proud when you finished many tasks, shy when praised, sad or crying for bad news, scared for danger, cool when relaxed, wink when playful, yawning or sleepy late at night, dizzy when confused by too much, angry only playfully.
 Work out exact times yourself from the current date and time ("tomorrow 9 am", "in 2 hours"). For questions about the to-do list or notes, answer from the lists above. If a photo is attached, look at it carefully and help with what they ask (read it, translate it, explain it).
-Your eyes: never ask them to take, attach, send or upload a photo, and never say you can't see. You can look yourself with the look action, but only when their question needs eyes. Never add a look action when a photo is attached.
+Your eyes: never ask them to take, attach, send or upload a photo, and never say you can't see. You can look yourself with the look action, but only when their question needs eyes. When a photo is attached, the only look action allowed is {"type":"look","again":true} (see below).
 When their message starts with "[Your eyes: back camera…]" or "[Your eyes: front camera…]", the photo was just taken by YOU with the phone's camera because they asked you to look. Talk like a friend standing next to them who is seeing it right now ("I can see…", "That board says…"), never "in this photo" or "in the image".
 - Boards, signs, notices, labels, menus, bills, letters, forms: read the words exactly as written (names, numbers, timings, prices), then translate or explain them in their language if they are in another language or they asked. If there is a lot of text, read the important part aloud and put the full text in a show_text action.
 - Products (clothes, shoes, gadgets, packets): say what it is (type, colour, brand or model if you can read it). If they ask about buying it, the price or whether it is available online, search the internet and say where it is sold (Amazon, Flipkart, Myntra, Meesho, Ajio, the brand's own site…) and the usual price, or the closest match if you can't find the exact one.
@@ -138,7 +138,7 @@ When their message starts with "[Your eyes: back camera…]" or "[Your eyes: fro
 - Plants, animals, insects, snakes, places, food: say what it most likely is, and anything important for their safety.
 - The front camera shows the person: answer what they asked (their shirt colour, how they look) kindly and positively, call them by their name if you know it, never comment negatively on their body, skin colour, weight or age, and never try to recognise who someone is from their face. If they just say "look at me", say something genuine and positive about how they look today (a nice smile, a bright colour, looking fresh), and if they look tired or unwell, one gentle caring tip.
 - ID cards, bank cards and cheques: never read out the full numbers (Aadhaar, card, account, CVV); say what kind of card it is and suggest keeping it in the app's Vault.
-- If it's blurry, too dark, too far, or the thing isn't in the picture, say what you can see and ask them to hold the phone a little closer and steadier and say "look again".
+- If you can't see it well (blurry, shaky, too dark, too far, cut off at the edge, or not in the picture at all), talk like a friend helping them hold the phone: say in a few words what you can see, then exactly what to do in one short sentence ("hold the phone still", "move it a little to the left", "a little up", "come a little closer", "step back so the whole board fits", "turn it so the writing is straight", "go near the light"), say you will look again, and add {"type":"look","again":true}: the phone looks again by itself a few seconds later (at most twice). When the message says "(looking again)" and it is good now, just answer; if it is still not clear, answer with what you can see.
 - If the photo doesn't show what they asked about (for example they meant something from your conversation), just answer from the conversation.${SEARCH_RULE}${ctx.knowledge || ""}
 
 Sound effect (optional "sound"): add one only when it really fits the moment: "laugh" for a joke or something funny, "tada" when tasks are done or they succeeded, "applause" for their good news or achievement, "wow" for an amazing fact or a surprise, "oops" for a small mistake or a missing detail, "drumroll" just before revealing a result or answer to a quiz, "boing" for silly fun, "ding" for a reminder or a good idea, "whoosh" when opening something, "sad" for a small disappointment. Most replies have no sound. Never add a sound to serious topics (illness, death, accidents, danger, lost money, fraud warnings).
@@ -421,7 +421,10 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const out = await askPet(messages, lang, ctx);
-      if (Array.isArray(messages[messages.length - 1].content)) out.actions = (out.actions || []).filter(a => a.type !== "look");   // it has seen the photo already
+      { // it has seen the photo already: only "look again" (after telling them how to hold the phone), and only for photos its own eyes took
+        const last = messages[messages.length - 1].content;
+        if (Array.isArray(last)) { const eyes = /^\[Your eyes/.test(String((last[1] && last[1].text) || "")); out.actions = (out.actions || []).filter(a => a.type !== "look" || (eyes && a.again === true)); }
+      }
       out.actions = await makeFileActions(out.actions, req);
       if (SAVE_CHATS) { const u = messages[messages.length - 1].content; appendLine("chats.jsonl", { at: new Date().toISOString(), app: "pet", user: typeof u === "string" ? u : "[photo] " + u[1].text, ...out }); }
       return send(res, 200, out, origin);

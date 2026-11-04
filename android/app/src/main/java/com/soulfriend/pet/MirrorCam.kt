@@ -45,6 +45,20 @@ class MirrorCam(private val ctx: Context, private val view: TextureView?, privat
     private var tilt: OrientationEventListener? = null
     @Volatile private var finished = false
     @Volatile private var shooting = false
+    private var openedAt = 0L
+    private var previewSurface: Surface? = null
+    private var faceMode = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF
+    @Volatile private var torch = false
+
+    /** What the camera sees right now, for the pet's coaching (filled only without a window). */
+    class Seen { @Volatile var light = -1; @Volatile var change = 0f; @Volatile var frames = 0 }
+    val seen = Seen()
+    /** Faces in the picture; -1 when this camera can't tell. */
+    @Volatile var faces = -1; private set
+    /** The back camera has a light (flash) it can keep on. */
+    var canLight = false; private set
+    private var grid: IntArray? = null
+    private var lastLook = 0L
 
     @SuppressLint("MissingPermission")   // the camera permission is asked for before this is opened
     fun open() {
@@ -58,6 +72,16 @@ class MirrorCam(private val ctx: Context, private val view: TextureView?, privat
             front = ch.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
             sensor = ch.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: if (front) 270 else 90
             autoFocus = (ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: IntArray(0)).contains(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            canLight = !front && ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            if (front && view == null) {
+                val fd = ch.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES) ?: IntArray(0)
+                faceMode = when {
+                    fd.contains(CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE) -> CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE
+                    fd.contains(CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL) -> CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL
+                    else -> CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF
+                }
+            }
+            openedAt = System.currentTimeMillis()
             val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return finish(null)
             // a little bigger from the back camera, so small letters on a board can still be read
             val most = if (front) 1600 * 1200 else 2592 * 1944
@@ -88,6 +112,7 @@ class MirrorCam(private val ctx: Context, private val view: TextureView?, privat
     private val watch = object : CameraCaptureSession.CaptureCallback() {
         override fun onCaptureCompleted(s: CameraCaptureSession, r: CaptureRequest, result: TotalCaptureResult) {
             afState = result.get(CaptureResult.CONTROL_AF_STATE); aeState = result.get(CaptureResult.CONTROL_AE_STATE)
+            if (faceMode != CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF) faces = result.get(CaptureResult.STATISTICS_FACES)?.size ?: 0
         }
     }
 
@@ -99,22 +124,21 @@ class MirrorCam(private val ctx: Context, private val view: TextureView?, privat
                 st.setDefaultBufferSize(prev.width, prev.height)
                 Surface(st)
             } else ImageReader.newInstance(small.width, small.height, ImageFormat.YUV_420_888, 3).also { s ->
-                s.setOnImageAvailableListener({ r -> try { r.acquireLatestImage()?.close() } catch (e: Exception) { } }, bg)
+                s.setOnImageAvailableListener({ r ->
+                    val img = try { r.acquireLatestImage() } catch (e: Exception) { null }
+                    if (img != null) try { measure(img) } catch (e: Exception) { } finally { img.close() }
+                }, bg)
                 sink = s
             }.surface
             val d = device ?: return finish(null)
             val r = reader ?: return finish(null)
-            val req = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                addTarget(surface)
-                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                if (autoFocus) set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            }
+            previewSurface = surface
             if (v != null) main.post { fit(prev) }
             @Suppress("DEPRECATION")
             d.createCaptureSession(listOf(surface, r.surface), object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
                     session = s
-                    try { s.setRepeatingRequest(req.build(), watch, bg) } catch (e: Exception) { finish(null) }
+                    if (!repeat()) finish(null)
                 }
                 override fun onConfigureFailed(s: CameraCaptureSession) { finish(null) }
             }, bg)
@@ -130,6 +154,60 @@ class MirrorCam(private val ctx: Context, private val view: TextureView?, privat
         val k = maxOf(vw / pw, vh / ph)
         view.setTransform(Matrix().apply { setScale(pw * k / vw, ph * k / vh, vw / 2, vh / 2) })
     }
+
+    /** (Re)starts the live picture: focus, light, the torch when it is on, and face finding. */
+    private fun repeat(): Boolean = try {
+        val d = device; val s = session; val surface = previewSurface
+        if (d == null || s == null || surface == null) false else {
+            val req = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                addTarget(surface)
+                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                if (autoFocus) set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                if (torch) { set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON); set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH) }
+                if (faceMode != CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF) set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, faceMode)
+            }
+            s.setRepeatingRequest(req.build(), watch, bg); true
+        }
+    } catch (e: Exception) { false }
+
+    /** Turns the back camera's light on (it goes off by itself when the camera closes). */
+    fun light(on: Boolean) { if (canLight) bg.post { if (!finished && !shooting && torch != on) { torch = on; repeat() } } }
+
+    /** How bright the picture is and how much it moved since the last frame: every 8th dot of a small copy, a few times a second. */
+    private fun measure(img: android.media.Image) {
+        val now = System.currentTimeMillis()
+        if (now - lastLook < 120) return
+        lastLook = now
+        val p = img.planes[0]; val buf = p.buffer; val rs = p.rowStride; val ps = p.pixelStride
+        val step = 8; val gw = img.width / step; val gh = img.height / step
+        if (gw < 2 || gh < 2) return
+        val g = IntArray(gw * gh); var sum = 0L
+        for (y in 0 until gh) { val row = y * step * rs; for (x in 0 until gw) { val v = buf.get(row + x * step * ps).toInt() and 0xFF; g[y * gw + x] = v; sum += v } }
+        val before = grid
+        var moved = 0L
+        if (before != null && before.size == g.size) for (i in g.indices) moved += abs(g[i] - before[i])
+        grid = g
+        seen.light = (sum / g.size).toInt()
+        seen.change = if (before == null) 0f else moved.toFloat() / g.size
+        seen.frames++
+    }
+
+    /** Focus has settled (or the camera has no autofocus, or it has said nothing for 2 seconds). */
+    fun focusOk(): Boolean {
+        val af = afState
+        return !autoFocus || af == null || (af != CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN &&
+            (af != CaptureResult.CONTROL_AF_STATE_INACTIVE || System.currentTimeMillis() - openedAt > 2000))
+    }
+    /** The camera can't get it sharp: usually it's too close. */
+    fun focusTrouble(): Boolean {
+        val af = afState
+        return autoFocus && (af == CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED || af == CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED)
+    }
+    /** Brightness has settled. */
+    fun lightOk(): Boolean = aeState.let { it == null || it != CaptureResult.CONTROL_AE_STATE_SEARCHING }
+
+    /** Takes the photo now (as soon as the camera is open). */
+    fun shootNow() = snap(0)
 
     /** Sharp (focus has settled) and bright enough (exposure has settled), or the camera can't tell. */
     private fun steady(): Boolean {
@@ -164,6 +242,7 @@ class MirrorCam(private val ctx: Context, private val view: TextureView?, privat
                 addTarget(r.surface)
                 set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
                 if (autoFocus) set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                if (torch) { set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON); set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH) }
                 set(CaptureRequest.JPEG_ORIENTATION, upright())
                 set(CaptureRequest.JPEG_QUALITY, 90.toByte())
             }

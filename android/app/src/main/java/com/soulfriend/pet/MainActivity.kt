@@ -596,6 +596,8 @@ class MainActivity : Activity() {
             "• \"What's written on this board?\" · \"ఈ బోర్డు మీద ఏం రాసి ఉంది?\"\n" +
             "• \"Translate this\" · \"ఇది ఏంటి?\" · \"Look again\"\n" +
             "• \"What colour is my shirt?\" · \"నేను ఎలా ఉన్నాను?\" (the front camera)\n" +
+            "While it looks, it talks like a friend: \"hold still, don't shake\", \"too close\", it turns on the light when it's dark, " +
+            "and if it can't see well it tells you how to hold the phone and looks again.\n" +
             "One photo, sent to Claude AI only to answer you, not saved. For your phone's screen, say \"my screen\".").apply {
             put(ui.button("😊 Look at me now", "primary") { lookAtMe(false) }, 10)
             put(ui.check("👀 Look at me when I open the app (at most every 3 hours)", store.mirrorOn && store.mirrorAsked) { on -> store.mirrorOn = on; store.mirrorAsked = true; if (on && !granted(Manifest.permission.CAMERA)) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }, 8)

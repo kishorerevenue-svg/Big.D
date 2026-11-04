@@ -6,6 +6,10 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.graphics.Color
 import android.media.MediaActionSound
 import android.net.Uri
@@ -13,6 +17,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -51,6 +56,18 @@ class LookActivity : Activity() {
     private var te = false
     private var asking = false          // Android's camera permission question is showing
     private var sent = false
+    private var again = false
+    private var coach: EyesCoach? = null
+    private var shot = false
+    private var sensors: SensorManager? = null
+    @Volatile private var spin = -1f    // how fast the phone is turning (rad/s), -1 = no gyroscope
+    private val gyro = object : SensorEventListener {
+        override fun onSensorChanged(e: SensorEvent) {
+            val v = e.values; val m = Math.sqrt((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).toDouble()).toFloat()
+            spin = if (spin < 0f) m else spin * 0.6f + m * 0.4f
+        }
+        override fun onAccuracyChanged(s: Sensor?, a: Int) {}
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +75,7 @@ class LookActivity : Activity() {
         store = Store(this); ui = Ui(this)
         back = intent.getBooleanExtra("back", true)
         ask = intent.getStringExtra("ask") ?: ""
+        again = intent.getBooleanExtra("again", false)
         te = store.lang == "te" || ask.any { it in 'ఀ'..'౿' }
         // only the note at the top; touches elsewhere go to the app behind
         window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -123,6 +141,8 @@ class LookActivity : Activity() {
 
     private fun open() {
         note?.text = when {
+            again && te -> "👀 మళ్ళీ చూస్తున్నాను…"
+            again -> "👀 Looking again…"
             back && te -> "👀 చూస్తున్నాను… ఫోన్‌ని కదలకుండా పట్టుకోండి"
             back -> "👀 Looking… hold the phone steady"
             te -> "👀 మిమ్మల్ని చూస్తున్నాను…"
@@ -131,8 +151,48 @@ class LookActivity : Activity() {
         val c = MirrorCam(this, null, back) { jpeg -> got(jpeg) }
         cam = c
         c.open()
-        h.postDelayed({ cam?.snap(1500) }, 700)       // a moment to point the phone; then as soon as it is sharp
+        coach = EyesCoach(back, c.canLight, SystemClock.uptimeMillis())
+        sensors = getSystemService(SensorManager::class.java)?.also { sm ->
+            sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)?.let { g -> try { sm.registerListener(gyro, g, SensorManager.SENSOR_DELAY_UI) } catch (e: Exception) { } }
+        }
+        h.postDelayed(tick, 150)
     }
+
+    /** A few times a second: like a friend holding the phone with you, say what's needed and take the photo when it's good. */
+    private val tick = object : Runnable {
+        override fun run() {
+            val c = cam ?: return; val k = coach ?: return
+            if (sent || shot) return
+            val st = k.step(SystemClock.uptimeMillis(), spin, c.seen.light, c.seen.change, c.focusOk(), c.focusTrouble(), c.lightOk(), c.faces)
+            if (st.torch) c.light(true)
+            st.hint?.let { coachSays(it) }
+            if (st.shoot) { shot = true; stopSensors(); note?.text = if (te) "📸 …" else "📸 …"; c.shootNow(); return }
+            h.postDelayed(this, 150)
+        }
+    }
+
+    private fun coachSays(k: String) {
+        val (icon, words) = when (k) {
+            "light" -> "🔦" to (if (te) "కొంచెం చీకటిగా ఉంది, లైట్ వేస్తున్నాను." else "It's a bit dark, I'm turning on the light.")
+            "dark" -> "🌙" to (if (te) "ఇక్కడ చాలా చీకటిగా ఉంది. కొంచెం వెలుతురు దగ్గరికి వెళ్ళండి." else "It's too dark here. Please go near some light.")
+            "still" -> "🤚" to (if (te) "ఫోన్ కదలకుండా పట్టుకోండి, ఊపకండి." else "Hold the phone still, don't shake it.")
+            "close" -> "↩️" to (if (te) "చాలా దగ్గరగా ఉంది! ఫోన్ కొంచెం వెనక్కి జరపండి." else "Too close! Move the phone back a little.")
+            "face" -> "🙂" to (if (te) "మీరు కనిపించడం లేదు. ఫోన్‌ని మీ ముఖం ముందు పట్టుకోండి." else "I can't see you. Hold the phone in front of your face.")
+            else -> return
+        }
+        note?.text = "$icon $words"
+        petSays(words, "surprised")
+    }
+
+    /** The pet says it out loud (with the phone's own voice, so it's quick). */
+    private fun petSays(words: String, mood: String) {
+        try {
+            startService(Intent(this, PetService::class.java).setAction(PetService.ACTION_SAY)
+                .putExtra("text", words).putExtra("prefix", "👀 ").putExtra("mood", mood).putExtra("local", true))
+        } catch (e: Exception) { }
+    }
+
+    private fun stopSensors() { try { sensors?.unregisterListener(gyro) } catch (e: Exception) { }; sensors = null }
 
     private fun got(jpeg: ByteArray?) {
         cam = null
@@ -140,6 +200,7 @@ class LookActivity : Activity() {
         if (jpeg == null) { done(null, if (te) "కెమెరా వాడలేకపోయాను. వేరే కెమెరా యాప్ మూసి మళ్ళీ అడగండి." else "I couldn't use the camera. Close other camera apps and ask me again."); return }
         if (store.voiceOn) try { shutter.play(MediaActionSound.SHUTTER_CLICK) } catch (e: Exception) { }
         note?.text = if (te) "🐾 చూశాను! ఆలోచిస్తున్నాను…" else "🐾 Got it! Thinking…"
+        if (coach?.talked == true) petSays(if (te) "సరే, చూశాను!" else "Got it!", "happy")
         Thread {
             // upright, smaller, and without hidden details (like the place), before it goes anywhere
             val raw = File(cacheDir, "look-raw.jpg")
@@ -153,6 +214,7 @@ class LookActivity : Activity() {
     private fun done(photo: File?, problem: String) {
         if (sent) return
         sent = true
+        h.removeCallbacks(tick); stopSensors()
         cam?.cancel(); cam = null
         try {
             startService(Intent(this, PetService::class.java).setAction(PetService.ACTION_LOOK_DONE)
@@ -172,7 +234,7 @@ class LookActivity : Activity() {
     }
 
     override fun onDestroy() {
-        h.removeCallbacksAndMessages(null)
+        h.removeCallbacksAndMessages(null); stopSensors()
         if (!sent) { sent = true; cam?.cancel() }
         super.onDestroy()
     }

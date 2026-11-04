@@ -129,3 +129,66 @@ object Eyes {
         else -> "👀 Let me look at you…"
     }
 }
+
+/**
+ * Like a friend holding the phone up with you: while the camera is open it says "hold still, don't shake",
+ * turns on the light when it's dark, says "too close" when the camera can't focus, "I can't see you" when no face is in
+ * the front camera, and takes the photo as soon as the picture is good (or after a few seconds anyway).
+ * Only the deciding is here (no camera), so it can be tested on a computer. [start] and every [step] use the same clock (ms).
+ */
+class EyesCoach(private val back: Boolean, private val canLight: Boolean, private val start: Long) {
+    /** [hint]: what to say now ("light", "dark", "still", "close", "face"); [torch]: turn the light on; [shoot]: take the photo now. */
+    class Step(val hint: String? = null, val torch: Boolean = false, val shoot: Boolean = false)
+
+    private val said = HashMap<String, Int>()
+    private var lastHint = Long.MIN_VALUE / 2
+    private var stillSince = -1L
+    private var movingSince = -1L
+    private var darkSince = -1L
+    private var blurSince = -1L
+    private var noFaceSince = -1L
+    private var torchOn = false
+    /** true when it had to tell them something (then it says "got it" after the photo). */
+    var talked = false; private set
+
+    /**
+     * [spin] = how fast the phone is turning (rad/s; -1 = no gyroscope), [light] = brightness 0–255 (-1 = not known yet),
+     * [change] = how much the picture changed since the last frame (0–255), [focusOk] = focus has settled,
+     * [focusTrouble] = the camera can't get it sharp (usually too close), [lightOk] = brightness has settled,
+     * [faces] = faces the front camera sees (-1 = this camera can't tell).
+     */
+    fun step(now: Long, spin: Float, light: Int, change: Float, focusOk: Boolean, focusTrouble: Boolean, lightOk: Boolean, faces: Int): Step {
+        val t = now - start
+        val moving = if (spin >= 0f) spin > 0.35f else change > 9f
+        if (moving) { if (movingSince < 0) movingSince = now; stillSince = -1 } else { movingSince = -1; if (stillSince < 0) stillSince = now }
+        val still = stillSince >= 0 && now - stillSince >= 450
+        val dark = light in 0..34 && !torchOn
+        darkSince = if (dark) (if (darkSince < 0) now else darkSince) else -1
+        blurSince = if (focusTrouble) (if (blurSince < 0) now else blurSince) else -1
+        noFaceSince = if (!back && faces == 0) (if (noFaceSince < 0) now else noFaceSince) else -1
+
+        // dark: turn on the light first, like a friend switching on the torch
+        if (dark && back && canLight && t > 400) { torchOn = true; darkSince = -1; return say("light", now)?.let { Step(it.hint, torch = true) } ?: Step(torch = true) }
+        if (t >= 9000) return Step(shoot = true)                       // a few seconds is enough: take the best we can
+        val hint = when {
+            darkSince >= 0 && now - darkSince > 900 && t > 1200 -> "dark"
+            movingSince >= 0 && now - movingSince > 800 && t > 1300 -> "still"
+            blurSince >= 0 && now - blurSince > 1200 -> "close"
+            noFaceSince >= 0 && now - noFaceSince > 1500 -> "face"
+            else -> null
+        }
+        if (hint != null) say(hint, now)?.let { return it }
+        val good = still && (focusOk || t > 2500) && (lightOk || t > 3000) && !dark &&
+            !(noFaceSince >= 0 && t < 6000) && !(blurSince >= 0 && t < 6000)
+        if (good && t > 900 && now - lastHint > 1300) return Step(shoot = true)   // a moment after a hint, so they can do it
+        return Step()
+    }
+
+    /** Each thing is said at most once ("hold still" twice), and not more often than every 2.5 seconds. */
+    private fun say(k: String, now: Long): Step? {
+        val n = said[k] ?: 0
+        if (n >= (if (k == "still") 2 else 1) || now - lastHint < 2500) return null
+        said[k] = n + 1; lastHint = now; talked = true
+        return Step(hint = k)
+    }
+}

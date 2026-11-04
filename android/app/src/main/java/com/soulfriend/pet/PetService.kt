@@ -394,7 +394,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         speakPhone(text)
     }
 
-    private fun speakPhone(text: String) {
+    private val emoji = Regex("\\p{So}|\uFE0F")
+    private fun speakPhone(said: String) {
+        val text = emoji.replace(said) { if (it.value == "°") it.value else "" }.trim()
         natural.stop()
         val t = tts
         if (!store.voiceOn || t == null || !ttsReady) { fakeTalk(text); return }
@@ -439,6 +441,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             say("Voice typing isn't available on this phone. Hold me to type instead.", PuppyView.Mood.CONFUSED); return
         }
         hush()
+        lookToken++
         val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
         rec.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
@@ -493,6 +496,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         HandsFree.match(text)?.let { if (handsFree(it)) return }
         if (BuildConfig.HANDS_FREE && Regex("^(reels? mode|hands ?free( mode)?|రీల్స్ మోడ్|హ్యాండ్స్ ఫ్రీ)$", RegexOption.IGNORE_CASE).matches(text.trim().trimEnd('.', '!'))) { startVoiceMode(); return }
         if (ScreenCaptureService.wantsScreen(text)) { readScreen(text); return }
+        lookToken++; autoLooks = 0
         // "look at this shirt", "what's written on this board?", "what colour is my shirt?": the pet looks with the camera itself
         Eyes.wants(text, lastLook)?.let { l -> lastQuestion = l.ask; look(l); return }
         lastQuestion = text
@@ -532,6 +536,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     // ---------------- the pet's eyes (the camera) ----------------
     private var lastLook: Eyes.Look? = null
     private var lookingSince = 0L
+    private var lookToken = 0          // a new question (or tapping me to talk) stops a "look again" that is waiting
+    private var autoLooks = 0          // "move a little left… looking again": at most twice per question
 
     /** Opens the pet's eyes: a small note at the top, ONE photo from the camera (no camera window), then the AI answers about it. */
     private fun look(l: Eyes.Look, announce: Boolean = true) {
@@ -542,7 +548,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val te = isTelugu(l.ask) || store.lang == "te"
         if (announce) say(Eyes.going(l, te), PuppyView.Mood.EXCITED, local = true) else pet.mood = PuppyView.Mood.EXCITED
         try {
-            startActivity(Intent(this, LookActivity::class.java).putExtra("back", l.back).putExtra("ask", l.ask)
+            startActivity(Intent(this, LookActivity::class.java).putExtra("back", l.back).putExtra("ask", l.ask).putExtra("again", l.again)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
         } catch (e: Exception) {
             lookingSince = 0; pet.mood = PuppyView.Mood.SAD
@@ -574,7 +580,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         lastQuestion = ask
         pet.mood = PuppyView.Mood.THINKING
         showBubble("👀 “$ask”\n…", 0)
-        brain.ask(Eyes.question(l), onReply = { json -> handleReply(json, fromPhoto = true) }, onError = { err ->
+        brain.ask(Eyes.question(l), onReply = { json -> handleReply(json, fromPhoto = true, eyes = true) }, onError = { err ->
             if (!back) { pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }
             else Thread {
                 val letters = EyesOffline.read(jpeg)
@@ -587,8 +593,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         }, photo = "image/jpeg" to android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP), local = false)
     }
 
-    /** [fromPhoto]: the answer is about a photo, so it never asks to look again. */
-    private fun handleReply(json: JSONObject, fromPhoto: Boolean = false) {
+    /** [fromPhoto]: the answer is about a photo, so it doesn't open the eyes again, except [eyes] (a photo the pet took itself):
+     *  then "move a little to the left… looking again" takes another photo by itself, at most twice. */
+    private fun handleReply(json: JSONObject, fromPhoto: Boolean = false, eyes: Boolean = false) {
         val reply = json.optString("reply", "Woof!")
         lastReply = reply
         val done = mutableListOf<String>()
@@ -596,11 +603,13 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         var replyTo: Pair<Incoming, String>? = null
         var lookAt: Eyes.Look? = null
         var screenAsk: String? = null
+        var lookAgain: Eyes.Look? = null
         if (arr != null) for (i in 0 until arr.length()) {
             val a = arr.optJSONObject(i) ?: continue
             // the AI wants to see it: open the pet's eyes with the person's own words (so the answer comes in their language)
             if (a.optString("type") == "look") {
-                if (!fromPhoto && lookAt == null && screenAsk == null) {
+                if (eyes && a.optBoolean("again") && autoLooks < 2) lastLook?.let { lookAgain = Eyes.Look(it.back, it.ask, again = true) }
+                else if (!fromPhoto && lookAt == null && screenAsk == null) {
                     val ask = lastQuestion.ifBlank { a.optString("ask") }
                     if (a.optString("camera") == "screen") screenAsk = ask else lookAt = Eyes.Look(back = a.optString("camera") != "front", ask = ask)
                 }
@@ -621,6 +630,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
         say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)
         lookAt?.let { l -> main.postDelayed({ look(l, announce = false) }, 300) }
+        lookAgain?.let { l ->
+            autoLooks++
+            val token = ++lookToken
+            // after it has said how to hold the phone, and they've had a moment to do it
+            main.postDelayed({ if (token == lookToken && !listening) look(l, announce = false) }, (1800L + reply.length * 60L).coerceIn(3000L, 9000L))
+        }
         screenAsk?.let { q -> main.postDelayed({ readScreen(q) }, 1500) }
         replyTo?.let { (m, text) -> openMsgCard(m); msgInput?.setText(text); msgInput?.setSelection(text.length) }
         panelText?.let { if (panel != null && panelContent.isEmpty()) { it.text = reply + extra; panelTools?.visibility = View.VISIBLE } }
