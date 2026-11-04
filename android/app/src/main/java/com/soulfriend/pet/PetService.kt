@@ -547,7 +547,17 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         } catch (e: Exception) {
             lookingSince = 0; pet.mood = PuppyView.Mood.SAD
             showBubble(if (te) "ఈ ఫోన్‌లో కెమెరా తెరవలేకపోయాను." else "I couldn't open the camera on this phone.", 5000)
+            return
         }
+        // some phones (Xiaomi, Oppo, Vivo…) stop apps from opening a screen from the background unless you allow it
+        val asked = now
+        main.postDelayed({
+            if (lookingSince == asked && LookActivity.openedAt < asked) {
+                lookingSince = 0; pet.mood = PuppyView.Mood.CONFUSED
+                showBubble(if (te) "నా కళ్ళు తెరుచుకోలేదు. ఫోన్ Settings › Apps › BigD AI లో \"Display pop-up windows while running in the background\" (లేదా \"Open in background\") అనుమతి ఇచ్చి మళ్ళీ అడగండి."
+                           else "My eyes didn't open. In the phone's Settings › Apps › BigD AI, allow \"Display pop-up windows while running in the background\" (or \"Open in background\"), then ask me again.", 12_000)
+            }
+        }, 6000)
     }
 
     /** The photo is taken (or not): ask the AI about it. Without the AI, the phone reads the English letters on a board by itself. */

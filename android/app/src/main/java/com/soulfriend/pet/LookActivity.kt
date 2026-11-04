@@ -35,6 +35,8 @@ import java.util.concurrent.TimeUnit
 class LookActivity : Activity() {
     companion object {
         private const val REQ_CAMERA = 31
+        /** When this screen last opened: the pet checks it, because some phones stop apps from opening screens from the background. */
+        @Volatile var openedAt = 0L
         // the usual camera click, so you know the photo is taken and you can lower the phone
         private val shutter by lazy { MediaActionSound().apply { try { load(MediaActionSound.SHUTTER_CLICK) } catch (e: Exception) { } } }
     }
@@ -52,6 +54,7 @@ class LookActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openedAt = System.currentTimeMillis()
         store = Store(this); ui = Ui(this)
         back = intent.getBooleanExtra("back", true)
         ask = intent.getStringExtra("ask") ?: ""
