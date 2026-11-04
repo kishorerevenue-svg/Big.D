@@ -398,8 +398,10 @@ class StoryReader : Activity() {
         val listenV = act(if (speakingKey == p.key) "⏹" else "🔊") { }
         listenV.contentDescription = "Listen"
         listenV.setOnClickListener { listen(p, listenV) }
-        listOf(likeV, act(counted("💬", p.comments)) { host?.comments(p); finish() }.apply { contentDescription = "Comments" },
-            listenV, act("📤") { share(p) }.apply { contentDescription = "Share" }, act("⋯") { menu(p) }.apply { contentDescription = "More" })
+        listOfNotNull(likeV, act(counted("💬", p.comments)) { host?.comments(p); finish() }.apply { contentDescription = "Comments" },
+            listenV, act("📤") { share(p) }.apply { contentDescription = "Share" },
+            if (p.reel.isNotBlank()) act("🎬", PINK) { shareVideo(p) }.apply { contentDescription = "Share as a video (WhatsApp status…)" } else null,
+            act("⋯") { menu(p) }.apply { contentDescription = "More" })
             .forEach { acts.addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
         card.addView(acts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
 
@@ -504,6 +506,25 @@ class StoryReader : Activity() {
     private fun share(p: SPost) {
         val t = host?.shareText(p) ?: return
         try { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share")) } catch (e: Exception) { }
+    }
+
+    /** The short video of this news (made on the server): download it, then share it to WhatsApp, status, anywhere. */
+    private fun shareVideo(p: SPost) {
+        val url = host?.abs(p.reel) ?: return
+        android.widget.Toast.makeText(this, "🎬 Getting the video ready…", android.widget.Toast.LENGTH_SHORT).show()
+        val name = "BigD-" + p.key.filter { it.isLetterOrDigit() } + ".mp4"
+        Thread {
+            val f = ShareFiles.download(this, url, name)
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (f == null) { android.widget.Toast.makeText(this, "Couldn't get the video. Please try again.", android.widget.Toast.LENGTH_LONG).show(); return@runOnUiThread }
+                val uri = ShareFiles.uri(this, name)
+                val send = Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri)
+                    .putExtra(Intent.EXTRA_TEXT, (p.title.ifBlank { "BigD AI" }) + "\n📲 BigD AI · bigdai.tech").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                send.clipData = android.content.ClipData.newRawUri("video", uri)
+                try { startActivity(Intent.createChooser(send, "Share the video").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch (e: Exception) { }
+            }
+        }.start()
     }
 
     private fun menu(p: SPost) {

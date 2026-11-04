@@ -122,6 +122,11 @@
             android:authorities="${applicationId}.camera"
             android:exported="false"
             android:grantUriPermissions="true" />
+        <provider
+            android:name=".ShareFiles"
+            android:authorities="${applicationId}.share"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <!-- Media: one post per screen (picture or video on top, the text below); swipe up for the next -->
         <activity

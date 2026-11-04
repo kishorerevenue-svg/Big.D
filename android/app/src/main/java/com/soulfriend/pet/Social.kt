@@ -119,7 +119,8 @@ class SUser(val uid: String, val name: String, val handle: String, val bio: Stri
 class SPost(val key: String, val author: SUser, val at: Long, val title: String, val text: String, val photos: List<String>, val ytId: String, val ytCh: String,
             val linkUrl: String, val linkTitle: String, val linkSite: String, val linkImage: String, val sourceName: String, val sourceUrl: String,
             val cat: String, val emoji: String, var likes: Int, var liked: Boolean, val views: Int, var comments: Int, val mine: Boolean,
-            val videoUrl: String = "", val videoPoster: String = "", val videoDur: Int = 0, val videoW: Int = 0, val videoH: Int = 0) {
+            val videoUrl: String = "", val videoPoster: String = "", val videoDur: Int = 0, val videoW: Int = 0, val videoH: Int = 0,
+            val reel: String = "") {
     companion object {
         fun from(o: JSONObject): SPost {
             val ph = o.optJSONArray("photos"); val yt = o.optJSONObject("yt"); val ln = o.optJSONObject("link"); val src = o.optJSONObject("source"); val vd = o.optJSONObject("video")
@@ -129,7 +130,8 @@ class SPost(val key: String, val author: SUser, val at: Long, val title: String,
                 ln?.optString("url") ?: "", ln?.optString("title") ?: "", ln?.optString("site") ?: "", ln?.optString("image") ?: "",
                 src?.optString("name") ?: "", src?.optString("url") ?: "", o.optString("cat"), o.optString("emoji"),
                 o.optInt("likes"), o.optBoolean("liked"), o.optInt("views"), o.optInt("comments"), o.optBoolean("mine"),
-                vd?.optString("url") ?: "", vd?.optString("poster") ?: "", vd?.optInt("dur") ?: 0, vd?.optInt("w") ?: 0, vd?.optInt("h") ?: 0)
+                vd?.optString("url") ?: "", vd?.optString("poster") ?: "", vd?.optInt("dur") ?: 0, vd?.optInt("w") ?: 0, vd?.optInt("h") ?: 0,
+                o.optString("reel"))
         }
     }
 }

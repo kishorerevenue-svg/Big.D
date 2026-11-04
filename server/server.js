@@ -342,7 +342,9 @@ function cleanMessages(list) {
 const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, ai: learn.anthropic,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // profiles, posts with photos and links, comments, likes, follows (the Media tab works like X)
-const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, media, ai: learn.anthropic,
+// short news videos to share (WhatsApp status…), made in the background with ffmpeg
+const reels = require("./reels.js")({ DATA_DIR, media, voice });
+const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, media, reels, ai: learn.anthropic,
   forgetOldFeed: req => (extras && extras.forgetDevice ? extras.forgetDevice(req) : ""),
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Translate page, and Govt services (official links + answers from official websites only)
@@ -362,7 +364,8 @@ const server = http.createServer(async (req, res) => {
   if (await social.handle(req, res, url, origin)) return;
   if (await tools(req, res, url, origin)) return;
 
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), media: media.stats(), social: social.stats() }, origin);
+  if (reels.handle(req, res, url)) return;
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), media: media.stats(), reels: reels.stats(), social: social.stats() }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
