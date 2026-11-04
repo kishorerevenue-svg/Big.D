@@ -61,6 +61,8 @@ class StoryReader : Activity() {
         var start = 0
         var server = "https://bigdai.tech"
         var host: Host? = null
+        /** Open as news reels: each post is read aloud and the next one comes by itself, like a video. */
+        var autoplay = false
 
         private val CAT = mapOf(
             "news" to "📰 వార్తలు · News", "movies" to "🎬 సినిమా · Movies", "jobs" to "💼 ఉద్యోగాలు · Jobs",
@@ -96,7 +98,10 @@ class StoryReader : Activity() {
     private var asking = false
     private var noMore = false
     private var speakingKey = ""
+    private var auto = false
+    private lateinit var autoBtn: TextView
     private val handler = Handler(Looper.getMainLooper())
+    private val autoTask = Runnable { readAndNext() }
     private val spot = IntArray(2)
     private val seenTask = Runnable { list.getOrNull(at)?.let { host?.seen(it.key) } }
     // videos
@@ -127,6 +132,13 @@ class StoryReader : Activity() {
 
         topBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         topBar.addView(round("✕", "Close") { finish() }, LinearLayout.LayoutParams(dp(42), dp(42)))
+        auto = autoplay; autoplay = false
+        autoBtn = TextView(this).apply {
+            textSize = 14f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(14), dp(8), dp(14), dp(8)); setOnClickListener { setAuto(!auto) }
+        }
+        topBar.addView(autoBtn, LinearLayout.LayoutParams(-2, dp(42)).apply { marginStart = dp(10) })
+        paintAuto()
         topBar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         count = TextView(this).apply { setTextColor(Color.WHITE); textSize = 13.5f; setPadding(dp(12), dp(6), dp(12), dp(6)); background = ui.round(Color.parseColor("#77000000"), 16) }
         topBar.addView(count)
@@ -134,7 +146,7 @@ class StoryReader : Activity() {
 
         if (list.size > 1 || !noMore) {
             val tip = TextView(this).apply {
-                text = "⬆  పైకి స్వైప్ చేయండి · Swipe up for the next"; setTextColor(Color.WHITE); textSize = 13f
+                text = if (auto) "▶  వార్తలు వీడియోలా · News reels: I read each one, then the next comes" else "⬆  పైకి స్వైప్ చేయండి · Swipe up for the next"; setTextColor(Color.WHITE); textSize = 13f
                 setPadding(dp(14), dp(8), dp(14), dp(8)); background = ui.round(Color.parseColor("#CC000000"), 18)
             }
             root.addView(tip, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
@@ -191,6 +203,44 @@ class StoryReader : Activity() {
         val p = list.getOrNull(i) ?: return
         handler.postDelayed(seenTask, 1500)
         if (p.ytId.isNotBlank()) play(i) else if (p.videoUrl.isNotBlank()) playFile(i)
+        handler.removeCallbacks(autoTask)
+        if (auto) handler.postDelayed(autoTask, 600)
+    }
+
+    // ============================== news reels ==============================
+    private fun paintAuto() {
+        autoBtn.text = if (auto) "⏸  Reels" else "▶  Reels"
+        autoBtn.background = ui.round(Color.parseColor(if (auto) "#E8336D" else "#77000000"), 21)
+        autoBtn.contentDescription = if (auto) "Stop the news reels" else "Play the news like a video"
+        if (auto) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    private fun setAuto(on: Boolean) {
+        auto = on; paintAuto()
+        handler.removeCallbacks(autoTask)
+        if (on) handler.post(autoTask) else if (speakingKey.isNotEmpty()) stopListening()
+    }
+
+    /** Reels: read the post on screen aloud (the picture slowly zooms like a video), then slide to the next one. */
+    private fun readAndNext() {
+        if (!auto) return
+        val i = at; val p = list.getOrNull(i) ?: return
+        if (p.ytId.isNotBlank() || p.videoUrl.isNotBlank()) return          // a video plays by itself; swipe for the next
+        val h = host ?: return
+        val hd = pages.getOrNull(i)?.tag as? Holder
+        if (speakingKey.isNotEmpty()) stopListening()
+        speakingKey = p.key; hd?.listen?.text = "⏹"
+        val text = listOf(p.title, p.text).filter { it.isNotBlank() }.joinToString(". ")
+        (hd?.area?.getChildAt(0) as? ImageView)?.let { img ->
+            img.scaleX = 1f; img.scaleY = 1f
+            img.animate().scaleX(1.12f).scaleY(1.12f).setDuration((text.length * 70L).coerceIn(6000, 40_000)).start()
+        }
+        h.speak(text) {
+            if (speakingKey != p.key) return@speak
+            speakingKey = ""; hd?.listen?.text = "🔊"
+            if (auto && at == i) handler.postDelayed({ if (auto && at == i && !pager.next()) setAuto(false) }, 900)
+        }
     }
 
     /** Makes the pages around the one on screen again (after the screen size changed). */
@@ -597,12 +647,14 @@ class StoryReader : Activity() {
         if (webAt >= 0) stopVideo()
         if (fileAt >= 0) stopFile()
         if (speakingKey.isNotEmpty()) stopListening()
+        handler.removeCallbacks(autoTask)
     }
 
     override fun onResume() {
         super.onResume()
         val p = list.getOrNull(at) ?: return
         if (p.videoUrl.isNotBlank()) playFile(at)
+        if (auto) handler.postDelayed(autoTask, 600)
     }
 
     override fun onDestroy() {

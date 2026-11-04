@@ -44,14 +44,16 @@ object LocalBrain {
         val t = clean(raw)
         if (t.isEmpty()) return null
         val out = understand(f, t, te, now) ?: return null
+        return out.put("reply", out.optString("reply") + noteOnce(te)).put("offline", true)
+    }
+
+    /** Now and then (at most every 10 minutes), say why the answers are simpler than usual. */
+    fun noteOnce(te: Boolean): String {
         val ms = System.currentTimeMillis()
-        if (ms - lastNote > 10 * 60_000L) {          // now and then, say why the answers are simple
-            lastNote = ms
-            out.put("reply", out.optString("reply") + "\n\n" + say(te,
-                "📴 My AI brain can't be reached right now, so my small built-in helper is answering.",
-                "📴 నా AI మెదడు ఇప్పుడు అందుబాటులో లేదు, అందుకే ఫోన్‌లోని చిన్న సహాయకుడు జవాబిస్తున్నాడు."))
-        }
-        return out.put("offline", true)
+        if (ms - lastNote < 10 * 60_000L) return ""
+        lastNote = ms
+        return "\n\n" + say(te, "📴 My AI brain can't be reached right now, so my small built-in helper is answering.",
+            "📴 నా AI మెదడు ఇప్పుడు అందుబాటులో లేదు, అందుకే ఫోన్‌లోని చిన్న సహాయకుడు జవాబిస్తున్నాడు.")
     }
 
     /** What the small brain can do (shown when it doesn't understand). */
@@ -155,7 +157,7 @@ object LocalBrain {
         val secs = found.sumOf { seconds(it) } + (if (half) 1800 else 0)
         if (secs <= 0) return reply(say(te, "⏱️ For how long? Say for example \"timer 10 minutes\".", "⏱️ ఎంత సేపు? ఉదాహరణకి \"10 నిమిషాల టైమర్\" అని చెప్పండి."), "thinking")
         if (secs > 24 * 3600) return null
-        return reply(say(te, "⏱️ Okay!", "⏱️ సరే!"), "happy", act("timer", "seconds" to secs, "label" to say(te, "Timer", "టైమర్")))
+        return reply(say(te, "⏱️ Okay!", "⏱️ సరే!"), "happy", act("timer", "seconds" to secs, "label" to say(te, "Timer", "టైమర్"))).put("sound", "ding")
     }
 
     private class When(val at: LocalDateTime, val parts: List<String>, val repeat: String = "")
@@ -237,7 +239,7 @@ object LocalBrain {
         val wake = re("wake|లేపు|\\blepu\\b").containsMatchIn(t)          // "wake me at 6": the morning
         val w = parseWhen(t, now, loose = true, usualPart = if (wake) "am" else "")
             ?: return reply(say(te, "⏰ What time? Say for example \"alarm at 5:30 am\".", "⏰ ఎన్ని గంటలకు? ఉదాహరణకి \"ఉదయం 5:30 కి అలారం\" అని చెప్పండి."), "thinking")
-        return reply(say(te, "⏰ Okay!", "⏰ సరే!"), "happy", act("alarm", "hour" to w.at.hour, "minute" to w.at.minute, "label" to "BigD AI"))
+        return reply(say(te, "⏰ Okay!", "⏰ సరే!"), "happy", act("alarm", "hour" to w.at.hour, "minute" to w.at.minute, "label" to "BigD AI")).put("sound", "ding")
     }
 
     private fun reminder(t: String, te: Boolean, now: LocalDateTime): JSONObject? {
@@ -255,7 +257,7 @@ object LocalBrain {
         }
         val text = x.trim(' ', ',', '.', '-').replaceFirstChar { it.titlecase(Locale.ROOT) }.ifBlank { say(te, "Reminder", "రిమైండర్") }
         return reply(say(te, "⏰ Okay! I'll remind you: “$text”", "⏰ సరే! గుర్తు చేస్తాను: “$text”"), "happy",
-            act("reminder", "at" to w.at.withSecond(0).withNano(0).toString(), "text" to text, "repeat" to w.repeat))
+            act("reminder", "at" to w.at.withSecond(0).withNano(0).toString(), "text" to text, "repeat" to w.repeat)).put("sound", "ding")
     }
 
     // ---------------- list, notes, memories ----------------

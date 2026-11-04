@@ -110,6 +110,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (BuildConfig.HANDS_FREE && store.remoteOn) showRemote()
         MessageHub.listener = { m, autoSent -> onMessage(m, autoSent) }
         tts = TextToSpeech(this, this)
+        SoundFx.load(this)
         say("Hi! I'm BigD AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
     }
 
@@ -334,20 +335,33 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         ttsReady = status == TextToSpeech.SUCCESS
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(id: String?) { main.post { pet.talking = true } }
-            override fun onDone(id: String?) { main.post { pet.talking = false } }
+            override fun onStart(id: String?) { main.post {
+                pet.talking = true
+                val piece = synchronized(spoken) { spoken[id] }
+                if (piece != null) showBubble(piece, 0)          // a long answer: the bubble follows the part being read
+            } }
+            override fun onDone(id: String?) { main.post {
+                if (id != lastUtter) return@post
+                pet.talking = false
+                if (synchronized(spoken) { spoken.isNotEmpty() }) main.postDelayed(hideBubble, 6000)
+            } }
             @Deprecated("Deprecated in Java")
-            override fun onError(id: String?) { main.post { pet.talking = false } }
+            override fun onError(id: String?) { main.post { if (id == lastUtter) pet.talking = false } }
         })
     }
 
     private fun isTelugu(s: String) = s.any { it in 'ఀ'..'౿' }
 
     /** [local] = read with the phone's own voice only (the text never goes to the server). */
-    private fun say(text: String, mood: PuppyView.Mood, extra: String = "", prefix: String = "", local: Boolean = false) {
+    private fun say(text: String, mood: PuppyView.Mood, extra: String = "", prefix: String = "", local: Boolean = false, delayMs: Long = 0) {
         if (text.isBlank()) return
         pet.mood = mood
         showBubble(prefix + text + extra, keepMs = (6000 + text.length * 80L).coerceAtMost(30_000))
+        if (delayMs > 0) {                                      // a little sound first, then the voice
+            val seq = ++speakSeq
+            main.postDelayed({ if (seq == speakSeq) { if (local) speakPhone(text) else speak(text) } }, delayMs)
+            return
+        }
         if (local) { ++speakSeq; speakPhone(text) } else speak(text)
     }
 
@@ -359,7 +373,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     private fun speak(text: String) {
         val seq = ++speakSeq
-        if (store.voiceOn && store.naturalVoice && !naturalNotSetUp) {
+        if (store.voiceOn && store.naturalVoice && !naturalNotSetUp && text.length <= 700) {   // long answers: the phone's voice reads them in parts
             val kind = pet.kind; val mood = pet.mood
             voicePool.execute {
                 val f = brain.ttsBlocking(text, kind.key, mood.name.lowercase(), cacheDir) { naturalNotSetUp = true }
@@ -393,8 +407,19 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         }
         val (pitch, rate) = PetVoice.phone(pet.kind, pet.mood, store.cuteVoice)
         t.setPitch(pitch); t.setSpeechRate(rate)
-        t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "u" + (++utter))
+        // everything is read: a long answer goes in parts, one after another (the voice reads at most ~4000 letters at once)
+        val parts = Speech.chunks(text, if (text.length > 260) 220 else 3800)
+        synchronized(spoken) { spoken.clear() }
+        parts.forEachIndexed { i, piece ->
+            val id = "u" + (++utter)
+            if (parts.size > 1) synchronized(spoken) { spoken[id] = piece }
+            if (i == parts.lastIndex) lastUtter = id
+            t.speak(piece, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
+        }
     }
+
+    private val spoken = HashMap<String, String>()   // part being read -> its text (for the bubble)
+    @Volatile private var lastUtter = ""
 
     private fun fakeTalk(text: String) {
         pet.talking = true
@@ -519,7 +544,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val src = json.optJSONArray("sources")
         if (src != null && src.length() > 0)
             extra += "\n\nSources:\n" + (0 until src.length()).joinToString("\n") { i -> src.optJSONObject(i)?.let { "• " + it.optString("title") + "\n  " + it.optString("url") } ?: "" }
-        say(reply, PuppyView.moodOf(json.optString("emotion")), extra)
+        val snd = json.optString("sound")
+        val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
+        say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)
         replyTo?.let { (m, text) -> openMsgCard(m); msgInput?.setText(text); msgInput?.setSelection(text.length) }
         panelText?.let { if (panel != null && panelContent.isEmpty()) { it.text = reply + extra; panelTools?.visibility = View.VISIBLE } }
     }

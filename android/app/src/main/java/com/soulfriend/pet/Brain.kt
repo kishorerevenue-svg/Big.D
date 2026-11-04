@@ -57,26 +57,33 @@ class Brain(private val store: Store) {
                 } else main.post {
                     history.removeAt(history.lastIndex)
                     val err = json.optString("error", "Something went wrong (error $code). Please try again.")
-                    if (!(local && photo == null && (code == 429 || code >= 500) && offline(text, onReply))) onError(err + more(local && photo == null && code >= 500))
+                    if (local && photo == null && (code == 429 || code >= 500)) offline(text, onReply) { onError(err + more(code >= 500)) } else onError(err)
                 }
             } catch (e: Exception) {
                 main.post {
                     if (history.isNotEmpty()) history.removeAt(history.lastIndex)
-                    if (!(local && photo == null && offline(text, onReply)))
-                        onError("No connection. Check your internet and try again." + more(local && photo == null))
+                    val err = "No connection. Check your internet and try again."
+                    if (local && photo == null) offline(text, onReply) { onError(err + more(true)) } else onError(err)
                 }
             }
         }
     }
 
-    /** The AI couldn't answer: the phone's own small brain tries (reminders, alarms, calls, apps, time, sums…). */
-    private fun offline(text: String, onReply: (JSONObject) -> Unit): Boolean {
-        val j = try { LocalBrain.answer(store.ctx, store, text) } catch (e: Exception) { null } ?: return false
+    /** The AI couldn't answer: the phone's own small brain tries (reminders, alarms, calls, apps, time, sums…),
+     *  then the phone reads the internet by itself (weather, news, Wikipedia). [fail] runs when neither can help. */
+    private fun offline(text: String, onReply: (JSONObject) -> Unit, fail: () -> Unit) {
+        val j = try { LocalBrain.answer(store.ctx, store, text) } catch (e: Exception) { null }
+        if (j != null) { keep(text, j); onReply(j); return }
+        pool.execute {
+            val w = try { LocalWeb.answer(store.ctx, store, text) } catch (e: Exception) { null }
+            main.post { if (w != null) { keep(text, w); onReply(w) } else fail() }
+        }
+    }
+
+    private fun keep(text: String, j: JSONObject) {
         history.add(JSONObject().put("role", "user").put("content", Privacy.maybe(store, text)))
         history.add(JSONObject().put("role", "assistant").put("content", j.optString("reply")))
         while (history.size > 12) history.removeAt(0)
-        onReply(j)
-        return true
     }
 
     private fun more(show: Boolean) = if (show) "\n\n" + LocalBrain.hint(store) else ""

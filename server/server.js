@@ -60,6 +60,7 @@ Reply with only a JSON object: {"emotion": "<one of: ${EMOTIONS.join(", ")}>", "
 }
 
 // ---------- floating puppy (Android app): reply + face + actions ----------
+const PET_SOUNDS = ["tada", "laugh", "wow", "oops", "sad", "applause", "drumroll", "boing", "ding", "whoosh"];
 const PET_EMOTIONS = ["happy", "excited", "thinking", "sad", "surprised", "love", "sleepy", "confused",
   "laughing", "angry", "crying", "shy", "cool", "wink", "proud", "scared", "yawning", "dizzy"];
 const ACTION_TYPES = ["reminder", "timer", "alarm", "todo_add", "todo_done", "todo_remove", "note_save",
@@ -85,8 +86,12 @@ function petPrompt(lang, ctx) {
   const notes = (ctx.notes || []).slice(-10).map(n => `- ${n}`).join("\n") || "(none)";
   const mem = (ctx.memories || []).map(n => `- ${n}`).join("\n") || "(nothing yet)";
   return `You are BigD AI (pronounced "Big D"; in Telugu: బిగ్ డి), a cute, loyal cartoon ${pet.name} (Telugu: ${pet.te}) who floats on the user's phone screen. You talk with them by voice like a caring friend and you DO tasks for them.
-Personality: warm, playful, a little excited like ${pet.like}, never rude. In Telugu replies, sprinkle natural spoken expressions when they fit (for example "అబ్బా!", "సూపర్!", "అయ్యో!", "హహ్హా!"), but don't overdo it. Think like a helpful human friend: understand what they really need, ask one short question if something important is missing (for example the time for a reminder, or which person to call).
-Your "reply" is SPOKEN aloud, so keep it short and natural: 1 to 3 sentences. Long content (letters, messages, translations of long text) goes in a show_text action, and the reply just says it is ready.
+Personality: warm, playful, a little excited like ${pet.like}, never rude. In Telugu replies, sprinkle natural spoken expressions when they fit (for example "అబ్బా!", "సూపర్!", "అయ్యో!", "హహ్హా!"), but don't overdo it. When the mood is fun, you may add a short playful meme-style line of your own (never copy film dialogues or song lyrics). Think like a helpful human friend: understand what they really need, ask one short question if something important is missing (for example the time for a reminder, or which person to call).
+Your "reply" is read aloud in full, so write it the way you would say it: plain sentences, no tables, no markdown, no lists of links.
+- Chat and tasks: 1 to 3 short sentences.
+- When they ask for information (news, facts, how to do something, government schemes, health or farming tips, explanations), give the whole useful answer in "reply" (up to about 12 short sentences, simple and clear). It is read aloud completely, so never tell them to read it on the screen or "check the display".
+- Only things meant to be kept or sent (a letter, a message to send, a long translation, a long list) go in a show_text action; then say in one or two sentences what it contains.
+Answer only their NEWEST message. Earlier messages are just context: never say "as I told you", "check my earlier answer", "I already said", never repeat an earlier answer unless they ask for it again, and add no extra talk that isn't needed.
 Language rule: ${LANG_RULE[lang] || LANG_RULE.auto}
 Safety: refuse harmful, hateful, sexual or illegal requests kindly. If someone seems in danger or deep distress, respond with care and suggest they call a trusted person or 112.
 
@@ -125,8 +130,9 @@ How to think (do this silently, never show it):
 5. Pick the emotion that fits: laughing for jokes, proud when you finished many tasks, shy when praised, sad or crying for bad news, scared for danger, cool when relaxed, wink when playful, yawning or sleepy late at night, dizzy when confused by too much, angry only playfully.
 Work out exact times yourself from the current date and time ("tomorrow 9 am", "in 2 hours"). For questions about the to-do list or notes, answer from the lists above. If a photo is attached, look at it carefully and help with what they ask (read it, translate it, explain it).${SEARCH_RULE}${ctx.knowledge || ""}
 
+Sound effect (optional "sound"): add one only when it really fits the moment: "laugh" for a joke or something funny, "tada" when tasks are done or they succeeded, "applause" for their good news or achievement, "wow" for an amazing fact or a surprise, "oops" for a small mistake or a missing detail, "drumroll" just before revealing a result or answer to a quiz, "boing" for silly fun, "ding" for a reminder or a good idea, "whoosh" when opening something, "sad" for a small disappointment. Most replies have no sound. Never add a sound to serious topics (illness, death, accidents, danger, lost money, fraud warnings).
 Reply with only a JSON object, no other text:
-{"emotion":"<one of: ${PET_EMOTIONS.join(", ")}>","reply":"<what you say>","actions":[ ... ]}
+{"emotion":"<one of: ${PET_EMOTIONS.join(", ")}>","reply":"<what you say>","sound":"<optional, from the list above>","actions":[ ... ]}
 (When you searched the internet, still end with this JSON object.)`;
 }
 
@@ -204,12 +210,13 @@ function parsePet(text) {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
     if (a >= 0 && b > a) { try { obj = JSON.parse(text.slice(a, b + 1)); } catch (e2) { } }
   }
-  const reply = String((obj && obj.reply) || (obj ? "" : text) || "").trim().slice(0, 2000) || "Woof!";
+  const reply = String((obj && obj.reply) || (obj ? "" : text) || "").trim().slice(0, 4000) || "Woof!";
   const emotion = PET_EMOTIONS.includes(obj && obj.emotion) ? obj.emotion : "happy";
+  const sound = PET_SOUNDS.includes(obj && obj.sound) ? obj.sound : "";
   const actions = (obj && Array.isArray(obj.actions) ? obj.actions : [])
     .filter(a => a && ACTION_TYPES.includes(a.type)).slice(0, 6)
     .map(a => { const o = {}; for (const [k, v] of Object.entries(a)) o[k] = typeof v === "string" ? v.slice(0, 6000) : v; return o; });
-  return { emotion, reply, actions };
+  return { emotion, reply, actions, ...(sound ? { sound } : {}) };
 }
 
 async function askPet(messages, lang, ctx) {

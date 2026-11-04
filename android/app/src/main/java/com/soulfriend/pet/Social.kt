@@ -331,7 +331,16 @@ class SocialPage(private val m: MainActivity) {
             }, 14f, Ui.MUTED), 14)
             if (tab == "foryou" || tab == "following") whoToFollow()
         }
-        if (!list.isNullOrEmpty()) m.add(ui.button("⬆  ఒక్కొక్కటిగా స్వైప్ చేసి చదవండి · Swipe to read, one by one", "soft") { openReader(list[0]) }, 12)
+        if (!list.isNullOrEmpty()) m.add(LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(TextView(m).apply {
+                text = "▶  Reels · వీడియోలా"; textSize = 15f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(Color.parseColor("#FF7A45"), Color.parseColor("#E8336D"))).apply { cornerRadius = dp(24).toFloat() }
+                contentDescription = "Play the news like a video: each post is read aloud and the next comes by itself"
+                setOnClickListener { openReader(list[0], auto = true) }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(ui.button("⬆  Swipe to read", "soft") { openReader(list[0]) }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(8) })
+        }, 12)
         list?.forEachIndexed { i, p ->
             m.add(postRow(p), 10)
             if (i == 3 && tab == "foryou") whoToFollow()
@@ -1452,7 +1461,8 @@ class SocialPage(private val m: MainActivity) {
      * Opens the story reader at [p]: one post per screen (picture or video on top, the full text in a box below);
      * swipe up for the next post of this list. More posts load at the end.
      */
-    private fun openReader(p: SPost) {
+    private fun openReader(p: SPost, auto: Boolean = false) {
+        StoryReader.autoplay = auto
         val key = if (screen == "profile") "user:${profile?.uid}" else tab
         val blocked = store.blockedUsers
         val src = (feeds[key]?.takeIf { l -> l.any { it.key == p.key } } ?: listOf(p)).filter { it.author.uid !in blocked || it.key == p.key }

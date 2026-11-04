@@ -1,7 +1,7 @@
 // BigD AI "Media" page: short Telugu posts in 9 sections (news, movies, kids, crypto, real estate, jobs,
 // devotional, farming, health). The AI searches the internet and writes each post in its own words with a
 // link to the real source, and adds official YouTube videos when it finds them (each link is checked).
-// It fills each section once (MEDIA_SEED posts) and then adds a few new posts every morning.
+// It fills each section once (MEDIA_SEED posts) and then adds a few new posts every morning (the news also at 1 PM and 7 PM).
 // The BigD team (team password) can also write, remove and refresh posts.
 const fs = require("fs");
 const path = require("path");
@@ -255,6 +255,10 @@ Reply with only a JSON object, no other text:
     if (db.lastDaily !== today() && istNow().getUTCHours() >= 6) {
       db.lastDaily = today(); save();
       for (const [key, c] of Object.entries(CATS)) enqueue(key, c.daily);
+    }
+    // the news again at 1 PM and 7 PM (India time), so Media always has the latest
+    for (const [slot, hour] of [["lastNoon", 13], ["lastEvening", 19]]) {
+      if (db[slot] !== today() && istNow().getUTCHours() >= hour && db.lastDaily === today()) { db[slot] = today(); save(); enqueue("news", CATS.news.daily); }
     }
   }
   setTimeout(tick, 60_000);

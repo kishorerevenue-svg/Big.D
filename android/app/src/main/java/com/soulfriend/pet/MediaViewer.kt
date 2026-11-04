@@ -498,6 +498,13 @@ internal class SnapPager(ctx: Context) : ScrollView(ctx) {
         if (t != page) { page = t; onPage?.invoke(t) }
     }
 
+    /** Slides to the next page, as if swiped (news reels). False at the last page. */
+    fun next(): Boolean {
+        if (height <= 0 || page + 1 >= box.childCount) return false
+        anim?.cancel(); startPage = page; settle(page + 1)
+        return true
+    }
+
     /** Opens page [p] straight away (no animation). */
     fun jump(p: Int) {
         page = p; startPage = p

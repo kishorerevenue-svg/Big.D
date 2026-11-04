@@ -33,6 +33,7 @@ import android.view.DragEvent
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -61,6 +62,10 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
     private lateinit var nav: LinearLayout
+    private lateinit var navLeft: LinearLayout
+    private lateinit var navRight: LinearLayout
+    private lateinit var mediaFab: TextView       // the round Media button in the middle of the bottom bar
+    private lateinit var mediaLabel: TextView
     private lateinit var fab: TextView
     internal val fmt: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
     internal val io = Executors.newSingleThreadExecutor()
@@ -131,6 +136,23 @@ class MainActivity : Activity() {
                 setDuration(220)
             }
         }
+        // the middle of the bottom bar: a raised round Media button with its name under it
+        navLeft = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutTransition = LayoutTransition().apply { enableTransitionType(LayoutTransition.CHANGING); setDuration(220) } }
+        navRight = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutTransition = LayoutTransition().apply { enableTransitionType(LayoutTransition.CHANGING); setDuration(220) } }
+        mediaLabel = TextView(this).apply { text = "Media"; textSize = 11.5f; gravity = Gravity.CENTER; typeface = Typeface.create("sans-serif-medium", Typeface.BOLD) }
+        val navMid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; contentDescription = "Media"
+            addView(mediaLabel, LinearLayout.LayoutParams(-1, -2))
+            setOnClickListener { openMedia() }
+        }
+        nav.addView(navLeft, LinearLayout.LayoutParams(0, dp(48), 1f))
+        nav.addView(navMid, LinearLayout.LayoutParams(dp(76), dp(48)))
+        nav.addView(navRight, LinearLayout.LayoutParams(0, dp(48), 1f))
+        mediaFab = TextView(this).apply {
+            text = "📺"; textSize = 24f; gravity = Gravity.CENTER; includeFontPadding = false; contentDescription = "Media: news, videos and posts"
+            elevation = dp(14).toFloat()
+            setOnClickListener { openMedia() }
+        }
         // the round + button on the Media page (write a post)
         fab = TextView(this).apply {
             text = "+"; textSize = 30f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; includeFontPadding = false
@@ -144,10 +166,21 @@ class MainActivity : Activity() {
             addView(scroll, FrameLayout.LayoutParams(-1, -1))
             addView(fab, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(18), dp(18)) })
         }
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(Ui.BG); fitsSystemWindows = true
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
             addView(nav, LinearLayout.LayoutParams(-1, -2))
+        }
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Ui.BG); fitsSystemWindows = true
+            addView(column, FrameLayout.LayoutParams(-1, -1))
+            addView(mediaFab, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+        }
+        // half of the round button sits above the bar
+        nav.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
+            val lp = mediaFab.layoutParams as FrameLayout.LayoutParams
+            val want = (bottom - top) - dp(30)
+            if (lp.bottomMargin != want) { lp.bottomMargin = want; mediaFab.layoutParams = lp }
         }
         setContentView(root)
         handleIntent(intent)
@@ -232,8 +265,8 @@ class MainActivity : Activity() {
     internal fun render() {
         val keepY = if (renderedTab == tab) scroll.scrollY else 0
         content.removeAllViews()
-        if (!store.onboarded) { nav.visibility = View.GONE; fab.visibility = View.GONE; secure(false); renderSetup(); renderedTab = ""; updateBack(); return }
-        nav.visibility = View.VISIBLE
+        if (!store.onboarded) { nav.visibility = View.GONE; mediaFab.visibility = View.GONE; fab.visibility = View.GONE; secure(false); renderSetup(); renderedTab = ""; updateBack(); return }
+        nav.visibility = View.VISIBLE; mediaFab.visibility = View.VISIBLE
         buildNav()
         secure(tab == "vault")
         when (tab) {
@@ -310,12 +343,27 @@ class MainActivity : Activity() {
 
     private fun buildNav() {
         val order = tabOrder()
-        if (order != navOrder || nav.childCount != order.size) {
-            navOrder = order; nav.removeAllViews(); navItems.clear()
-            order.forEach { key -> navItem(key).also { navItems[key] = it; nav.addView(it, LinearLayout.LayoutParams(0, dp(48), 1f).apply { setMargins(dp(2), 0, dp(2), 0) }) } }
+        if (order != navOrder || navItems.isEmpty()) {
+            navOrder = order; navItems.clear()
+            order.filter { it != "feedback" }.forEach { key -> navItems[key] = navItem(key) }
+            placeTabs()
         }
         updateNav()
     }
+
+    /** Half of the tabs on the left and half on the right of the round Media button. */
+    private fun placeTabs() {
+        navLeft.removeAllViews(); navRight.removeAllViews()
+        val row = navOrder.filter { it != "feedback" }
+        val half = (row.size + 1) / 2
+        row.forEachIndexed { i, key ->
+            val v = navItems[key] ?: return@forEachIndexed
+            (v.parent as? ViewGroup)?.removeView(v)
+            (if (i < half) navLeft else navRight).addView(v, LinearLayout.LayoutParams(0, dp(48), 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
+        }
+    }
+
+    private fun openMedia() { if (tab != "feedback") go("feedback") else social.home() }
 
     private fun navItem(key: String): LinearLayout {
         val (_, label, icon) = TABS.first { it.first == key }
@@ -343,6 +391,12 @@ class MainActivity : Activity() {
             item.alpha = if (key == dragKey) 0.35f else 1f
             (item.layoutParams as? LinearLayout.LayoutParams)?.let { lp -> val w = if (on) 3.2f else 1f; if (lp.weight != w) { lp.weight = w; item.layoutParams = lp } }
         }
+        val onMedia = tab == "feedback"
+        mediaFab.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.parseColor("#FF7A45"), Color.parseColor("#E8336D"))).apply {
+            shape = GradientDrawable.OVAL; setStroke(dp(if (onMedia) 4 else 3), if (onMedia) Ui.TEAL_DARK else Color.WHITE)
+        }
+        mediaFab.animate().scaleX(if (onMedia) 1.08f else 1f).scaleY(if (onMedia) 1.08f else 1f).setDuration(160).start()
+        mediaLabel.setTextColor(if (onMedia) Color.parseColor("#E8336D") else Ui.TEAL_DARK)
     }
 
     private fun startTabDrag(v: View, key: String) {
@@ -364,7 +418,7 @@ class MainActivity : Activity() {
                     val to = list.indexOf(over)
                     if (to >= 0 && list.remove(moving)) {
                         list.add(to, moving); navOrder = list
-                        navItems[moving]?.let { dv -> val lp = dv.layoutParams; nav.removeView(dv); nav.addView(dv, to, lp) }
+                        placeTabs()
                     }
                 }
             }
@@ -572,6 +626,7 @@ class MainActivity : Activity() {
         put(ui.check("Natural voice (sounds like a real person, Telugu and English)", store.naturalVoice) { store.naturalVoice = it }, 10)
         put(status, 4)
         put(ui.check("🧸 Cute cartoon voice (higher, like a cartoon character)", store.cuteVoice) { store.cuteVoice = it }, 8)
+        put(ui.check("🎉 Fun sounds when they fit (tada, laugh, wow, applause…)", store.funSounds) { store.funSounds = it; if (it) SoundFx.play(this@MainActivity, "tada") }, 8)
         put(ui.row(ui.button("▶ Test voice", "primary") {
             if (!Settings.canDrawOverlays(this@MainActivity)) { toast("First allow \"Show over other apps\" below."); return@button }
             if (!PetService.running) startForegroundService(Intent(this@MainActivity, PetService::class.java))
@@ -1205,14 +1260,18 @@ class MainActivity : Activity() {
             onDone?.invoke(); return
         }
         t.setPitch(1f); t.setSpeechRate(0.95f)
-        val id = "say" + System.nanoTime()
+        // all of it is read: long text goes in parts, one after another (the voice reads at most ~4000 letters at once)
+        val parts = Speech.chunks(text, 3800)
+        if (parts.isEmpty()) { onDone?.invoke(); return }
+        val base = "say" + System.nanoTime()
+        val id = base + "_" + parts.lastIndex
         t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(u: String?) {}
             override fun onDone(u: String?) { if (u == id) runOnUiThread { onDone?.invoke() } }
             @Deprecated("Deprecated in Java")
             override fun onError(u: String?) { if (u == id) runOnUiThread { onDone?.invoke() } }
         })
-        t.speak(text.take(3900), TextToSpeech.QUEUE_FLUSH, null, id)   // the phone's voice reads at most about 4000 letters at once
+        parts.forEachIndexed { i, piece -> t.speak(piece, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, base + "_" + i) }
     }
 
     internal fun stopTalking() { try { tts?.stop() } catch (e: Exception) { } }

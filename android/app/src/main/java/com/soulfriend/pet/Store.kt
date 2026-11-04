@@ -59,6 +59,11 @@ class Store(context: Context) {
         get() = p.getBoolean("cuteVoice", false)
         set(v) { p.edit().putBoolean("cuteVoice", v).apply() }
 
+    /** The pet's little sounds (tada, laugh, wow…) when they fit the moment. */
+    var funSounds: Boolean
+        get() = p.getBoolean("funSounds", true)
+        set(v) { p.edit().putBoolean("funSounds", v).apply() }
+
     /** Show the Reels remote buttons on screen (Plus edition). */
     var remoteOn: Boolean
         get() = p.getBoolean("remoteOn", false)
