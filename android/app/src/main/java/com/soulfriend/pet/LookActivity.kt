@@ -88,7 +88,7 @@ class LookActivity : Activity() {
 
     /** The first time only: what happens with the camera, before it is ever used. */
     private fun consent() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Light_Dialog_Alert)
             .setTitle(if (te) "👀 కెమెరాతో చూడనా?" else "👀 Can I use the camera as my eyes?")
             .setMessage(if (te)
                 "మీరు \"ఇది చూడు\", \"ఈ బోర్డు మీద ఏం రాసి ఉంది\", \"నా షర్ట్ రంగు ఏంటి\" అని అడిగినప్పుడు, నేను కెమెరాతో ఒక్క ఫోటో తీసి చూసి చెప్తాను. కెమెరా విండో తెరవదు; Android చిన్న పచ్చ చుక్క చూపిస్తుంది.\n\n" +
@@ -158,6 +158,9 @@ class LookActivity : Activity() {
         finish()
         @Suppress("DEPRECATION") overridePendingTransition(0, 0)
     }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() { done(null, if (te) "సరే, చూడటం ఆపాను." else "Okay, I stopped looking.") }
 
     override fun onStop() {
         super.onStop()

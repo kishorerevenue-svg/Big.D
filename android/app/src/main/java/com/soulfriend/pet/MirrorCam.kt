@@ -61,7 +61,9 @@ class MirrorCam(private val ctx: Context, private val view: TextureView?, privat
             val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return finish(null)
             // a little bigger from the back camera, so small letters on a board can still be read
             val most = if (front) 1600 * 1200 else 2592 * 1944
-            val still = map.getOutputSizes(ImageFormat.JPEG).filter { it.width * it.height <= most }.maxByOrNull { it.width * it.height } ?: Size(640, 480)
+            val sizes = map.getOutputSizes(ImageFormat.JPEG) ?: return finish(null)
+            val still = sizes.filter { it.width * it.height <= most }.maxByOrNull { it.width * it.height }
+                ?: sizes.minByOrNull { it.width * it.height } ?: return finish(null)
             val prev = map.getOutputSizes(SurfaceTexture::class.java).filter { it.width <= 1280 && it.height <= 960 }
                 .minByOrNull { abs(it.width.toFloat() / it.height - 4f / 3) * 10 + abs(it.width - 960) / 1000f } ?: Size(640, 480)
             small = map.getOutputSizes(ImageFormat.YUV_420_888).filter { it.width >= 320 && it.width <= 800 }.minByOrNull { abs(it.width - 640) } ?: Size(640, 480)
