@@ -10,7 +10,7 @@ const crypto = require("crypto");
 const { preview } = require("./preview.js");
 const video = require("./video.js");
 
-module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, media, forgetOldFeed, h }) {
+module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, media, forgetOldFeed, h, ai }) {
   const { send, readBody, allowed, clientIp } = h;
   const FILE = path.join(DATA_DIR, "social.json");
   const UP = path.join(DATA_DIR, "uploads");
@@ -164,11 +164,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
     return "";
   }
   async function claude(system, content, maxTokens = 200) {
-    const r = await fetch(API_BASE + "/v1/messages", { method: "POST",
-      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content }] }) });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((data.error && data.error.message) || "api_error " + r.status);
+    const data = await ai({ model: MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content }] }, { tries: 1, backup: true });
     const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
     try { return JSON.parse(text); } catch (e) { const a = text.indexOf("{"), b = text.lastIndexOf("}"); if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch (e2) { } } }
     return {};

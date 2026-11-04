@@ -45,6 +45,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
             "forget" -> if (store.forget(a.optString("text"))) "Forgotten" else "I didn't have that saved"
             "download" -> download(a.optString("url"), a.optString("name", "BigD-file"))
             "letter" -> openLetterHelper(a.optString("request"))
+            "open_page" -> openPage(a.optString("page"))
             else -> null
         }
     } catch (e: Exception) { "Sorry, I couldn't do that on this phone" }
@@ -75,6 +76,12 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
     private fun openLetterHelper(request: String): String {
         val i = Intent(ctx, MainActivity::class.java).putExtra("tab", "files").putExtra("letter", request.ifBlank { "letter" })
         return if (start(i)) "📝 Opening the letter helper. Answer a few questions and I'll write it." else "Open the BigD AI app › Files to make the letter"
+    }
+
+    /** Opens a page of the BigD AI app (tasks, family, translate, files, vault, feedback, govt, messages). */
+    private fun openPage(page: String): String? {
+        val p = page.takeIf { it in setOf("tasks", "family", "translate", "files", "vault", "feedback", "govt", "messages", "home") } ?: "home"
+        return if (start(Intent(ctx, MainActivity::class.java).putExtra("tab", p))) null else "Open the BigD AI app"
     }
 
     private fun parseTime(s: String): Long? {

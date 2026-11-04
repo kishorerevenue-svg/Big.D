@@ -19,8 +19,9 @@ class Brain(private val store: Store) {
 
     fun clear() = history.clear()
 
-    /** [photo] = Pair(mediaType, base64) to ask about a picture. */
-    fun ask(text: String, onReply: (JSONObject) -> Unit, onError: (String) -> Unit, photo: Pair<String, String>? = null) {
+    /** [photo] = Pair(mediaType, base64) to ask about a picture.
+     *  [local]: when the AI can't be reached, let the phone's own small brain ([LocalBrain]) answer simple requests. */
+    fun ask(text: String, onReply: (JSONObject) -> Unit, onError: (String) -> Unit, photo: Pair<String, String>? = null, local: Boolean = true) {
         history.add(JSONObject().put("role", "user").put("content", Privacy.maybe(store, text)))
         while (history.size > 12) history.removeAt(0)
         val messages = JSONArray(); history.forEach { messages.put(it) }
@@ -55,17 +56,30 @@ class Brain(private val store: Store) {
                     }
                 } else main.post {
                     history.removeAt(history.lastIndex)
-                    onError(json.optString("error", "Something went wrong (error $code). Please try again."))
+                    val err = json.optString("error", "Something went wrong (error $code). Please try again.")
+                    if (!(local && photo == null && (code == 429 || code >= 500) && offline(text, onReply))) onError(err + more(local && photo == null && code >= 500))
                 }
             } catch (e: Exception) {
                 main.post {
                     if (history.isNotEmpty()) history.removeAt(history.lastIndex)
-                    onError(if (server.contains("YOUR-DOMAIN")) "Set your server address in the BigD AI app first."
-                            else "No connection. Check your internet and try again.")
+                    if (!(local && photo == null && offline(text, onReply)))
+                        onError("No connection. Check your internet and try again." + more(local && photo == null))
                 }
             }
         }
     }
+
+    /** The AI couldn't answer: the phone's own small brain tries (reminders, alarms, calls, apps, time, sums…). */
+    private fun offline(text: String, onReply: (JSONObject) -> Unit): Boolean {
+        val j = try { LocalBrain.answer(store.ctx, store, text) } catch (e: Exception) { null } ?: return false
+        history.add(JSONObject().put("role", "user").put("content", Privacy.maybe(store, text)))
+        history.add(JSONObject().put("role", "assistant").put("content", j.optString("reply")))
+        while (history.size > 12) history.removeAt(0)
+        onReply(j)
+        return true
+    }
+
+    private fun more(show: Boolean) = if (show) "\n\n" + LocalBrain.hint(store) else ""
 
     /** Asks the server to write a reply to a chat message. [onDraft] gets (reply, warning). */
     fun draftReply(m: Incoming, instruction: String, auto: Boolean, onDraft: (String, String) -> Unit, onError: (String) -> Unit) {

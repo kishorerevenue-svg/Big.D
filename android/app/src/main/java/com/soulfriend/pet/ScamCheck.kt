@@ -67,9 +67,10 @@ object ScamCheck {
         emptyList(), listOf(if (te(store)) "అయినా తెలియని వాళ్ళకి డబ్బు, OTP ఇవ్వకండి." else "Still, never give money or OTPs to people you don't know."))
 
     /** The phone's own result, used when the server can't be reached. */
-    fun offlineVerdict(store: Store, score: Int, hints: List<String>): Verdict {
+    fun offlineVerdict(store: Store, score: Int, hints: List<String>): Verdict = offlineVerdict(te(store), score, hints)
+
+    fun offlineVerdict(t: Boolean, score: Int, hints: List<String>): Verdict {
         val danger = score >= 4
-        val t = te(store)
         val advice = if (t) listOf("లింక్‌లు నొక్కవద్దు, ఫైల్స్ ఓపెన్ చేయవద్దు", "OTP, PIN, పాస్‌వర్డ్ ఎవరికీ చెప్పవద్దు", "డబ్బులు పంపవద్దు", "డబ్బు పోయిందా? వెంటనే 1930కి కాల్ చేయండి")
             else listOf("Don't click links or open files", "Never share OTP, PIN or passwords", "Don't pay or send money", "Lost money? Call 1930 right away")
         return Verdict(if (danger) "danger" else "careful",

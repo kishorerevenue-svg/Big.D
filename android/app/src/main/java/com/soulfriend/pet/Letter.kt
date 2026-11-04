@@ -567,7 +567,7 @@ class LetterHelper(private val m: MainActivity) {
             stage = "start"
             if (made) { request = ""; m.toast("✅ Your file is downloading. It's in the list below.") } else error = json.optString("reply")
             m.render()
-        }, onError = { err -> stage = "start"; error = err; m.render() })
+        }, onError = { err -> stage = "start"; error = err; m.render() }, local = false)
     }
 
     // ---------------- 4. ready ----------------

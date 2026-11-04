@@ -20,7 +20,7 @@ data class FamilyContact(val name: String, val phone: String, val relation: Stri
 data class Reminder(val id: Int, val at: Long, val text: String, val repeat: String = "")
 
 class Store(context: Context) {
-    private val ctx: Context = context.applicationContext
+    internal val ctx: Context = context.applicationContext
     private val p: SharedPreferences = ctx.getSharedPreferences("soul_friend", Context.MODE_PRIVATE)
 
     var server: String

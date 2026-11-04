@@ -8,7 +8,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { preview } = require("./preview.js");
 
-module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, h }) {
+module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, h, ai }) {
   const { send, readBody, allowed, clientIp } = h;
   const reads = new Map(); // reading posts has its own, bigger limit (it costs nothing)
   setInterval(() => { const now = Date.now(); for (const [k, l] of reads) if (!l.some(t => now - t < 600000)) reads.delete(k); }, 600000).unref();
@@ -96,10 +96,7 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
     if (searches > 0) body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: searches, user_location: { type: "approximate", country: "IN", timezone: "Asia/Kolkata" } }];
     const pages = new Map(); let data = null; const texts = [];
     for (let round = 0; round < 3; round++) {
-      const r = await fetch(API_BASE + "/v1/messages", { method: "POST",
-        headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify(body) });
-      data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error((data.error && data.error.message) || "api_error " + r.status);
+      data = await ai(body, { tries: 2, backup: true });   // tried again when Claude is busy, then the second Claude model
       for (const c of data.content || []) {
         if (c.type === "web_search_tool_result" && Array.isArray(c.content)) c.content.forEach(x => x && x.url && !pages.has(x.url) && pages.set(x.url, str(x.title, 160)));
         if (c.type === "text") texts.push(c.text);

@@ -73,19 +73,64 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
       hits.map(h => `--- From "${h.title}" ---\n${h.text}`).join("\n\n");
   }
 
+  // ---------- staying up when Claude is busy or down ----------
+  // 1. A "busy" answer (overloaded, rate limit, server error, no connection) is tried again after a moment.
+  // 2. Still busy: the same question goes to a second Claude model (Haiku <-> Sonnet), which has its own capacity.
+  // 3. Claude can't answer at all (also a wrong or expired key, or no credit): Google Gemini answers, if GEMINI_API_KEY is set.
+  //    Use a Gemini key with billing on: Google doesn't use paid requests to improve its products (free keys it does).
+  const BUSY = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
+  const isBusy = e => !e || !e.status || BUSY.has(e.status);
+  const accountProblem = e => !!e && (e.status === 401 || e.status === 403 || (e.status === 400 && /credit|billing|balance|quota|disabled/i.test(e.message || "")));
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const stats = { calls: 0, retried: 0, backupModel: 0, gemini: 0, failed: 0, lastProblem: "" };
+  const geminiKey = () => process.env.GEMINI_API_KEY || "";
+  const geminiModel = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
+
+  function backupFor(model) {
+    const want = process.env.BACKUP_MODEL || (/haiku/i.test(model || "") ? (SMART_MODEL || "claude-sonnet-5-5") : (MODEL && MODEL !== model ? MODEL : "claude-haiku-5-5"));
+    return want && want !== model ? want : "";
+  }
+
+  /** One request to Claude's Messages API, tried again (up to [tries] more times) when Claude is busy. Returns Claude's JSON. */
+  async function anthropic(body, { tries = 2, backup = false } = {}) {
+    let last = null;
+    const timeoutMs = 45000 + (Number(body.max_tokens) || 1500) * 12;
+    for (let i = 0; i <= tries; i++) {
+      if (i > 0) { stats.retried++; await sleep(last && last.retryAfter ? Math.min(last.retryAfter * 1000, 6000) : 700 * i * i + 300); }
+      try {
+        const r = await fetch(API_BASE + "/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs)
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok) return data;
+        const err = new Error((data.error && data.error.message) || "api_error " + r.status);
+        err.status = r.status; err.retryAfter = Number(r.headers.get("retry-after")) || 0;
+        last = err;
+        if (!BUSY.has(r.status)) break;          // a wrong request, key or credit: trying again won't help
+      } catch (e) {
+        last = Object.assign(new Error("no connection to Claude: " + (e.name === "TimeoutError" ? "timed out" : e.message)), { status: 0 });
+        if (e.name === "TimeoutError") break;     // no answer for a long time: don't make people wait for more tries of the same model
+      }
+    }
+    if (backup && isBusy(last)) {
+      const b = backupFor(body.model);
+      if (b) {
+        try { const data = await anthropic(Object.assign({}, body, { model: b }), { tries: 1 }); stats.backupModel++; console.log("AI: " + body.model + " was busy, " + b + " answered"); return data; }
+        catch (e) { console.error("AI: backup model " + b + " failed too:", e.status || "", e.message); }
+      }
+    }
+    throw last;
+  }
+
   // ---------- calling Claude (with optional internet search) ----------
-  async function callClaude({ system, messages, maxTokens = 1500, search = WEB_SEARCH, model = MODEL, domains = null, maxUses = 3, maxSources = 3 }) {
+  async function claudeOnce({ system, messages, maxTokens, search, model, domains, maxUses, maxSources, tries }) {
     const body = { model, max_tokens: maxTokens, system, messages: messages.slice() };
     if (search) body.tools = [Object.assign({ type: "web_search_20250305", name: "web_search", max_uses: maxUses }, domains ? { allowed_domains: domains } : {})];
     let data = null;
     for (let round = 0; round < 3; round++) {
-      const r = await fetch(API_BASE + "/v1/messages", {
-        method: "POST",
-        headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      data = await r.json().catch(() => ({}));
-      if (!r.ok) { const err = new Error((data.error && data.error.message) || "api_error"); err.status = r.status; throw err; }
+      data = await anthropic(body, { tries });
       if (data.stop_reason !== "pause_turn") break;
       body.messages = body.messages.concat([{ role: "assistant", content: data.content }]); // long search: continue it
     }
@@ -100,6 +145,76 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
       if (cit.url && !seen.has(cit.url) && sources.length < maxSources) { seen.add(cit.url); sources.push({ title: String(cit.title || cit.url).slice(0, 120), url: cit.url }); }
     }
     return { text, sources, truncated: data.stop_reason === "max_tokens" };
+  }
+
+  /** The same question to Google Gemini (only when Claude can't answer). Same result shape as Claude's. */
+  async function callGemini({ system, messages, maxTokens, search, maxSources }) {
+    const contents = [];
+    for (const m of messages) {
+      const role = m.role === "assistant" ? "model" : "user";
+      const blocks = typeof m.content === "string" ? [{ type: "text", text: m.content }] : (Array.isArray(m.content) ? m.content : []);
+      const parts = [];
+      for (const b of blocks) {
+        if (b && b.type === "text" && b.text) parts.push({ text: b.text });
+        else if (b && (b.type === "image" || b.type === "document") && b.source && b.source.type === "base64") parts.push({ inlineData: { mimeType: b.source.media_type, data: b.source.data } });
+      }
+      if (!parts.length) continue;
+      const prev = contents[contents.length - 1];
+      if (prev && prev.role === role) prev.parts.push(...parts); else contents.push({ role, parts });
+    }
+    if (!contents.length) throw Object.assign(new Error("nothing to send"), { status: 400 });
+    const body = { contents, generationConfig: { maxOutputTokens: (Number(maxTokens) || 1500) + 2048 } };
+    if (system) body.systemInstruction = { parts: [{ text: String(system) }] };
+    if (search) body.tools = [{ google_search: {} }];
+    const url = (process.env.GEMINI_BASE || "https://generativelanguage.googleapis.com") + "/v1beta/models/" + encodeURIComponent(geminiModel()) + ":generateContent";
+    const go = async thinking => {
+      const b = thinking ? Object.assign({}, body, { generationConfig: Object.assign({}, body.generationConfig, { thinkingConfig: { thinkingLevel: "low" } }) }) : body;
+      const r = await fetch(url, { method: "POST", headers: { "x-goog-api-key": geminiKey(), "content-type": "application/json" },
+        body: JSON.stringify(b), signal: AbortSignal.timeout(60000 + (Number(maxTokens) || 1500) * 15) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw Object.assign(new Error((data.error && data.error.message) || "gemini_error " + r.status), { status: r.status });
+      return data;
+    };
+    let data;
+    try { data = await go(true); } catch (e) { if (e.status !== 400) throw e; data = await go(false); }   // older models don't know "thinkingLevel"
+    const cand = (data.candidates || [])[0] || {};
+    const text = ((cand.content || {}).parts || []).filter(p => p && p.text && !p.thought).map(p => p.text).join("").trim();
+    if (!text) throw Object.assign(new Error("Gemini gave no answer (" + (cand.finishReason || (data.promptFeedback || {}).blockReason || "empty") + ")"), { status: 502 });
+    const seen = new Set(), sources = [];
+    for (const c of ((cand.groundingMetadata || {}).groundingChunks || [])) {
+      const w = (c && c.web) || {};
+      if (w.uri && !seen.has(w.uri) && sources.length < (maxSources || 3)) { seen.add(w.uri); sources.push({ title: String(w.title || w.uri).slice(0, 120), url: w.uri }); }
+    }
+    return { text, sources, truncated: cand.finishReason === "MAX_TOKENS", via: "gemini" };
+  }
+
+  /** Ask Claude. Busy: try again, then the second Claude model, then Gemini (if set up). Throws only when nothing could answer. */
+  async function callClaude(opts) {
+    const o = { maxTokens: 1500, search: WEB_SEARCH, model: MODEL, domains: null, maxUses: 3, maxSources: 3, tries: 2 };
+    for (const k of Object.keys(opts || {})) if (opts[k] !== undefined) o[k] = opts[k];
+    stats.calls++;
+    let first;
+    try { return await claudeOnce(o); } catch (e) { first = e; }
+    stats.lastProblem = new Date().toISOString() + " " + (first.status || "") + " " + String(first.message || "").slice(0, 120);
+    if (isBusy(first)) {
+      const b = backupFor(o.model);
+      if (b) {
+        try { const out = await claudeOnce(Object.assign({}, o, { model: b, tries: 1 })); stats.backupModel++; console.log("AI: " + o.model + " was busy, " + b + " answered"); return out; }
+        catch (e) { console.error("AI: backup model " + b + " failed too:", e.status || "", e.message); }
+      }
+    }
+    if (geminiKey() && (isBusy(first) || accountProblem(first))) {
+      try { const out = await callGemini(o); stats.gemini++; console.log("AI: Claude couldn't answer (" + (first.status || "no connection") + "), Gemini answered"); return out; }
+      catch (e) { console.error("AI: Gemini backup failed:", e.status || "", e.message); }
+    }
+    stats.failed++;
+    throw first;
+  }
+
+  /** For /health: is the backup on, and how often was it needed since the server started. */
+  function aiStatus() {
+    return { backupModel: backupFor(MODEL) || "none", gemini: geminiKey() ? geminiModel() : "off", calls: stats.calls, retried: stats.retried,
+      usedBackupModel: stats.backupModel, usedGemini: stats.gemini, failed: stats.failed, lastProblem: stats.lastProblem };
   }
 
   // ---------- turning uploads into text ----------
@@ -140,5 +255,5 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
     return { title: title.replace(/\s+/g, " ").trim(), text };
   }
 
-  return { addKnowledge, removeKnowledge, listKnowledge, knowledgeBlock, callClaude, fileToText, urlToText };
+  return { addKnowledge, removeKnowledge, listKnowledge, knowledgeBlock, callClaude, anthropic, aiStatus, fileToText, urlToText };
 };
