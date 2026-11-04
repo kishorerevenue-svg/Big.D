@@ -143,7 +143,7 @@ class MessagesPage(private val m: MainActivity) {
         checking = true; verdict = null; resetHelpers(); m.render()
         if (p != null) { checkPicture(p, t); return }
         m.io.execute {
-            val v = ScamCheck.checkBlocking(store, t, "", "")
+            val v = ScamCheck.checkBlocking(store, t, "", "", always = true)
             val id = "manual_" + System.currentTimeMillis()
             ScamCheck.log(store, id, "Checked by you", "You", t, v, "manual")
             m.runOnUiThread {
@@ -521,7 +521,7 @@ class MessagesPage(private val m: MainActivity) {
         if (v != null) { verdict = v; m.render(); resultView?.let { m.scrollToView(it) }; return }
         verdict = null; checking = true; m.render(); m.scrollTop()
         m.io.execute {
-            val nv = ScamCheck.checkBlocking(store, curText, curSender, curApp)
+            val nv = ScamCheck.checkBlocking(store, curText, curSender, curApp, always = true)
             ScamCheck.log(store, curId, curApp, curSender, curText, nv, o.optString("src", "manual"))
             m.runOnUiThread {
                 checking = false; verdict = nv; m.render(); resultView?.let { m.scrollToView(it) }

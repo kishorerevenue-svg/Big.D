@@ -37,9 +37,11 @@ object ScamCheck {
         Rule(2, "prize or lottery", "lottery|lucky draw|jackpot|you (have )?won|winner|\\bprize\\b|\\bkbc\\b|gift (card|voucher)|congratulations.{0,40}(won|selected)|లాటరీ|బహుమతి|గెలుచుకున్నారు"),
         Rule(2, "easy money or job offer", "work from home|part[ -]?time (job|work)|earn (rs\\.? ?|₹ ?)?\\d|daily (income|earning|salary)|per day.{0,15}(rs|₹)|(like|subscribe|review|rating).{0,25}(earn|paid|salary|income)|telegram task|double (your|the) money|crypto|bitcoin|guaranteed (return|profit)|trading (tips|group)|ఇంటి నుంచే"),
         Rule(2, "instant loan offer", "loan.{0,20}(approved|sanction|pre-?approved|instant)|instant loan"),
+        Rule(2, "traffic challan, RTO or bill to pay", "chall?ans?|\\brto\\b|parivahan|traffic (fine|violation|police)|fastag|(electricity|power|current|gas|water) bill|bill (is )?(due|pending|unpaid|overdue)|tax refund|చలాన్|చలానా"),
+        Rule(2, "threat of court, licence or vehicle action", "summons|court (case|notice|order|hearing|warrant)|licen[cs]e.{0,25}(suspen|cancel|block|seiz)|impound|\\b(vehicle|bike|car|rc)\\b.{0,25}(seiz|block|suspend|cancel)|సీజ్"),
         Rule(2, "new number or emergency story", "(this is|it's|it is) my new number|new number.{0,20}(save|use)|(accident|hospital).{0,40}(money|send|urgent)|కొత్త నంబర్"),
         Rule(1, "asks for money", "send (me )?money|transfer (rs|₹|money)|pay (rs|₹|inr)|processing fee|registration fee|advance (fee|payment)|refund|cashback|upi pin|collect request|డబ్బు పంప|డబ్బులు పంప"),
-        Rule(1, "pressure to act fast", "urgent|immediately|within \\d+ ?(hours?|hrs?|minutes?|mins?)|last (chance|warning|date)|today only|act now|expires? today|అత్యవసరం|వెంటనే"),
+        Rule(1, "pressure to act fast", "urgent|immediately|within \\d+ ?(hours?|hrs?|minutes?|mins?)|last (chance|warning|date)|today only|act now|expires? today|pay.{0,30}today|(tap|click) (below|here) to (view (and|&) )?pay|view (and|&) pay|అత్యవసరం|వెంటనే|ఈ రోజే"),
         Rule(1, "link", "https?://|www\\.|bit\\.ly|tinyurl|cutt\\.ly|rb\\.gy|is\\.gd|t\\.me/|wa\\.me/|goo\\.gl")
     )
     private val otpWords = Regex("\\botp\\b|\\bpin\\b|password|cvv|ఓటీపీ|ఓటిపి|పిన్", RegexOption.IGNORE_CASE)
@@ -75,14 +77,16 @@ object ScamCheck {
             hints.take(3).map { (if (t) "హెచ్చరిక: " else "Warning sign: ") + it }, if (danger) advice else advice.take(3), offline = true)
     }
 
-    /** Full check. Blocking: call off the main thread. */
-    fun checkBlocking(store: Store, text: String, sender: String, app: String): Verdict {
+    /** Full check. Blocking: call off the main thread.
+     *  New messages that come in by themselves go to the AI only when the phone finds warning signs (light on the battery and the server).
+     *  A message the person checks themselves ([always]) always gets the full AI check: they have a reason to doubt it. */
+    fun checkBlocking(store: Store, text: String, sender: String, app: String, always: Boolean = false): Verdict {
         val (score, hints) = quick(text, sender)
-        if (score == 0) return safeVerdict(store)
+        if (score == 0 && !always) return safeVerdict(store)
         val body = JSONObject().put("text", Privacy.maybe(store, text).take(3000)).put("sender", sender.take(100)).put("app", app.take(40))
             .put("lang", store.lang).put("hints", JSONArray(hints))
         val r = Net.post(store, "/api/scan", body, timeoutMs = 30_000)
-        return if (r.ok && r.json.has("level")) Verdict.from(r.json) else offlineVerdict(store, score, hints)
+        return if (r.ok && r.json.has("level")) Verdict.from(r.json) else if (score == 0) safeVerdict(store).copy(offline = true) else offlineVerdict(store, score, hints)
     }
 
     // ---- how it looks ----
