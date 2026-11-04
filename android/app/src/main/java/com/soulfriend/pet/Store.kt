@@ -80,6 +80,10 @@ class Store(context: Context) {
     var mirrorAsked: Boolean
         get() = p.getBoolean("mirrorAsked", false)
         set(v) { p.edit().putBoolean("mirrorAsked", v).apply() }
+    /** The person said yes to "Can I use the camera as my eyes?" (the pet looks only when asked). */
+    var eyesAsked: Boolean
+        get() = p.getBoolean("eyesAsked", false)
+        set(v) { p.edit().putBoolean("eyesAsked", v).apply() }
     var mirrorAt: Long
         get() = p.getLong("mirrorAt", 0L)
         set(v) { p.edit().putLong("mirrorAt", v).apply() }

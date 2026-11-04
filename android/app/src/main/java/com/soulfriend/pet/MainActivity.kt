@@ -591,10 +591,14 @@ class MainActivity : Activity() {
             }, 12)
         }, 12)
         add(voiceCard(), 12)
-        add(ui.section("😊 Pet camera · కెమెరా", "Your pet takes a quick look at you with the front camera (no camera window opens) and says something kind, with a tip if you look tired. The photo goes to Claude AI only for this and is not saved.").apply {
+        add(ui.section("👀 Pet's eyes · కళ్ళు", "Just ask your pet to look, and it looks through the camera by itself (no camera window, no photo to send):\n" +
+            "• \"Look at this shirt, is it available online?\" · \"ఈ షర్ట్ ఆన్‌లైన్‌లో దొరుకుతుందా?\"\n" +
+            "• \"What's written on this board?\" · \"ఈ బోర్డు మీద ఏం రాసి ఉంది?\"\n" +
+            "• \"Translate this\" · \"ఇది ఏంటి?\" · \"Look again\"\n" +
+            "• \"What colour is my shirt?\" · \"నేను ఎలా ఉన్నాను?\" (the front camera)\n" +
+            "One photo, sent to Claude AI only to answer you, not saved. For your phone's screen, say \"my screen\".").apply {
             put(ui.button("😊 Look at me now", "primary") { lookAtMe(false) }, 10)
             put(ui.check("👀 Look at me when I open the app (at most every 3 hours)", store.mirrorOn && store.mirrorAsked) { on -> store.mirrorOn = on; store.mirrorAsked = true; if (on && !granted(Manifest.permission.CAMERA)) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }, 8)
-            put(ui.text("You can also say \"look at me\" or \"నన్ను చూడు\" to your pet.", 12.5f, Ui.MUTED), 6)
         }, 12)
 
         add(ui.section("Permissions · అనుమతులు").apply { permissionRows(this) }, 12)

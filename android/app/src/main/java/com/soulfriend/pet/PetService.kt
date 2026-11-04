@@ -57,6 +57,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_VOICE_MODE = "com.soulfriend.pet.VOICE_MODE"
         const val ACTION_DANGER = "com.soulfriend.pet.DANGER"
         const val ACTION_REPLY = "com.soulfriend.pet.REPLY"
+        const val ACTION_LOOK_DONE = "com.soulfriend.pet.LOOK_DONE"
         private const val CHANNEL = "puppy"
     }
 
@@ -139,6 +140,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 else { pet.mood = PuppyView.Mood.HAPPY; showBubble("Okay, I won't look at your screen.", 3000) }
             }
             ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble(PuppyView.hello(pet.kind), 4000) }
+            ACTION_LOOK_DONE -> lookDone(intent.getStringExtra("path"), intent.getStringExtra("ask") ?: "", intent.getBooleanExtra("back", true), intent.getStringExtra("problem") ?: "")
         }
         return START_STICKY
     }
@@ -491,11 +493,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         HandsFree.match(text)?.let { if (handsFree(it)) return }
         if (BuildConfig.HANDS_FREE && Regex("^(reels? mode|hands ?free( mode)?|రీల్స్ మోడ్|హ్యాండ్స్ ఫ్రీ)$", RegexOption.IGNORE_CASE).matches(text.trim().trimEnd('.', '!'))) { startVoiceMode(); return }
         if (ScreenCaptureService.wantsScreen(text)) { readScreen(text); return }
-        if (Regex("^(look at me|can you see me|see me|how do i look|how am i looking|నన్ను చూడు|నన్ను చూడండి|నేను ఎలా ఉన్నాను|nannu chudu)[.!?]*$", RegexOption.IGNORE_CASE).matches(text.trim())) {
-            say(if (isTelugu(text) || store.lang == "te") "👀 కెమెరా తెరుస్తున్నాను…" else "👀 Opening the camera…", PuppyView.Mood.EXCITED, local = true)
-            try { startActivity(Intent(this, MainActivity::class.java).putExtra("mirror", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
-            return
-        }
+        // "look at this shirt", "what's written on this board?", "what colour is my shirt?": the pet looks with the camera itself
+        Eyes.wants(text, lastLook)?.let { l -> lastQuestion = l.ask; look(l); return }
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
         showBubble("“$text”\n…", 0)
@@ -527,17 +526,76 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         lastQuestion = q
         pet.mood = PuppyView.Mood.THINKING
         showBubble((if (screen) "📱 “$ask”" else "📷 “$q”") + "\n…", 0)
-        brain.ask(q, onReply = { json -> handleReply(json) }, onError = { err -> pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }, photo = Pair("image/jpeg", b64))
+        brain.ask(q, onReply = { json -> handleReply(json, fromPhoto = true) }, onError = { err -> pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }, photo = Pair("image/jpeg", b64))
     }
 
-    private fun handleReply(json: JSONObject) {
+    // ---------------- the pet's eyes (the camera) ----------------
+    private var lastLook: Eyes.Look? = null
+    private var lookingSince = 0L
+
+    /** Opens the pet's eyes: a small note at the top, ONE photo from the camera (no camera window), then the AI answers about it. */
+    private fun look(l: Eyes.Look, announce: Boolean = true) {
+        val now = System.currentTimeMillis()
+        if (now - lookingSince < 20_000) return                       // already looking
+        lookingSince = now; lastLook = l
+        closePanel(); closeMsgCard()
+        val te = isTelugu(l.ask) || store.lang == "te"
+        if (announce) say(Eyes.going(l, te), PuppyView.Mood.EXCITED, local = true) else pet.mood = PuppyView.Mood.EXCITED
+        try {
+            startActivity(Intent(this, LookActivity::class.java).putExtra("back", l.back).putExtra("ask", l.ask)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        } catch (e: Exception) {
+            lookingSince = 0; pet.mood = PuppyView.Mood.SAD
+            showBubble(if (te) "ఈ ఫోన్‌లో కెమెరా తెరవలేకపోయాను." else "I couldn't open the camera on this phone.", 5000)
+        }
+    }
+
+    /** The photo is taken (or not): ask the AI about it. Without the AI, the phone reads the English letters on a board by itself. */
+    private fun lookDone(path: String?, ask: String, back: Boolean, problem: String) {
+        lookingSince = 0
+        val f = path?.let { java.io.File(it) }
+        val jpeg = try { f?.readBytes() } catch (e: Exception) { null } finally { try { f?.delete() } catch (e: Exception) { } }
+        if (jpeg == null) {
+            if (problem.isNotBlank()) say(problem, PuppyView.Mood.CONFUSED, local = true)
+            return
+        }
+        val l = Eyes.Look(back, ask, again = lastLook?.let { it.again && it.ask == ask } == true)
+        val te = isTelugu(ask) || store.lang == "te"
+        lastQuestion = ask
+        pet.mood = PuppyView.Mood.THINKING
+        showBubble("👀 “$ask”\n…", 0)
+        brain.ask(Eyes.question(l), onReply = { json -> handleReply(json, fromPhoto = true) }, onError = { err ->
+            if (!back) { pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }
+            else Thread {
+                val letters = EyesOffline.read(jpeg)
+                main.post {
+                    if (letters == null) { pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }
+                    else say((if (te) "నా పెద్ద మెదడు ఇప్పుడు అందుబాటులో లేదు, కానీ ఇక్కడ రాసి ఉన్న ఇంగ్లీష్ అక్షరాలు నేనే చదవగలను: " else "I can't reach my big brain right now, but I can read the letters here myself: ") +
+                        letters.take(600), PuppyView.Mood.THINKING, local = true)
+                }
+            }.start()
+        }, photo = "image/jpeg" to android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP), local = false)
+    }
+
+    /** [fromPhoto]: the answer is about a photo, so it never asks to look again. */
+    private fun handleReply(json: JSONObject, fromPhoto: Boolean = false) {
         val reply = json.optString("reply", "Woof!")
         lastReply = reply
         val done = mutableListOf<String>()
         val arr = json.optJSONArray("actions")
         var replyTo: Pair<Incoming, String>? = null
+        var lookAt: Eyes.Look? = null
+        var screenAsk: String? = null
         if (arr != null) for (i in 0 until arr.length()) {
             val a = arr.optJSONObject(i) ?: continue
+            // the AI wants to see it: open the pet's eyes with the person's own words (so the answer comes in their language)
+            if (a.optString("type") == "look") {
+                if (!fromPhoto && lookAt == null && screenAsk == null) {
+                    val ask = lastQuestion.ifBlank { a.optString("ask") }
+                    if (a.optString("camera") == "screen") screenAsk = ask else lookAt = Eyes.Look(back = a.optString("camera") != "front", ask = ask)
+                }
+                continue
+            }
             // "send Ravi …": if Ravi just messaged, answer right here with one tap (no need to open WhatsApp)
             if (a.optString("type") == "whatsapp" && a.optString("number").isBlank() && replyTo == null) {
                 val m = MessageHub.recentFrom(a.optString("contact"))
@@ -552,6 +610,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val snd = json.optString("sound")
         val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
         say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)
+        lookAt?.let { l -> main.postDelayed({ look(l, announce = false) }, 300) }
+        screenAsk?.let { q -> main.postDelayed({ readScreen(q) }, 1500) }
         replyTo?.let { (m, text) -> openMsgCard(m); msgInput?.setText(text); msgInput?.setSelection(text.length) }
         panelText?.let { if (panel != null && panelContent.isEmpty()) { it.text = reply + extra; panelTools?.visibility = View.VISIBLE } }
     }
