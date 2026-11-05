@@ -42,7 +42,8 @@ class LookActivity : Activity() {
         private const val REQ_CAMERA = 31
         /** When this screen last opened: the pet checks it, because some phones stop apps from opening screens from the background. */
         @Volatile var openedAt = 0L
-        // the usual camera click, so you know the photo is taken and you can lower the phone
+        // the camera click for the back camera only, so you know you can lower the phone
+        // (when the pet looks at YOU it is quiet, like a friend just looking)
         private val shutter by lazy { MediaActionSound().apply { try { load(MediaActionSound.SHUTTER_CLICK) } catch (e: Exception) { } } }
     }
 
@@ -103,7 +104,7 @@ class LookActivity : Activity() {
             }
         })
         if (savedInstanceState != null) { done(null, ""); return }   // Android closed us in between: start again next time
-        if (store.voiceOn) shutter
+        if (store.voiceOn && back) shutter
         if (!store.eyesAsked) consent() else start()
     }
 
@@ -198,7 +199,7 @@ class LookActivity : Activity() {
         cam = null
         if (sent) return
         if (jpeg == null) { done(null, if (te) "కెమెరా వాడలేకపోయాను. వేరే కెమెరా యాప్ మూసి మళ్ళీ అడగండి." else "I couldn't use the camera. Close other camera apps and ask me again."); return }
-        if (store.voiceOn) try { shutter.play(MediaActionSound.SHUTTER_CLICK) } catch (e: Exception) { }
+        if (store.voiceOn && back) try { shutter.play(MediaActionSound.SHUTTER_CLICK) } catch (e: Exception) { }
         note?.text = if (te) "🐾 చూశాను! ఆలోచిస్తున్నాను…" else "🐾 Got it! Thinking…"
         if (coach?.talked == true) petSays(if (te) "సరే, చూశాను!" else "Got it!", "happy")
         Thread {
