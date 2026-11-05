@@ -626,6 +626,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val src = json.optJSONArray("sources")
         if (src != null && src.length() > 0)
             extra += "\n\nSources:\n" + (0 until src.length()).joinToString("\n") { i -> src.optJSONObject(i)?.let { "• " + it.optString("title") + "\n  " + it.optString("url") } ?: "" }
+        // which brain answered, when it wasn't the big AI (shown, not spoken)
+        if (json.optBoolean("own")) extra += "\n\n🧠 " + (if (store.lang == "te") "BigD సొంత మెదడు జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "BigD's own brain answered (the big AI is away right now)")
+        else if (json.optBoolean("learned")) extra += "\n\n📚 " + (if (store.lang == "te") "ముందే సిద్ధం చేసిన జవాబు" else "A prepared answer to a common question")
         val snd = json.optString("sound")
         val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
         say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)

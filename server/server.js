@@ -26,6 +26,9 @@ const DATA_DIR = path.join(__dirname, "data");
 const PUBLIC_DIR = path.join(__dirname, "public");
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const learn = require("./learn.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_MODEL, WEB_SEARCH });
+// learning answers to common questions, and our own brain (an open model on this server) for when Claude can't answer
+const answers = require("./answers.js")({ DATA_DIR, learn });
+const ownBrain = require("./ownbrain.js")({ DATA_DIR, SERVER_DIR: __dirname, learn, answers });
 const files = require("./files.js")({ DATA_DIR });
 const voice = require("./voice.js")({ DATA_DIR });
 const baseUrl = req => (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
@@ -230,12 +233,31 @@ function parsePet(text) {
   return { emotion, reply, actions, ...(sound ? { sound } : {}) };
 }
 
-async function askPet(messages, lang, ctx) {
+// "it", "this", "అది"…: the question needs the conversation, so a prepared answer can't be used for it
+const NEEDS_CONTEXT = /\b(it|this|that|they|them|those|these|he|she|his|her|him|there|again|more|also)\b|అది|ఇది|వాళ్ళు|ఆయన|ఆమె|ఇంకా|మళ్ళీ/i;
+
+/** The pet's answer: a prepared answer to a common question, else Claude (with its backups), else our own brain. */
+async function askPet(messages, lang, ctx, ownOnly = false) {
   const last = messages[messages.length - 1];
   const hasImage = Array.isArray(last.content);
-  const model = pickModel(hasImage ? last.content[1].text : last.content, hasImage);
-  const out = await learn.callClaude({ system: petPrompt(lang, ctx), messages, maxTokens: 6000, model });
-  return { ...parsePet(out.text), sources: out.sources, brain: model === SMART_MODEL ? "smart" : "fast" };
+  if (!hasImage && !NEEDS_CONTEXT.test(last.content)) {
+    const hit = answers.direct(last.content);
+    if (hit) return { emotion: "happy", reply: hit.answer, actions: [], sources: hit.sources, brain: "learned", learned: true };
+  }
+  if (!ownOnly && !(ownBrain.skipClaude() && await ownBrain.ready())) {
+    const model = pickModel(hasImage ? last.content[1].text : last.content, hasImage);
+    try {
+      const out = await learn.callClaude({ system: petPrompt(lang, ctx), messages, maxTokens: 6000, model });
+      ownBrain.claudeWorked();
+      return { ...parsePet(out.text), sources: out.sources, brain: model === SMART_MODEL ? "smart" : "fast" };
+    } catch (e) {
+      ownBrain.claudeFailed(e);
+      if (!(await ownBrain.ready())) throw e;
+      console.error("Claude couldn't answer (" + (e.status || "no connection") + "): our own brain answers");
+    }
+  }
+  const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy);
+  return { ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true };
 }
 
 // ---------- simple per-device rate limit ----------
@@ -376,7 +398,7 @@ const server = http.createServer(async (req, res) => {
   if (await tools(req, res, url, origin)) return;
 
   if (reels.handle(req, res, url)) return;
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), media: media.stats(), reels: reels.stats(), social: social.stats() }, origin);
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), own: ownBrain.quick(), learning: answers.stats(), media: media.stats(), reels: reels.stats(), social: social.stats() }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
@@ -399,8 +421,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/pet") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
-    if (!API_KEY) return send(res, 500, { error: "Server has no API key yet. Add it to the .env file." }, origin);
-    { const lim = dailyCheck(req, "msg"); if (lim) return send(res, 429, { error: lim }, origin); }
+    // no Claude key, or today's AI budget used up: our own brain answers (it costs nothing)
+    let ownOnly = false;
+    if (!API_KEY) { if (await ownBrain.ready()) ownOnly = true; else return send(res, 500, { error: "Server has no API key yet. Add it to the .env file." }, origin); }
+    if (daily.day === today() && daily.total >= DAILY_TOTAL && await ownBrain.ready()) ownOnly = true;
+    else { const lim = dailyCheck(req, "msg"); if (lim) return send(res, 429, { error: lim }, origin); }
     let body;
     try { body = await readBody(req, 8 * 1024 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
     const messages = cleanMessages(body.messages);
@@ -418,9 +443,12 @@ const server = http.createServer(async (req, res) => {
     if (img && typeof img.data === "string" && ["image/jpeg", "image/png", "image/webp"].includes(img.mediaType) && img.data.length < 7_000_000) {
       const last = messages[messages.length - 1];
       last.content = [{ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } }, { type: "text", text: last.content }];
+    } else if (body.learn !== false) {
+      // a general question many people ask gets a prepared answer (only the question is counted, never who asked)
+      answers.note(messages[messages.length - 1].content, String(req.headers["x-device"] || "") || clientIp(req));
     }
     try {
-      const out = await askPet(messages, lang, ctx);
+      const out = await askPet(messages, lang, ctx, ownOnly);
       { // it has seen the photo already: only "look again" (after telling them how to hold the phone), and only for photos its own eyes took
         const last = messages[messages.length - 1].content;
         if (Array.isArray(last)) { const eyes = /^\[Your eyes/.test(String((last[1] && last[1].text) || "")); out.actions = (out.actions || []).filter(a => a.type !== "look" || (eyes && a.again === true)); }
@@ -480,6 +508,8 @@ const server = http.createServer(async (req, res) => {
     if (!teachAllowed(req)) return send(res, 401, { error: "Wrong password." });
     try {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
+      // our own brain and the answers learned from common questions
+      if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list() });
       if (req.method === "GET" && url.pathname === "/api/teach/feedback") {
         let lines = [];
         try { lines = fs.readFileSync(path.join(DATA_DIR, "feedback.jsonl"), "utf8").trim().split("\n").filter(Boolean).slice(-200).map(l => JSON.parse(l)).reverse(); } catch (e) { }
@@ -488,6 +518,17 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "POST") {
         const body = await readBody(req, 30 * 1024 * 1024);
         if (url.pathname === "/api/teach/delete") return send(res, 200, { ok: learn.removeKnowledge(String(body.id || "")) });
+        if (url.pathname === "/api/teach/brain/install") return send(res, 200, ownBrain.install());
+        if (url.pathname === "/api/teach/brain/test") {
+          const q = String(body.q || "").trim().slice(0, 500);
+          if (!q) return send(res, 400, { error: "Type a question first." });
+          const t0 = Date.now();
+          const out = await ownBrain.pet([{ role: "user", content: q }], "auto", { now: new Date().toISOString(), tz: "Asia/Kolkata", memories: [] }, PETS.puppy);
+          return send(res, 200, { ...parsePet(out.text), seconds: Math.round((Date.now() - t0) / 100) / 10 });
+        }
+        if (url.pathname === "/api/teach/learned/delete") return send(res, 200, { ok: answers.remove(String(body.id || "")) });
+        if (url.pathname === "/api/teach/questions/forget") return send(res, 200, { ok: answers.forget(String(body.key || "")) });
+        if (url.pathname === "/api/teach/learned/prepare") return send(res, 200, await answers.prepare());
         if (url.pathname === "/api/teach/text") {
           const text = String(body.text || "").trim();
           if (text.length < 10) return send(res, 400, { error: "Write or paste some text first." });

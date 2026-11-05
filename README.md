@@ -10,7 +10,12 @@ Soul Friend (ఆత్మ మిత్రుడు) is a cartoon puppy that floa
   - It searches the internet for news, prices and results.
   - It answers from files you teach it on the owner-only Teach page.
   - It remembers each user (saved on that user's phone).
-  - It reads photos you show it.
+  - It reads photos you show it, and it can look through the camera when you ask ("what's written on this board?").
+- **Never without a brain:**
+  - Claude answers first. If Claude is busy, a second Claude model tries, then Gemini (if `GEMINI_API_KEY` is set).
+  - If none of them can answer, **our own brain** answers: a free, open AI model (Google Gemma) that runs on your own server with Ollama. It reads the news, Wikipedia, the weather and your Teach page first. It also answers when there is no Claude key or the day's budget is used up.
+  - Common questions many people ask get a prepared answer at night, which is used at once next time (see the Teach page).
+  - The phone's small built-in brain still sets reminders, alarms and timers, calls family and opens apps with no internet at all.
 
 ## Folders
 
@@ -18,7 +23,9 @@ Soul Friend (ఆత్మ మిత్రుడు) is a cartoon puppy that floa
   - `server.js` is the main server. `learn.js` handles teaching, knowledge and internet search. No extra packages are needed, only Node.js 20+.
   - `setup.sh` is the one-time setup. Run it with `bash setup.sh yourdomain.com`.
   - `.env.example` holds the settings: API key, `TEACH_PASSWORD`, `WEB_SEARCH`. Copy it to `.env`.
-  - `public/teach.html` is the Teach page (`https://yourdomain/teach`).
+  - `public/teach.html` is the Teach page (`https://yourdomain/teach`). It also shows our own brain and the learned answers.
+  - `ownbrain.js` is our own brain (an open model run by Ollama on this server). `brain-setup.sh` installs it, choosing a model that fits the server's memory. The server runs it by itself once after an update; you can also run `true; /root/Big.D/server/brain-setup.sh` or press the button on the Teach page. Turn it off with `OWN_BRAIN=off` in `.env`.
+  - `answers.js` learns answers to common questions (only general questions, never who asked). Turn it off with `LEARN_QUESTIONS=off`.
   - `public/privacy.html` is the privacy policy. Fill in the [BRACKETS].
 - `android/` is the Android app (Kotlin, no extra libraries). Open it in Android Studio, or upload it to GitHub to build automatically.
   - `app/src/main/java/com/soulfriend/pet/Store.kt` holds `DEFAULT_SERVER`. Put your server address there, or type it in the app.

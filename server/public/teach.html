@@ -32,6 +32,8 @@ li div{flex:1;min-width:0}
 li b{display:block;overflow-wrap:anywhere}
 li small{color:var(--muted)}
 [hidden]{display:none!important}
+pre{white-space:pre-wrap;font-size:12px;background:var(--bg);border-radius:10px;padding:10px;max-height:220px;overflow:auto;margin:10px 0 0}
+li .ans{font-size:14px;margin:2px 0}
 </style>
 </head>
 <body>
@@ -78,6 +80,30 @@ li small{color:var(--muted)}
     </section>
 
     <section class="card">
+      <h2>🧠 Our own brain · సొంత మెదడు</h2>
+      <p class="hint">A free, open AI model (Google Gemma) that runs on this server. It answers when Claude can't: Claude is down, there is no key, or today's budget is used up. It reads the news, Wikipedia, the weather and what you teach here before answering. ఇది మన సర్వర్‌లోనే ఉండే సొంత మెదడు, ఏ కంపెనీ మీదా ఆధారపడదు.</p>
+      <p id="brainState" class="msg"></p>
+      <button id="brainInstall" type="button">Install our own brain</button>
+      <pre id="brainLog" hidden></pre>
+      <label for="brainQ">Test it</label>
+      <input id="brainQ" placeholder="Ask it something, e.g. What is PM Kisan?">
+      <button id="brainAsk" type="button" class="ghost" style="margin-top:10px">Ask our own brain</button>
+      <p id="brainMsg" class="msg"></p>
+    </section>
+
+    <section class="card">
+      <h2>📚 Learned answers · నేర్చుకున్న జవాబులు</h2>
+      <p class="hint">When <span id="minPeople">3</span> or more different people ask the same general question, an answer is prepared at night (with Claude and the internet) and kept here. The same question is then answered at once, and our own brain uses it when Claude can't answer. Only the question is counted, never who asked; questions about a person, about today, or with long numbers are never kept. Delete any answer you don't like.</p>
+      <ul id="learned"></ul>
+      <p class="hint" id="learnedEmpty">No learned answers yet.</p>
+      <button id="prepare" type="button" class="ghost">Prepare answers now</button>
+      <p id="prepMsg" class="msg"></p>
+      <h2 style="margin-top:18px">Common questions</h2>
+      <ul id="questions"></ul>
+      <p class="hint" id="qEmpty">No common questions yet.</p>
+    </section>
+
+    <section class="card">
       <h2>What the puppy knows</h2>
       <ul id="list"></ul>
       <p class="hint" id="empty">Nothing yet. Add your first file above.</p>
@@ -121,8 +147,70 @@ async function loadFeedback() {
   }
 }
 
+function row(title, text, small, buttonText, onClick) {
+  const li = document.createElement("li");
+  const d = document.createElement("div");
+  const b = document.createElement("b"); b.textContent = title;
+  d.append(b);
+  if (text) { const t = document.createElement("div"); t.className = "ans"; t.textContent = text; d.append(t); }
+  const s = document.createElement("small"); s.textContent = small; d.append(s);
+  li.append(d);
+  if (buttonText) {
+    const del = document.createElement("button"); del.className = "ghost"; del.type = "button"; del.textContent = buttonText;
+    del.onclick = async () => {
+      if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "Tap again"; return; }
+      try { await onClick(); loadBrain(); } catch (e) { del.textContent = "Couldn't do it"; }
+    };
+    li.append(del);
+  }
+  return li;
+}
+
+let brainTimer = 0;
+async function loadBrain() {
+  const { brain, learning } = await api("brain");
+  const st = $("brainState");
+  if (brain.ready) say(st, `✓ Ready: ${brain.model}${brain.vision ? " (it can also look at photos)" : ""}. Answered ${brain.answered} times since the server started${brain.lastSeconds ? ", the last one in " + brain.lastSeconds + " seconds" : ""}.${brain.claudeResting ? " Claude is down right now, so it is answering everyone." : ""}`, true);
+  else if (brain.installing) say(st, "Installing… this can take 10 to 40 minutes (a few GB to download). You can close this page.", true);
+  else if (brain.installed) say(st, `Installed (${brain.model}) but not running right now. Press the button to repair it.`, false);
+  else say(st, "Not installed yet. It needs a server with at least 4 GB memory (8 GB or more is better).", false);
+  $("brainInstall").textContent = brain.installed ? "Update / repair our own brain" : "Install our own brain";
+  $("brainInstall").disabled = !!brain.installing;
+  $("brainLog").hidden = !brain.log; $("brainLog").textContent = brain.log || "";
+  clearTimeout(brainTimer);
+  if (brain.installing) brainTimer = setTimeout(() => loadBrain().catch(() => {}), 5000);
+
+  $("minPeople").textContent = learning.minPeople;
+  const ul = $("learned"); ul.textContent = "";
+  $("learnedEmpty").hidden = learning.learned.length > 0;
+  for (const a of learning.learned) ul.append(row(a.q, a.answer, `used ${a.uses || 0} times · prepared ${new Date(a.at).toLocaleDateString()} · ${a.lang === "te" ? "Telugu" : "English"}`, "Delete", () => api("learned/delete", { id: a.id })));
+  const qu = $("questions"); qu.textContent = "";
+  $("qEmpty").hidden = learning.questions.length > 0;
+  for (const q of learning.questions) qu.append(row(q.q, "", `${q.people} ${q.people === 1 ? "person" : "people"} · asked ${q.times} times${q.skipped ? " · no general answer (it depends on the person or the day)" : ""}`, "Forget", () => api("questions/forget", { key: q.key })));
+}
+$("brainInstall").onclick = async () => {
+  $("brainInstall").disabled = true;
+  try { await api("brain/install", {}); } catch (e) { say($("brainState"), e.message, false); }
+  loadBrain().catch(() => {});
+};
+$("brainAsk").onclick = async () => {
+  const q = $("brainQ").value.trim();
+  if (!q) { say($("brainMsg"), "Type a question first.", false); return; }
+  $("brainAsk").disabled = true; say($("brainMsg"), "Thinking… on this server it can take 10 to 60 seconds.", true);
+  try { const a = await api("brain/test", { q }); say($("brainMsg"), `${a.reply}  (${a.seconds} seconds)`, true); }
+  catch (e) { say($("brainMsg"), e.message, false); }
+  finally { $("brainAsk").disabled = false; }
+};
+$("prepare").onclick = async () => {
+  $("prepare").disabled = true; say($("prepMsg"), "Preparing… this can take a few minutes.", true);
+  try { const r = await api("learned/prepare", {}); say($("prepMsg"), r.made ? `Prepared ${r.made} new answers.` : "Nothing new to prepare yet.", true); loadBrain(); }
+  catch (e) { say($("prepMsg"), e.message, false); }
+  finally { $("prepare").disabled = false; }
+};
+
 async function refresh() {
   loadFeedback().catch(() => {});
+  loadBrain().catch(() => {});
   const { items } = await api("list");
   const ul = $("list"); ul.textContent = "";
   $("empty").hidden = items.length > 0;

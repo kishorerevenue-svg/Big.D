@@ -80,6 +80,10 @@ class Store(context: Context) {
     var mirrorAsked: Boolean
         get() = p.getBoolean("mirrorAsked", false)
         set(v) { p.edit().putBoolean("mirrorAsked", v).apply() }
+    /** General questions may be counted (anonymously) so common ones get a prepared answer. On unless turned off. */
+    var learnShare: Boolean
+        get() = p.getBoolean("learnShare", true)
+        set(v) { p.edit().putBoolean("learnShare", v).apply() }
     /** The person said yes to "Can I use the camera as my eyes?" (the pet looks only when asked). */
     var eyesAsked: Boolean
         get() = p.getBoolean("eyesAsked", false)

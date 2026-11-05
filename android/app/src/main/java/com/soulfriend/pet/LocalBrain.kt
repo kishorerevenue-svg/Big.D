@@ -32,20 +32,27 @@ object LocalBrain {
 
     /** The answer, or null when this small brain doesn't understand. */
     fun answer(ctx: Context, store: Store, input: String, now: LocalDateTime = LocalDateTime.now()): JSONObject? =
-        answerWith(Facts(store.lang, { store.family() }, { store.todos() }, { store.reminders() }, {
-            val bm = ctx.getSystemService(BatteryManager::class.java)
-            bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }?.let { it to bm.isCharging }
-        }), input, now)
+        answerWith(facts(ctx, store), input, now)
 
-    internal fun answerWith(f: Facts, input: String, now: LocalDateTime): JSONObject? {
+    private fun facts(ctx: Context, store: Store) = Facts(store.lang, { store.family() }, { store.todos() }, { store.reminders() }, {
+        val bm = ctx.getSystemService(BatteryManager::class.java)
+        bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }?.let { it to bm.isCharging }
+    })
+
+    internal fun answerWith(f: Facts, input: String, now: LocalDateTime, chatToo: Boolean = true): JSONObject? {
         val raw = input.trim()
         if (raw.isEmpty() || raw.length > 600) return null
         val te = TELUGU.containsMatchIn(raw) || f.lang == "te"
         val t = clean(raw)
         if (t.isEmpty()) return null
-        val out = understand(f, t, te, now) ?: return null
-        return out.put("reply", out.optString("reply") + noteOnce(te)).put("offline", true)
+        val out = understand(f, t, te, now, chatToo) ?: return null
+        return if (!chatToo) out else out.put("reply", out.optString("reply") + noteOnce(te)).put("offline", true)
     }
+
+    /** Only the things the phone itself does (reminders, alarms, timers, calls, apps, lists, time, battery, sums, fraud check):
+     *  used when the server's own brain answered, which can talk but can't set an alarm. null for everything else. */
+    fun device(ctx: Context, store: Store, input: String, now: LocalDateTime = LocalDateTime.now()): JSONObject? =
+        answerWith(facts(ctx, store), input, now, chatToo = false)
 
     /** Now and then (at most every 10 minutes), say why the answers are simpler than usual. */
     fun noteOnce(te: Boolean): String {
@@ -62,10 +69,10 @@ object LocalBrain {
     else "Even without the AI I can: set reminders, alarms and timers, call your family, open apps, add to your list, tell the time and date, do sums and check a message for fraud."
 
     // ---------------------------------------------------------------------------------------------
-    private fun understand(f: Facts, t: String, te: Boolean, now: LocalDateTime): JSONObject? =
+    private fun understand(f: Facts, t: String, te: Boolean, now: LocalDateTime, chatToo: Boolean = true): JSONObject? =
         emergency(t, te) ?: timeOrDate(t, te, now) ?: battery(f, t, te) ?: timer(t, te) ?: alarm(t, te, now)
             ?: reminder(t, te, now) ?: lists(f, t, te) ?: noteOrRemember(t, te) ?: call(f, t, te)
-            ?: openApp(t, te) ?: sums(t, te) ?: fraud(t, te) ?: chat(t, te)
+            ?: openApp(t, te) ?: sums(t, te) ?: fraud(t, te) ?: (if (chatToo) chat(t, te) else null)
 
     private fun clean(s: String): String {
         // the case is kept (so "Call Ravi" stays "Ravi"); every pattern below ignores case

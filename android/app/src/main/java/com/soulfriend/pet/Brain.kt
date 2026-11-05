@@ -33,6 +33,7 @@ class Brain(private val store: Store) {
             .put("tz", ZoneId.systemDefault().id)
             .put("todos", todos).put("notes", notes)
             .put("memories", JSONArray().also { a -> store.memories().forEach { a.put(it) } })
+            .put("learn", store.learnShare)
         if (photo != null) body.put("image", JSONObject().put("mediaType", photo.first).put("data", photo.second))
         val server = store.server
         if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) {
@@ -48,11 +49,13 @@ class Brain(private val store: Store) {
                     history.removeAt(history.lastIndex)
                     onError("That server address is not a BigD AI server. Check the address in the BigD AI app.")
                 } else if (code in 200..299) {
-                    val reply = json.optString("reply", "Woof!")
                     main.post {
+                        // the server's own brain answered (the big AI is away): reminders, alarms, calls and apps are still
+                        // done by the phone's small brain, which knows how; everything else is the own brain's answer
+                        val j = if (json.optBoolean("own") && photo == null) (try { LocalBrain.device(store.ctx, store, text) } catch (e: Exception) { null }) ?: json else json
                         if (photo != null) history[history.lastIndex] = JSONObject().put("role", "user").put("content", "[I showed you a photo] $text")
-                        history.add(JSONObject().put("role", "assistant").put("content", reply))
-                        onReply(json)
+                        history.add(JSONObject().put("role", "assistant").put("content", j.optString("reply", "Woof!")))
+                        onReply(j)
                     }
                 } else main.post {
                     history.removeAt(history.lastIndex)
@@ -163,7 +166,7 @@ class Brain(private val store: Store) {
 
     private fun post(url: String, body: String): Pair<Int, String> {
         val c = URL(url).openConnection() as HttpURLConnection
-        c.requestMethod = "POST"; c.connectTimeout = 15_000; c.readTimeout = 60_000; c.doOutput = true
+        c.requestMethod = "POST"; c.connectTimeout = 15_000; c.readTimeout = 95_000; c.doOutput = true   // the server's own brain can take a while
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         c.setRequestProperty("X-Device", store.deviceId)
         c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
