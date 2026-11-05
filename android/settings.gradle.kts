@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "SoulFriend"
 include(":app")
+include(":brain")   // BigD Brain: the optional tiny brain for no internet (a separate app)

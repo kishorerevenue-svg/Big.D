@@ -27,11 +27,15 @@ module.exports = function makeAppUpdate({ REPO_DIR }) {
       if (!res.ok) throw new Error("GitHub said " + res.status);
       const list = await res.json();
       const rel = (Array.isArray(list) ? list : []).find(x => !x.draft && !x.prerelease && /^lite-v/.test(x.tag_name || ""));
-      const apk = rel && (rel.assets || []).find(a => /\.apk$/i.test(a.name || ""));
+      const apk = rel && (rel.assets || []).find(a => /lite.*\.apk$/i.test(a.name || ""));
+      // the tiny brain app (BigD Brain) from the newest release that has it
+      const withBrain = (Array.isArray(list) ? list : []).find(x => !x.draft && /^lite-v/.test(x.tag_name || "") && (x.assets || []).some(a => /brain.*\.apk$/i.test(a.name || "")));
+      const brain = withBrain && withBrain.assets.find(a => /brain.*\.apk$/i.test(a.name || ""));
       const data = apk ? {
         versionCode: Number((String(rel.tag_name).match(/(\d+)$/) || [])[1] || 0),
         versionName: String(rel.tag_name).replace(/^lite-v/, "") + "-lite",
-        url: apk.browser_download_url, size: apk.size, notes: String(rel.body || "").slice(0, 500), at: rel.published_at
+        url: apk.browser_download_url, size: apk.size, notes: String(rel.body || "").slice(0, 500), at: rel.published_at,
+        ...(brain ? { brainUrl: brain.browser_download_url, brainSize: brain.size } : {})
       } : null;
       cache = { at: Date.now(), data };
       return data;

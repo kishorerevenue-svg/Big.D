@@ -25,7 +25,7 @@ jobs:
       - name: Build the test apps (Lite and Full)
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew :app:assembleDebug --no-daemon
       - name: Build the phone APKs and Play Store AAB (signed with your stamp)
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
@@ -38,6 +38,17 @@ jobs:
           cp app/build/outputs/apk/lite/release/app-lite-release.apk app/build/outputs/apk/lite/release/BigD-AI-Lite.apk
           cp app/build/outputs/apk/full/release/app-full-release.apk app/build/outputs/apk/full/release/BigD-AI-Full.apk
           cp app/build/outputs/apk/plus/release/app-plus-release.apk app/build/outputs/apk/plus/release/BigD-AI-Plus.apk
+      # BigD Brain: the optional tiny brain for no internet (a separate app, 64-bit phones). If it can't be built,
+      # everything else still goes out.
+      - name: Build BigD Brain (the tiny brain for no internet)
+        continue-on-error: true
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "No KEYSTORE_BASE64 secret yet, skipping."; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export KEYSTORE_FILE="$RUNNER_TEMP/upload.jks"
+          ./gradlew :brain:assembleRelease --no-daemon
+          cp brain/build/outputs/apk/release/brain-release.apk brain/build/outputs/apk/release/BigD-Brain.apk
+          ls -la brain/build/outputs/apk/release/BigD-Brain.apk
       # Stops the build if the Lite APK ever gets one of the four permissions that make
       # Play Protect block sideloaded apps in India (SMS reading, notification access, Accessibility).
       - name: Check the Lite APK is safe to share on WhatsApp
@@ -86,7 +97,9 @@ jobs:
           if [ ! -f "$lite" ]; then echo "No signed Lite APK, nothing to publish."; exit 0; fi
           tag="lite-v1.0.$VERSION_CODE"
           git log -1 --pretty=%s > "$RUNNER_TEMP/notes.txt"
-          gh release create "$tag" "$lite" --title "BigD AI Lite 1.0.$VERSION_CODE" --notes-file "$RUNNER_TEMP/notes.txt" --latest
+          brain=brain/build/outputs/apk/release/BigD-Brain.apk
+          files="$lite"; [ -f "$brain" ] && files="$lite $brain"
+          gh release create "$tag" $files --title "BigD AI Lite 1.0.$VERSION_CODE" --notes-file "$RUNNER_TEMP/notes.txt" --latest
           echo "::notice title=Download::https://github.com/${{ github.repository }}/releases/download/$tag/BigD-AI-Lite.apk"
           # keep only the 5 newest Lite downloads
           gh release list --limit 100 --json tagName --jq '.[].tagName' | grep '^lite-v' | tail -n +6 | while read -r old; do
@@ -98,6 +111,12 @@ jobs:
         with:
           name: bigd-ai-lite-apk
           path: android/app/build/outputs/apk/lite/release/BigD-AI-Lite.apk
+      # BigD Brain: the optional tiny brain (works with BigD AI Lite).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bigd-brain-apk
+          path: android/brain/build/outputs/apk/release/BigD-Brain.apk
+          if-no-files-found: ignore
       # Full: every feature, for your own testing. Play Protect blocks it when it is opened from WhatsApp.
       - uses: actions/upload-artifact@v4
         with:

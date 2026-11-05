@@ -629,6 +629,18 @@ class MainActivity : Activity() {
         if (BuildConfig.HANDS_FREE) add(handsFreeCard(), 12)
         add(briefingCard(), 12)
 
+        // the tiny brain for no internet (BigD AI Lite: a separate, optional app)
+        if (BuildConfig.SELF_UPDATE) add(ui.section("📴 Tiny brain for no internet", "An optional small AI that runs on this phone, so your pet can still talk when there is no internet at all. " +
+            "It is a separate app, BigD Brain. It needs a 64-bit phone with about 6 GB memory, and the brain is about 2.6 GB (downloaded once, over Wi-Fi). Nothing you ask it leaves the phone.").apply {
+            if (TinyBrain.installed(this@MainActivity)) {
+                put(ui.text("✓ BigD Brain is installed. Open it to download the brain or try it.", 13.5f, Ui.TEAL_DARK), 6)
+                put(ui.row(ui.button("🧠 Open BigD Brain", "primary") { leavingForSystemScreen = true; TinyBrain.open(this@MainActivity, store) }), 10)
+            } else put(ui.row(ui.button("⬇ Get BigD Brain", "primary") {
+                leavingForSystemScreen = true
+                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(store.server + "/download/brain"))) } catch (e: Exception) { }
+            }), 10)
+        }, 12)
+
         add(ui.section("Privacy", "Useful for office files. Photos are sent as they are.").apply {
             put(ui.check("Hide personal details before sending (Aadhaar, phone and PAN numbers become XXXX…1234)", store.hidePersonal) { store.hidePersonal = it }, 8)
             put(ui.check("Help BigD learn common questions: general questions like \"What is PM Kisan?\" are counted, never who asked, and never questions about you", store.learnShare) { store.learnShare = it }, 8)

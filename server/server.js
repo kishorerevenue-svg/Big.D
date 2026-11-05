@@ -404,11 +404,17 @@ const server = http.createServer(async (req, res) => {
     const l = await appUpdate.latest();
     return send(res, l ? 200 : 404, l || { error: "No download is published yet." }, origin);
   }
-  if (req.method === "GET" && (url.pathname === "/download" || url.pathname === "/download/lite")) {
+  if (req.method === "GET" && (url.pathname === "/download" || url.pathname === "/download/lite" || url.pathname === "/download/brain")) {
     const l = await appUpdate.latest();
-    if (!l) return send(res, 404, { error: "No download is published yet." }, origin);
-    res.writeHead(302, { location: l.url, "cache-control": "no-store" });
+    const to = l && (url.pathname === "/download/brain" ? l.brainUrl : l.url);
+    if (!to) return send(res, 404, { error: "No download is published yet." }, origin);
+    res.writeHead(302, { location: to, "cache-control": "no-store" });
     return res.end();
+  }
+  // where BigD Brain (the tiny brain on the phone) downloads its model from; the owner can name another place
+  if (req.method === "GET" && url.pathname === "/brain/phone") {
+    return send(res, 200, { url: process.env.PHONE_BRAIN_URL || "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
+      name: "gemma-4-E2B-it.litertlm", sizeMb: 2600, licence: "Apache 2.0 (Google Gemma 4)" }, origin);
   }
   if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), own: ownBrain.quick(), learning: answers.stats(), media: media.stats(), reels: reels.stats(), social: social.stats() }, origin);
 

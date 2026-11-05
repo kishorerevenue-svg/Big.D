@@ -629,6 +629,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         // which brain answered, when it wasn't the big AI (shown, not spoken)
         if (json.optBoolean("own")) extra += "\n\n🧠 " + (if (store.lang == "te") "BigD సొంత మెదడు జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "BigD's own brain answered (the big AI is away right now)")
         else if (json.optBoolean("learned")) extra += "\n\n📚 " + (if (store.lang == "te") "ముందే సిద్ధం చేసిన జవాబు" else "A prepared answer to a common question")
+        else if (json.optBoolean("tiny")) extra += "\n\n📴 " + (if (store.lang == "te") "ఇంటర్నెట్ లేదు, ఫోన్‌లోని చిన్న మెదడు జవాబిచ్చింది" else "No internet: the tiny brain on this phone answered")
         val snd = json.optString("sound")
         val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
         say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)

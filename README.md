@@ -16,6 +16,7 @@ Soul Friend (ఆత్మ మిత్రుడు) is a cartoon puppy that floa
   - If none of them can answer, **our own brain** answers: a free, open AI model (Google Gemma) that runs on your own server with Ollama. It reads the news, Wikipedia, the weather and your Teach page first. It also answers when there is no Claude key or the day's budget is used up.
   - Common questions many people ask get a prepared answer at night, which is used at once next time (see the Teach page).
   - The phone's small built-in brain still sets reminders, alarms and timers, calls family and opens apps with no internet at all.
+  - With no internet at all, the optional **BigD Brain** app (a tiny brain on the phone: Google's Gemma 4 E2B, run with LiteRT-LM) can talk too. It is a separate app so BigD AI stays small and installs on every phone; it needs a 64-bit phone with about 6 GB memory, and downloads its 2.6 GB model once.
 
 ## Folders
 
@@ -36,6 +37,7 @@ Soul Friend (ఆత్మ మిత్రుడు) is a cartoon puppy that floa
     - **Lite** (`BigD-AI-Lite.apk`, named "BigD AI Lite" on the phone): everything except "Reply to messages". Share this one on WhatsApp or a website.
     - **Full** (`BigD-AI-Full.apk` and the Play Store AAB): every feature. Upload the AAB to the Play Store.
     - Why: "Reply to messages" needs notification access. In India, Play Protect blocks any APK with notification access when it is installed from WhatsApp, a browser or a file manager. Apps from the Play Store are not blocked.
+- `android/brain/` is BigD Brain, the optional tiny brain app (64-bit phones). Only apps signed with the same stamp can ask it. Its model comes from Hugging Face, or from `PHONE_BRAIN_URL` in the server's `.env`. `https://yourdomain/download/brain` gives the newest one.
 - `store-images/` has the Play Store icon (512×512) and feature graphic (1024×500).
 
 The step-by-step guide is in the "Soul Friend App Launch Guide" doc shared in the chat.

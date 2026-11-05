@@ -75,13 +75,31 @@ class Brain(private val store: Store) {
     /** The AI couldn't answer: the phone's own small brain tries (reminders, alarms, calls, apps, time, sums…),
      *  then the phone reads the internet by itself (weather, news, Wikipedia). [fail] runs when neither can help. */
     private fun offline(text: String, onReply: (JSONObject) -> Unit, fail: () -> Unit) {
-        val j = try { LocalBrain.answer(store.ctx, store, text) } catch (e: Exception) { null }
-        if (j != null) { keep(text, j); onReply(j); return }
+        val give = { j: JSONObject -> keep(text, j); onReply(j) }
+        // reminders, alarms, calls, apps, time, sums, fraud check: the phone's small brain does these itself
+        val dev = try { LocalBrain.device(store.ctx, store, text) } catch (e: Exception) { null }
+        if (dev != null) { give(dev); return }
         pool.execute {
-            val w = try { LocalWeb.answer(store.ctx, store, text) } catch (e: Exception) { null }
-            main.post { if (w != null) { keep(text, w); onReply(w) } else fail() }
+            // the internet may still be there (only the server is away): weather, news, Wikipedia
+            val w = if (online()) (try { LocalWeb.answer(store.ctx, store, text) } catch (e: Exception) { null }) else null
+            main.post {
+                val small = { (try { LocalBrain.answer(store.ctx, store, text) } catch (e: Exception) { null })?.let(give) ?: fail() }
+                when {
+                    w != null -> give(w)
+                    // no internet at all: the tiny brain on the phone talks (BigD Brain app, if it's there)
+                    TinyBrain.installed(store.ctx) -> TinyBrain.ask(store.ctx, TinyBrain.system(store), text) { t ->
+                        if (t == null) small() else give(JSONObject().put("reply", t).put("emotion", "happy").put("actions", JSONArray()).put("tiny", true))
+                    }
+                    else -> small()
+                }
+            }
         }
     }
+
+    private fun online(): Boolean = try {
+        val cm = store.ctx.getSystemService(android.net.ConnectivityManager::class.java)
+        cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    } catch (e: Exception) { true }
 
     private fun keep(text: String, j: JSONObject) {
         history.add(JSONObject().put("role", "user").put("content", Privacy.maybe(store, text)))

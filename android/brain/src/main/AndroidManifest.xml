@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Only apps with the same stamp (BigD AI) may ask this brain. BigD AI defines it too, so the order you install them doesn't matter. -->
+    <permission
+        android:name="com.kishore.bigd.permission.TINY_BRAIN"
+        android:label="Ask BigD's tiny brain"
+        android:protectionLevel="signature" />
+
+    <uses-permission android:name="com.kishore.bigd.permission.TINY_BRAIN" />
+    <!-- only to download the model, when you press Download -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+        <!-- faster answers on phones whose graphics chip can run it -->
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+
+        <activity
+            android:name=".BrainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".BrainService"
+            android:exported="true"
+            android:permission="com.kishore.bigd.permission.TINY_BRAIN" />
+
+        <receiver
+            android:name=".DownloadDone"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
