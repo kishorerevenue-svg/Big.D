@@ -80,6 +80,26 @@ class Store(context: Context) {
     var mirrorAsked: Boolean
         get() = p.getBoolean("mirrorAsked", false)
         set(v) { p.edit().putBoolean("mirrorAsked", v).apply() }
+    // one-tap updates (Lite): the newest version the server told us about
+    var updateCheckedAt: Long
+        get() = p.getLong("updateCheckedAt", 0L)
+        set(v) { p.edit().putLong("updateCheckedAt", v).apply() }
+    var updateCode: Int
+        get() = p.getInt("updateCode", 0)
+        set(v) { p.edit().putInt("updateCode", v).apply() }
+    var updateName: String
+        get() = p.getString("updateName", "") ?: ""
+        set(v) { p.edit().putString("updateName", v).apply() }
+    var updateNotes: String
+        get() = p.getString("updateNotes", "") ?: ""
+        set(v) { p.edit().putString("updateNotes", v).apply() }
+    var updateMb: Int
+        get() = p.getInt("updateMb", 0)
+        set(v) { p.edit().putInt("updateMb", v).apply() }
+    /** "Later" on the update card: hidden for this version until this time. */
+    var updateLaterUntil: Long
+        get() = p.getLong("updateLaterUntil", 0L)
+        set(v) { p.edit().putLong("updateLaterUntil", v).apply() }
     /** General questions may be counted (anonymously) so common ones get a prepared answer. On unless turned off. */
     var learnShare: Boolean
         get() = p.getBoolean("learnShare", true)

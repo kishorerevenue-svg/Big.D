@@ -37,6 +37,7 @@ android {
             buildConfigField("boolean", "MESSAGE_REPLIES", "true")
             buildConfigField("boolean", "HANDS_FREE", "false")
             buildConfigField("boolean", "AUTO_CARDS", "false")   // Play Store: you choose the pictures (Google Play's photo rules)
+            buildConfigField("boolean", "SELF_UPDATE", "false")  // Play Store editions are updated by the Play Store
         }
         create("plus") {
             dimension = "edition"
@@ -44,6 +45,7 @@ android {
             buildConfigField("boolean", "MESSAGE_REPLIES", "true")
             buildConfigField("boolean", "HANDS_FREE", "true")
             buildConfigField("boolean", "AUTO_CARDS", "false")
+            buildConfigField("boolean", "SELF_UPDATE", "false")
         }
         create("lite") {
             dimension = "edition"
@@ -52,6 +54,7 @@ android {
             buildConfigField("boolean", "MESSAGE_REPLIES", "false")
             buildConfigField("boolean", "HANDS_FREE", "false")
             buildConfigField("boolean", "AUTO_CARDS", "true")    // finds cards in the screenshots by itself (not from the Play Store)
+            buildConfigField("boolean", "SELF_UPDATE", "true")   // shared on WhatsApp: tells you when a new version is ready
         }
     }
 

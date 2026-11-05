@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write      # to publish the Lite APK as a public download (one-tap updates)
     defaults:
       run:
         working-directory: android
@@ -73,6 +75,23 @@ jobs:
           else
             echo "::warning title=BigD-AI-Full.apk::Reply to messages (notification access) is missing."
           fi
+      # One-tap updates: each Lite build from the main branch becomes a public download (a GitHub release).
+      # The app asks the server (bigdai.tech/app/latest) for it, and bigdai.tech/download always gives the newest.
+      - name: Publish the Lite APK for one-tap updates
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          lite=app/build/outputs/apk/lite/release/BigD-AI-Lite.apk
+          if [ ! -f "$lite" ]; then echo "No signed Lite APK, nothing to publish."; exit 0; fi
+          tag="lite-v1.0.$VERSION_CODE"
+          git log -1 --pretty=%s > "$RUNNER_TEMP/notes.txt"
+          gh release create "$tag" "$lite" --title "BigD AI Lite 1.0.$VERSION_CODE" --notes-file "$RUNNER_TEMP/notes.txt" --latest
+          echo "::notice title=Download::https://github.com/${{ github.repository }}/releases/download/$tag/BigD-AI-Lite.apk"
+          # keep only the 5 newest Lite downloads
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | grep '^lite-v' | tail -n +6 | while read -r old; do
+            gh release delete "$old" --cleanup-tag --yes || true
+          done
       # Same stamp every time, so each new APK installs over the old one.
       # Lite: share this one on WhatsApp. It has no "Reply to messages", so Play Protect lets it install.
       - uses: actions/upload-artifact@v4

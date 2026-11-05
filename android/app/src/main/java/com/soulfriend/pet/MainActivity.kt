@@ -229,6 +229,8 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume(); resumedNow = true; leavingForSystemScreen = false; render()
         if (BuildConfig.AUTO_CARDS && store.autoCards && AutoCards.allowed(this)) AutoCards.schedule(this)
+        // a new version out? (BigD AI Lite asks the server at most every 6 hours; the card appears on Home)
+        if (BuildConfig.SELF_UPDATE) { val had = Updates.waiting(store)?.code; Updates.check(store) { info -> if (info != null && info.code != had && tab == "home" && !isFinishing) render() } }
         if (store.onboarded) {
             if (pendingMirror) { pendingMirror = false; content.postDelayed({ lookAtMe(false) }, 500) }
             else if (store.mirrorOn && (tab == "home" || tab == "pet") && System.currentTimeMillis() - store.mirrorAt > 3 * 3600_000L)
@@ -452,6 +454,19 @@ class MainActivity : Activity() {
     }
 
     // =================== 1. HOME ===================
+    /** "A new version is ready" on Home (BigD AI Lite only), unless they said "Later" in the last 2 days. */
+    private fun updateCard(): View? {
+        val info = Updates.waiting(store) ?: return null
+        if (System.currentTimeMillis() < store.updateLaterUntil) return null
+        return ui.card().apply {
+            put(ui.text("🎁 New version ${info.name} is ready · కొత్త వెర్షన్ వచ్చింది", 16f, Ui.INK, bold = true))
+            if (info.notes.isNotBlank()) put(ui.text("What's new: " + info.notes, 13.5f, Ui.MUTED), 6)
+            put(ui.text("About ${info.sizeMb} MB. Your browser downloads it, then tap Open › Update. Everything on your phone stays.", 12.5f, Ui.MUTED), 6)
+            put(ui.row(ui.button("⬇ Update now", "primary") { leavingForSystemScreen = true; Updates.open(this@MainActivity, store) },
+                ui.button("Later", "ghost") { store.updateLaterUntil = System.currentTimeMillis() + 2 * 86400_000L; go("home") }), 10)
+        }
+    }
+
     private fun homePage() {
         val now = ZonedDateTime.now()
         val (greetTe, greetEn) = when (now.hour) {
@@ -479,6 +494,7 @@ class MainActivity : Activity() {
         hero.addView(ui.button(if (PetService.running) "Close my pet" else "🐾  Show my pet on screen", "sun") { togglePet() },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
         add(hero, 4)
+        updateCard()?.let { add(it, 12) }
 
         // today
         add(ui.label("Today"), 20)
@@ -1355,7 +1371,7 @@ class MainActivity : Activity() {
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
                     .putExtra(Intent.EXTRA_TEXT, "Try BigD AI 🐾 – a cute pet on your phone screen that talks in Telugu and English, " +
                         (if (BuildConfig.MESSAGE_REPLIES) "sets reminders, writes letters, warns you about fraud messages and replies to WhatsApp." else "sets reminders, writes letters and warns you about fraud messages.") +
-                        " ${store.server}"), "Share BigD AI"))
+                        " " + (if (BuildConfig.SELF_UPDATE) "Download: " + Updates.link(store) else store.server)), "Share BigD AI"))
             }), 10)
         }, 18)
 
@@ -1367,6 +1383,12 @@ class MainActivity : Activity() {
             }), 10)
             val v = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "" }
             put(ui.text("Version $v", 12.5f, Ui.MUTED), 10)
+            if (BuildConfig.SELF_UPDATE) put(ui.row(ui.button("🔄 Check for a new version", "ghost") {
+                toast("Checking…")
+                Updates.check(store, force = true) { info ->
+                    if (info == null) toast("You have the newest version ✓") else { store.updateLaterUntil = 0L; go("home") }
+                }
+            }), 8)
         }, 12)
     }
 

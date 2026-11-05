@@ -29,6 +29,7 @@ const learn = require("./learn.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
 // learning answers to common questions, and our own brain (an open model on this server) for when Claude can't answer
 const answers = require("./answers.js")({ DATA_DIR, learn });
 const ownBrain = require("./ownbrain.js")({ DATA_DIR, SERVER_DIR: __dirname, learn, answers });
+const appUpdate = require("./appupdate.js")({ REPO_DIR: path.join(__dirname, "..") });
 const files = require("./files.js")({ DATA_DIR });
 const voice = require("./voice.js")({ DATA_DIR });
 const baseUrl = req => (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
@@ -398,6 +399,17 @@ const server = http.createServer(async (req, res) => {
   if (await tools(req, res, url, origin)) return;
 
   if (reels.handle(req, res, url)) return;
+  // one-tap updates: the newest BigD AI Lite, and a download link anyone can share
+  if (req.method === "GET" && url.pathname === "/app/latest") {
+    const l = await appUpdate.latest();
+    return send(res, l ? 200 : 404, l || { error: "No download is published yet." }, origin);
+  }
+  if (req.method === "GET" && (url.pathname === "/download" || url.pathname === "/download/lite")) {
+    const l = await appUpdate.latest();
+    if (!l) return send(res, 404, { error: "No download is published yet." }, origin);
+    res.writeHead(302, { location: l.url, "cache-control": "no-store" });
+    return res.end();
+  }
   if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), own: ownBrain.quick(), learning: answers.stats(), media: media.stats(), reels: reels.stats(), social: social.stats() }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
