@@ -13,7 +13,7 @@ module.exports = function makeDaily({ getJson }) {
   // ---------- panchangam ----------
   function panchangPost(date = istDate()) {
     const p = panchang.post(date);
-    return { cat: "devotional", title: p.title, body: p.body, emoji: "📿", mood: "devotional", issue: "festivals", kind: "panchang", key: "panchang:" + date };
+    return { cat: "devotional", title: p.title, body: p.body, emoji: "📿", mood: "devotional", issue: "festivals", kind: "panchang", key: "panchang:" + date, scene: "temple sunrise" };
   }
 
   // ---------- weather warnings for farmers ----------
@@ -66,7 +66,7 @@ module.exports = function makeDaily({ getJson }) {
     const sig = Object.entries(found).filter(([, l]) => l.length).map(([k, l]) => k + "=" + l.map(t => t.split(" (")[0]).sort().join("+")).join(";");
     return {
       cat: "farming", kind: "weather", key: `weather:${day}:${dayAhead}`, day, sig, emoji: found.heavy.length || found.rain.length ? "🌧️" : found.heat.length ? "🔥" : found.wind.length ? "💨" : "🥶",
-      mood: "useful", issue: "weather",
+      mood: "useful", issue: "weather", scene: found.heavy.length || found.rain.length ? "heavy rain" : found.heat.length ? "hot sun" : found.wind.length ? "strong wind trees" : "foggy morning",
       title: `రైతులకు ${what} హెచ్చరిక · ${word}, ${nice(day)}`,
       body: `${word} ఈ ఊళ్లలో వాతావరణం జాగ్రత్తగా ఉండాలి:\n${parts.join("\n")}\n\nఏం చేయాలి:\n${tips.join("\n")}\n\n(Open-Meteo వాతావరణ అంచనా. అధికారిక హెచ్చరికల కోసం IMD, APSDMA, తెలంగాణ విపత్తు నిర్వహణ శాఖ సూచనలు పాటించండి.)`,
       source: "open-meteo.com", url: "https://open-meteo.com/"
@@ -99,7 +99,7 @@ module.exports = function makeDaily({ getJson }) {
       return `• ${n}: సగటు ₹${Math.round(mid).toLocaleString("en-IN")} / క్వింటాల్ (ఎక్కువ: ${hi.market}లో ₹${Math.round(hi.price).toLocaleString("en-IN")})`;
     });
     const day = istDate();
-    return { cat: "farming", kind: "mandi", key: `mandi:${day}`, emoji: "🌾", mood: "useful", issue: "prices",
+    return { cat: "farming", kind: "mandi", key: `mandi:${day}`, emoji: "🌾", mood: "useful", issue: "prices", scene: "vegetable market",
       title: `ఈరోజు మార్కెట్ ధరలు · ${nice(day)}`,
       body: `ఆంధ్రప్రదేశ్, తెలంగాణ మార్కెట్ యార్డుల్లో ఈరోజు ధరలు (మోడల్ ధర):\n${lines.join("\n")}\n\n(ప్రభుత్వ Agmarknet సమాచారం, data.gov.in. అమ్మే ముందు మీ దగ్గరి మార్కెట్ యార్డులో ధర తెలుసుకోండి.)`,
       source: "data.gov.in", url: "https://agmarknet.gov.in/" };

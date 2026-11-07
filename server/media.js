@@ -151,7 +151,7 @@ ${research ? `Use ONLY the facts in the research notes you are given, written fu
 ${SAFE}
 Do not repeat these recent posts: ${recent.length ? recent.join(" | ") : "(none yet)"}
 Reply with only a JSON object, no other text:
-{"posts":[{"title":"<Telugu title, at most 12 words>","body":"<Telugu text, 50 to 110 words>","emoji":"<one emoji that fits>","src":<page number or 0>,"video":<page number or 0>,"mood":"<one of: ${MOODS.join(", ")}>","issue":"<what it is mainly about, one of: ${ISSUES.join(", ")}>"}]}`;
+{"posts":[{"title":"<Telugu title, at most 12 words>","body":"<Telugu text, 50 to 110 words>","emoji":"<one emoji that fits>","src":<page number or 0>,"video":<page number or 0>,"mood":"<one of: ${MOODS.join(", ")}>","issue":"<what it is mainly about, one of: ${ISSUES.join(", ")}>","scene":"<2-4 English words to find a stock video that fits, no names>"}]}`;
   }
 
   async function generate(key, n) {
@@ -203,7 +203,8 @@ Reply with only a JSON object, no other text:
         if (vid) yt = await checkVideo(vid);
       }
       const item = { id: db.next++, cat: key, at: Date.now() - added * 1000, title, body, emoji: str(p.emoji, 8), source, url, yt, by: "auto", likes: [],
-        mood: MOODS.includes(p.mood) ? p.mood : undefined, issue: ISSUES.includes(p.issue) ? p.issue : undefined, kind: "ai", writer: "claude" };
+        mood: MOODS.includes(p.mood) ? p.mood : undefined, issue: ISSUES.includes(p.issue) ? p.issue : undefined, kind: "ai", writer: "claude",
+        scene: p.scene ? str(String(p.scene).replace(/[^a-zA-Z\s-]/g, " ").replace(/\s+/g, " "), 50) || undefined : undefined };
       db.items.push(item); seenTitles.add(title.replace(/\s+/g, ""));
       added++;
       if (added >= n) break;
@@ -344,7 +345,8 @@ Reply with only a JSON object, no other text:
     if (db.items.some(i => i.cat === o.cat && i.title.replace(/\s+/g, "") === flat)) return null;
     const it = { id: db.next++, cat: o.cat, at: Date.now(), title, body, emoji: str(o.emoji, 8), source: str(o.source, 80) || (url ? host(url) : ""), url,
       yt: o.yt || null, by: o.by || "auto", likes: [], mood: MOODS.includes(o.mood) ? o.mood : undefined, issue: ISSUES.includes(o.issue) ? o.issue : undefined,
-      kind: o.kind ? str(o.kind, 20) : undefined, writer: o.writer ? str(o.writer, 20) : undefined, key: o.key ? str(o.key, 80) : undefined, meta: o.meta };
+      kind: o.kind ? str(o.kind, 20) : undefined, writer: o.writer ? str(o.writer, 20) : undefined, key: o.key ? str(o.key, 80) : undefined, meta: o.meta,
+      scene: o.scene ? str(String(o.scene).replace(/[^a-zA-Z\s-]/g, " ").replace(/\s+/g, " "), 50) || undefined : undefined };
     if (o.img !== undefined) it.img = /^https:\/\/\S+$/.test(String(o.img)) ? str(o.img, 600) : "";
     db.items.push(it); prune(); save();
     if (url && it.img === undefined) setTimeout(fillPictures, 2000);

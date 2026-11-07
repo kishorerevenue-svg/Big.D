@@ -153,14 +153,15 @@ module.exports = function makeFeeds({ DATA_DIR, ownBrain, ai, MODEL, API_KEY, me
 
   // ---------- writing a post ----------
   const SCHEMA = () => ({ type: "object", required: ["title", "body", "emoji", "mood", "issue", "skip"], properties: {
-    title: { type: "string" }, body: { type: "string" }, emoji: { type: "string" }, mood: { type: "string", enum: media.MOODS }, issue: { type: "string", enum: media.ISSUES }, skip: { type: "boolean" } } });
+    title: { type: "string" }, body: { type: "string" }, emoji: { type: "string" }, mood: { type: "string", enum: media.MOODS }, issue: { type: "string", enum: media.ISSUES },
+    scene: { type: "string" }, skip: { type: "boolean" } } });
   const SYSTEM = (cat) => `You write short posts for the "Media" page of BigD AI, a Telugu app used by ordinary people in Andhra Pradesh and Telangana, including elders.
 Section: ${media.CATS[cat].en} (${media.CATS[cat].te}). ${media.CATS[cat].brief}
 Write in simple, everyday Telugu (Telugu script; English only for names, numbers and words people normally say in English).
 Use ONLY the facts you are given (headline, summary and the start of the story). Never add facts, numbers, names, dates or quotes that are not there. If there are few facts, write less. Write it fully in your own words; do not copy sentences.
 Neutral and respectful: no political attacks, no rumours, nothing hateful or adult. Set "skip" to true if the story is not useful for this section, is only an advertisement, is gossip about someone's private life, or is not suitable for families.
-"mood" is how the post feels to read; "issue" is what it is mainly about.
-Reply only with JSON: {"title": "<Telugu title, at most 12 words>", "body": "<Telugu, 30 to 90 words>", "emoji": "<one emoji>", "mood": one of ${media.MOODS.join(", ")}, "issue": one of ${media.ISSUES.join(", ")}, "skip": false}`;
+"mood" is how the post feels to read; "issue" is what it is mainly about. "scene" is 2 to 4 English words to find a stock video that fits the story, with no names of people or places (for example "paddy field rain", "hospital doctor", "train station").
+Reply only with JSON: {"title": "<Telugu title, at most 12 words>", "body": "<Telugu, 30 to 90 words>", "emoji": "<one emoji>", "mood": one of ${media.MOODS.join(", ")}, "issue": one of ${media.ISSUES.join(", ")}, "scene": "<2-4 English words>", "skip": false}`;
   const facts = (s, page) => [`Headline: ${s.title}`, `Source: ${s.source || hostOf(s.link) || "(unknown)"}`,
     `Published: ${s.when ? new Date(s.when + 5.5 * 3600e3).toISOString().slice(0, 16).replace("T", " ") + " India time" : "recently"}`,
     s.summary ? `Summary: ${s.summary}` : "", page && page.description && page.description !== s.summary ? `Page description: ${page.description}` : "",
@@ -214,7 +215,7 @@ Reply only with JSON: {"title": "<Telugu title, at most 12 words>", "body": "<Te
       if (title.length < 4 || body.length < 30 || telugu(title + body) < 20) { count("skipped"); continue; }
       if (media.recentTitles(cat, 60).some(t => alike(t, title) >= 0.6)) { count("skipped"); continue; }   // the same story from another paper
       media.addItem({ cat, title, body, emoji: String(p.emoji || "").slice(0, 8),
-        mood: media.MOODS.includes(p.mood) ? p.mood : "useful", issue: media.ISSUES.includes(p.issue) ? p.issue : "other",
+        mood: media.MOODS.includes(p.mood) ? p.mood : "useful", issue: media.ISSUES.includes(p.issue) ? p.issue : "other", scene: p.scene,
         url: link, source: (page && page.site && !/news\.google/.test(page.site) ? page.site : "") || s.source || hostOf(link),
         img: s.img || (page ? page.image || "" : ""), by: "auto", writer: p.by, kind: "feed" });
       db.wrote[p.by] = (db.wrote[p.by] || 0) + 1; count(p.by); save();
