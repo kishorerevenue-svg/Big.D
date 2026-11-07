@@ -127,6 +127,21 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
+      <h2>▶️ YouTube · యూట్యూబ్</h2>
+      <p class="hint">New videos from these trusted channels come into Media: the most-watched ones, a few a day per section (our own brain skips clickbait and gossip). Live TV news and live darshan show as 🔴 LIVE posts while they are live. Videos play inside the app with YouTube's own player, so the channels still get their views. Add any channel with its link.</p>
+      <p id="ytState" class="msg"></p>
+      <div id="ytList"></div>
+      <label for="ytCat">Section</label>
+      <select id="ytCat"></select>
+      <label for="ytUrl">Channel link</label>
+      <input id="ytUrl" placeholder="https://www.youtube.com/@channelname">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="ytLive" style="width:auto"> This channel has a live stream (live TV or live darshan)</label>
+      <button id="ytAdd" type="button">Add channel</button>
+      <button id="ytRefresh" type="button" class="ghost" style="margin-top:12px">Check YouTube now</button>
+      <p id="ytMsg" class="msg"></p>
+    </section>
+
+    <section class="card">
       <h2>What the puppy knows</h2>
       <ul id="list"></ul>
       <p class="hint" id="empty">Nothing yet. Add your first file above.</p>
@@ -280,10 +295,46 @@ $("feedRun").onclick = () => mediaDo($("feedRun"), async () => {
   return "Started. New posts appear in Media in a few minutes.";
 });
 
+function showYt(d) {
+  const st = d.stats;
+  say($("ytState"), st.on ? `${st.channels} channels · ${st.liveNow} live now · ${st.key ? "YouTube key ✓" : "No YouTube key: it works without one. With the free key it also brings the most popular Telugu videos of the day."}` : "YouTube is off (MEDIA_YOUTUBE=false).", st.on);
+  const box = $("ytList"); box.textContent = "";
+  const sel = $("ytCat"); const was = sel.value; sel.textContent = "";
+  for (const s of d.sections) {
+    const o = document.createElement("option"); o.value = s.cat; o.textContent = `${s.te} · ${s.en}`; sel.append(o);
+    if (!s.channels.length) continue;
+    const det = document.createElement("details");
+    const sm = document.createElement("summary");
+    sm.textContent = `${s.te} · ${s.en} — ${s.channels.length} channels · ${s.postedToday} of ${s.daily} video posts today`;
+    det.append(sm);
+    const ul = document.createElement("ul");
+    for (const x of s.channels) {
+      const status = !x.checked ? "not checked yet" : x.problem ? `✗ ${x.problem}` : `✓ ${x.videos} videos, ${x.shorts} shorts`;
+      ul.append(row(`${x.liveNow ? "🔴 " : ""}${x.name}`, "", `${status}${x.live ? " · has a live stream" : ""}${x.added ? " · added by you" : ""}`, "Remove", async () => { showYt(await api("youtube/remove", { cat: s.cat, key: x.key })); }));
+    }
+    det.append(ul); box.append(det);
+  }
+  if (was) sel.value = was;
+}
+async function loadYt() { showYt(await api("youtube")); }
+$("ytAdd").onclick = async () => {
+  $("ytAdd").disabled = true;
+  try { showYt(await api("youtube/add", { cat: $("ytCat").value, channel: $("ytUrl").value.trim(), live: $("ytLive").checked })); $("ytUrl").value = ""; $("ytLive").checked = false; say($("ytMsg"), "Added. Its videos come in the next check.", true); }
+  catch (e) { say($("ytMsg"), e.message, false); }
+  finally { $("ytAdd").disabled = false; }
+};
+$("ytRefresh").onclick = async () => {
+  $("ytRefresh").disabled = true;
+  try { await api("youtube/refresh", {}); say($("ytMsg"), "Checking all channels… this takes a minute or two.", true); setTimeout(() => loadYt().catch(() => {}), 90000); }
+  catch (e) { say($("ytMsg"), e.message, false); }
+  finally { $("ytRefresh").disabled = false; }
+};
+
 async function refresh() {
   loadFeedback().catch(() => {});
   loadBrain().catch(() => {});
   loadMedia().catch(() => {});
+  loadYt().catch(() => {});
   const { items } = await api("list");
   const ul = $("list"); ul.textContent = "";
   $("empty").hidden = items.length > 0;
