@@ -34,6 +34,12 @@ li small{color:var(--muted)}
 [hidden]{display:none!important}
 pre{white-space:pre-wrap;font-size:12px;background:var(--bg);border-radius:10px;padding:10px;max-height:220px;overflow:auto;margin:10px 0 0}
 li .ans{font-size:14px;margin:2px 0}
+select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;width:100%}
+details{border-top:1px solid var(--line);padding:8px 0}
+summary{cursor:pointer;font-weight:600}
+.tbl{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+.tbl td,.tbl th{text-align:left;padding:6px 4px;border-top:1px solid var(--line);vertical-align:top}
+.tbl th{color:var(--muted);font-weight:600}
 </style>
 </head>
 <body>
@@ -101,6 +107,23 @@ li .ans{font-size:14px;margin:2px 0}
       <h2 style="margin-top:18px">Common questions</h2>
       <ul id="questions"></ul>
       <p class="hint" id="qEmpty">No common questions yet.</p>
+    </section>
+
+    <section class="card">
+      <h2>📰 Media posts · మీడియా పోస్టులు</h2>
+      <p class="hint">All day, new stories come from these news feeds. The server opens each story, and our own brain writes a short Telugu post from its facts with a link to it (Claude writes them when our own brain can't, up to a limit a day). Stories that many papers report come first. Every morning Claude also writes a few posts per section, and the server adds the panchangam (4 AM), weather warnings for farmers (6 AM and 6 PM) and mandi prices (2 PM, needs DATA_GOV_KEY).</p>
+      <p id="mediaState" class="msg"></p>
+      <table class="tbl" id="mediaToday"></table>
+      <h2 style="margin-top:18px">Where the posts come from</h2>
+      <p class="hint">Tap a section to see its feeds. ✓ = working (stories in it), ✗ = not working right now (it is tried again later). Remove the ones you don't want; add any newspaper's or TV channel's RSS feed address.</p>
+      <div id="feedList"></div>
+      <label for="feedCat">Section</label>
+      <select id="feedCat"></select>
+      <label for="feedUrl">Feed address (RSS)</label>
+      <input id="feedUrl" type="url" placeholder="https://… /feed or …rss.xml">
+      <button id="feedAdd" type="button">Add feed</button>
+      <button id="feedRun" type="button" class="ghost" style="margin-top:12px">Make new posts in this section now</button>
+      <p id="feedMsg" class="msg"></p>
     </section>
 
     <section class="card">
@@ -208,9 +231,59 @@ $("prepare").onclick = async () => {
   finally { $("prepare").disabled = false; }
 };
 
+const WRITER = { own: "our own brain", claude: "Claude", server: "the server (no AI)", team: "the team" };
+function showMedia(m) {
+  const st = m.stats && m.stats.feeds;
+  const f = st && typeof st === "object" ? st : null;
+  say($("mediaState"), f ? `Today: our own brain wrote ${f.today.own || 0}, Claude wrote ${f.today.claude || 0} (limit ${f.claudeDaily} a day), skipped ${f.today.skipped || 0} unsuitable stories.${f.running ? " Writing " + f.running + " posts now…" : ""}${f.waiting.length ? " Waiting: " + f.waiting.join(", ") + "." : ""}` : "News feeds are off (MEDIA_FEEDS=false).", !!f);
+  const t = $("mediaToday"); t.textContent = "";
+  const head = t.insertRow(); for (const h of ["Section", "Today", "Who wrote today's", "Feed times (India)"]) { const th = document.createElement("th"); th.textContent = h; head.append(th); }
+  for (const c of m.sections) {
+    const r = t.insertRow();
+    r.insertCell().textContent = `${c.te} · ${c.en}`;
+    r.insertCell().textContent = `${c.today} (all: ${c.total})`;
+    r.insertCell().textContent = Object.entries(c.by).map(([w, n]) => `${WRITER[w] || w} ${n}`).join(", ") || "–";
+    r.insertCell().textContent = c.times.length ? c.times.map(h => (h % 12 || 12) + (h < 12 ? " AM" : " PM")).join(", ") + ` (${c.each} each)` : "Claude, every morning";
+  }
+  const box = $("feedList"); box.textContent = "";
+  const sel = $("feedCat"); const was = sel.value; sel.textContent = "";
+  for (const s of m.feeds) {
+    const o = document.createElement("option"); o.value = s.cat; o.textContent = `${s.te} · ${s.en}`; sel.append(o);
+    const d = document.createElement("details");
+    const sm = document.createElement("summary");
+    const okN = s.feeds.filter(x => x.stories > 0).length;
+    sm.textContent = `${s.te} · ${s.en} — ${s.feeds.length} feeds${s.feeds.some(x => x.checked) ? `, ${okN} working` : ""}`;
+    d.append(sm);
+    const ul = document.createElement("ul");
+    for (const x of s.feeds) {
+      const status = !x.checked ? "not read yet" : x.stories ? `✓ ${x.stories} stories` : `✗ ${x.problem || "not working"}`;
+      ul.append(row(x.name || x.url, "", `${status} · ${x.url}${x.added ? " · added by you" : ""}`, "Remove", async () => { showMedia(await api("media/feed/remove", { cat: s.cat, url: x.url })); }));
+    }
+    d.append(ul); box.append(d);
+  }
+  if (was) sel.value = was;
+}
+async function loadMedia() { showMedia(await api("media")); }
+async function mediaDo(btn, work) {
+  btn.disabled = true;
+  try { say($("feedMsg"), await work(), true); } catch (e) { say($("feedMsg"), e.message, false); }
+  finally { btn.disabled = false; }
+}
+$("feedAdd").onclick = () => mediaDo($("feedAdd"), async () => {
+  showMedia(await api("media/feed/add", { cat: $("feedCat").value, url: $("feedUrl").value.trim() }));
+  $("feedUrl").value = "";
+  return "Added. It is read the next time this section gets new posts.";
+});
+$("feedRun").onclick = () => mediaDo($("feedRun"), async () => {
+  await api("media/run", { cat: $("feedCat").value });
+  setTimeout(() => loadMedia().catch(() => {}), 60000);
+  return "Started. New posts appear in Media in a few minutes.";
+});
+
 async function refresh() {
   loadFeedback().catch(() => {});
   loadBrain().catch(() => {});
+  loadMedia().catch(() => {});
   const { items } = await api("list");
   const ul = $("list"); ul.textContent = "";
   $("empty").hidden = items.length > 0;

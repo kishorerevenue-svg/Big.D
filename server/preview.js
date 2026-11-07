@@ -1,6 +1,6 @@
 // Link previews: the title and main picture of a web page (like WhatsApp or X show for a link).
 // Safety: only public internet addresses (never the server's own network), at most 4 redirects,
-// at most 400 KB of the page is read, and every request has a time limit.
+// at most 400 KB of the page is read (1.5 MB when the story's text is wanted), and every request has a time limit.
 const dns = require("dns").promises;
 const net = require("net");
 
@@ -28,11 +28,12 @@ const ent = s => String(s || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').
   .replace(/&#x([0-9a-f]+);/gi, (m, x) => { try { return String.fromCodePoint(parseInt(x, 16)); } catch (e) { return ""; } });
 const SITE = { "youtube.com": "YouTube", "youtu.be": "YouTube", "instagram.com": "Instagram", "facebook.com": "Facebook", "fb.watch": "Facebook", "x.com": "X", "twitter.com": "X", "sharechat.com": "ShareChat", "moj.video": "Moj", "threads.net": "Threads" };
 
-/** { url, site, title, image, yt } for a link, or null if it isn't a web link. Never throws. */
-async function preview(u) {
+/** { url, site, title, image, yt, description, final } for a link, or null if it isn't a web link. Never throws.
+ *  With { text: true } it also gives "text": the first paragraphs of the page (used to write news posts from the facts). */
+async function preview(u, opts = {}) {
   const url = str(u, 600); if (!/^https?:\/\/\S+$/.test(url)) return null;
   const host = hostOf(url); if (!host) return null;
-  const out = { url, site: SITE[host] || host, title: "", image: "", yt: "" };
+  const out = { url, site: SITE[host] || host, title: "", image: "", yt: "", description: "", final: url };
   const vid = ytId(url);
   if (vid) {
     out.yt = vid; out.image = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
@@ -54,7 +55,7 @@ async function preview(u) {
     }
     if (!r || !r.ok || !r.body) return out;
     const reader = r.body.getReader(); const parts = []; let size = 0;
-    while (size < 400_000) { const { done, value } = await reader.read(); if (done) break; parts.push(Buffer.from(value)); size += value.length; }
+    while (size < (opts.text ? 1_500_000 : 400_000)) { const { done, value } = await reader.read(); if (done) break; parts.push(Buffer.from(value)); size += value.length; }
     try { await reader.cancel(); } catch (e) { }
     const html = Buffer.concat(parts).toString("utf8");
     const meta = {};
@@ -68,6 +69,20 @@ async function preview(u) {
     try { if (img) img = new URL(img, at).toString(); } catch (e) { img = ""; }
     if (/^https:\/\//.test(img)) out.image = str(img, 600);
     if (meta["og:site_name"] && !SITE[host]) out.site = str(meta["og:site_name"], 60);
+    out.description = str(meta["og:description"] || meta["description"] || meta["twitter:description"], 500);
+    out.final = at;
+    if (opts.text) {
+      // the story itself: the page's paragraphs (or the article text that news sites put in their JSON-LD)
+      const paras = [];
+      const ld = html.match(/"articleBody"\s*:\s*"((?:[^"\\]|\\.){80,})"/);
+      if (ld) { try { paras.push(JSON.parse('"' + ld[1] + '"')); } catch (e) { } }
+      if (!paras.length) for (const m of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+        const t = ent(m[1].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+        if (t.length >= 60 && !/cookie|subscribe|newsletter|all rights reserved|copyright|download (?:the )?app/i.test(t)) paras.push(t);
+        if (paras.join(" ").length > 1800) break;
+      }
+      out.text = str(paras.join("\n").replace(/[ \t]+/g, " "), 1800);
+    }
   } catch (e) { }
   return out;
 }

@@ -1,14 +1,21 @@
 // BigD AI "Media" page: short Telugu posts in 9 sections (news, movies, kids, crypto, real estate, jobs,
-// devotional, farming, health). The AI searches the internet and writes each post in its own words with a
-// link to the real source, and adds official YouTube videos when it finds them (each link is checked).
-// It fills each section once (MEDIA_SEED posts) and then adds a few new posts every morning (the news also at 1 PM and 7 PM).
+// devotional, farming, health), from three places:
+//  1. All day: new stories from trusted news feeds, written up by OUR OWN BRAIN (feeds.js), many times a day.
+//  2. Every morning: Claude searches the internet and writes a few posts per section in its own words with a
+//     link to the real source, and adds official YouTube videos when it finds them (each link is checked).
+//  3. Daily useful posts made by the server itself (daily.js): panchangam, weather warnings for farmers, mandi prices.
+// Every post has a mood (happy, devotional, inspiring…) and an issue (farming, jobs, prices, water…) for the app's filters.
 // The BigD team (team password) can also write, remove and refresh posts.
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { preview } = require("./preview.js");
 
-module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, h, ai }) {
+const MOODS = ["useful", "serious", "happy", "inspiring", "devotional", "funny", "calm", "sad"];
+const ISSUES = ["farming", "water", "prices", "jobs", "education", "health", "women", "children", "safety", "roads", "power", "schemes", "weather",
+  "festivals", "cinema", "technology", "sports", "money", "environment", "politics", "other"];
+
+module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminPassword, h, ai, ownBrain, getJson }) {
   const { send, readBody, allowed, clientIp } = h;
   const reads = new Map(); // reading posts has its own, bigger limit (it costs nothing)
   setInterval(() => { const now = Date.now(); for (const [k, l] of reads) if (!l.some(t => now - t < 600000)) reads.delete(k); }, 600000).unref();
@@ -28,7 +35,7 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
       brief: "Today's important news for Telugu people: Andhra Pradesh and Telangana first, then India and the world. Only real news from the last two days. Neutral and factual; no political attacks." },
     movies: { te: "సినిమా", en: "Movie reviews", search: 3, daily: 1, keepDays: 120,
       brief: "Telugu movies first (and big Indian films): new releases, what critics say about them (a short summary of published reviews and the overall verdict, naming the publications), box office and official trailers. Never write your own made-up review or opinion." },
-    kids: { te: "పిల్లలు", en: "Kids", search: 0, daily: 1, keepDays: 365,
+    kids: { te: "పిల్లలు", en: "Kids", search: 0, daily: 2, keepDays: 365,
       brief: "Short moral stories, simple rhymes, riddles with answers and fun facts for children aged 4 to 10, for parents to read aloud. Original, gentle and happy; nothing scary." },
     crypto: { te: "క్రిప్టో", en: "Crypto", search: 2, daily: 1, keepDays: 60,
       brief: "Crypto news (Bitcoin, Ethereum, Indian rules and tax on crypto) and simple explanations of how things work. Warn about crypto scams. Never tell people to buy or sell, and no price predictions." },
@@ -47,8 +54,9 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
   // ---------- storage ----------
   let db = { next: 1, items: [], calls: { day: "", n: 0 }, lastDaily: "", seedTries2: { day: "" } };
   try { db = Object.assign(db, JSON.parse(fs.readFileSync(FILE, "utf8"))); } catch (e) { }
-  let saveTimer = null;
+  let saveTimer = null, urls = null;
   function save() {
+    urls = null;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try { fs.writeFileSync(FILE + ".tmp", JSON.stringify(db)); fs.renameSync(FILE + ".tmp", FILE); } catch (e) { console.error("Media save error:", e.message); }
@@ -65,11 +73,14 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
     return crypto.timingSafeEqual(crypto.createHash("sha256").update(given).digest(), crypto.createHash("sha256").update(pw).digest());
   }
 
+  // panchangam and weather are for one day; prices for a week
+  const KIND_KEEP = { panchang: 3, weather: 3, mandi: 7 };
   function prune() {
     const now = Date.now();
     for (const [key, c] of Object.entries(CATS)) {
       const mine = db.items.filter(i => i.cat === key && i.by === "auto").sort((a, b) => b.at - a.at);
-      const drop = new Set(mine.filter((i, n) => n >= 150 || now - i.at > c.keepDays * 86400e3).map(i => i.id));
+      const cap = key === "news" ? 400 : 250;
+      const drop = new Set(mine.filter((i, n) => n >= cap || now - i.at > (KIND_KEEP[i.kind] || c.keepDays) * 86400e3).map(i => i.id));
       if (drop.size) db.items = db.items.filter(i => !drop.has(i.id));
     }
   }
@@ -140,7 +151,7 @@ ${research ? `Use ONLY the facts in the research notes you are given, written fu
 ${SAFE}
 Do not repeat these recent posts: ${recent.length ? recent.join(" | ") : "(none yet)"}
 Reply with only a JSON object, no other text:
-{"posts":[{"title":"<Telugu title, at most 12 words>","body":"<Telugu text, 50 to 110 words>","emoji":"<one emoji that fits>","src":<page number or 0>,"video":<page number or 0>}]}`;
+{"posts":[{"title":"<Telugu title, at most 12 words>","body":"<Telugu text, 50 to 110 words>","emoji":"<one emoji that fits>","src":<page number or 0>,"video":<page number or 0>,"mood":"<one of: ${MOODS.join(", ")}>","issue":"<what it is mainly about, one of: ${ISSUES.join(", ")}>"}]}`;
   }
 
   async function generate(key, n) {
@@ -191,7 +202,8 @@ Reply with only a JSON object, no other text:
         const vid = vp ? ytId(vp.url) : "";
         if (vid) yt = await checkVideo(vid);
       }
-      const item = { id: db.next++, cat: key, at: Date.now() - added * 1000, title, body, emoji: str(p.emoji, 8), source, url, yt, by: "auto", likes: [] };
+      const item = { id: db.next++, cat: key, at: Date.now() - added * 1000, title, body, emoji: str(p.emoji, 8), source, url, yt, by: "auto", likes: [],
+        mood: MOODS.includes(p.mood) ? p.mood : undefined, issue: ISSUES.includes(p.issue) ? p.issue : undefined, kind: "ai", writer: "claude" };
       db.items.push(item); seenTitles.add(title.replace(/\s+/g, ""));
       added++;
       if (added >= n) break;
@@ -256,18 +268,94 @@ Reply with only a JSON object, no other text:
       db.lastDaily = today(); save();
       for (const [key, c] of Object.entries(CATS)) enqueue(key, c.daily);
     }
-    // the news again at 1 PM and 7 PM (India time), so Media always has the latest
-    for (const [slot, hour] of [["lastNoon", 13], ["lastEvening", 19]]) {
+    // without the news feeds: the news again at 1 PM and 7 PM (India time), so Media always has the latest
+    if (!FEEDS) for (const [slot, hour] of [["lastNoon", 13], ["lastEvening", 19]]) {
       if (db[slot] !== today() && istNow().getUTCHours() >= hour && db.lastDaily === today()) { db[slot] = today(); save(); enqueue("news", CATS.news.daily); }
     }
   }
-  setTimeout(tick, 60_000);
-  setInterval(tick, 10 * 60_000).unref();
+
+  // ---------- all day: new stories from the news feeds, written by our own brain (India time) ----------
+  const FEEDS = AUTO && String(process.env.MEDIA_FEEDS || "true") !== "false";
+  const MORE = Math.max(0.3, Math.min(3, Number(process.env.MEDIA_FEED_MORE || 1)));    // 2 = twice as many posts each time
+  const PLAN = {
+    news: [[6, 8, 10, 12, 14, 16, 18, 20, 22], 3], movies: [[8, 11, 14, 17, 20, 22], 2], devotional: [[5, 12, 18], 2],
+    farming: [[7, 13, 19], 2], health: [[7, 13, 19], 2], jobs: [[9, 15, 21], 2], realestate: [[9, 17], 2], crypto: [[9, 17], 1]
+  };
+  const feeds = require("./feeds.js")({ DATA_DIR, ownBrain, ai, MODEL, API_KEY, media: { CATS, MOODS, ISSUES, addItem, recentTitles, hasUrl } });
+  async function feedTick() {
+    if (!FEEDS || !ownBrain || !(await feeds.canWrite())) return;
+    const hour = istNow().getUTCHours();
+    db.feedSlot = db.feedSlot || {};
+    for (const [cat, [hours, n]] of Object.entries(PLAN)) {
+      const due = hours.filter(x => x <= hour).pop();
+      if (due === undefined || db.feedSlot[cat] === today() + ":" + due) continue;
+      db.feedSlot[cat] = today() + ":" + due; save();
+      feeds.want(cat, Math.max(1, Math.round(n * MORE)));
+    }
+  }
+
+  // ---------- daily useful posts: panchangam (4 AM), weather warnings (6 AM, 6 PM), mandi prices (2 PM) ----------
+  const daily = require("./daily.js")({ getJson });
+  async function dailyTick() {
+    if (!AUTO) return;
+    const hour = istNow().getUTCHours(), d = today();
+    db.dailyDone = db.dailyDone || {};
+    const once = async (name, fn) => {
+      const k = name + ":" + d, done = db.dailyDone[name];
+      if (done === d || (db.dailyTries && db.dailyTries[k] >= 3)) return;
+      db.dailyTries = db.dailyTries && db.dailyTries.day === d ? db.dailyTries : { day: d };
+      db.dailyTries[k] = (db.dailyTries[k] || 0) + 1;
+      try {
+        const p = await fn();
+        db.dailyDone[name] = d; save();
+        if (p && addDaily(p)) console.log(`Media: added the daily ${p.kind} post`);
+      } catch (e) { save(); console.error(`Media: daily ${name} post failed:`, e.message); }
+    };
+    if (hour >= 4) await once("panchang", () => daily.panchangPost(d));
+    if (hour >= 6 && hour < 12) await once("weather-am", () => daily.weatherPost(0));       // today's warning, only in the morning
+    if (hour >= 18) await once("weather-pm", () => daily.weatherPost(1));                   // tomorrow's, in the evening
+    if (hour >= 14 && process.env.DATA_GOV_KEY) await once("mandi", () => daily.mandiPost());
+  }
+  /** A daily post, unless the same one is there already (the evening's weather warning for tomorrow, then the same in the morning). */
+  function addDaily(p) {
+    if (p.kind === "weather" && db.items.some(i => i.kind === "weather" && i.meta && i.meta.day === p.day && i.meta.sig === p.sig)) return null;
+    return addItem({ ...p, by: "auto", writer: "server", meta: p.kind === "weather" ? { day: p.day, sig: p.sig } : undefined, img: "" });
+  }
+
+  const everything = () => { tick(); feedTick().catch(e => console.error("Media feeds:", e.message)); dailyTick().catch(e => console.error("Media daily:", e.message)); };
+  setTimeout(everything, 60_000);
+  setInterval(everything, 10 * 60_000).unref();
+
+  // ---------- adding a post (feeds, daily posts) ----------
+  function hasUrl(u) {
+    if (!urls) urls = new Set(db.items.filter(i => i.url).map(i => i.url));
+    return urls.has(u) || urls.has(norm(u));
+  }
+  function recentTitles(cat, n) { return db.items.filter(i => i.cat === cat).sort((a, b) => b.at - a.at).slice(0, n).map(i => i.title); }
+  /** Adds a post; null if it's already there (same key, same page or same title). */
+  function addItem(o) {
+    if (!CATS[o.cat]) return null;
+    const title = str(o.title, 140), body = str(o.body, 3000);
+    if (title.length < 3 || body.length < 10) return null;
+    if (o.key && db.items.some(i => i.key === o.key)) return null;
+    const url = o.url ? norm(o.url) || str(o.url, 600) : "";
+    if (url && !o.key && hasUrl(url)) return null;     // (daily posts all link to the same source page; they are told apart by their key)
+    const flat = title.replace(/\s+/g, "");
+    if (db.items.some(i => i.cat === o.cat && i.title.replace(/\s+/g, "") === flat)) return null;
+    const it = { id: db.next++, cat: o.cat, at: Date.now(), title, body, emoji: str(o.emoji, 8), source: str(o.source, 80) || (url ? host(url) : ""), url,
+      yt: o.yt || null, by: o.by || "auto", likes: [], mood: MOODS.includes(o.mood) ? o.mood : undefined, issue: ISSUES.includes(o.issue) ? o.issue : undefined,
+      kind: o.kind ? str(o.kind, 20) : undefined, writer: o.writer ? str(o.writer, 20) : undefined, key: o.key ? str(o.key, 80) : undefined, meta: o.meta };
+    if (o.img !== undefined) it.img = /^https:\/\/\S+$/.test(String(o.img)) ? str(o.img, 600) : "";
+    db.items.push(it); prune(); save();
+    if (url && it.img === undefined) setTimeout(fillPictures, 2000);
+    return it;
+  }
 
   // ---------- what the app sees ----------
   function view(i, dev) {
     return { id: i.id, cat: i.cat, at: i.at, title: i.title, body: i.body, emoji: i.emoji || "", source: i.source || "", url: i.url || "",
-      yt: i.yt || null, by: i.by, likes: (i.likes || []).length, liked: (i.likes || []).includes(dev) };
+      yt: i.yt || null, by: i.by, likes: (i.likes || []).length, liked: (i.likes || []).includes(dev),
+      mood: i.mood || "", issue: i.issue || "", kind: i.kind || "", writer: i.writer || "" };
   }
 
   function list(url, req) {
@@ -280,7 +368,20 @@ Reply with only a JSON object, no other text:
     return { items: pool.slice(0, limit).map(i => view(i, dev)), more: pool.length > limit, cats, admin: isAdmin(req) };
   }
 
-  function stats() { return { posts: db.items.length, aiCallsToday: db.calls.day === today() ? db.calls.n : 0, waiting: queue.length }; }
+  function stats() { return { posts: db.items.length, aiCallsToday: db.calls.day === today() ? db.calls.n : 0, waiting: queue.length, feeds: FEEDS ? feeds.stats() : "off" }; }
+
+  // ---------- the Teach page: where the posts come from, and today's posts ----------
+  function teachInfo() {
+    const start = Date.parse(today() + "T00:00:00+05:30");
+    const sections = Object.entries(CATS).map(([key, c]) => {
+      const mine = db.items.filter(i => i.cat === key && i.at >= start);
+      const by = {};
+      for (const i of mine) { const w = i.writer || (i.by === "team" ? "team" : "claude"); by[w] = (by[w] || 0) + 1; }
+      return { key, te: c.te, en: c.en, total: db.items.filter(i => i.cat === key).length, today: mine.length, by,
+        times: PLAN[key] ? PLAN[key][0] : [], each: PLAN[key] ? Math.max(1, Math.round(PLAN[key][1] * MORE)) : 0 };
+    });
+    return { sections, feeds: feeds.list(), stats: stats(), daily: db.dailyDone || {}, own: !!ownBrain };
+  }
 
   // ---------- router ----------
   async function handle(req, res, url, origin) {
@@ -332,5 +433,7 @@ Reply with only a JSON object, no other text:
   function forgetDevice(req) { const d = me(req); let n = 0; for (const i of db.items) { const k = (i.likes || []).indexOf(d); if (k >= 0) { i.likes.splice(k, 1); n++; } } if (n) save(); return n; }
   function removeItem(id) { const n = db.items.length; db.items = db.items.filter(i => i.id !== Number(id)); if (db.items.length !== n) save(); return db.items.length !== n; }
 
-  return { handle, stats, generate, CATS, allItems, removeItem, forgetDevice, changed: save };
+  return { handle, stats, generate, CATS, MOODS, ISSUES, allItems, removeItem, forgetDevice, changed: save, addItem,
+    teach: { info: teachInfo, addFeed: feeds.addFeed, removeFeed: feeds.removeFeed, run: (cat) => { if (!CATS[cat] || cat === "kids") return false; feeds.want(cat, 3); return true; } },
+    _test: { feedTick, dailyTick, feeds, daily, db: () => db } };
 };

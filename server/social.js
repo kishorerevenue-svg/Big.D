@@ -128,6 +128,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
     return { key: "m" + i.id, uid: "s_" + i.cat, at: i.at, title: i.title, text: i.body, photos: [], yt: i.yt || null,
       link: i.url && i.img ? { url: i.url, site: i.source || "", title: "", image: i.img, yt: "" } : null,   // the source page's own picture, like a link card on X
       source: i.url ? { name: i.source, url: i.url } : null, cat: i.cat, emoji: i.emoji || "",
+      mood: i.mood || "", issue: i.issue || "", kind: i.kind || "", writer: i.writer || "",
       reel: i.reel && reels && reels.has(i.id) ? "/media/reel/" + i.id + ".mp4" : "" };   // a short video of this news, to share
   }
   function userPostToPost(p) { return { key: "p" + p.id, uid: p.uid, at: p.at, title: "", text: p.text, photos: (p.photos || []).map(fileUrl), video: p.video ? videoView(p.video) : null, yt: p.link && p.link.yt ? { id: p.link.yt, ch: p.link.site || "" } : null, link: p.link || null, source: null, cat: OFFICIAL[p.uid] ? OFFICIAL[p.uid].cat : "", emoji: "" }; }
@@ -141,14 +142,28 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
     return db.posts.filter(p => !p.removed && !p.hidden && !(db.users[p.uid] && db.users[p.uid].banned)).map(userPostToPost)
       .concat(media.allItems().filter(i => !i.hidden).map(mediaToPost));
   }
-  function feed(tab, before, limit, me) {
+  /** "Popular now": what people liked, commented on and opened most in the last 3 days (newer counts more). */
+  function popularity(x, now) {
+    const st = x.key[0] === "p" ? db.posts.find(p => "p" + p.id === x.key) || {} : db.stats[x.key] || {};
+    const score = (st.likes || []).length * 3 + (st.comments || 0) * 4 + (st.views || 0) * 0.2;
+    return score / Math.pow((now - x.at) / 3600e3 + 2, 1.2);
+  }
+  function feed(tab, before, limit, me, filter = {}) {
     let list = allPosts();
     if (tab === "following") { const f = new Set(db.follows[me] || []); list = list.filter(x => f.has(x.uid)); }
     else if (tab === "people") list = list.filter(x => !OFFICIAL[x.uid]);
     else if (tab && tab.startsWith("user:")) list = list.filter(x => x.uid === tab.slice(5));
     else if (tab && media.CATS[tab]) list = list.filter(x => x.uid === "s_" + tab);
-    list = list.filter(x => x.at < before).sort((a, b) => b.at - a.at);
+    // by mood (happy, devotional…) and by issue (farming, jobs, prices…)
+    if (filter.mood) list = list.filter(x => x.mood === filter.mood);
+    if (filter.issue) list = list.filter(x => x.issue === filter.issue);
     const counts = followerCounts();
+    if (tab === "popular") {
+      const now = Date.now();
+      const top = list.filter(x => now - x.at < 3 * 86400e3).map(x => [x, popularity(x, now)]).filter(([, sc]) => sc > 0).sort((a, b) => b[1] - a[1]).map(([x]) => x);
+      return { posts: top.slice(0, 40).map(x => postView(x, me, counts)), more: false };
+    }
+    list = list.filter(x => x.at < before).sort((a, b) => b.at - a.at);
     return { posts: list.slice(0, limit).map(x => postView(x, me, counts)), more: list.length > limit };
   }
   function findPost(key) {
@@ -398,7 +413,8 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         const tab = str(url.searchParams.get("tab"), 40) || "foryou";
         const before = Number(url.searchParams.get("before")) || Date.now() + 1;
         const lim = Math.min(30, Number(url.searchParams.get("limit")) || 20);
-        send(res, 200, Object.assign(feed(tab, before, lim, me), { admin }), origin); return true;
+        const filter = { mood: str(url.searchParams.get("mood"), 20), issue: str(url.searchParams.get("issue"), 20) };
+        send(res, 200, Object.assign(feed(tab, before, lim, me, filter), { admin }), origin); return true;
       }
       if (p === "/api/social/profile") {
         const uid = str(url.searchParams.get("uid"), 40);

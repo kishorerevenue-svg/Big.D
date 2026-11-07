@@ -373,7 +373,7 @@ function cleanMessages(list) {
 }
 
 // ---------- Media page (starts its morning posts on its own) ----------
-const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, ai: learn.anthropic,
+const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, ai: learn.anthropic, ownBrain,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // profiles, posts with photos and links, comments, likes, follows (the Media tab works like X)
 // short news videos to share (WhatsApp status…), made in the background with ffmpeg
@@ -528,6 +528,8 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
       // our own brain and the answers learned from common questions
       if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list() });
+      // Media: where the posts come from (news feeds), and how many came today
+      if (req.method === "GET" && url.pathname === "/api/teach/media") return send(res, 200, media.teach.info());
       if (req.method === "GET" && url.pathname === "/api/teach/feedback") {
         let lines = [];
         try { lines = fs.readFileSync(path.join(DATA_DIR, "feedback.jsonl"), "utf8").trim().split("\n").filter(Boolean).slice(-200).map(l => JSON.parse(l)).reverse(); } catch (e) { }
@@ -547,6 +549,12 @@ const server = http.createServer(async (req, res) => {
         if (url.pathname === "/api/teach/learned/delete") return send(res, 200, { ok: answers.remove(String(body.id || "")) });
         if (url.pathname === "/api/teach/questions/forget") return send(res, 200, { ok: answers.forget(String(body.key || "")) });
         if (url.pathname === "/api/teach/learned/prepare") return send(res, 200, await answers.prepare());
+        if (url.pathname === "/api/teach/media/feed/add") {
+          if (!media.teach.addFeed(String(body.cat || ""), String(body.url || ""))) return send(res, 400, { error: "Pick a section and paste a feed address that starts with https://" });
+          return send(res, 200, media.teach.info());
+        }
+        if (url.pathname === "/api/teach/media/feed/remove") return send(res, 200, { ok: media.teach.removeFeed(String(body.cat || ""), String(body.url || "")), ...media.teach.info() });
+        if (url.pathname === "/api/teach/media/run") return send(res, 200, { ok: media.teach.run(String(body.cat || "")) });
         if (url.pathname === "/api/teach/text") {
           const text = String(body.text || "").trim();
           if (text.length < 10) return send(res, 400, { error: "Write or paste some text first." });

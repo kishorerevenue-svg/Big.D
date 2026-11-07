@@ -35,6 +35,7 @@ cat > /etc/systemd/system/ollama.service.d/bigd.conf <<'CONF'
 Environment="OLLAMA_HOST=127.0.0.1:11434"
 Environment="OLLAMA_NUM_PARALLEL=1"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
+Nice=10
 CONF
 systemctl daemon-reload >/dev/null 2>&1; systemctl enable --now ollama >/dev/null 2>&1; systemctl restart ollama >/dev/null 2>&1
 for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:11434/api/tags && break; sleep 1; done

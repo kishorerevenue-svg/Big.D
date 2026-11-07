@@ -189,6 +189,25 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
     }
   }
 
+  // ---------- writing in the background (Media posts): no one is waiting, so it may take its time ----------
+  /** True when the installed model is big enough to write good Telugu posts (the 1B model answers chats, but writes poorly). */
+  const canWrite = () => !/(?:^|[:\-_])(?:270m|0\.5b|1b|1\.5b)\b/i.test(model()) || /^(1|true|yes)$/i.test(process.env.OWN_BRAIN_WRITES || "");
+  /** Writes JSON that fits [schema]. Throws (status 503, with a reason) if the own brain isn't there or can't write well
+   *  ("not_ready", "too_small"), or if Claude is down ("busy": then people need the own brain for chat). */
+  async function writeJson({ system, prompt, schema, maxTokens = 700, timeoutMs = 240000 }) {
+    if (!(await ready())) throw Object.assign(new Error("own brain not ready"), { status: 503, reason: "not_ready" });
+    if (!canWrite()) throw Object.assign(new Error("own brain model is too small to write posts"), { status: 503, reason: "too_small" });
+    if (Date.now() < claude.skipUntil) throw Object.assign(new Error("own brain is busy answering people"), { status: 503, reason: "busy" });
+    const r = await fetch(BASE + "/api/chat", { method: "POST", signal: AbortSignal.timeout(timeoutMs), body: JSON.stringify({
+      model: model(), stream: false, keep_alive: "10m", format: schema,
+      messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+      options: { num_ctx: 4096, num_predict: maxTokens, temperature: 0.5, num_thread: Math.max(1, os.cpus().length - 1) } }) });
+    const j = await r.json();
+    if (!r.ok) throw Object.assign(new Error(j.error || "own brain error " + r.status), { status: 502 });
+    const text = String((j.message || {}).content || "");
+    try { stats.wrote = (stats.wrote || 0) + 1; return JSON.parse(text); } catch (e) { throw Object.assign(new Error("own brain wrote something that isn't JSON"), { status: 502 }); }
+  }
+
   // ---------- installing (Teach page button, or brain-setup.sh by hand) ----------
   // the installer runs on its own (gently, so the app stays quick), and keeps going if the server restarts
   const RUNNING = path.join(DATA_DIR, "ownbrain-setup.pid");
@@ -220,13 +239,13 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
     const ok = await ready();
     let log = "";
     try { log = fs.readFileSync(LOG, "utf8").split("\n").slice(-12).join("\n"); } catch (e) { }
-    return { on: !off(), installed: !!model(), model: model(), ready: ok, vision: ok && seen.vision, installing: installing(),
-      answered: stats.answered, failed: stats.failed, skippedClaude: stats.skippedClaude, lastSeconds: Math.round(stats.lastMs / 1000), lastProblem: stats.lastProblem,
+    return { on: !off(), installed: !!model(), model: model(), ready: ok, vision: ok && seen.vision, installing: installing(), writes: ok && canWrite(),
+      answered: stats.answered, wrote: stats.wrote || 0, failed: stats.failed, skippedClaude: stats.skippedClaude, lastSeconds: Math.round(stats.lastMs / 1000), lastProblem: stats.lastProblem,
       claudeResting: Date.now() < claude.skipUntil, log };
   }
 
   /** For /health: what we know right now, without waiting (it checks again in the background). */
   function quick() { ready().catch(() => {}); return { installed: !!model(), model: model() || "none", ready: seen.ok, vision: seen.ok && seen.vision, answered: stats.answered }; }
 
-  return { ready, pet, facts, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats };
+  return { ready, pet, writeJson, canWrite, facts, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats };
 };
