@@ -149,7 +149,7 @@ class SocialPage(private val m: MainActivity) {
         private val PINK = Color.parseColor("#F91880")
         private val SOFT = Color.parseColor("#E9EEF0")
         private val CAT_COLOR = mapOf("news" to "#3B82F6", "movies" to "#F97316", "jobs" to "#6366F1", "devotional" to "#FB923C", "kids" to "#F472B6",
-            "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B")
+            "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B", "facts" to "#8B5CF6")
     }
 
     private class Tab(val key: String, val label: String)
@@ -157,8 +157,8 @@ class SocialPage(private val m: MainActivity) {
 
     private val tabs = listOf(Tab("foryou", "✨ For you"), Tab("popular", "🔥 Popular"), Tab("following", "Following"), Tab("people", "👥 ప్రజలు"),
         Tab("news", "📰 వార్తలు"), Tab("movies", "🎬 సినిమా"), Tab("jobs", "💼 ఉద్యోగాలు"), Tab("devotional", "🛕 భక్తి"), Tab("kids", "🧒 పిల్లలు"),
-        Tab("health", "🩺 ఆరోగ్యం"), Tab("farming", "🌾 వ్యవసాయం"), Tab("realestate", "🏠 రియల్ ఎస్టేట్"), Tab("crypto", "🪙 క్రిప్టో"))
-    private val sectionKeys = setOf("news", "movies", "jobs", "devotional", "kids", "health", "farming", "realestate", "crypto")
+        Tab("facts", "💡 విజ్ఞానం"), Tab("health", "🩺 ఆరోగ్యం"), Tab("farming", "🌾 వ్యవసాయం"), Tab("realestate", "🏠 రియల్ ఎస్టేట్"), Tab("crypto", "🪙 క్రిప్టో"))
+    private val sectionKeys = setOf("news", "movies", "jobs", "devotional", "kids", "health", "farming", "realestate", "crypto", "facts")
     // filters: by mood and by issue (the server tags every Media post)
     private val moods = listOf("" to "😊 Mood · మూడ్", "happy" to "😊 Happy · సంతోషం", "inspiring" to "✨ Inspiring · స్ఫూర్తి", "devotional" to "🙏 Devotional · భక్తి",
         "useful" to "💡 Useful · ఉపయోగం", "calm" to "🕊️ Calm · ప్రశాంతం", "funny" to "😄 Funny · నవ్వు", "serious" to "⚠️ Serious · ముఖ్యం", "sad" to "😢 Sad · బాధ")
@@ -387,6 +387,7 @@ class SocialPage(private val m: MainActivity) {
         "kids" -> "👨‍👩‍👧 Stories and rhymes for parents to read to children."
         "people" -> "👥 Posts from people using BigD AI."
         "popular" -> "🔥 What people liked, commented on and read most in the last 3 days."
+        "facts" -> "💡 మీకు తెలుసా? True, interesting facts, written by our own brain from Wikipedia and trusted sources."
         else -> null
     }
 
@@ -438,6 +439,7 @@ class SocialPage(private val m: MainActivity) {
         if (tab == "foryou" || tab == "popular") strip("🔥 ట్రెండింగ్ · Trending today", arr("trending"))
         if (tab != "popular") strip("📱 Shorts", arr("shorts"), tall = true)
         if (cat.isNotBlank()) strip("▶️ కొత్త వీడియోలు · New videos", arr("latest"))
+        if (cat.isNotBlank()) strip("⭐ ఎక్కువ మంది చూసినవి · Most watched", arr("popular"))
     }
 
     private fun strip(title: String, a: JSONArray, live: Boolean = false, tall: Boolean = false) {

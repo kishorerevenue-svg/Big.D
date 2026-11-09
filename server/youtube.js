@@ -39,11 +39,13 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
     kids: [c("UCHvoq_rGmOKJKGId1nD1V4Q", "Infobells Telugu"), c("UCX56XWkzt1NHIoSIrreA5xw", "Mango Telugu Rhymes"), hd("@ChuChuTVTelugu", "ChuChu TV Telugu"),
       c("UCVQExT4EjUs4Zc-h0NxLOFw", "Koo Koo TV Telugu"), hd("@sesameworkshopindiatelugu", "Sesame Workshop India Telugu")],
     farming: [c("UCO3uQWHfi0YlcypvilKfKlA", "AgriTech Telugu"), hd("@rythunestham", "Rythu Nestham")],
-    health: [], jobs: [], realestate: [], crypto: []
+    health: [], jobs: [], realestate: [], crypto: [], facts: []
   };
   // new videos posted in Media per day (YOUTUBE_MORE=2 doubles them); trailers and breaking news come first
   const MORE = () => Math.max(0.5, Math.min(4, Number(process.env.YOUTUBE_MORE || 1)));
-  const BASE_DAILY = { news: 24, movies: 20, devotional: 10, kids: 8, farming: 6, health: 4, jobs: 4, realestate: 2, crypto: 2 };
+  const BASE_DAILY = { news: 30, movies: 30, devotional: 10, kids: 10, farming: 6, health: 4, jobs: 4, realestate: 2, crypto: 2, facts: 6 };
+  // and each day a few of the most-watched videos of all time ("old favourites"): many in movies, 1-2 of the most beautiful in devotional
+  const CLASSICS = { movies: 8, devotional: 2, kids: 3, farming: 1, facts: 2 };
   const DAILY = new Proxy({}, { get: (t, k) => BASE_DAILY[k] === undefined ? undefined : Math.round(BASE_DAILY[k] * MORE()), ownKeys: () => Reflect.ownKeys(BASE_DAILY), getOwnPropertyDescriptor: (t, k) => ({ enumerable: true, configurable: true, value: BASE_DAILY[k] }) });
   const PER_RUN = { news: 2, movies: 3 };
   const TRAILER = /trailer|teaser|glimpse|first look|ట్రైలర్|టీజర్|గ్లింప్స్|ఫస్ట్ లుక్/i;
@@ -113,6 +115,10 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
       try { long = await feed(`playlist_id=UULF${tail}`); } catch (e) { long = (await feed(`channel_id=${id}`)).filter(v => !v.short); }
       let shorts = [];
       try { shorts = await feed(`playlist_id=UUSH${tail}`); } catch (e) { }
+      if (!st.popAt || Date.now() - st.popAt > 20 * 3600e3) {
+        try { st.popular = (await feed(`playlist_id=UULP${tail}`)).sort((a, b) => b.views - a.views).slice(0, 15).map(v => ({ ...v, desc: v.desc.slice(0, 400) })); } catch (e) { }
+        st.popAt = Date.now();
+      }
       Object.assign(st, { id, name: x.name || (long[0] || shorts[0] || {}).ch || st.name || "", at: Date.now(), err: "", fails: 0,
         videos: long.slice(0, 15).map(v => ({ ...v, desc: v.desc.slice(0, 600) })), shorts: shorts.slice(0, 15).map(v => ({ ...v, desc: "" })) });
     } catch (e) {
@@ -229,7 +235,9 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     const since = Date.now() - 36 * 3600e3;
     for (const cat of Object.keys(BASE_DAILY)) {
       if (only && !only.includes(cat)) continue;
-      let room = Math.min(PER_RUN[cat] || 1, DAILY[cat] - (db.posted[cat] || 0));
+      const recent = media.allItems().filter(i => i.cat === cat && i.kind === "video" && Date.now() - i.at < 24 * 3600e3).length;
+      const catchUp = recent < DAILY[cat] / 2 ? Math.min(10, Math.ceil(DAILY[cat] / 2) - recent) : 0;
+      let room = Math.min(Math.max(PER_RUN[cat] || 1, catchUp), DAILY[cat] - (db.posted[cat] || 0));
       if (room <= 0) continue;
       const trend = (db.trending.list || []).filter(v => v.cat === cat);
       const pool = [...channels(cat).flatMap(x => (db.ch[keyOf(x)] || {}).videos || []), ...trend]
@@ -248,6 +256,33 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     }
   }
 
+  /** A few old favourites a day (most watched of all time), spread from 7 AM to 10 PM; none again for 4 months. */
+  async function postClassics() {
+    const hour = new Date(Date.now() + 5.5 * 3600e3).getUTCHours();
+    if (hour < 7 || hour > 22) return;
+    if (db.posted.day !== today()) db.posted = { day: today() };
+    db.classics = db.classics || {};
+    for (const [id, at] of Object.entries(db.classics)) if (Date.now() - at > 120 * 86400e3) delete db.classics[id];
+    for (const [cat, n] of Object.entries(CLASSICS)) {
+      const done = db.posted["c_" + cat] || 0;
+      if (done >= Math.round(n * MORE()) || done >= Math.ceil(n * (hour - 6) / 16)) continue;     // spread through the day
+      const pool = channels(cat).flatMap(x => (db.ch[keyOf(x)] || {}).popular || [])
+        .filter(v => !db.classics[v.id] && fine(v) && !media.hasUrl(`https://www.youtube.com/watch?v=${v.id}`)).sort((a, b) => b.views - a.views).slice(0, 12);
+      for (let tries = 0; tries < 3 && pool.length; tries++) {
+        const v = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+        db.classics[v.id] = Date.now();
+        let j;
+        try { j = await judge(cat, v); } catch (e) { return; }
+        if (j.skip || j.title.length < 4) { save(); continue; }
+        const it = media.addItem({ cat, title: j.title, body: "⭐ ఎక్కువ మంది చూసిన వీడియో · One of the most-watched\n" + (cleanDesc(v.desc) || v.ch), emoji: "⭐",
+          yt: { id: v.id, title: str(v.title, 150), ch: v.ch }, url: `https://www.youtube.com/watch?v=${v.id}`, source: "YouTube · " + v.ch, img: "", by: "auto", writer: "youtube",
+          kind: "video", mood: j.mood, issue: j.issue, meta: { classic: true } });
+        save();
+        if (it) { db.posted["c_" + cat] = done + 1; save(); break; }
+      }
+    }
+  }
+
   // ---------- the schedule: news videos every 30 minutes, the others every 2 hours, live every 30 minutes, trending every 3 hours ----------
   let busy = false;
   async function tick(force) {
@@ -259,6 +294,7 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
         db.runs.videos = now; db.runs.news = now; save();
         for (const x of allChannels()) await refresh(x);
         await postNew();
+        await postClassics();
       } else if (now - (db.runs.news || 0) > 30 * 60e3) {
         // news (and breaking news) every 30 minutes
         db.runs.news = now; save();
@@ -279,7 +315,8 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     const live = list.map(x => { const st = db.ch[keyOf(x)] || {}; return st.live ? { id: st.live.id, title: st.live.title, ch: x.name || st.name, cat: x.cat, since: st.live.since, live: true } : null; }).filter(Boolean);
     const latest = list.flatMap(x => ((db.ch[keyOf(x)] || {}).videos || []).filter(fine).slice(0, 8).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 40);
     const shorts = list.flatMap(x => ((db.ch[keyOf(x)] || {}).shorts || []).filter(fine).slice(0, 10).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 100);
-    return { live, latest, shorts, trending: cat && cat !== "all" ? [] : db.trending.list, key: !!KEY() };
+    const popular = list.flatMap(x => ((db.ch[keyOf(x)] || {}).popular || []).filter(fine).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.views - a.views).slice(0, 40);
+    return { live, latest, shorts, popular, trending: cat && cat !== "all" ? [] : db.trending.list, key: !!KEY() };
   }
   const reads = new Map();
   async function handle(req, res, url, origin) {

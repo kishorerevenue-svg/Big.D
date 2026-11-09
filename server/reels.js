@@ -26,7 +26,7 @@ module.exports = function makeReels({ DATA_DIR, media, voice }) {
   const CLIPS = path.join(DIR, "clips");
   fs.mkdirSync(CLIPS, { recursive: true });
   const XF = 0.6;     // seconds of soft fade between two scenes
-  const CATS = String(process.env.REELS_CATS || "news,jobs,farming,health,devotional,movies,kids,realestate").split(",").map(s => s.trim());
+  const CATS = String(process.env.REELS_CATS || "news,jobs,farming,health,devotional,movies,kids,realestate,facts").split(",").map(s => s.trim());
   const KEEP_MS = 10 * 86400e3;
   const W = 720, H = 1280, FPS = 30;
   const COLOR = { news: "#3B82F6", movies: "#F97316", jobs: "#6366F1", devotional: "#FB923C", kids: "#F472B6", health: "#14B8A6",

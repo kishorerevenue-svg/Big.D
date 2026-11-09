@@ -48,7 +48,9 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
     farming: { te: "వ్యవసాయం", en: "Farming", search: 2, daily: 1, keepDays: 120,
       brief: "Useful farming tips for this season in Andhra Pradesh and Telangana, crop and market price news, government schemes for farmers (PM-KISAN, state schemes, crop insurance) and weather advice for farmers." },
     health: { te: "ఆరోగ్యం", en: "Health", search: 0, daily: 1, keepDays: 365,
-      brief: "Simple, trusted health tips for families (water, food, exercise, sleep, BP, sugar, children's and elders' health, seasonal illnesses). Always add to see a doctor for real problems. No miracle cures, no medicine doses." }
+      brief: "Simple, trusted health tips for families (water, food, exercise, sleep, BP, sugar, children's and elders' health, seasonal illnesses). Always add to see a doctor for real problems. No miracle cures, no medicine doses." },
+    facts: { te: "విజ్ఞానం", en: "Facts", search: 1, daily: 2, keepDays: 365,
+      brief: "Interesting, true facts people love to share (మీకు తెలుసా?): science, space, nature, animals, the human body, India's history, inventions, world records. Only well-known, checked facts; no rumours, no 'shocking' claims." }
   };
 
   // ---------- storage ----------
@@ -280,7 +282,8 @@ Reply with only a JSON object, no other text:
   const MORE = Math.max(0.3, Math.min(3, Number(process.env.MEDIA_FEED_MORE || 1)));    // 2 = twice as many posts each time
   const PLAN = {
     news: [[6, 8, 10, 12, 14, 16, 18, 20, 22], 3], movies: [[8, 11, 14, 17, 20, 22], 2], devotional: [[5, 12, 18], 2],
-    farming: [[7, 13, 19], 2], health: [[7, 13, 19], 2], jobs: [[9, 15, 21], 2], realestate: [[9, 17], 2], crypto: [[9, 17], 1]
+    farming: [[7, 13, 19], 2], health: [[7, 13, 19], 2], jobs: [[9, 15, 21], 2], realestate: [[9, 17], 2], crypto: [[9, 17], 1],
+    facts: [[8, 11, 14, 17, 20], 2]
   };
   const feeds = require("./feeds.js")({ DATA_DIR, ownBrain, ai, MODEL, API_KEY, media: { CATS, MOODS, ISSUES, addItem, recentTitles, hasUrl } });
   async function feedTick() {

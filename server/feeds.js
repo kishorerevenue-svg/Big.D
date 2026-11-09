@@ -43,7 +43,8 @@ module.exports = function makeFeeds({ DATA_DIR, ownBrain, ai, MODEL, API_KEY, me
       jobs: [gn("APPSC OR TGPSC notification"), gn("recruitment notification apply online"), gn("ఉద్యోగ నోటిఫికేషన్", true), gn("SSC OR RRB OR IBPS OR SBI recruitment"),
         gn("DSC OR TET Andhra Pradesh OR Telangana")],
       realestate: [gn("Amaravati real estate"), gn("Hyderabad real estate"), gn("Visakhapatnam OR Vijayawada OR Tirupati real estate"), gn("RERA Andhra Pradesh OR Telangana"), gn("రియల్ ఎస్టేట్", true)],
-      crypto: [gn("crypto India"), gn("Bitcoin"), gn("crypto scam India")]
+      crypto: [gn("crypto India"), gn("Bitcoin"), gn("crypto scam India")],
+      facts: [site(`https://api.wikimedia.org/feed/v1/wikipedia/en/featured/${today().replace(/-/g, "/")}`, "Wikipedia · today's article and on this day"), gn("ISRO"), gn("scientists discover")]
     };
   }
   /** The feeds of a section: the defaults the owner didn't remove, then the ones the owner added. */
@@ -80,6 +81,17 @@ module.exports = function makeFeeds({ DATA_DIR, ownBrain, ai, MODEL, API_KEY, me
     }
     return out;
   }
+  /** Wikipedia's page of the day: its featured article and "on this day" (true facts with a link, free). */
+  function wiki(j) {
+    const out = [], page = p => (p && p.content_urls && p.content_urls.desktop && p.content_urls.desktop.page) || "";
+    const img = p => (p && p.thumbnail && /^https:/.test(p.thumbnail.source || "") ? p.thumbnail.source : "");
+    if (j.tfa && page(j.tfa)) out.push({ title: (j.tfa.titles && j.tfa.titles.normalized) || j.tfa.title || "", link: page(j.tfa), when: Date.now(), source: "Wikipedia", summary: String(j.tfa.extract || "").slice(0, 900), img: img(j.tfa) });
+    for (const e of (j.onthisday || []).slice(0, 20)) {
+      const p = (e.pages || []).find(x => page(x) && x.extract);
+      if (p) out.push({ title: `On this day in ${e.year}: ${e.text}`.slice(0, 220), link: page(p), when: Date.now(), source: "Wikipedia", summary: String(p.extract).slice(0, 900), img: img(p) });
+    }
+    return out.filter(s => s.title);
+  }
   async function read(src) {
     const h = db.health[src.url] = db.health[src.url] || { fails: 0 };
     // a feed that keeps failing is tried again only twice a day
@@ -87,7 +99,7 @@ module.exports = function makeFeeds({ DATA_DIR, ownBrain, ai, MODEL, API_KEY, me
     try {
       const r = await get(src.url, { headers: { "user-agent": UA, accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*" }, signal: AbortSignal.timeout(12000) });
       if (!r.ok) throw new Error("it said " + r.status);
-      const list = parse((await r.text()).slice(0, 3_000_000));
+      const list = /api\.wikimedia\.org\/feed/.test(src.url) ? wiki(await r.json()) : parse((await r.text()).slice(0, 3_000_000));
       if (!list.length) throw new Error("no stories in it");
       Object.assign(h, { at: Date.now(), n: list.length, err: "", fails: 0 });
       return list.map(s => ({ ...s, feed: src.url, source: s.source || src.name.replace(/^Google News · .*/, "") || hostOf(s.link) }));

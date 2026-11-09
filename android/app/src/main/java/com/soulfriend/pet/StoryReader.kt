@@ -68,9 +68,9 @@ class StoryReader : Activity() {
         private val CAT = mapOf(
             "news" to "📰 వార్తలు · News", "movies" to "🎬 సినిమా · Movies", "jobs" to "💼 ఉద్యోగాలు · Jobs",
             "devotional" to "🛕 భక్తి · Devotional", "kids" to "🧒 పిల్లలు · Kids", "health" to "🩺 ఆరోగ్యం · Health",
-            "farming" to "🌾 వ్యవసాయం · Farming", "realestate" to "🏠 రియల్ ఎస్టేట్ · Real estate", "crypto" to "🪙 క్రిప్టో · Crypto")
+            "farming" to "🌾 వ్యవసాయం · Farming", "realestate" to "🏠 రియల్ ఎస్టేట్ · Real estate", "crypto" to "🪙 క్రిప్టో · Crypto", "facts" to "💡 విజ్ఞానం · Facts")
         private val CAT_COLOR = mapOf("news" to "#3B82F6", "movies" to "#F97316", "jobs" to "#6366F1", "devotional" to "#FB923C", "kids" to "#F472B6",
-            "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B")
+            "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B", "facts" to "#8B5CF6")
         private val PINK = Color.parseColor("#F91880")
         private val BLUE = Color.parseColor("#1D9BF0")
         private val BOX = Color.parseColor("#F3F6F5")

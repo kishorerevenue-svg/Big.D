@@ -90,8 +90,9 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
   }
 
   // ---------- official accounts: one per Media section ----------
-  const ICON = { news: "📰", movies: "🎬", kids: "🧒", crypto: "🪙", realestate: "🏠", jobs: "💼", devotional: "🛕", farming: "🌾", health: "🩺" };
+  const ICON = { news: "📰", movies: "🎬", kids: "🧒", crypto: "🪙", realestate: "🏠", jobs: "💼", devotional: "🛕", farming: "🌾", health: "🩺", facts: "💡" };
   const BIO = {
+    facts: "మీకు తెలుసా? ఆసక్తికరమైన నిజాలు · Interesting true facts",
     news: "రోజూ ముఖ్యమైన వార్తలు · Daily news for Telugu people", movies: "కొత్త సినిమాలు, విమర్శకుల అభిప్రాయాలు, ట్రైలర్లు · Movies, reviews, trailers",
     kids: "పిల్లలకు కథలు, పాటలు, పొడుపు కథలు · Stories and rhymes for kids", crypto: "క్రిప్టో వార్తలు, జాగ్రత్తలు · Crypto news (not financial advice)",
     realestate: "AP, తెలంగాణ రియల్ ఎస్టేట్ వార్తలు · Real estate news (not advice)", jobs: "కొత్త ఉద్యోగ నోటిఫికేషన్లు · New job notifications",
