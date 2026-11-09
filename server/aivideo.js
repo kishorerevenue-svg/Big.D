@@ -88,7 +88,7 @@ Reply only with JSON: {"prompt": "...", "title": "...", "lines": ["...", "..."],
   const CARTOON_SYSTEM = (person) => `You plan one funny cartoon short for the "Media" page of BigD AI, a Telugu app for families in Andhra Pradesh and Telangana (children watch too). An AI video model makes it: ${CSECONDS()} seconds, vertical (9:16), clearly labelled "AI-made".
 Style: a bright, colourful 2D cartoon like the popular funny cartoon shorts: expressive faces, simple backgrounds from Telugu everyday life (village, town, home, school), 3 to 5 quick shots that tell a tiny story with a funny, kind ending. Sound: cartoon sound effects and light music, no speech, no singing. No text, letters or logos in the video.
 Be kind: never make fun of women or men, any caste, religion, region, colour, body or disability, or any real or famous person; no politics, no violence, nothing scary or adult.${person ? `
-The idea comes from a person using the app. If it is unkind, unsafe, about real or famous people, or not for children, set "skip" to true.` : ""}
+The idea comes from a person using the app. Follow it closely: their characters, place, actions, the funny moment and the style they ask for (for example a 3D animated film look instead of 2D). Describe the look in your own words: never name real studios, brands, films or known cartoon characters in the prompt. Keep slapstick gentle (nobody gets hurt). If the idea is unkind, unsafe, about real or famous people, or not for children, set "skip" to true.` : ""}
 "prompt": the English description for the video model, shot by shot, ending with the funny moment. "title": a Telugu title shown on top, at most 9 words, that makes people smile. "lines": 1 short Telugu line (at most 12 words) shown at the end, the punchline or a kind smile.
 Reply only with JSON: {"prompt": "...", "title": "...", "lines": ["..."], "mood": "funny", "issue": one of ${media.ISSUES.join(", ")}, "skip": false}`;
   async function script(cat, theme, person) {
@@ -106,7 +106,7 @@ Reply only with JSON: {"prompt": "...", "title": "...", "lines": ["..."], "mood"
       j = await ownBrain.writeJson({ system: SYSTEM(cat, person), prompt: ask, maxTokens: 600, schema: { type: "object", required: ["prompt", "title", "lines", "mood", "issue"], properties: { skip: { type: "boolean" },
         prompt: { type: "string" }, title: { type: "string" }, lines: { type: "array", items: { type: "string" } }, mood: { type: "string", enum: media.MOODS }, issue: { type: "string", enum: media.ISSUES } } } });
     }
-    if (j && j.skip) throw Object.assign(new Error("Sorry, the puppy can't make that one. Please try a kind, happy idea."), { refused: true });
+    if (j && j.skip) throw Object.assign(new Error("Sorry, we can't make that one. Please try a kind, happy idea."), { refused: true });
     if (!j || String(j.prompt || "").length < 20 || !j.title) throw new Error("couldn't plan the video");
     return { prompt: String(j.prompt).slice(0, 1500), title: String(j.title).trim().slice(0, 100), lines: (Array.isArray(j.lines) ? j.lines : []).map(l => String(l).trim().slice(0, 90)).filter(Boolean).slice(0, 3),
       mood: media.MOODS.includes(j.mood) ? j.mood : (cat === "devotional" ? "devotional" : cat === "kids" ? "happy" : cat === "cartoon" ? "funny" : "useful"),
@@ -167,7 +167,8 @@ Reply only with JSON: {"prompt": "...", "title": "...", "lines": ["..."], "mood"
   // ---------- our finishing: Telugu words, "AI-made" label, the voice ----------
   const run = (cmd, args, ms = 5 * 60e3) => new Promise((res, rej) => execFile(cmd, args, { timeout: ms, maxBuffer: 4e6 }, (e, out, err) => e ? rej(Object.assign(e, { stderr: err })) : res(out)));
   const seconds = async f => Number(await run(process.env.FFPROBE || "ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", f], 30000)) || 0;
-  const esc = t => String(t).replace(/\\/g, "＼").replace(/[{}]/g, "").replace(/\n/g, "\\N");
+  // (no emoji in the video: the video font has none, they would show as empty boxes)
+  const esc = t => String(t).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/gu, "").replace(/\\/g, "＼").replace(/[{}]/g, "").replace(/\n/g, "\\N").trim();
   const ts = s => { const cs = Math.max(0, Math.round(s * 100)); return `${Math.floor(cs / 360000)}:${String(Math.floor(cs / 6000) % 60).padStart(2, "0")}:${String(Math.floor(cs / 100) % 60).padStart(2, "0")}.${String(cs % 100).padStart(2, "0")}`; };
   async function finish(raw, out, poster, s) {
     let vo = "", voSec = 0;
@@ -190,7 +191,7 @@ Style: Label,Hind Guntur,26,&H00FFFFFF,&H00FFFFFF,&H50000000,&H70000000,1,0,0,0,
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 2,${ts(0)},${ts(total)},Label,,0,0,0,,🤖 AI-made · BigD AI
+Dialogue: 2,${ts(0)},${ts(total)},Label,,0,0,0,,AI-made · BigD AI
 Dialogue: 1,${ts(0.3)},${ts(total)},Title,,0,0,0,,{\\fad(400,300)}${esc(s.title)}
 ${s.lines.map((l, i) => `Dialogue: 1,${ts(i * per + 0.4)},${ts(Math.min(total, (i + 1) * per))},Line,,0,0,0,,{\\fad(300,200)}${esc(l)}`).join("\n")}
 `);
@@ -272,15 +273,21 @@ ${s.lines.map((l, i) => `Dialogue: 1,${ts(i * per + 0.4)},${ts(Math.min(total, (
 
   // ---------- people's own ideas (the cartoon maker in the app): free for now, with daily limits ----------
   const forPeople = {
-    /** How many AI cartoons this person (and everyone) can still make today. */
-    left(dev) {
+    /** Can this person get an AI cartoon now, and if not, why: "no_key" (Gemini not set up on the server), "off" (AI_VIDEOS=false),
+     *  "budget" (this month's money limit), "day" (today's free ones for everyone are made), "you" (this person's free one today is made).
+     *  The owner (Team password) has no daily limit; the monthly money limit still holds. */
+    state(dev, admin) {
       roll();
-      // (people's own ideas don't depend on MEDIA_AUTO, which is only about posting by itself)
-      if (!KEY() || String(process.env.AI_VIDEOS || "true") === "false" || db.spent + CSECONDS() * RATE > CAP()) return { all: 0, you: 0 };
-      return { all: Math.max(0, PUBLIC_DAY() - (db.pubDay || 0)), you: Math.max(0, PUBLIC_EACH() - ((db.pubEach || {})[dev] || 0)) };
+      const off = !KEY() ? "no_key" : String(process.env.AI_VIDEOS || "true") === "false" ? "off" : db.spent + CSECONDS() * RATE > CAP() ? "budget" : "";
+      if (off) return { on: false, reason: off, all: 0, you: 0 };
+      const all = Math.max(0, PUBLIC_DAY() - (db.pubDay || 0)), you = Math.min(all, Math.max(0, PUBLIC_EACH() - ((db.pubEach || {})[dev] || 0)));
+      if (admin) return { on: true, reason: "", all, you, admin: true };
+      return { on: all > 0 && you > 0, reason: all <= 0 ? "day" : you <= 0 ? "you" : "", all, you };
     },
-    take(dev) { roll(); db.pubDay = (db.pubDay || 0) + 1; db.pubEach = db.pubEach || {}; db.pubEach[dev] = (db.pubEach[dev] || 0) + 1; save(); },
-    refund(dev) { db.pubDay = Math.max(0, (db.pubDay || 1) - 1); if (db.pubEach && db.pubEach[dev]) db.pubEach[dev]--; save(); },
+    /** How many AI cartoons this person (and everyone) can still make today. */
+    left(dev, admin) { const st = forPeople.state(dev, admin); return { all: st.on ? st.all : 0, you: st.on ? (st.admin ? Math.max(1, st.you) : st.you) : 0 }; },
+    take(dev, admin) { if (admin) return; roll(); db.pubDay = (db.pubDay || 0) + 1; db.pubEach = db.pubEach || {}; db.pubEach[dev] = (db.pubEach[dev] || 0) + 1; save(); },
+    refund(dev, admin) { if (admin) return; db.pubDay = Math.max(0, (db.pubDay || 1) - 1); if (db.pubEach && db.pubEach[dev]) db.pubEach[dev]--; save(); },
     make: (idea, type) => makeOne("cartoon", { idea: `${idea || "a funny surprise"}${type && type !== "joke" ? ` (kind: ${type})` : ""}` })
   };
   setTimeout(() => tick(), 5 * 60_000).unref();

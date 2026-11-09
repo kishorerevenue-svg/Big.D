@@ -379,7 +379,11 @@ const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, ai: le
 const aiVideo = require("./aivideo.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice });
 // BigD puppy cartoons: made on our own server, written by our own brain, learning from what people like
 const cartoon = require("./cartoon.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice, h: { send, readBody, allowed, clientIp },
-  engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople });
+  engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, isAdmin: req => {   // the owner (Team password in the app): no daily cartoon limits
+    const given = String(req.headers["x-admin-key"] || ""), pw = process.env.ADMIN_PASSWORD || TEACH_PASSWORD;
+    if (!pw || !given) return false;
+    return crypto.timingSafeEqual(crypto.createHash("sha256").update(given).digest(), crypto.createHash("sha256").update(pw).digest());
+  } });
 // YouTube in every Media section: trusted channels' new videos, live TV and live darshan, Shorts, trending
 const youtube = require("./youtube.js")({ DATA_DIR, media, ownBrain, h: { send, readBody, allowed, clientIp } });
 // profiles, posts with photos and links, comments, likes, follows (the Media tab works like X)
@@ -579,7 +583,8 @@ const server = http.createServer(async (req, res) => {
           aiVideo.makeOne(cat).catch(() => {});
           return send(res, 200, { ok: true });
         }
-        if (url.pathname === "/api/teach/cartoon/make") { cartoon.add(cartoon.TYPES[body.type] ? body.type : "joke", String(body.prompt || "").slice(0, 300)); return send(res, 200, cartoon.status()); }
+        if (url.pathname === "/api/teach/cartoon/make") { cartoon.add(cartoon.TYPES[body.type] ? body.type : "joke", String(body.prompt || "").slice(0, 1000)); return send(res, 200, cartoon.status()); }
+        if (url.pathname === "/api/teach/cartoon/settings") return send(res, 200, cartoon.settings(body || {}));
         if (url.pathname === "/api/teach/aivideo/settings") return send(res, 200, aiVideo.settings(body || {}));
         if (url.pathname === "/api/teach/aivideo/delete") return send(res, 200, { ok: aiVideo.remove(body.id), ...aiVideo.status() });
         if (url.pathname === "/api/teach/text") {

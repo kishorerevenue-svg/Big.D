@@ -14,14 +14,15 @@ const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 
-module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, ownBrain, voice, h, engagement, aiPeople }) {
+module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, ownBrain, voice, h, engagement, aiPeople, isAdmin }) {
   const FFMPEG = process.env.FFMPEG || "ffmpeg";
   const ART = path.join(__dirname, "assets", "cartoon");
   const FONTS = path.join(__dirname, "fonts");
   const DIR = path.join(DATA_DIR, "cartoons");
   fs.mkdirSync(DIR, { recursive: true });
   const FILE = path.join(DATA_DIR, "cartoons.json");
-  const DAILY = () => Math.max(0, Math.min(24, Number(process.env.CARTOONS_DAILY ?? 6)));
+  // puppy cartoons made by itself for Media: the owner sets how many a day on the Teach page (0 = off, the default)
+  const DAILY = () => { const v = db && db.settings && db.settings.daily; return Math.max(0, Math.min(24, Number(v !== undefined && v !== null ? v : (process.env.CARTOONS_DAILY ?? 0)))); };
   const EACH = () => Math.max(0, Number(process.env.CARTOON_PUBLIC_EACH ?? 3));        // a day, for each person
   const PUBLIC_DAY = () => Math.max(0, Number(process.env.CARTOON_PUBLIC_DAILY ?? 60)); // a day, everyone together
   const ON = String(process.env.CARTOONS || "true") !== "false";
@@ -108,7 +109,8 @@ Reply only with JSON: {"title": "<Telugu, at most 8 words>", "lines": ["...", ".
     hd.writeUInt32LE(RATE, 24); hd.writeUInt32LE(RATE * 2, 28); hd.writeUInt16LE(2, 32); hd.writeUInt16LE(16, 34); hd.write("data", 36); hd.writeUInt32LE(buf.length, 40);
     return Buffer.concat([hd, buf]);
   }
-  const esc = t => String(t).replace(/\\/g, "＼").replace(/[{}]/g, "").replace(/\n/g, "\\N");
+  // (no emoji in the video: the video font has none, they would show as empty boxes)
+  const esc = t => String(t).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/gu, "").replace(/\\/g, "＼").replace(/[{}]/g, "").replace(/\n/g, "\\N").trim();
   const ts = s => { const cs = Math.max(0, Math.round(s * 100)); return `${Math.floor(cs / 360000)}:${String(Math.floor(cs / 6000) % 60).padStart(2, "0")}:${String(Math.floor(cs / 100) % 60).padStart(2, "0")}.${String(cs % 100).padStart(2, "0")}`; };
 
   async function render(id, s, type) {
@@ -179,8 +181,8 @@ Style: EndSub,Hind Guntur,34,&H00FFFFFF,&H00FFFFFF,&H00402010,&H90000000,1,0,0,0
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 2,${ts(0)},${ts(end)},Label,,0,0,0,,🐶 BigD cartoon
-Dialogue: 1,${ts(0.2)},${ts(end)},Title,,0,0,0,,{\\fad(400,200)}${esc((type === "riddle" ? "🤔 " : "") + s.title)}
+Dialogue: 2,${ts(0)},${ts(end)},Label,,0,0,0,,BigD cartoon
+Dialogue: 1,${ts(0.2)},${ts(end)},Title,,0,0,0,,{\\fad(400,200)}${esc(s.title)}
 ${parts.map((p, i) => `Dialogue: 1,${ts(p.at - 0.1)},${ts(Math.min(end, p.at + p.dur + 0.35))},Bubble,,0,0,0,,{\\fad(150,100)}${esc(s.lines[i])}`).join("\n")}
 Dialogue: 3,${ts(end)},${ts(total)},End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}BigD AI
 Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}కార్టూన్లు · వార్తలు · సహాయం · bigdai.tech
@@ -225,10 +227,13 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
           console.log(`Cartoon: made AI cartoon ${job.id} for someone`);
           save(); continue;
         } catch (e) {
-          aiPeople.refund(job.device);
-          if (e.refused) { job.status = "failed"; job.error = String(e.message).slice(0, 160); job.doneAt = Date.now(); save(); continue; }
-          job.ai = false; job.note = "The AI cartoon maker was busy, so our puppy made this one for you.";
-          console.error("AI cartoon failed, the puppy makes it:", e.message);
+          aiPeople.refund(job.device, job.admin);
+          job.status = "failed"; job.doneAt = Date.now();
+          // not swapped for the puppy (a different picture from what the person asked for): their free try is given back
+          job.error = e.refused ? String(e.message).slice(0, 160)
+            : "Sorry, the AI cartoon couldn't be made just now. Your free try is given back, so please try again in a little while." + (job.admin ? ` (Owner: ${String(e.message || e).slice(0, 200)})` : "");
+          console.error("AI cartoon failed:", e.message);
+          save(); continue;
         }
       }
       try {
@@ -246,7 +251,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
         console.log(`Cartoon: made ${job.id} (${job.type}${job.device ? ", asked by someone" : ""}, written by ${s.by})`);
       } catch (e) {
         job.status = "failed"; job.error = String(e.message || e).slice(0, 160);
-        if (job.device && !e.refused) { const k = job.device; db.perDevice[k] = Math.max(0, (db.perDevice[k] || 1) - 1); db.pub = Math.max(0, db.pub - 1); }   // a failure doesn't count
+        if (job.device && !job.admin && !e.refused) { const k = job.device; db.perDevice[k] = Math.max(0, (db.perDevice[k] || 1) - 1); db.pub = Math.max(0, db.pub - 1); }   // a failure doesn't count
         console.error("Cartoon failed:", job.error);
       }
       job.doneAt = Date.now();
@@ -254,9 +259,9 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
     }
     busy = false;
   }
-  function add(type, prompt, device, aiCartoon) {
+  function add(type, prompt, device, aiCartoon, admin) {
     const id = (device ? "p" : "a") + (db.next++) + (device ? "_" + crypto.randomBytes(4).toString("hex") : "");
-    const job = { id, type, prompt: prompt || "", device: device || "", status: "waiting", at: Date.now(), ai: !!aiCartoon };
+    const job = { id, type, prompt: prompt || "", device: device || "", status: "waiting", at: Date.now(), ai: !!aiCartoon, admin: !!admin };
     db.jobs[id] = job;
     for (const [k, j] of Object.entries(db.jobs)) if (Date.now() - j.at > 3 * 86400e3) delete db.jobs[k];
     queue.push(job); save(); pump();
@@ -283,6 +288,13 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
 
   // ---------- for the app ----------
   const devOf = req => crypto.createHash("sha256").update("cartoon|" + (String(req.headers["x-device"] || "").replace(/[^\w-]/g, "").slice(0, 64) || (h ? h.clientIp(req) : ""))).digest("hex").slice(0, 20);
+  const WHY = {
+    no_key: "AI cartoons from your idea are coming soon!",
+    off: "AI cartoons are resting right now. Please try again later.",
+    budget: "This month's free AI cartoons are all made. They start again next month!",
+    day: "Today's free AI cartoons are all made. Please come back tomorrow! 🌅",
+    you: "You made your free AI cartoon today. Please come back tomorrow for another one! 🌅"
+  };
   const BAD = /\b(sex|nude|naked|porn|kill|murder|rape|suicide|bomb|drugs?)\b|బూతు|చంపు|హత్య/i;
   const view = j => ({ id: j.id, status: j.status, title: j.title || "", lines: j.lines || [], error: j.error || "", position: j.status === "waiting" ? queue.indexOf(j) + 1 : 0,
     video: j.status === "done" ? { url: `/media/cartoon/${j.id}.mp4`, poster: `/media/cartoon/${j.id}.jpg`, dur: j.dur || 0, w: 720, h: 1280 } : null, posted: !!j.posted,
@@ -305,28 +317,37 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
     }
     if (!p.startsWith("/api/cartoon/")) return false;
     const send = (st, o) => h.send(res, st, o, origin);
+    const admin = !!(isAdmin && isAdmin(req));
+    const aiState = dev => aiPeople ? aiPeople.state(dev, admin) : { on: false, reason: "no_key", all: 0, you: 0 };
     if (p === "/api/cartoon/make" && req.method === "POST") {
       const body = await h.readBody(req).catch(() => ({}));
       roll();
       const dev = devOf(req);
       const type = TYPES[body.type] ? body.type : "joke";
-      const idea = String(body.prompt || "").replace(/\s+/g, " ").trim().slice(0, 300);
+      const idea = String(body.prompt || "").replace(/\s+/g, " ").trim().slice(0, 1000);
+      // maker: "ai" (the AI cartoon of their idea), "puppy" (our simple puppy cartoon, chosen by the person), or none (older apps: AI if there is one, else the puppy)
+      const maker = ["ai", "puppy"].includes(body.maker) ? body.maker : "";
       if (!ON) return send(503, { error: "Cartoons are off right now." }), true;
-      if (BAD.test(idea)) return send(400, { error: "Sorry, the puppy can't make that one. Please try a kind, happy idea." }), true;
-      if ((db.perDevice[dev] || 0) >= EACH()) return send(429, { error: `You can make ${EACH()} cartoons a day. Please come back tomorrow! 🐶` }), true;
-      if (db.pub >= PUBLIC_DAY() || queue.length >= 15) return send(429, { error: "So many people are making cartoons now! Please try again in a little while." }), true;
-      db.perDevice[dev] = (db.perDevice[dev] || 0) + 1; db.pub++;
-      if (idea) db.asks = [...db.asks, { prompt: idea.slice(0, 120), type, at: Date.now() }].slice(-200);
-      const left = aiPeople ? aiPeople.left(dev) : { all: 0, you: 0 };
-      const useAi = left.all > 0 && left.you > 0;
-      if (useAi) aiPeople.take(dev);
-      const job = add(type, idea, dev, useAi);
+      if (BAD.test(idea)) return send(400, { error: "Sorry, we can't make that one. Please try a kind, happy idea." }), true;
+      if (queue.length >= 15) return send(429, { error: "So many people are making cartoons now! Please try again in a little while." }), true;
+      const ai = maker === "puppy" ? { on: false } : aiState(dev);
+      if (maker === "ai" && !ai.on) return send(409, { error: WHY[ai.reason] || WHY.no_key, reason: ai.reason }), true;
+      if (!ai.on && !admin) {   // the free puppy: a few a day for each person
+        if ((db.perDevice[dev] || 0) >= EACH()) return send(429, { error: `You can make ${EACH()} puppy cartoons a day. Please come back tomorrow! 🐶` }), true;
+        if (db.pub >= PUBLIC_DAY()) return send(429, { error: "So many people are making cartoons today! Please try again tomorrow." }), true;
+        db.perDevice[dev] = (db.perDevice[dev] || 0) + 1; db.pub++;
+      }
+      if (idea) db.asks = [...db.asks, { prompt: idea.slice(0, 120), type, at: Date.now(), ai: !!ai.on }].slice(-200);
+      if (ai.on) aiPeople.take(dev, admin);
+      const job = add(type, idea, dev, ai.on, admin);
       return send(200, view(job)), true;
     }
     if (p === "/api/cartoon/info" && req.method === "GET") {
       roll();
-      const dev = devOf(req), left = aiPeople ? aiPeople.left(dev) : { all: 0, you: 0 };
-      return send(200, { aiLeftToday: left.all, aiLeftForYou: Math.min(left.all, left.you), leftForYou: Math.max(0, EACH() - (db.perDevice[dev] || 0)), each: EACH() }), true;
+      const dev = devOf(req), ai = aiState(dev);
+      return send(200, { ai: { on: ai.on, reason: ai.reason, why: ai.on ? "" : (WHY[ai.reason] || "") }, admin,
+        aiLeftToday: ai.on ? ai.all : 0, aiLeftForYou: ai.on ? (admin ? Math.max(1, ai.you) : ai.you) : 0,
+        leftForYou: admin ? 99 : Math.max(0, EACH() - (db.perDevice[dev] || 0)), each: EACH() }), true;
     }
     if (p === "/api/cartoon/status" && req.method === "GET") {
       const job = db.jobs[String(url.searchParams.get("id") || "")];
@@ -337,7 +358,8 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       const job = db.jobs[String(body.id || "")];
       if (!job || job.status !== "done" || job.device !== devOf(req)) return send(404, { error: "Not found" }), true;
       if (job.posted) return send(200, view(job)), true;
-      const r = social && social.postCartoon(req, `🐶 ${job.title}\n${(job.lines || []).join("\n")}`.slice(0, 900), view(job).video);
+      const text = job.ai ? `🤖 ${job.title}\n${(job.lines || []).join("\n")}\n\n🤖 AI-made video · AI తో తయారైన వీడియో` : `🐶 ${job.title}\n${(job.lines || []).join("\n")}`;
+      const r = social && social.postCartoon(req, text.slice(0, 900), view(job).video);
       if (!r || r.error) return send(400, { error: (r && r.error) || "Couldn't post it." }), true;
       job.posted = true; save();
       return send(200, view(job)), true;
@@ -351,5 +373,11 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       recent: db.made.slice(-12).reverse().map(m => ({ id: m.id, type: m.type, title: m.title, at: m.at, pub: m.pub, by: m.by, score: m.itemId ? score(m) : null })),
       asks: db.asks.slice(-10).reverse() };
   }
-  return { handle, status, add, tick, TYPES, _test: { script, render, learned, pickType, db: () => db } };
+  /** The owner sets how many puppy cartoons are made by itself each day (0 = none). */
+  function settings(o) {
+    db.settings = db.settings || {};
+    if (o && o.daily !== undefined && o.daily !== "" && isFinite(Number(o.daily))) db.settings.daily = Math.max(0, Math.min(24, Math.round(Number(o.daily))));
+    save(); return status();
+  }
+  return { handle, status, settings, add, tick, TYPES, _test: { script, render, learned, pickType, db: () => db } };
 };

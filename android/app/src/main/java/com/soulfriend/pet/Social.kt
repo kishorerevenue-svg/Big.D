@@ -340,8 +340,8 @@ class SocialPage(private val m: MainActivity) {
         if (tab == "foryou" || tab == "fun" || tab == "kids") m.add(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(10), dp(10), dp(10))
             background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(Color.parseColor("#FFF1D6"), Color.parseColor("#FFE0EC"))).apply { cornerRadius = dp(18).toFloat() }
-            addView(ui.text("🐶", 30f, Ui.INK))
-            addView(ui.stack(ui.text("Make a puppy cartoon · కార్టూన్", 15f, Ui.INK, bold = true), ui.text("Your idea → a cartoon video by our own brain", 12.5f, Ui.MUTED)).apply { setPadding(dp(10), 0, dp(6), 0) },
+            addView(ui.text("🎬", 30f, Ui.INK))
+            addView(ui.stack(ui.text("Make a cartoon · కార్టూన్", 15f, Ui.INK, bold = true), ui.text("Your idea → your own cartoon video", 12.5f, Ui.MUTED)).apply { setPadding(dp(10), 0, dp(6), 0) },
                 LinearLayout.LayoutParams(0, -2, 1f))
             addView(ui.button("Make", "primary") { go("cartoon") })
             setOnClickListener { go("cartoon") }
@@ -398,7 +398,7 @@ class SocialPage(private val m: MainActivity) {
         "kids" -> "👨‍👩‍👧 Stories and rhymes for parents to read to children."
         "people" -> "👥 Posts from people using BigD AI."
         "popular" -> "🔥 What people liked, commented on and read most in the last 3 days."
-        "fun" -> "😄 Clean jokes, riddles, good thoughts and BigD puppy cartoons, made by our own brain."
+        "fun" -> "😄 Clean jokes, riddles, good thoughts and funny cartoons."
         "facts" -> "💡 మీకు తెలుసా? True, interesting facts, written by our own brain from Wikipedia and trusted sources."
         else -> null
     }
@@ -456,22 +456,34 @@ class SocialPage(private val m: MainActivity) {
     }
 
     private fun buildCartoon() {
-        backBar("🐶 Make a cartoon · కార్టూన్")
+        backBar("🎬 Make a cartoon · కార్టూన్")
         loadCartoonInfo()
         val info = ctInfo
-        val aiLeft = info?.optInt("aiLeftForYou") ?: 0
-        if (info != null) m.add(ui.text(
-            if (aiLeft > 0) "⭐ Free for now! Your idea becomes an AI cartoon, like the trending ones. AI cartoons left today: ${info.optInt("aiLeftToday")}."
-            else "🐶 Today's free AI cartoons are done, so the BigD puppy makes yours (free). Come back tomorrow for an AI cartoon!",
-            14.5f, if (aiLeft > 0) Ui.TEAL else Ui.INK, bold = true).apply { setPadding(dp(12), dp(10), dp(12), dp(10)); background = ui.round(if (aiLeft > 0) Color.parseColor("#E6F7F4") else Color.parseColor("#FFF6E5"), 14) }, 8)
-        m.add(ui.text("Tell your idea. ${if (aiLeft > 0) "The AI cartoon takes 2 to 5 minutes." else "Our own brain writes it and the puppy says it in its own voice, in 1 to 3 minutes."} You can make 3 a day.", 14f, Ui.MUTED), 8)
+        val ai = info?.optJSONObject("ai")
+        // older servers have no "ai" part: then only the number left says it
+        val aiOn = if (ai != null) ai.optBoolean("on") else (info?.optInt("aiLeftForYou") ?: 0) > 0
+        val reason = ai?.optString("reason") ?: ""
+        val owner = info?.optBoolean("admin") ?: false
+        val banner: String? = when {
+            info == null -> null
+            aiOn && owner -> "👑 Owner: no daily limit for you. Your idea becomes an AI cartoon in 2 to 5 minutes. (People's free AI cartoons left today: ${info.optInt("aiLeftToday")})"
+            aiOn -> "⭐ Free for now! Your idea becomes an AI cartoon, like the trending ones. AI cartoons left today: ${info.optInt("aiLeftToday")}."
+            owner && reason == "budget" -> "👑 Owner: this month's money limit for AI videos is reached. Raise it on the Teach page (🤖 AI videos) to make more."
+            owner && reason == "off" -> "👑 Owner: AI videos are switched off on the server (AI_VIDEOS=false)."
+            owner && (reason == "no_key" || reason.isBlank()) -> "👑 Owner: AI cartoons can't start: the Gemini key isn't on the server yet (it needs billing on). The Teach page › 🤖 AI videos shows it."
+            else -> "🎬 " + (ai?.optString("why")?.takeIf { it.isNotBlank() } ?: "AI cartoons from your idea are coming soon!")
+        }
+        if (banner != null) m.add(ui.text(banner, 14.5f, if (aiOn) Ui.TEAL else Ui.INK, bold = true).apply {
+            setPadding(dp(12), dp(10), dp(12), dp(10)); background = ui.round(if (aiOn) Color.parseColor("#E6F7F4") else Color.parseColor("#FFF6E5"), 14) }, 8)
+        m.add(ui.text(if (aiOn) "Tell your idea: the people, the place, what happens and the funny ending. You can write in Telugu or English." else "Tell your idea, or leave it empty.", 14f, Ui.MUTED), 8)
         val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
         ctKinds.forEachIndexed { i, (k, label) ->
             row.addView(ui.chip(label, ctKind == k) { ctKind = k; m.render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(6) })
         }
         m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(row) }, 12)
         val box = EditText(m).apply {
-            hint = "ఉదా: సైకిల్ నేర్చుకుంటున్న కుక్కపిల్ల · e.g. a puppy learning to ride a cycle"; setText(ctIdea); textSize = 15f; minLines = 2; maxLines = 4
+            hint = "ఉదా: సైకిల్ నేర్చుకుంటున్న కుక్కపిల్ల · e.g. a puppy learning to ride a cycle"; setText(ctIdea); textSize = 15f; minLines = 2; maxLines = 8
+            filters = arrayOf(android.text.InputFilter.LengthFilter(1000))
             background = ui.round(Color.WHITE, 14, Ui.LINE); setPadding(dp(12), dp(10), dp(12), dp(10))
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(e: android.text.Editable?) { ctIdea = e?.toString() ?: "" }
@@ -480,15 +492,24 @@ class SocialPage(private val m: MainActivity) {
             })
         }
         m.add(box, 10)
-        m.add(ui.text("You can leave it empty: the puppy picks something itself. Kind, happy ideas only.", 12f, Ui.MUTED), 4)
+        m.add(ui.text("Kind, happy ideas only. If you leave it empty, BigD picks a funny one itself.", 12f, Ui.MUTED), 4)
         val job = ctJob
         val st = job?.optString("status") ?: ""
         val working = ctBusy || st == "waiting" || st == "making"
-        m.add(ui.button(if (working) "⏳ Making your cartoon…" else "🎬 Make my cartoon", "primary") { if (!working) makeCartoon() }, 12)
+        when {
+            working -> m.add(ui.button("⏳ Making your cartoon…", "primary") { }, 12)
+            info == null -> m.add(ui.button("🎬 Make my cartoon", "primary") { makeCartoon("") }, 12)   // couldn't ask the server: it decides
+            aiOn -> m.add(ui.button("🎬 Make my AI cartoon", "primary") { makeCartoon("ai") }, 12)
+            else -> {
+                // no AI cartoon now: the simple puppy cartoon only if the person chooses it (it is always the same puppy)
+                m.add(ui.text("Meanwhile, our simple puppy cartoon is free: the BigD puppy says your idea as a joke, riddle, story, fact or good thought (always the same puppy, not a full cartoon of your idea).${if (owner) "" else " ${info.optInt("leftForYou")} left today."}", 13f, Ui.MUTED), 12)
+                m.add(ui.button("🐶 Make a puppy cartoon", "ghost") { makeCartoon("puppy") }, 6)
+            }
+        }
         if (ctError.isNotBlank()) m.add(ui.text("⚠️ $ctError", 14f, Ui.DANGER), 10)
         if (job != null) when (st) {
             "waiting" -> m.add(ui.text("⏳ Waiting… ${job.optInt("position")} before yours.", 14f, Ui.INK), 12)
-            "making" -> m.add(ui.text(if (job.optBoolean("ai")) "⭐ Making your AI cartoon… (2 to 5 minutes)" else "🐶 The puppy is making your cartoon… (1 to 3 minutes)", 14f, Ui.INK), 12)
+            "making" -> m.add(ui.text(if (job.optBoolean("ai")) "⭐ Making your AI cartoon… (2 to 5 minutes). You can use other pages meanwhile; come back here to see it." else "🐶 The puppy is making your cartoon… (1 to 3 minutes)", 14f, Ui.INK), 12)
             "failed" -> m.add(ui.text("⚠️ " + job.optString("error").ifBlank { "Couldn't make it. Please try again." }, 14f, Ui.DANGER), 12)
             "done" -> {
                 val v = job.optJSONObject("video")
@@ -500,7 +521,7 @@ class SocialPage(private val m: MainActivity) {
                     addView(TextView(m).apply { text = "▶"; textSize = 26f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
                         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#99000000")) } }, FrameLayout.LayoutParams(dp(64), dp(64), Gravity.CENTER))
                     setOnClickListener {
-                        MediaViewer.items = listOf(MediaViewer.Item("file", abs(v.optString("url")), "", "🐶 BigD cartoon", job.optString("title"), 0, false, abs(v.optString("poster"))))
+                        MediaViewer.items = listOf(MediaViewer.Item("file", abs(v.optString("url")), "", if (job.optBoolean("ai")) "🤖 AI cartoon · AI-made" else "🐶 BigD cartoon", job.optString("title"), 0, false, abs(v.optString("poster"))))
                         MediaViewer.start = 0; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
                         m.leavingForSystemScreen = true; m.startActivity(Intent(m, MediaViewer::class.java))
                     }
@@ -512,10 +533,13 @@ class SocialPage(private val m: MainActivity) {
         m.shareAndAbout()
     }
 
-    private fun makeCartoon() {
+    /** maker: "ai" (an AI cartoon of the idea), "puppy" (the simple puppy cartoon, when the person chooses it), or "" (the server decides). */
+    private fun makeCartoon(maker: String) {
         ctBusy = true; ctError = ""; m.render()
         io.execute {
-            val r = Net.post(store, "/api/cartoon/make", JSONObject().put("type", ctKind).put("prompt", ctIdea.trim()), headers(), 20_000)
+            val body = JSONObject().put("type", ctKind).put("prompt", ctIdea.trim())
+            if (maker.isNotBlank()) body.put("maker", maker)
+            val r = Net.post(store, "/api/cartoon/make", body, headers(), 20_000)
             m.runOnUiThread {
                 ctBusy = false
                 if (r.ok) { ctJob = r.json; main.removeCallbacks(ctPoll); main.postDelayed(ctPoll, 4000) } else ctError = r.error("Couldn't start it. Please try again.")
@@ -560,7 +584,7 @@ class SocialPage(private val m: MainActivity) {
                 if (f == null) { Toast.makeText(m, "Couldn't get the video. Please try again.", Toast.LENGTH_LONG).show(); return@runOnUiThread }
                 val uri = ShareFiles.uri(m, name)
                 val send = Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri)
-                    .putExtra(Intent.EXTRA_TEXT, "🐶 " + job.optString("title") + "\n📲 BigD AI · bigdai.tech").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    .putExtra(Intent.EXTRA_TEXT, (if (job.optBoolean("ai")) "🤖 " else "🐶 ") + job.optString("title") + (if (job.optBoolean("ai")) " (AI-made)" else "") + "\n📲 BigD AI · bigdai.tech").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 send.clipData = android.content.ClipData.newRawUri("video", uri)
                 try { m.leavingForSystemScreen = true; m.startActivity(Intent.createChooser(send, "Share the cartoon").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch (e: Exception) { }
             }

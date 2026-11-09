@@ -145,6 +145,9 @@ summary{cursor:pointer;font-weight:600}
       <h2>🐶 Puppy cartoons · బిగ్‌డీ కార్టూన్లు</h2>
       <p class="hint">Our own cartoons, made fully on our server: our own brain writes each one (a joke, riddle, fact, kids story or good thought), the voice speaks it and the puppy talks. It learns by itself: the kinds people like (likes, comments, views) are made more often. People can also make their own in the app (Media › 🐶).</p>
       <p id="ctState" class="msg"></p>
+      <label for="ctDaily">Puppy cartoons made by itself each day for Media (0 = none; people can still choose the puppy in the app)</label>
+      <input id="ctDaily" type="number" min="0" max="24" style="max-width:140px">
+      <button id="ctDailySave" type="button" class="ghost" style="margin-top:8px">Save</button>
       <table class="tbl" id="ctLearn"></table>
       <ul id="ctList"></ul>
       <label for="ctType">Make one now</label>
@@ -160,7 +163,7 @@ summary{cursor:pointer;font-weight:600}
       <p id="aivState" class="msg"></p>
       <ul id="aivList"></ul>
       <h2 style="margin-top:16px">Limits (you can change them)</h2>
-      <p class="hint">The server never spends more than the monthly money limit (Google charges about ₹6 for each second of AI video). People's own AI cartoons are free for them; when today's number is used, they get our free puppy cartoon.</p>
+      <p class="hint">The server never spends more than the monthly money limit (Google charges about ₹6 for each second of AI video). People's own AI cartoons are free for them; when today's number is used, the app tells them to come back tomorrow (they can still choose the simple puppy cartoon). You, the owner (Team password saved in the app), have no daily limit; the monthly money limit still holds.</p>
       <div class="tbl" style="display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:center">
         <label for="setMonth" style="margin:0">Monthly money limit (US$)</label><input id="setMonth" type="number" min="0" step="5">
         <label for="setVideos" style="margin:0">AI videos a day (devotional, tips)</label><input id="setVideos" type="number" min="0" max="6">
@@ -387,7 +390,8 @@ $("aivMake").onclick = async () => {
 
 const KIND = { joke: "😄 Joke", riddle: "🤔 Riddle", fact: "💡 Fact", story: "📖 Story", thought: "🌟 Good thought" };
 function showCt(d) {
-  say($("ctState"), `${d.on ? "On" : "Off (CARTOONS=false)"} · made by itself today ${d.madeToday} of ${d.daily} · made by people today ${d.publicToday}${d.waiting ? " · " + d.waiting + " waiting" : ""}${d.busy ? " · making one now…" : ""}`, d.on);
+  if (document.activeElement !== $("ctDaily")) $("ctDaily").value = d.daily;
+  say($("ctState"), `${d.on ? "On" : "Off (CARTOONS=false)"} · made by itself today ${d.madeToday} of ${d.daily} · puppy cartoons made by people today ${d.publicToday}${d.waiting ? " · " + d.waiting + " waiting" : ""}${d.busy ? " · making one now…" : ""}`, d.on);
   const t = $("ctLearn"); t.textContent = "";
   const head = t.insertRow(); for (const x of ["Kind", "Made (30 days)", "People's liking (avg)"]) { const th = document.createElement("th"); th.textContent = x; head.append(th); }
   for (const [k, v] of Object.entries(d.learned)) { const r = t.insertRow(); r.insertCell().textContent = KIND[k] || k; r.insertCell().textContent = v.made; r.insertCell().textContent = v.avg === null ? "learning…" : v.avg; }
@@ -395,6 +399,10 @@ function showCt(d) {
   for (const m of d.recent || []) ul.append(row(`🐶 ${m.title}`, "", `${KIND[m.type] || m.type} · ${m.pub ? "made by someone in the app" : "made by itself"} · written by ${m.by === "own" ? "our own brain" : "Claude"}${m.score !== null && m.score !== undefined ? " · liking " + Math.round(m.score) : ""}`, "", null));
 }
 async function loadCt() { showCt(await api("cartoon")); }
+$("ctDailySave").onclick = async () => {
+  try { showCt(await api("cartoon/settings", { daily: $("ctDaily").value })); say($("ctMsg"), "Saved.", true); }
+  catch (e) { say($("ctMsg"), e.message, false); }
+};
 $("ctMake").onclick = async () => {
   $("ctMake").disabled = true;
   try { showCt(await api("cartoon/make", { type: $("ctType").value, prompt: $("ctIdea").value.trim() })); $("ctIdea").value = ""; say($("ctMsg"), "Started. It takes 1 to 3 minutes; then it is in Media.", true); setTimeout(() => loadCt().catch(() => {}), 120000); }
