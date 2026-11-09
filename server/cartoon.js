@@ -182,7 +182,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 Dialogue: 2,${ts(0)},${ts(end)},Label,,0,0,0,,🐶 BigD cartoon
 Dialogue: 1,${ts(0.2)},${ts(end)},Title,,0,0,0,,{\\fad(400,200)}${esc((type === "riddle" ? "🤔 " : "") + s.title)}
 ${parts.map((p, i) => `Dialogue: 1,${ts(p.at - 0.1)},${ts(Math.min(end, p.at + p.dur + 0.35))},Bubble,,0,0,0,,{\\fad(150,100)}${esc(s.lines[i])}`).join("\n")}
-Dialogue: 3,${ts(end)},${ts(total)},End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}BigD AI 🐾
+Dialogue: 3,${ts(end)},${ts(total)},End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}BigD AI
 Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}కార్టూన్లు · వార్తలు · సహాయం · bigdai.tech
 `;
       fs.writeFileSync(path.join(tmp, "words.ass"), ass);
