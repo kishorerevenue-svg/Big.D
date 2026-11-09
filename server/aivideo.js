@@ -14,9 +14,15 @@ module.exports = function makeAiVideo({ DATA_DIR, media, ai, MODEL, API_KEY, own
   const KEY = () => process.env.GEMINI_API_KEY || "";
   const BASE = () => process.env.GEMINI_BASE || "https://generativelanguage.googleapis.com";
   const VMODEL = () => process.env.GEMINI_VIDEO_MODEL || "gemini-omni-1.2-flash";
-  const DAILY = () => Math.max(0, Math.min(6, Number(process.env.AI_VIDEOS_DAILY ?? 2)));
-  const CAP = () => Math.max(0, Number(process.env.AI_VIDEO_MONTHLY_USD ?? 35));
-  const SECONDS = () => Math.min(15, Math.max(4, Math.round(Number(process.env.AI_VIDEO_SECONDS || 8))));
+  // limits: the owner can change them on the Teach page (those win over .env); the server never spends more than CAP a month
+  const set = (k, env, d) => { const v = db && db.settings && db.settings[k]; return v !== undefined && v !== null && v !== "" ? Number(v) : (process.env[env] !== undefined ? Number(process.env[env]) : d); };
+  const DAILY = () => Math.max(0, Math.min(6, set("daily", "AI_VIDEOS_DAILY", 2)));
+  const CAP = () => Math.max(0, set("monthlyUsd", "AI_VIDEO_MONTHLY_USD", 60));
+  const SECONDS = () => Math.min(15, Math.max(4, Math.round(set("seconds", "AI_VIDEO_SECONDS", 8))));
+  const CARTOONS = () => Math.max(0, Math.min(10, set("cartoons", "AI_CARTOONS_DAILY", 2)));               // funny AI cartoons a day, by itself
+  const CSECONDS = () => Math.min(15, Math.max(4, Math.round(set("cartoonSeconds", "AI_CARTOON_SECONDS", 10))));
+  const PUBLIC_DAY = () => Math.max(0, Math.min(200, set("publicDay", "AI_CARTOONS_PUBLIC_DAILY", 5)));     // people's own ideas, all together, a day
+  const PUBLIC_EACH = () => Math.max(0, Math.min(5, set("publicEach", "AI_CARTOONS_PUBLIC_EACH", 1)));      // each person, a day
   const RATE = 0.075;         // US$ a second at 720p (a little above Google's price, to stay safely under the limit)
   const ON = () => !!KEY() && String(process.env.AI_VIDEOS || "true") !== "false" && String(process.env.MEDIA_AUTO || "true") !== "false";
   const FFMPEG = process.env.FFMPEG || "ffmpeg";
@@ -33,7 +39,7 @@ module.exports = function makeAiVideo({ DATA_DIR, media, ai, MODEL, API_KEY, own
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   function roll() {
     if (db.month !== month()) { db.month = month(); db.spent = 0; }
-    if (db.day !== today()) { db.day = today(); db.made = 0; db.fails = 0; }
+    if (db.day !== today()) { db.day = today(); db.made = 0; db.fails = 0; db.cartoons = 0; db.pubDay = 0; db.pubEach = {}; }
   }
 
   // ---------- what to make ----------
@@ -51,7 +57,13 @@ module.exports = function makeAiVideo({ DATA_DIR, media, ai, MODEL, API_KEY, own
       "young paddy seedlings transplanted into a wet field (hands only)", "neem leaves ground into a natural pest spray in a clay pot", "bees visiting sunflower and mustard flowers",
       "compost turned with a spade, earthworms in rich dark soil"]
   };
+  THEMES.cartoon = ["a grandfather trying his first video call, the phone camera showing only his ear", "a monkey snatching a boy's mango, and the boy getting it back with a clever trick",
+    "a family stuck in a traffic jam while a cow calmly walks past every vehicle", "a puppy and a cat both wanting the same soft cushion", "a boy pressing snooze on five alarm clocks before school",
+    "a farmer's scarecrow that frightens the farmer himself in the evening", "a first-time cook flipping a dosa that sticks to the ceiling", "a parrot that repeats everything the family says at the wrong moment",
+    "a schoolgirl's homework blown away by the wind and chased all over the village", "a grandmother beating the grandchildren at a mobile game", "an auto rickshaw driver who sings so well the passengers forget to get down",
+    "a little boy trying to carry a watermelon bigger than himself"];
   const SLOTS = [5, 16, 11, 20, 8, 13];       // India time: the first video at 5 AM, the second at 4 PM, …
+  const CSLOTS = [12, 19, 15, 21, 10, 17, 9, 14, 18, 20];    // funny cartoons
   const OTHERS = ["kids", "health", "farming"];
   function catFor(n) {
     if (n === 0) return "devotional";
@@ -67,30 +79,37 @@ module.exports = function makeAiVideo({ DATA_DIR, media, ai, MODEL, API_KEY, own
   }
 
   // ---------- the script: what the video shows, and the Telugu words on it ----------
-  const SYSTEM = (cat) => `You plan one short video for the "Media" page of BigD AI, a Telugu app for families in Andhra Pradesh and Telangana. An AI video model makes it: ${SECONDS()} seconds, vertical (9:16). It is clearly labelled "AI-made".
+  const SYSTEM = (cat, person) => cat === "cartoon" ? CARTOON_SYSTEM(person) : `You plan one short video for the "Media" page of BigD AI, a Telugu app for families in Andhra Pradesh and Telangana. An AI video model makes it: ${SECONDS()} seconds, vertical (9:16). It is clearly labelled "AI-made".
 Section: ${media.CATS[cat].en}.
 Rules: no real people, no famous people, no politicians; no faces of gods or goddesses and no idols up close (show temples, lamps, flowers, bells, or devotees from behind or far away); no text, letters or logos in the video; nothing scary or sad for children. For health and farming, show only simple, safe, well-known good habits (no medicines, no chemicals, no doses, no cures).
 "prompt": an English description for the video model: one continuous shot, what we see, slow camera movement, light and colours, the style (realistic; for kids: a cute, colourful 3D animation), and the sound: gentle music and natural sounds only, no speech, no singing.
 "title": a Telugu title, at most 10 words. "lines": 2 or 3 short Telugu lines, at most 12 words each, shown on the video: for kids, the story in short and its moral; for health or farming, the simple tip; for devotional, a gentle morning blessing.
 Reply only with JSON: {"prompt": "...", "title": "...", "lines": ["...", "..."], "mood": one of ${media.MOODS.join(", ")}, "issue": one of ${media.ISSUES.join(", ")}}`;
-  async function script(cat, theme) {
+  const CARTOON_SYSTEM = (person) => `You plan one funny cartoon short for the "Media" page of BigD AI, a Telugu app for families in Andhra Pradesh and Telangana (children watch too). An AI video model makes it: ${CSECONDS()} seconds, vertical (9:16), clearly labelled "AI-made".
+Style: a bright, colourful 2D cartoon like the popular funny cartoon shorts: expressive faces, simple backgrounds from Telugu everyday life (village, town, home, school), 3 to 5 quick shots that tell a tiny story with a funny, kind ending. Sound: cartoon sound effects and light music, no speech, no singing. No text, letters or logos in the video.
+Be kind: never make fun of women or men, any caste, religion, region, colour, body or disability, or any real or famous person; no politics, no violence, nothing scary or adult.${person ? `
+The idea comes from a person using the app. If it is unkind, unsafe, about real or famous people, or not for children, set "skip" to true.` : ""}
+"prompt": the English description for the video model, shot by shot, ending with the funny moment. "title": a Telugu title shown on top, at most 9 words, that makes people smile. "lines": 1 short Telugu line (at most 12 words) shown at the end, the punchline or a kind smile.
+Reply only with JSON: {"prompt": "...", "title": "...", "lines": ["..."], "mood": "funny", "issue": one of ${media.ISSUES.join(", ")}, "skip": false}`;
+  async function script(cat, theme, person) {
     let masa = ""; try { masa = panchang.panchang(today()).masa; } catch (e) { }
-    const ask = `Idea: ${theme}.${cat === "devotional" && masa ? ` This month is ${masa} masam in the Telugu calendar.` : ""}`;
+    const ask = person ? `The person's idea: «${theme}»` : `Idea: ${theme}.${cat === "devotional" && masa ? ` This month is ${masa} masam in the Telugu calendar.` : ""}`;
     let j = null;
     if (API_KEY) {
       try {
-        const data = await ai({ model: MODEL, max_tokens: 900, system: SYSTEM(cat), messages: [{ role: "user", content: ask }] }, { tries: 1, backup: true });
+        const data = await ai({ model: MODEL, max_tokens: 900, system: SYSTEM(cat, person), messages: [{ role: "user", content: ask }] }, { tries: 1, backup: true });
         const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
         j = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
       } catch (e) { j = null; }
     }
     if (!j && ownBrain) {
-      j = await ownBrain.writeJson({ system: SYSTEM(cat), prompt: ask, maxTokens: 600, schema: { type: "object", required: ["prompt", "title", "lines", "mood", "issue"], properties: {
+      j = await ownBrain.writeJson({ system: SYSTEM(cat, person), prompt: ask, maxTokens: 600, schema: { type: "object", required: ["prompt", "title", "lines", "mood", "issue"], properties: { skip: { type: "boolean" },
         prompt: { type: "string" }, title: { type: "string" }, lines: { type: "array", items: { type: "string" } }, mood: { type: "string", enum: media.MOODS }, issue: { type: "string", enum: media.ISSUES } } } });
     }
+    if (j && j.skip) throw Object.assign(new Error("Sorry, the puppy can't make that one. Please try a kind, happy idea."), { refused: true });
     if (!j || String(j.prompt || "").length < 20 || !j.title) throw new Error("couldn't plan the video");
     return { prompt: String(j.prompt).slice(0, 1500), title: String(j.title).trim().slice(0, 100), lines: (Array.isArray(j.lines) ? j.lines : []).map(l => String(l).trim().slice(0, 90)).filter(Boolean).slice(0, 3),
-      mood: media.MOODS.includes(j.mood) ? j.mood : (cat === "devotional" ? "devotional" : cat === "kids" ? "happy" : "useful"),
+      mood: media.MOODS.includes(j.mood) ? j.mood : (cat === "devotional" ? "devotional" : cat === "kids" ? "happy" : cat === "cartoon" ? "funny" : "useful"),
       issue: media.ISSUES.includes(j.issue) ? j.issue : ({ devotional: "festivals", kids: "children", health: "health", farming: "farming" })[cat] };
   }
 
@@ -108,12 +127,12 @@ Reply only with JSON: {"prompt": "...", "title": "...", "lines": ["...", "..."],
     return null;
   }
   const failed = j => /fail|cancel|error|block/i.test(String(j.status || j.state || ""));
-  async function generate(prompt) {
-    const fmt = { type: "video", aspect_ratio: "9:16", resolution: "720p", duration: SECONDS() + "s", delivery: "uri" };
+  async function generate(prompt, secs = SECONDS()) {
+    const fmt = { type: "video", aspect_ratio: "9:16", resolution: "720p", duration: secs + "s", delivery: "uri" };
     let r = await call("POST", "/v1beta/interactions", { model: VMODEL(), input: prompt, response_format: fmt });
     if (!r.ok && r.status === 400 && /duration/i.test(r.text)) { delete fmt.duration; r = await call("POST", "/v1beta/interactions", { model: VMODEL(), input: prompt, response_format: fmt }); }
     if (!r.ok) throw Object.assign(new Error("Gemini: " + ((r.json.error && r.json.error.message) || r.status)), { status: r.status });
-    db.spent = Math.round((db.spent + SECONDS() * RATE) * 100) / 100; save();     // counted as soon as Google takes the job
+    db.spent = Math.round((db.spent + secs * RATE) * 100) / 100; save();     // counted as soon as Google takes the job
     let j = r.json;
     const id = j.id || (j.name ? String(j.name).split("/").pop() : "");
     for (let i = 0; i < 60 && !findVideo(j) && !failed(j); i++) {        // up to 10 minutes
@@ -193,30 +212,38 @@ ${s.lines.map((l, i) => `Dialogue: 1,${ts(i * per + 0.4)},${ts(Math.min(total, (
 
   // ---------- one video, from idea to Media post ----------
   let busy = false;
-  async function makeOne(cat) {
+  /** One AI video. opts.idea: a person's own idea (then it is not posted in Media; the caller gets the files). */
+  async function makeOne(cat, opts = {}) {
     roll();
+    for (let i = 0; busy && i < 150; i++) await sleep(4000);       // one at a time
     if (busy) throw new Error("already making one");
     if (!KEY()) throw new Error("GEMINI_API_KEY is not set");
-    if (db.spent + SECONDS() * RATE > CAP()) throw new Error(`this month's limit is reached ($${db.spent} of $${CAP()})`);
+    const secs = cat === "cartoon" ? CSECONDS() : SECONDS();
+    if (db.spent + secs * RATE > CAP()) throw new Error(`this month's limit is reached ($${db.spent} of $${CAP()})`);
     busy = true;
     const id = db.next++; save();
     const raw = path.join(DIR, `${id}.raw.mp4`), out = path.join(DIR, `${id}.mp4`), poster = path.join(DIR, `${id}.jpg`);
     try {
-      const theme = themeFor(cat);
-      const s = await script(cat, theme);
-      fs.writeFileSync(raw, await generate(s.prompt));
+      const theme = opts.idea || themeFor(cat);
+      const s = await script(cat, theme, !!opts.idea);
+      fs.writeFileSync(raw, await generate(s.prompt, secs));
       const dur = await finish(raw, out, poster, s);
       try { fs.unlinkSync(raw); } catch (e) { }
-      const item = media.addItem({ cat, title: "🤖 " + s.title, body: s.lines.join("\n") + "\n\n🤖 AI-made video · AI తో తయారైన వీడియో", emoji: "🤖", mood: s.mood, issue: s.issue,
+      if (opts.idea) { db.lastError = ""; save(); return { file: out, poster, title: s.title, lines: s.lines, dur: Math.round(dur) }; }
+      const section = cat === "cartoon" ? "fun" : cat;
+      const item = media.addItem({ cat: section, title: "🤖 " + s.title, body: s.lines.join("\n") + "\n\n🤖 AI-made video · AI తో తయారైన వీడియో", emoji: "🤖", mood: s.mood, issue: s.issue,
         kind: "aivideo", writer: "gemini", by: "auto", img: "", key: "aivideo:" + id,
         video: { url: `/media/ai/${id}.mp4`, poster: fs.existsSync(poster) ? `/media/ai/${id}.jpg` : "", dur: Math.round(dur), w: 720, h: 1280 } });
       db.list = [{ id, at: Date.now(), cat, title: s.title, theme, item: item ? item.id : 0 }, ...db.list].slice(0, 60);
-      db.made++; db.lastError = ""; save();
+      if (cat === "cartoon") db.cartoons = (db.cartoons || 0) + 1; else db.made++;
+      db.lastError = ""; save();
       console.log(`AI video: made #${id} (${cat}) · this month about $${db.spent}`);
       return { id, title: s.title };
     } catch (e) {
       for (const f of [raw, out, poster]) try { fs.unlinkSync(f); } catch (x) { }
-      db.lastError = String(e.message || e).slice(0, 200); db.fails++; db.waitUntil = Date.now() + 60 * 60e3; save();
+      db.lastError = String(e.message || e).slice(0, 200);
+      if (!opts.idea) { db.fails++; db.waitUntil = Date.now() + 60 * 60e3; }
+      save();
       console.error("AI video failed:", db.lastError);
       throw e;
     } finally { busy = false; }
@@ -232,6 +259,29 @@ ${s.lines.map((l, i) => `Dialogue: 1,${ts(i * per + 0.4)},${ts(Math.min(total, (
     if (db.spent + SECONDS() * RATE > CAP()) { if (db.lastError.indexOf("limit") < 0) { db.lastError = `This month's limit is reached ($${db.spent} of $${CAP()}). Videos start again next month.`; save(); } return; }
     await makeOne(catFor(n)).catch(() => {});
   }
+  async function cartoonTick() {
+    if (!ON() || busy) return;
+    roll();
+    const n = db.cartoons || 0;
+    if (n >= CARTOONS() || db.fails >= 3 || Date.now() < db.waitUntil || ist().getUTCHours() < CSLOTS[Math.min(n, CSLOTS.length - 1)]) return;
+    if (db.spent + CSECONDS() * RATE > CAP()) return;
+    await makeOne("cartoon").catch(() => {});
+  }
+  setTimeout(() => cartoonTick(), 7 * 60_000).unref();
+  setInterval(() => cartoonTick(), 10 * 60_000).unref();
+
+  // ---------- people's own ideas (the cartoon maker in the app): free for now, with daily limits ----------
+  const forPeople = {
+    /** How many AI cartoons this person (and everyone) can still make today. */
+    left(dev) {
+      roll();
+      if (!ON() || db.spent + CSECONDS() * RATE > CAP()) return { all: 0, you: 0 };
+      return { all: Math.max(0, PUBLIC_DAY() - (db.pubDay || 0)), you: Math.max(0, PUBLIC_EACH() - ((db.pubEach || {})[dev] || 0)) };
+    },
+    take(dev) { roll(); db.pubDay = (db.pubDay || 0) + 1; db.pubEach = db.pubEach || {}; db.pubEach[dev] = (db.pubEach[dev] || 0) + 1; save(); },
+    refund(dev) { db.pubDay = Math.max(0, (db.pubDay || 1) - 1); if (db.pubEach && db.pubEach[dev]) db.pubEach[dev]--; save(); },
+    make: (idea, type) => makeOne("cartoon", { idea: `${idea || "a funny surprise"}${type && type !== "joke" ? ` (kind: ${type})` : ""}` })
+  };
   setTimeout(() => tick(), 5 * 60_000).unref();
   setInterval(() => tick(), 10 * 60_000).unref();
   // videos are kept 45 days
@@ -261,7 +311,9 @@ ${s.lines.map((l, i) => `Dialogue: 1,${ts(i * per + 0.4)},${ts(Math.min(total, (
   function status() {
     roll();
     return { on: ON(), key: !!KEY(), model: VMODEL(), daily: DAILY(), madeToday: db.made, monthSpentUsd: db.spent, monthLimitUsd: CAP(), seconds: SECONDS(),
-      costEachUsd: Math.round(SECONDS() * RATE * 100) / 100, busy, lastError: db.lastError, recent: db.list.slice(0, 12) };
+      costEachUsd: Math.round(SECONDS() * RATE * 100) / 100, busy, lastError: db.lastError, recent: db.list.slice(0, 12),
+      cartoons: CARTOONS(), cartoonsToday: db.cartoons || 0, cartoonSeconds: CSECONDS(), cartoonCostUsd: Math.round(CSECONDS() * RATE * 100) / 100,
+      publicDay: PUBLIC_DAY(), publicEach: PUBLIC_EACH(), publicToday: db.pubDay || 0 };
   }
   function remove(id) {
     const x = db.list.find(v => v.id === Number(id));
@@ -271,5 +323,11 @@ ${s.lines.map((l, i) => `Dialogue: 1,${ts(i * per + 0.4)},${ts(Math.min(total, (
     db.list = db.list.filter(v => v !== x); save();
     return true;
   }
-  return { handle, status, makeOne, remove, tick, _test: { generate, findVideo, finish, script, db: () => db } };
+  /** The owner changes the limits on the Teach page. */
+  function settings(o) {
+    db.settings = db.settings || {};
+    for (const k of ["monthlyUsd", "daily", "cartoons", "publicDay", "publicEach", "seconds", "cartoonSeconds"]) if (o[k] !== undefined && o[k] !== "" && isFinite(Number(o[k]))) db.settings[k] = Number(o[k]);
+    save(); return status();
+  }
+  return { handle, status, settings, makeOne, remove, tick, forPeople, _test: { generate, findVideo, finish, script, db: () => db } };
 };

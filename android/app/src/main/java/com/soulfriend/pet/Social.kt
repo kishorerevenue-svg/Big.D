@@ -441,11 +441,30 @@ class SocialPage(private val m: MainActivity) {
     private var ctJob: JSONObject? = null
     private var ctBusy = false
     private var ctError = ""
+    private var ctInfo: JSONObject? = null
+    private var ctInfoAt = 0L
     private val ctPoll = Runnable { pollCartoon() }
 
+    /** How many free AI cartoons are left today (for everyone, and for this person). */
+    private fun loadCartoonInfo() {
+        if (System.currentTimeMillis() - ctInfoAt < 30_000L) return
+        ctInfoAt = System.currentTimeMillis()
+        io.execute {
+            val r = Net.get(store, "/api/cartoon/info", headers())
+            m.runOnUiThread { if (r.ok) { ctInfo = r.json; refreshIf("cartoon") } }
+        }
+    }
+
     private fun buildCartoon() {
-        backBar("🐶 Puppy cartoon · కార్టూన్")
-        m.add(ui.text("Tell the puppy your idea. Our own brain writes it, the puppy says it in its own voice, and you get a cartoon video in 1 to 3 minutes. You can make 3 a day.", 14f, Ui.MUTED), 8)
+        backBar("🐶 Make a cartoon · కార్టూన్")
+        loadCartoonInfo()
+        val info = ctInfo
+        val aiLeft = info?.optInt("aiLeftForYou") ?: 0
+        if (info != null) m.add(ui.text(
+            if (aiLeft > 0) "⭐ Free for now! Your idea becomes an AI cartoon, like the trending ones. AI cartoons left today: ${info.optInt("aiLeftToday")}."
+            else "🐶 Today's free AI cartoons are done, so the BigD puppy makes yours (free). Come back tomorrow for an AI cartoon!",
+            14.5f, if (aiLeft > 0) Ui.TEAL else Ui.INK, bold = true).apply { setPadding(dp(12), dp(10), dp(12), dp(10)); background = ui.round(if (aiLeft > 0) Color.parseColor("#E6F7F4") else Color.parseColor("#FFF6E5"), 14) }, 8)
+        m.add(ui.text("Tell your idea. ${if (aiLeft > 0) "The AI cartoon takes 2 to 5 minutes." else "Our own brain writes it and the puppy says it in its own voice, in 1 to 3 minutes."} You can make 3 a day.", 14f, Ui.MUTED), 8)
         val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
         ctKinds.forEachIndexed { i, (k, label) ->
             row.addView(ui.chip(label, ctKind == k) { ctKind = k; m.render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(6) })
@@ -469,11 +488,12 @@ class SocialPage(private val m: MainActivity) {
         if (ctError.isNotBlank()) m.add(ui.text("⚠️ $ctError", 14f, Ui.DANGER), 10)
         if (job != null) when (st) {
             "waiting" -> m.add(ui.text("⏳ Waiting… ${job.optInt("position")} before yours.", 14f, Ui.INK), 12)
-            "making" -> m.add(ui.text("🐶 The puppy is making your cartoon… (1 to 3 minutes)", 14f, Ui.INK), 12)
+            "making" -> m.add(ui.text(if (job.optBoolean("ai")) "⭐ Making your AI cartoon… (2 to 5 minutes)" else "🐶 The puppy is making your cartoon… (1 to 3 minutes)", 14f, Ui.INK), 12)
             "failed" -> m.add(ui.text("⚠️ " + job.optString("error").ifBlank { "Couldn't make it. Please try again." }, 14f, Ui.DANGER), 12)
             "done" -> {
                 val v = job.optJSONObject("video")
-                m.add(ui.text("🎉 " + job.optString("title"), 17f, Ui.INK, bold = true), 14)
+                m.add(ui.text((if (job.optBoolean("ai")) "⭐ AI cartoon · " else "🐶 ") + job.optString("title"), 17f, Ui.INK, bold = true), 14)
+                job.optString("note").takeIf { it.isNotBlank() }?.let { m.add(ui.text(it, 13f, Ui.MUTED), 4) }
                 if (v != null) m.add(FrameLayout(m).apply {
                     background = ui.round(Color.BLACK, 16); clipToOutline = true; contentDescription = "Play your cartoon"
                     addView(ImageView(m).apply { scaleType = ImageView.ScaleType.FIT_CENTER; Images.load(abs(v.optString("poster")), this, 720) }, FrameLayout.LayoutParams(-1, dp(360)))
@@ -499,6 +519,7 @@ class SocialPage(private val m: MainActivity) {
             m.runOnUiThread {
                 ctBusy = false
                 if (r.ok) { ctJob = r.json; main.removeCallbacks(ctPoll); main.postDelayed(ctPoll, 4000) } else ctError = r.error("Couldn't start it. Please try again.")
+                ctInfoAt = 0L
                 refreshIf("cartoon")
             }
         }

@@ -14,7 +14,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 
-module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, ownBrain, voice, h, engagement }) {
+module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, ownBrain, voice, h, engagement, aiPeople }) {
   const FFMPEG = process.env.FFMPEG || "ffmpeg";
   const ART = path.join(__dirname, "assets", "cartoon");
   const FONTS = path.join(__dirname, "fonts");
@@ -214,6 +214,23 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
     while (queue.length) {
       const job = queue.shift();
       job.status = "making"; save();
+      // a person's idea while today's AI cartoons last: the trend-quality AI cartoon (free for now)
+      if (job.ai) {
+        try {
+          const r = await aiPeople.make(job.prompt, job.type);
+          fs.renameSync(r.file, path.join(DIR, job.id + ".mp4"));
+          try { fs.renameSync(r.poster, path.join(DIR, job.id + ".jpg")); } catch (e) { }
+          Object.assign(job, { title: r.title, lines: r.lines, dur: r.dur, status: "done", by: "gemini", doneAt: Date.now() });
+          db.made.push({ id: job.id, type: job.type, title: r.title, at: Date.now(), pub: true, itemId: 0, by: "gemini" }); db.made = db.made.slice(-400);
+          console.log(`Cartoon: made AI cartoon ${job.id} for someone`);
+          save(); continue;
+        } catch (e) {
+          aiPeople.refund(job.device);
+          if (e.refused) { job.status = "failed"; job.error = String(e.message).slice(0, 160); job.doneAt = Date.now(); save(); continue; }
+          job.ai = false; job.note = "The AI cartoon maker was busy, so our puppy made this one for you.";
+          console.error("AI cartoon failed, the puppy makes it:", e.message);
+        }
+      }
       try {
         const s = await script(job.type, job.prompt);
         job.title = s.title; job.lines = s.lines;
@@ -237,9 +254,9 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
     }
     busy = false;
   }
-  function add(type, prompt, device) {
+  function add(type, prompt, device, aiCartoon) {
     const id = (device ? "p" : "a") + (db.next++) + (device ? "_" + crypto.randomBytes(4).toString("hex") : "");
-    const job = { id, type, prompt: prompt || "", device: device || "", status: "waiting", at: Date.now() };
+    const job = { id, type, prompt: prompt || "", device: device || "", status: "waiting", at: Date.now(), ai: !!aiCartoon };
     db.jobs[id] = job;
     for (const [k, j] of Object.entries(db.jobs)) if (Date.now() - j.at > 3 * 86400e3) delete db.jobs[k];
     queue.push(job); save(); pump();
@@ -268,7 +285,8 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
   const devOf = req => crypto.createHash("sha256").update("cartoon|" + (String(req.headers["x-device"] || "").replace(/[^\w-]/g, "").slice(0, 64) || (h ? h.clientIp(req) : ""))).digest("hex").slice(0, 20);
   const BAD = /\b(sex|nude|naked|porn|kill|murder|rape|suicide|bomb|drugs?)\b|బూతు|చంపు|హత్య/i;
   const view = j => ({ id: j.id, status: j.status, title: j.title || "", lines: j.lines || [], error: j.error || "", position: j.status === "waiting" ? queue.indexOf(j) + 1 : 0,
-    video: j.status === "done" ? { url: `/media/cartoon/${j.id}.mp4`, poster: `/media/cartoon/${j.id}.jpg`, dur: j.dur || 0, w: 720, h: 1280 } : null, posted: !!j.posted });
+    video: j.status === "done" ? { url: `/media/cartoon/${j.id}.mp4`, poster: `/media/cartoon/${j.id}.jpg`, dur: j.dur || 0, w: 720, h: 1280 } : null, posted: !!j.posted,
+    ai: !!j.ai, note: j.note || "" });
   async function handle(req, res, url, origin, social) {
     const p = url.pathname;
     const m = p.match(/^\/media\/cartoon\/([a-z0-9_]{2,40})\.(mp4|jpg)$/);
@@ -299,8 +317,16 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       if (db.pub >= PUBLIC_DAY() || queue.length >= 15) return send(429, { error: "So many people are making cartoons now! Please try again in a little while." }), true;
       db.perDevice[dev] = (db.perDevice[dev] || 0) + 1; db.pub++;
       if (idea) db.asks = [...db.asks, { prompt: idea.slice(0, 120), type, at: Date.now() }].slice(-200);
-      const job = add(type, idea, dev);
+      const left = aiPeople ? aiPeople.left(dev) : { all: 0, you: 0 };
+      const useAi = left.all > 0 && left.you > 0;
+      if (useAi) aiPeople.take(dev);
+      const job = add(type, idea, dev, useAi);
       return send(200, view(job)), true;
+    }
+    if (p === "/api/cartoon/info" && req.method === "GET") {
+      roll();
+      const dev = devOf(req), left = aiPeople ? aiPeople.left(dev) : { all: 0, you: 0 };
+      return send(200, { aiLeftToday: left.all, aiLeftForYou: Math.min(left.all, left.you), leftForYou: Math.max(0, EACH() - (db.perDevice[dev] || 0)), each: EACH() }), true;
     }
     if (p === "/api/cartoon/status" && req.method === "GET") {
       const job = db.jobs[String(url.searchParams.get("id") || "")];

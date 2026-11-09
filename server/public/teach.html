@@ -159,8 +159,18 @@ summary{cursor:pointer;font-weight:600}
       <p class="hint">Every day Google's Gemini video model makes short videos for Media: a devotional one at 5 AM, and a kids story, health tip or farming tip at 4 PM. Only safe, timeless topics (never news or real people), with Telugu words on the video and a clear "AI-made" label. It needs GEMINI_API_KEY with billing on, and it never spends more than the monthly limit.</p>
       <p id="aivState" class="msg"></p>
       <ul id="aivList"></ul>
+      <h2 style="margin-top:16px">Limits (you can change them)</h2>
+      <p class="hint">The server never spends more than the monthly money limit (Google charges about ₹6 for each second of AI video). People's own AI cartoons are free for them; when today's number is used, they get our free puppy cartoon.</p>
+      <div class="tbl" style="display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:center">
+        <label for="setMonth" style="margin:0">Monthly money limit (US$)</label><input id="setMonth" type="number" min="0" step="5">
+        <label for="setVideos" style="margin:0">AI videos a day (devotional, tips)</label><input id="setVideos" type="number" min="0" max="6">
+        <label for="setCartoons" style="margin:0">AI funny cartoons a day</label><input id="setCartoons" type="number" min="0" max="10">
+        <label for="setPublic" style="margin:0">People's AI cartoons a day (all together)</label><input id="setPublic" type="number" min="0" max="200">
+        <label for="setEach" style="margin:0">… for each person a day</label><input id="setEach" type="number" min="0" max="5">
+      </div>
+      <button id="setSave" type="button" class="ghost" style="margin-top:10px">Save limits</button>
       <label for="aivCat">Make one now</label>
-      <select id="aivCat"><option value="devotional">🛕 భక్తి · Devotional</option><option value="kids">🧒 పిల్లల కథ · Kids story</option><option value="health">🩺 ఆరోగ్యం · Health tip</option><option value="farming">🌾 వ్యవసాయం · Farming tip</option></select>
+      <select id="aivCat"><option value="devotional">🛕 భక్తి · Devotional</option><option value="kids">🧒 పిల్లల కథ · Kids story</option><option value="health">🩺 ఆరోగ్యం · Health tip</option><option value="farming">🌾 వ్యవసాయం · Farming tip</option><option value="cartoon">😄 Funny cartoon</option></select>
       <button id="aivMake" type="button">Make a video now (counts in the monthly limit)</button>
       <p id="aivMsg" class="msg"></p>
     </section>
@@ -357,10 +367,17 @@ $("ytRefresh").onclick = async () => {
 function showAiv(d) {
   say($("aivState"), !d.key ? "Off: GEMINI_API_KEY is not set on the server." :
     `${d.on ? "On" : "Off (AI_VIDEOS=false)"} · today ${d.madeToday} of ${d.daily} · this month about $${d.monthSpentUsd} of $${d.monthLimitUsd} (each ${d.seconds}s video ≈ $${d.costEachUsd})${d.busy ? " · making one now…" : ""}${d.lastError ? " · last problem: " + d.lastError : ""}`, d.key && !d.lastError);
+  const sv = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v; };
+  sv("setMonth", d.monthLimitUsd); sv("setVideos", d.daily); sv("setCartoons", d.cartoons); sv("setPublic", d.publicDay); sv("setEach", d.publicEach);
+  if (d.key) $("aivState").textContent += ` · funny cartoons today ${d.cartoonsToday} of ${d.cartoons} (each ${d.cartoonSeconds}s ≈ $${d.cartoonCostUsd}) · people's AI cartoons today ${d.publicToday} of ${d.publicDay}`;
   const ul = $("aivList"); ul.textContent = "";
   for (const v of d.recent || []) ul.append(row(`🤖 ${v.title}`, "", `${new Date(v.at).toLocaleString()} · ${v.cat}`, "Remove", async () => { showAiv(await api("aivideo/delete", { id: v.id })); }));
 }
 async function loadAiv() { showAiv(await api("aivideo")); }
+$("setSave").onclick = async () => {
+  try { showAiv(await api("aivideo/settings", { monthlyUsd: $("setMonth").value, daily: $("setVideos").value, cartoons: $("setCartoons").value, publicDay: $("setPublic").value, publicEach: $("setEach").value })); say($("aivMsg"), "Saved.", true); }
+  catch (e) { say($("aivMsg"), e.message, false); }
+};
 $("aivMake").onclick = async () => {
   $("aivMake").disabled = true;
   try { await api("aivideo/make", { cat: $("aivCat").value }); say($("aivMsg"), "Started. It takes 1 to 5 minutes; then it is in Media.", true); setTimeout(() => loadAiv().catch(() => {}), 120000); }
