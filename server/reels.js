@@ -319,7 +319,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     const since = Date.now() - 2 * 86400e3;
     // (a post with a source page waits until its picture was looked for)
     // (YouTube posts are videos already)
-    const next = media.allItems().filter(i => !i.hidden && !i.yt && CATS.includes(i.cat) && i.at > since && (i.img !== undefined || !i.url) && !i.reel && (st.tries[i.id] || 0) < 2 && !has(i.id))
+    const next = media.allItems().filter(i => !i.hidden && !i.yt && !i.video && CATS.includes(i.cat) && i.at > since && (i.img !== undefined || !i.url) && !i.reel && (st.tries[i.id] || 0) < 2 && !has(i.id))
       .sort((a, b) => b.at - a.at)[0];
     if (!next) return;
     busy = true; st.tries[next.id] = (st.tries[next.id] || 0) + 1; saveSt();

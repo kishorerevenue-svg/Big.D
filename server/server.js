@@ -375,6 +375,8 @@ function cleanMessages(list) {
 // ---------- Media page (starts its morning posts on its own) ----------
 const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, ai: learn.anthropic, ownBrain,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
+// Daily AI videos (Gemini Omni): safe, timeless topics only, labelled "AI-made", with a monthly money limit
+const aiVideo = require("./aivideo.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice });
 // YouTube in every Media section: trusted channels' new videos, live TV and live darshan, Shorts, trending
 const youtube = require("./youtube.js")({ DATA_DIR, media, ownBrain, h: { send, readBody, allowed, clientIp } });
 // profiles, posts with photos and links, comments, likes, follows (the Media tab works like X)
@@ -398,6 +400,7 @@ const server = http.createServer(async (req, res) => {
   if (await extras(req, res, url, origin)) return;
   if (await media.handle(req, res, url, origin)) return;
   if (await youtube.handle(req, res, url, origin)) return;
+  if (aiVideo.handle(req, res, url)) return;
   if (await social.handle(req, res, url, origin)) return;
   if (await tools(req, res, url, origin)) return;
 
@@ -419,7 +422,7 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { url: process.env.PHONE_BRAIN_URL || "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
       name: "gemma-4-E2B-it.litertlm", sizeMb: 2600, licence: "Apache 2.0 (Google Gemma 4)" }, origin);
   }
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), own: ownBrain.quick(), learning: answers.stats(), media: media.stats(), youtube: youtube.stats(), reels: reels.stats(), social: social.stats() }, origin);
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), own: ownBrain.quick(), learning: answers.stats(), media: media.stats(), youtube: youtube.stats(), aiVideos: (({ on, madeToday, daily, monthSpentUsd, monthLimitUsd, lastError }) => ({ on, madeToday, daily, monthSpentUsd, monthLimitUsd, lastError }))(aiVideo.status()), reels: reels.stats(), social: social.stats() }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
@@ -534,6 +537,7 @@ const server = http.createServer(async (req, res) => {
       // Media: where the posts come from (news feeds), and how many came today
       if (req.method === "GET" && url.pathname === "/api/teach/media") return send(res, 200, media.teach.info());
       if (req.method === "GET" && url.pathname === "/api/teach/youtube") return send(res, 200, { sections: youtube.list(), stats: youtube.stats() });
+      if (req.method === "GET" && url.pathname === "/api/teach/aivideo") return send(res, 200, aiVideo.status());
       if (req.method === "GET" && url.pathname === "/api/teach/feedback") {
         let lines = [];
         try { lines = fs.readFileSync(path.join(DATA_DIR, "feedback.jsonl"), "utf8").trim().split("\n").filter(Boolean).slice(-200).map(l => JSON.parse(l)).reverse(); } catch (e) { }
@@ -565,6 +569,12 @@ const server = http.createServer(async (req, res) => {
         }
         if (url.pathname === "/api/teach/youtube/remove") { youtube.removeChannel(String(body.cat || ""), String(body.key || "")); return send(res, 200, { sections: youtube.list(), stats: youtube.stats() }); }
         if (url.pathname === "/api/teach/youtube/refresh") { youtube.tick(true).catch(() => {}); return send(res, 200, { ok: true }); }
+        if (url.pathname === "/api/teach/aivideo/make") {
+          const cat = ["devotional", "kids", "health", "farming"].includes(body.cat) ? body.cat : "devotional";
+          aiVideo.makeOne(cat).catch(() => {});
+          return send(res, 200, { ok: true });
+        }
+        if (url.pathname === "/api/teach/aivideo/delete") return send(res, 200, { ok: aiVideo.remove(body.id), ...aiVideo.status() });
         if (url.pathname === "/api/teach/text") {
           const text = String(body.text || "").trim();
           if (text.length < 10) return send(res, 400, { error: "Write or paste some text first." });

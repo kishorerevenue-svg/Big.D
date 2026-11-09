@@ -346,7 +346,8 @@ Reply with only a JSON object, no other text:
     const it = { id: db.next++, cat: o.cat, at: Date.now(), title, body, emoji: str(o.emoji, 8), source: str(o.source, 80) || (url ? host(url) : ""), url,
       yt: o.yt || null, by: o.by || "auto", likes: [], mood: MOODS.includes(o.mood) ? o.mood : undefined, issue: ISSUES.includes(o.issue) ? o.issue : undefined,
       kind: o.kind ? str(o.kind, 20) : undefined, writer: o.writer ? str(o.writer, 20) : undefined, key: o.key ? str(o.key, 80) : undefined, meta: o.meta,
-      scene: o.scene ? str(String(o.scene).replace(/[^a-zA-Z\s-]/g, " ").replace(/\s+/g, " "), 50) || undefined : undefined };
+      scene: o.scene ? str(String(o.scene).replace(/[^a-zA-Z\s-]/g, " ").replace(/\s+/g, " "), 50) || undefined : undefined,
+      video: o.video && /^\/media\/ai\/\d+\.mp4$/.test(o.video.url || "") ? { url: o.video.url, poster: str(o.video.poster, 80), dur: Number(o.video.dur) || 0, w: Number(o.video.w) || 0, h: Number(o.video.h) || 0 } : undefined };
     if (o.img !== undefined) it.img = /^https:\/\/\S+$/.test(String(o.img)) ? str(o.img, 600) : "";
     db.items.push(it); prune(); save();
     if (url && it.img === undefined) setTimeout(fillPictures, 2000);

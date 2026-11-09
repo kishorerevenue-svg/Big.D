@@ -128,7 +128,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
     return { key: "m" + i.id, uid: "s_" + i.cat, at: i.at, title: i.title, text: i.body, photos: [], yt: i.yt || null,
       link: i.url && i.img ? { url: i.url, site: i.source || "", title: "", image: i.img, yt: "" } : null,   // the source page's own picture, like a link card on X
       source: i.url ? { name: i.source, url: i.url } : null, cat: i.cat, emoji: i.emoji || "",
-      mood: i.mood || "", issue: i.issue || "", kind: i.kind || "", writer: i.writer || "",
+      mood: i.mood || "", issue: i.issue || "", kind: i.kind || "", writer: i.writer || "", video: i.video || null,
       reel: i.reel && reels && reels.has(i.id) ? "/media/reel/" + i.id + ".mp4" : "" };   // a short video of this news, to share
   }
   function userPostToPost(p) { return { key: "p" + p.id, uid: p.uid, at: p.at, title: "", text: p.text, photos: (p.photos || []).map(fileUrl), video: p.video ? videoView(p.video) : null, yt: p.link && p.link.yt ? { id: p.link.yt, ch: p.link.site || "" } : null, link: p.link || null, source: null, cat: OFFICIAL[p.uid] ? OFFICIAL[p.uid].cat : "", emoji: "" }; }
