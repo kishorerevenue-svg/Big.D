@@ -25,17 +25,29 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
 
   // ---------- trusted channels (the owner can add or remove channels on the Teach page) ----------
   const c = (id, name, live) => ({ id, name, live: !!live });
+  const hd = (handle, name, live) => ({ handle, name, live: !!live });     // found by its @handle (the server looks up its id once)
   const DEFAULTS = {
     news: [c("UCPXTXMecYqnRKNdqdVOGSFg", "TV9 Telugu", 1), c("UCumtYpCY26F6Jr3satUgMvA", "NTV Telugu", 1), c("UC_2irx_BQR7RsBKmUV9fePQ", "ABN Telugu", 1),
-      c("UCAR3h_9fLV82N2FH4cE4RKw", "TV5 News", 1), c("UCDCMjD1XIAsCZsYHNMGVcog", "V6 News Telugu", 1), c("UCNZOrs1QBt8cJnv9ud96qRA", "hmtv", 1), c("UCu6edg8_eu3-A8ylgaWereA", "T News", 1)],
+      c("UCAR3h_9fLV82N2FH4cE4RKw", "TV5 News", 1), c("UCDCMjD1XIAsCZsYHNMGVcog", "V6 News Telugu", 1), c("UCNZOrs1QBt8cJnv9ud96qRA", "hmtv", 1), c("UCu6edg8_eu3-A8ylgaWereA", "T News", 1),
+      hd("@Sakshi_TV_Live", "Sakshi TV", 1), c("UCg6JyAGrskayg14qJP3598g", "TV9 Telugu Digital"), c("UCE8KNq9oibK4AdPw_iWrS1Q", "Samayam Telugu"), hd("@BBCNewsTelugu", "BBC News Telugu")],
     devotional: [c("UCS2Y83GD-fc7qqgNW5uj41g", "SVBC TTD", 1), c("UCZQ3VR0OxbRVVy5uzfGomUg", "Aditya Bhakthi"), c("UCjA7qIB2IetzeolMd_Hwa0w", "T-Series Bhakti Sagar Telugu")],
-    movies: [c("UCNApqoVYJbYSrni4YsbXzyQ", "Aditya Music"), c("UCnSqxrSfo1sK4WZ7nBpYW1Q", "Lahari Music"), c("UCWqyzn3cDkRDh3kRGWrIQwA", "Mango Music"), c("UCnJjcn5FrgrOEp5_N45ZLEQ", "T-Series Telugu")],
-    kids: [c("UCHvoq_rGmOKJKGId1nD1V4Q", "Infobells Telugu"), c("UCX56XWkzt1NHIoSIrreA5xw", "Mango Telugu Rhymes")],
-    farming: [c("UCO3uQWHfi0YlcypvilKfKlA", "AgriTech Telugu")],
+    // trailers, songs and film news: the production houses and music labels themselves
+    movies: [c("UCNApqoVYJbYSrni4YsbXzyQ", "Aditya Music"), c("UCnSqxrSfo1sK4WZ7nBpYW1Q", "Lahari Music"), c("UCWqyzn3cDkRDh3kRGWrIQwA", "Mango Music"), c("UCnJjcn5FrgrOEp5_N45ZLEQ", "T-Series Telugu"),
+      c("UCn4rEMqKtwBQ6-oEwbd4PcA", "Sony Music South"), hd("@saregamasouth", "Saregama Telugu"), c("UCKZSn5C-RzrLjuWJF8wWiDw", "Mythri Movie Makers"), c("UCiJfiEg1FImWsVuEu0L8X6Q", "Geetha Arts"),
+      hd("@sitharaentertainments", "Sithara Entertainments"), c("UCU0PnZqMDQ0uvwacGzCX3NA", "Suresh Productions"), c("UC70pKToywlxOGdgIvz8gYqA", "Vyjayanthi Movies"),
+      hd("@UV_Creations", "UV Creations"), hd("@telugufilmnagar", "Telugu FilmNagar"), c("UC3PYGKK29qJ0zu-eEthHK4g", "Zee Telugu"), c("UCSs9H1cyB3OHdy8wkit8ZKg", "ETV Telugu")],
+    kids: [c("UCHvoq_rGmOKJKGId1nD1V4Q", "Infobells Telugu"), c("UCX56XWkzt1NHIoSIrreA5xw", "Mango Telugu Rhymes"), hd("@ChuChuTVTelugu", "ChuChu TV Telugu"),
+      c("UCVQExT4EjUs4Zc-h0NxLOFw", "Koo Koo TV Telugu"), hd("@sesameworkshopindiatelugu", "Sesame Workshop India Telugu")],
+    farming: [c("UCO3uQWHfi0YlcypvilKfKlA", "AgriTech Telugu"), hd("@rythunestham", "Rythu Nestham")],
     health: [], jobs: [], realestate: [], crypto: []
   };
-  // most-watched new videos posted in Media per day (and per 2-hour run)
-  const DAILY = { news: 10, movies: 10, devotional: 6, kids: 4, farming: 3, health: 2, jobs: 2, realestate: 1, crypto: 1 };
+  // new videos posted in Media per day (YOUTUBE_MORE=2 doubles them); trailers and breaking news come first
+  const MORE = () => Math.max(0.5, Math.min(4, Number(process.env.YOUTUBE_MORE || 1)));
+  const BASE_DAILY = { news: 24, movies: 20, devotional: 10, kids: 8, farming: 6, health: 4, jobs: 4, realestate: 2, crypto: 2 };
+  const DAILY = new Proxy({}, { get: (t, k) => BASE_DAILY[k] === undefined ? undefined : Math.round(BASE_DAILY[k] * MORE()), ownKeys: () => Reflect.ownKeys(BASE_DAILY), getOwnPropertyDescriptor: (t, k) => ({ enumerable: true, configurable: true, value: BASE_DAILY[k] }) });
+  const PER_RUN = { news: 2, movies: 3 };
+  const TRAILER = /trailer|teaser|glimpse|first look|ట్రైలర్|టీజర్|గ్లింప్స్|ఫస్ట్ లుక్/i;
+  const BREAKING = /breaking|బ్రేకింగ్|alert|అలర్ట్|cyclone|తుఫాను|heavy rain|భారీ వర్ష|flood|వరద|earthquake|భూకంప|accident|ప్రమాద|red alert|holiday|సెలవు|exam|పరీక్ష|results?\b|ఫలితాలు/i;
   const keyOf = x => x.id || x.handle;
   function channels(cat) {
     const removed = db.removed[cat] || [];
@@ -161,7 +173,8 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
         const j = await api("videos?part=snippet,statistics&chart=mostPopular&regionCode=IN&maxResults=50");
         const ours = new Set(Object.values(db.ch).map(s => s.id).filter(Boolean));
         list = (j.items || []).filter(v => v.snippet && (telugu(v.snippet.title) || /^te/.test(v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || "") || ours.has(v.snippet.channelId)))
-          .map(v => ({ id: v.id, title: str(v.snippet.title, 200), ch: str(v.snippet.channelTitle, 80), at: Date.parse(v.snippet.publishedAt) || 0, views: Number((v.statistics || {}).viewCount || 0) }));
+          .map(v => ({ id: v.id, title: str(v.snippet.title, 200), ch: str(v.snippet.channelTitle, 80), at: Date.parse(v.snippet.publishedAt) || 0, views: Number((v.statistics || {}).viewCount || 0),
+            desc: str(v.snippet.description, 600), cat: ({ "25": "news", "17": "news", "1": "movies", "10": "movies", "23": "movies", "24": "movies", "27": "jobs" })[v.snippet.categoryId] || "" }));
       } catch (e) { console.error("YouTube trending:", e.message); }
     }
     if (list.length < 5) {
@@ -190,7 +203,7 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
   const SCHEMA = () => ({ type: "object", required: ["skip", "title", "mood", "issue"], properties: { skip: { type: "boolean" }, title: { type: "string" },
     mood: { type: "string", enum: media.MOODS }, issue: { type: "string", enum: media.ISSUES } } });
   const SYSTEM = cat => `You choose YouTube videos for the "Media" page of BigD AI, a Telugu app for families in Andhra Pradesh and Telangana (elders and children use it too). Section: ${media.CATS[cat].en}.
-You get one video's title and description from a known channel. Set "skip" to true if it is clickbait, gossip about someone's private life, crime or violence details, vulgar or adult, fear-mongering, a political attack, or not useful for this section.
+You get one video's title and description from a known channel. Set "skip" to true if it is clickbait, gossip about someone's private life, crime or violence details, vulgar or adult, fear-mongering, a political attack, or not useful for this section; also if it is clearly not for Telugu people (a Tamil, Malayalam, Kannada or Hindi film or song that is not released in Telugu).
 "title": a clean Telugu title for it, at most 12 words, only from the given title (no hashtags, no channel name, no "LIVE", no made-up facts).
 Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOODS.join(", ")}, "issue": one of ${media.ISSUES.join(", ")}}`;
   async function judge(cat, v) {
@@ -200,28 +213,42 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
         return { skip: !!j.skip, title: cleanTitle(j.title) || cleanTitle(v.title), mood: j.mood, issue: j.issue, by: "own" };
       } catch (e) { if (e.reason === "busy") throw e; }
     }
-    return { skip: BAD.test(v.title), title: cleanTitle(v.title), mood: DEFAULT_MOOD[cat], issue: DEFAULT_ISSUE[cat], by: "rules" };
+    const other = /\b(tamil|malayalam|kannada|hindi)\b/i.test(v.title) && !/telugu|తెలుగు/i.test(v.title);
+    return { skip: BAD.test(v.title) || other, title: cleanTitle(v.title), mood: DEFAULT_MOOD[cat], issue: DEFAULT_ISSUE[cat], by: "rules" };
   }
-  async function postNew() {
+  /** Which new video first: the ones people are watching fastest; trailers and breaking news much sooner. */
+  function score(cat, v) {
+    const hours = Math.max(0.25, (Date.now() - v.at) / 3600e3);
+    let s = ((v.views || 0) + 200) / Math.pow(hours + 1, 0.8);
+    if (cat === "movies" && TRAILER.test(v.title)) s *= 6;
+    if (cat === "news" && BREAKING.test(v.title) && hours < 4) s *= 6;
+    return s;
+  }
+  async function postNew(only) {
     if (db.posted.day !== today()) db.posted = { day: today() };
     const since = Date.now() - 36 * 3600e3;
-    for (const cat of Object.keys(DAILY)) {
-      if ((db.posted[cat] || 0) >= DAILY[cat]) continue;
-      const pool = channels(cat).flatMap(x => (db.ch[keyOf(x)] || {}).videos || []).filter(v => v.at > since && !media.hasUrl(`https://www.youtube.com/watch?v=${v.id}`) && !(db.skipped || []).includes(v.id))
-        .sort((a, b) => b.views - a.views);
-      for (const v of pool.slice(0, 4)) {
+    for (const cat of Object.keys(BASE_DAILY)) {
+      if (only && !only.includes(cat)) continue;
+      let room = Math.min(PER_RUN[cat] || 1, DAILY[cat] - (db.posted[cat] || 0));
+      if (room <= 0) continue;
+      const trend = (db.trending.list || []).filter(v => v.cat === cat);
+      const pool = [...channels(cat).flatMap(x => (db.ch[keyOf(x)] || {}).videos || []), ...trend]
+        .filter((v, i, all) => v.at > since && all.findIndex(o => o.id === v.id) === i && !media.hasUrl(`https://www.youtube.com/watch?v=${v.id}`) && !(db.skipped || []).includes(v.id))
+        .sort((a, b) => score(cat, b) - score(cat, a));
+      for (const v of pool.slice(0, room + 4)) {
+        if (room <= 0) break;
         let j;
         try { j = await judge(cat, v); } catch (e) { return; }      // our own brain is answering people now: later
-        if (j.skip || j.title.length < 4) { db.skipped = [...(db.skipped || []), v.id].slice(-500); save(); continue; }
+        if (j.skip || j.title.length < 4) { db.skipped = [...(db.skipped || []), v.id].slice(-800); save(); continue; }
         const it = media.addItem({ cat, title: j.title, body: cleanDesc(v.desc) || `${v.ch} నుంచి కొత్త వీడియో. చూడటానికి ▶ నొక్కండి.`, emoji: cat === "kids" ? "🧒" : cat === "devotional" ? "🙏" : "▶️",
           yt: { id: v.id, title: str(v.title, 150), ch: v.ch }, url: `https://www.youtube.com/watch?v=${v.id}`, source: "YouTube · " + v.ch, img: "", by: "auto", writer: "youtube",
           kind: "video", mood: j.mood, issue: j.issue });
-        if (it) { db.posted[cat] = (db.posted[cat] || 0) + 1; save(); break; }     // one per section per run, so they come through the day
+        if (it) { db.posted[cat] = (db.posted[cat] || 0) + 1; room--; save(); }     // a few per run, so they come through the day
       }
     }
   }
 
-  // ---------- the schedule: videos every 2 hours, live every 30 minutes, trending every 3 hours ----------
+  // ---------- the schedule: news videos every 30 minutes, the others every 2 hours, live every 30 minutes, trending every 3 hours ----------
   let busy = false;
   async function tick(force) {
     if (!ON || busy) return;
@@ -229,16 +256,21 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     try {
       const now = Date.now();
       if (force || now - (db.runs.videos || 0) > 2 * 3600e3) {
-        db.runs.videos = now; save();
+        db.runs.videos = now; db.runs.news = now; save();
         for (const x of allChannels()) await refresh(x);
         await postNew();
+      } else if (now - (db.runs.news || 0) > 30 * 60e3) {
+        // news (and breaking news) every 30 minutes
+        db.runs.news = now; save();
+        for (const x of allChannels().filter(x => x.cat === "news")) await refresh(x);
+        await postNew(["news"]);
       }
       if (force || now - (db.runs.live || 0) > 30 * 60e3) { db.runs.live = now; save(); await checkLive(); }
       if (force || now - (db.runs.trending || 0) > 3 * 3600e3) { db.runs.trending = now; save(); await trending(); }
     } catch (e) { console.error("YouTube error:", e.message); }
     busy = false;
   }
-  if (ON) { setTimeout(() => tick(), 3 * 60_000).unref(); setInterval(() => tick(), 10 * 60_000).unref(); }
+  if (ON) { setTimeout(() => tick(), 3 * 60_000).unref(); setInterval(() => tick(), 5 * 60_000).unref(); }
 
   // ---------- for the app: GET /api/videos?cat=news ----------
   function videos(cat) {
