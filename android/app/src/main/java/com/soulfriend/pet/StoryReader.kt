@@ -591,7 +591,7 @@ class StoryReader : Activity() {
         val origin = server.trimEnd('/')
         val html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
             "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head><body>" +
-            "<iframe src=\"https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&origin=$origin\" " +
+            "<iframe src=\"https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&enablejsapi=1&origin=$origin\" " +
             "allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" allowfullscreen></iframe></body></html>"
         w.loadDataWithBaseURL("$origin/", html, "text/html", "utf-8", null)
         webAt = k
@@ -642,6 +642,7 @@ class StoryReader : Activity() {
         if (tellWeb) try { fullCb?.onCustomViewHidden() } catch (e: Exception) { }
         fullCb = null
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        pager.realign(); keepPlaying()
         topBar.visibility = View.VISIBLE
         catchBack(false)
     }
@@ -668,6 +669,7 @@ class StoryReader : Activity() {
     private var wide = false
     override fun onConfigurationChanged(c: Configuration) {
         super.onConfigurationChanged(c)
+        pager.realign()                           // the page exactly on the screen again
         if (full != null) return                  // YouTube's own full screen is on
         val w = web
         if (c.orientation == Configuration.ORIENTATION_LANDSCAPE) {
@@ -676,12 +678,17 @@ class StoryReader : Activity() {
             (w.parent as? ViewGroup)?.removeView(w)
             root.addView(w, FrameLayout.LayoutParams(-1, -1))
             topBar.visibility = View.GONE
-            pager.locked = true; bars(false)
+            pager.locked = true; bars(false); keepPlaying()
         } else if (wide) {
             wide = false
             if (w != null && w.parent === root) { root.removeView(w); (pages.getOrNull(webAt)?.tag as? Holder)?.yt?.addView(w, FrameLayout.LayoutParams(-1, -1)) }
-            pager.locked = false; bars(true); topBar.visibility = View.VISIBLE
+            pager.locked = false; bars(true); topBar.visibility = View.VISIBLE; keepPlaying()
         }
+    }
+
+    /** Keeps the video playing after full screen or turning the phone (YouTube's player takes this message). */
+    private fun keepPlaying() {
+        web?.postDelayed({ web?.evaluateJavascript("(function(){var f=document.querySelector('iframe');if(f&&f.contentWindow)f.contentWindow.postMessage(JSON.stringify({event:'command',func:'playVideo',args:''}),'*');})()", null) }, 700)
     }
 
     /** Hides or shows the phone's own bars (time, battery; back and home). */
