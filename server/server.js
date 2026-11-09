@@ -378,8 +378,11 @@ const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, ai: le
 // Daily AI videos (Gemini Omni): safe, timeless topics only, labelled "AI-made", with a monthly money limit
 const aiVideo = require("./aivideo.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice });
 // BigD puppy cartoons: made on our own server, written by our own brain, learning from what people like
+// our own free Telugu voice for the cartoons (downloads itself once, about 90 MB)
+const freeVoice = require("./freevoice.js")({ DATA_DIR, FFMPEG: process.env.FFMPEG || "ffmpeg" });
+setTimeout(() => freeVoice.ready(), 30000).unref();
 const cartoon = require("./cartoon.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice, h: { send, readBody, allowed, clientIp },
-  engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, isAdmin: req => {   // the owner (Team password in the app): no daily cartoon limits
+  engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, freeVoice, isAdmin: req => {   // the owner (Team password in the app): no daily cartoon limits
     const given = String(req.headers["x-admin-key"] || ""), pw = process.env.ADMIN_PASSWORD || TEACH_PASSWORD;
     if (!pw || !given) return false;
     return crypto.timingSafeEqual(crypto.createHash("sha256").update(given).digest(), crypto.createHash("sha256").update(pw).digest());

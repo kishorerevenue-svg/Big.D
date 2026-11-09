@@ -15,7 +15,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 
-module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, ownBrain, voice, h, engagement, aiPeople, isAdmin }) {
+module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, ownBrain, voice, h, engagement, aiPeople, isAdmin, freeVoice }) {
   const FFMPEG = process.env.FFMPEG || "ffmpeg";
   const ART = path.join(__dirname, "assets", "cartoon");
   const FONTS = path.join(__dirname, "fonts");
@@ -290,15 +290,24 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}à
     fs.mkdirSync(tmp, { recursive: true });
     try {
       const beats = [];
+      // the voices: the natural Google voice when the server has it, else our own free Telugu voice, else talk sounds
+      const google = voice && voice.enabled;
+      const free = !google && freeVoice && (freeVoice.ok() || await freeVoice.ready());
       for (const [i, b] of s.beats.entries()) {
         const nb = { who: b.who, do: b.do, say: b.say, prop: b.prop || "" };
-        if (b.say && voice && voice.enabled) {     // the natural voice for each line, when the server has it
+        const f = path.join(tmp, `v${i}.wav`);
+        if (b.say && google) {
           try {
             const samples = await pcm((await voice.speak(b.say, VOICE_OF[b.who] || "puppy", s.mood === "calm" ? "calm" : "happy")).file);
-            const f = path.join(tmp, `v${i}.wav`);
             fs.writeFileSync(f, wav(samples));
             nb.voice = f;
           } catch (e) { }
+        } else if (b.say && free) {
+          try {
+            await freeVoice.speak(b.say, b.who, f);
+            const secs = (fs.statSync(f).size - 44) / 48000, letters = (b.say.match(/[à°€-à±¿a-z0-9]/gi) || []).length;
+            if (secs > 0.3 && secs < Math.max(8, letters * 0.25)) nb.voice = f;     // (a voice gone wrong: talk sounds instead)
+          } catch (e) { console.error("Cartoon voice:", e.message); }
         }
         beats.push(nb);
       }
@@ -483,7 +492,8 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}à
 
   function status() {
     roll();
-    return { on: ON, maker: toonOk ? "ours" : "puppy", makerNote: toonNote, daily: DAILY(), madeToday: db.auto, publicToday: db.pub, waiting: queue.length, busy, learned: learned(), favourites: favourites(),
+    return { on: ON, maker: toonOk ? "ours" : "puppy", makerNote: toonNote,
+      voice: voice && voice.enabled ? "the natural Google voice" : freeVoice ? "our free Telugu voice: " + freeVoice.state() : "talk sounds", daily: DAILY(), madeToday: db.auto, publicToday: db.pub, waiting: queue.length, busy, learned: learned(), favourites: favourites(),
       recent: db.made.slice(-12).reverse().map(m => ({ id: m.id, type: m.type, title: m.title, at: m.at, pub: m.pub, by: m.by, score: m.itemId ? score(m) : null })),
       asks: db.asks.slice(-10).reverse() };
   }

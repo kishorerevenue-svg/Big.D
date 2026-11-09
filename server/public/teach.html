@@ -391,7 +391,7 @@ $("aivMake").onclick = async () => {
 const KIND = { joke: "😄 Joke", riddle: "🤔 Riddle", fact: "💡 Fact", story: "📖 Story", thought: "🌟 Good thought" };
 function showCt(d) {
   if (document.activeElement !== $("ctDaily")) $("ctDaily").value = d.daily;
-  say($("ctState"), `${d.on ? "On" : "Off (CARTOONS=false)"} · cartoon maker: ${d.maker === "ours" ? "our own (ready)" : d.makerNote || "the old puppy"} · made by itself today ${d.madeToday} of ${d.daily} · free cartoons made by people today ${d.publicToday}${d.waiting ? " · " + d.waiting + " waiting" : ""}${d.busy ? " · making one now…" : ""}`, d.on);
+  say($("ctState"), `${d.on ? "On" : "Off (CARTOONS=false)"} · cartoon maker: ${d.maker === "ours" ? "our own (ready)" : d.makerNote || "the old puppy"} · voice: ${d.voice || "talk sounds"} · made by itself today ${d.madeToday} of ${d.daily} · free cartoons made by people today ${d.publicToday}${d.waiting ? " · " + d.waiting + " waiting" : ""}${d.busy ? " · making one now…" : ""}`, d.on);
   const t = $("ctLearn"); t.textContent = "";
   const head = t.insertRow(); for (const x of ["Kind", "Made (30 days)", "People's liking (avg)"]) { const th = document.createElement("th"); th.textContent = x; head.append(th); }
   for (const [k, v] of Object.entries(d.learned)) { const r = t.insertRow(); r.insertCell().textContent = KIND[k] || k; r.insertCell().textContent = v.made; r.insertCell().textContent = v.avg === null ? "learning…" : v.avg; }
