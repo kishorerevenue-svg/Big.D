@@ -155,10 +155,27 @@ class SocialPage(private val m: MainActivity) {
     private class Tab(val key: String, val label: String)
     private class Step(val screen: String, val profile: SUser?, val post: SPost?, val y: Int)
 
-    private val tabs = listOf(Tab("foryou", "✨ For you"), Tab("following", "Following"), Tab("people", "👥 ప్రజలు"),
+    private val tabs = listOf(Tab("foryou", "✨ For you"), Tab("popular", "🔥 Popular"), Tab("following", "Following"), Tab("people", "👥 ప్రజలు"),
         Tab("news", "📰 వార్తలు"), Tab("movies", "🎬 సినిమా"), Tab("jobs", "💼 ఉద్యోగాలు"), Tab("devotional", "🛕 భక్తి"), Tab("kids", "🧒 పిల్లలు"),
         Tab("health", "🩺 ఆరోగ్యం"), Tab("farming", "🌾 వ్యవసాయం"), Tab("realestate", "🏠 రియల్ ఎస్టేట్"), Tab("crypto", "🪙 క్రిప్టో"))
     private val sectionKeys = setOf("news", "movies", "jobs", "devotional", "kids", "health", "farming", "realestate", "crypto")
+    // filters: by mood and by issue (the server tags every Media post)
+    private val moods = listOf("" to "😊 Mood · మూడ్", "happy" to "😊 Happy · సంతోషం", "inspiring" to "✨ Inspiring · స్ఫూర్తి", "devotional" to "🙏 Devotional · భక్తి",
+        "useful" to "💡 Useful · ఉపయోగం", "calm" to "🕊️ Calm · ప్రశాంతం", "funny" to "😄 Funny · నవ్వు", "serious" to "⚠️ Serious · ముఖ్యం", "sad" to "😢 Sad · బాధ")
+    private val issues = listOf("" to "🏷️ Issue · విషయం", "farming" to "🌾 Farming · వ్యవసాయం", "water" to "💧 Water · నీరు", "prices" to "💰 Prices · ధరలు",
+        "jobs" to "💼 Jobs · ఉద్యోగాలు", "education" to "🎓 Education · చదువు", "health" to "🩺 Health · ఆరోగ్యం", "women" to "👩 Women · మహిళలు",
+        "children" to "🧒 Children · పిల్లలు", "weather" to "🌦️ Weather · వాతావరణం", "schemes" to "📜 Schemes · పథకాలు", "roads" to "🛣️ Roads · రోడ్లు",
+        "power" to "⚡ Power · కరెంట్", "safety" to "🚨 Safety · భద్రత", "festivals" to "🎉 Festivals · పండుగలు", "cinema" to "🎬 Cinema · సినిమా",
+        "sports" to "🏏 Sports · క్రీడలు", "technology" to "📱 Technology · టెక్నాలజీ", "money" to "🏦 Money · డబ్బు", "environment" to "🌳 Environment · పర్యావరణం",
+        "politics" to "🏛️ Politics · రాజకీయాలు")
+    private var mood = ""
+    private var issue = ""
+    /** The list being shown: the tab, with its filters. */
+    private val filterable get() = tab == "foryou" || tab == "popular" || tab in sectionKeys
+    private fun feedKey() = if ((mood.isBlank() && issue.isBlank()) || !filterable) tab else "$tab|$mood|$issue"
+    // YouTube for the strips at the top: live now, trending, Shorts, new videos (from /api/videos)
+    private val vids = HashMap<String, JSONObject>()
+    private val vidsAt = HashMap<String, Long>()
 
     var screen = "feed"
         private set
@@ -318,21 +335,25 @@ class SocialPage(private val m: MainActivity) {
             put(ui.row(ui.button("Make my profile", "primary") { startEdit() }), 10)
         }, 12)
         note(tab)?.let { m.add(ui.text(it, 12.5f, Ui.MUTED), 10) }
+        val fk = feedKey()
         if (admin) m.add(ui.row(ui.button("🛡 Reports", "ghost") { openReports() }), 10)
         if (admin && tab in sectionKeys) m.add(ui.row(ui.button("🔄 AI posts now") { generate(tab) }, ui.button("✍️ Post here", "primary") { startCompose(asUid = "s_$tab") }), 10)
         val blocked = store.blockedUsers
-        val all = feeds[tab]
+        val all = feeds[fk]
         val list = all?.filter { it.author.uid !in blocked }
         if (error.isNotBlank() && list.isNullOrEmpty()) m.add(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
         if (list.isNullOrEmpty()) {
             m.add(ui.text(when {
-                all == null || tab in busy -> "Loading…"
+                all == null || fk in busy -> "Loading…"
+                fk != tab -> "No posts with this filter right now. Try another mood or issue."
+                tab == "popular" -> "Nothing popular yet today. Like and share the posts you enjoy!"
                 tab == "following" -> "You don't follow anyone yet. Follow the profiles you like, and their posts appear here."
                 tab == "people" -> "No posts yet. Be the first: tap + to write one."
                 else -> "Nothing here yet."
             }, 14f, Ui.MUTED), 14)
             if (tab == "foryou" || tab == "following") whoToFollow()
         }
+        if (fk == tab && filterable) videoStrips()
         if (!list.isNullOrEmpty()) m.add(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(TextView(m).apply {
@@ -348,12 +369,12 @@ class SocialPage(private val m: MainActivity) {
             if (i == 3 && tab == "foryou") whoToFollow()
         }
         if (!list.isNullOrEmpty() && list.size <= 3 && tab == "foryou") whoToFollow()
-        if (more[tab] == true) m.add(ui.button(if (tab in busy) "Loading…" else "Show more", "ghost") { load(tab, false) }, 12)
+        if (more[fk] == true) m.add(ui.button(if (fk in busy) "Loading…" else "Show more", "ghost") { load(fk, false) }, 12)
         else if (!list.isNullOrEmpty()) m.add(ui.text("· అంతే · You're all caught up ·", 12.5f, Ui.MUTED).apply { gravity = Gravity.CENTER }, 16)
         m.add(ui.text("Posts are public and checked for safety. Be kind; no phone numbers or private details. Rules: ${store.server}/rules", 11.5f, Ui.MUTED), 16)
         m.shareAndAbout()
-        val stale = System.currentTimeMillis() - (loadedAt[tab] ?: 0L) > 5 * 60_000L
-        if (tab !in busy && (all == null || stale)) load(tab, true)
+        val stale = System.currentTimeMillis() - (loadedAt[fk] ?: 0L) > 5 * 60_000L
+        if (fk !in busy && (all == null || stale)) load(fk, true)
         if (System.currentTimeMillis() - suggestAt > 10 * 60_000L) loadSuggest()
     }
 
@@ -365,6 +386,7 @@ class SocialPage(private val m: MainActivity) {
         "health" -> "ℹ️ ఆరోగ్య సమస్యలకు డాక్టర్‌ను సంప్రదించండి · Simple tips, not medical advice."
         "kids" -> "👨‍👩‍👧 Stories and rhymes for parents to read to children."
         "people" -> "👥 Posts from people using BigD AI."
+        "popular" -> "🔥 What people liked, commented on and read most in the last 3 days."
         else -> null
     }
 
@@ -379,6 +401,82 @@ class SocialPage(private val m: MainActivity) {
             setOnScrollChangeListener { _, x, _, _, _ -> chipsX = x }
             post { scrollTo(chipsX, 0) }
         }, 12)
+        if (!filterable) return
+        val f = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL }
+        f.addView(ui.chip((moods.firstOrNull { it.first == mood } ?: moods[0]).second + " ▾", mood.isNotBlank()) { pick(true) })
+        f.addView(ui.chip((issues.firstOrNull { it.first == issue } ?: issues[0]).second + " ▾", issue.isNotBlank()) { pick(false) },
+            LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+        if (mood.isNotBlank() || issue.isNotBlank()) f.addView(ui.chip("✕ Clear", false) { mood = ""; issue = ""; error = ""; m.render() },
+            LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+        m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(f) }, 6)
+    }
+
+    /** Choose a mood or an issue; the list shows only those posts. */
+    private fun pick(isMood: Boolean) {
+        val list = if (isMood) moods else issues
+        AlertDialog.Builder(m).setTitle(if (isMood) "ఏ మూడ్? · Which mood?" else "ఏ విషయం? · Which issue?")
+            .setItems(list.mapIndexed { i, x -> if (i == 0) (if (isMood) "అన్నీ · All moods" else "అన్నీ · All issues") else x.second }.toTypedArray()) { _, i ->
+                if (isMood) mood = list[i].first else issue = list[i].first
+                error = ""; m.render(); m.scrollTop()
+            }.show()
+    }
+
+    // ------------------------------ YouTube strips ------------------------------
+    private fun videoStrips() {
+        val cat = if (tab in sectionKeys) tab else ""
+        val k = cat.ifBlank { "all" }
+        if (System.currentTimeMillis() - (vidsAt[k] ?: 0L) > 10 * 60_000L) {
+            vidsAt[k] = System.currentTimeMillis()
+            io.execute {
+                val r = Net.get(store, "/api/videos" + (if (cat.isNotBlank()) "?cat=" + Uri.encode(cat) else ""), headers())
+                m.runOnUiThread { if (r.ok) { vids[k] = r.json; refreshIf("feed") } else vidsAt[k] = System.currentTimeMillis() - 8 * 60_000L }
+            }
+        }
+        val v = vids[k] ?: return
+        fun arr(n: String) = v.optJSONArray(n) ?: JSONArray()
+        if (tab != "popular") strip("🔴 ఇప్పుడు లైవ్ · Live now", arr("live"), live = true)
+        if (tab == "foryou" || tab == "popular") strip("🔥 ట్రెండింగ్ · Trending today", arr("trending"))
+        if (tab != "popular") strip("📱 Shorts", arr("shorts"), tall = true)
+        if (cat.isNotBlank()) strip("▶️ కొత్త వీడియోలు · New videos", arr("latest"))
+    }
+
+    private fun strip(title: String, a: JSONArray, live: Boolean = false, tall: Boolean = false) {
+        val posts = (0 until minOf(a.length(), 20)).mapNotNull { a.optJSONObject(it) }.filter { it.optString("id").length == 11 }.map { o ->
+            val ch = o.optString("ch")
+            SPost("yt:" + o.optString("id"), SUser("", ch.ifBlank { "YouTube" }, "", "", "", if (live) "🔴" else "▶️", false, false, 0, 0, 0, false, false),
+                o.optLong("at"), o.optString("title"), "", emptyList(), o.optString("id"), ch, "", "", "", "", "YouTube · $ch", "", o.optString("cat"), "▶️", 0, false, o.optInt("views"), 0, false)
+        }
+        if (posts.isEmpty()) return
+        m.add(ui.text(title, 15f, Ui.INK, bold = true), 14)
+        val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
+        posts.forEachIndexed { i, p ->
+            val card = LinearLayout(m).apply {
+                orientation = LinearLayout.VERTICAL; contentDescription = "Play " + p.title
+                addView(FrameLayout(m).apply {
+                    background = ui.round(Color.BLACK, 14); clipToOutline = true
+                    addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP
+                        Images.load("https://i.ytimg.com/vi/${p.ytId}/${if (tall) "hqdefault" else if (live) "mqdefault_live" else "mqdefault"}.jpg", this, 480) }, FrameLayout.LayoutParams(-1, -1))
+                    if (live) addView(TextView(m).apply { text = "● LIVE"; textSize = 11f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+                        setPadding(dp(6), dp(2), dp(6), dp(2)); background = ui.round(Color.parseColor("#E62117"), 6) },
+                        FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(6), dp(6), 0, 0) })
+                    else addView(TextView(m).apply { text = "▶"; textSize = 16f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; background = ui.round(Color.parseColor("#B3E62117"), 10) },
+                        FrameLayout.LayoutParams(dp(40), dp(28), Gravity.CENTER))
+                }, LinearLayout.LayoutParams(-1, dp(if (tall) 200 else 112)))
+                addView(ui.text(p.title, 13f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(4), 0, 0) })
+                addView(ui.text(p.author.name + (if (p.views > 0 && !live) " · ${num(p.views)} views" else ""), 11.5f, Ui.MUTED).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+                setOnClickListener { openVideos(posts, i) }
+            }
+            row.addView(card, LinearLayout.LayoutParams(dp(if (tall) 120 else 200), -2).apply { if (i > 0) marginStart = dp(10) })
+        }
+        m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(row) }, 8)
+    }
+
+    /** YouTube videos full screen (YouTube's own player); swipe for the next one in the strip. */
+    private fun openVideos(list: List<SPost>, start: Int) {
+        MediaViewer.items = list.map { x -> MediaViewer.Item("video", x.ytId, "", x.author.name, x.title, 0, false) }
+        MediaViewer.start = start; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
+        m.leavingForSystemScreen = true
+        m.startActivity(Intent(m, MediaViewer::class.java))
     }
 
     // ------------------------------ one post ------------------------------
@@ -1439,7 +1537,7 @@ class SocialPage(private val m: MainActivity) {
     // ------------------------------ full-screen viewer ------------------------------
     /** Opens [p]'s photo number [which] (-1 = its video) full screen, with every other photo and video of this list above and below it. */
     private fun openViewer(p: SPost, which: Int) {
-        val src: List<SPost> = when (screen) { "profile" -> feeds["user:${profile?.uid}"]; "comments" -> null; else -> feeds[tab] }
+        val src: List<SPost> = when (screen) { "profile" -> feeds["user:${profile?.uid}"]; "comments" -> null; else -> feeds[feedKey()] }
             ?.takeIf { l -> l.any { it.key == p.key } } ?: listOf(p)
         val blocked = store.blockedUsers
         val items = ArrayList<MediaViewer.Item>(); var start = 0
@@ -1465,7 +1563,7 @@ class SocialPage(private val m: MainActivity) {
      */
     private fun openReader(p: SPost, auto: Boolean = false) {
         StoryReader.autoplay = auto
-        val key = if (screen == "profile") "user:${profile?.uid}" else tab
+        val key = if (screen == "profile") "user:${profile?.uid}" else feedKey()
         val blocked = store.blockedUsers
         val src = (feeds[key]?.takeIf { l -> l.any { it.key == p.key } } ?: listOf(p)).filter { it.author.uid !in blocked || it.key == p.key }
         StoryReader.posts = src.toList()
@@ -1533,10 +1631,13 @@ class SocialPage(private val m: MainActivity) {
     /** [after] (for the story reader) gets the posts that were added, and true when there are no more. */
     private fun load(key: String, fresh: Boolean, after: ((List<SPost>, Boolean) -> Unit)? = null) {
         if (key in busy) { after?.invoke(emptyList(), false); return }
-        busy.add(key); if (key == tab) error = ""
+        busy.add(key); if (key == feedKey()) error = ""
         val before = if (fresh) "" else feeds[key]?.minOfOrNull { it.at }?.let { "&before=$it" } ?: ""
+        // "tab|mood|issue" when filtered
+        val parts = key.split("|")
+        val filters = (parts.getOrNull(1)?.takeIf { it.isNotBlank() }?.let { "&mood=" + Uri.encode(it) } ?: "") + (parts.getOrNull(2)?.takeIf { it.isNotBlank() }?.let { "&issue=" + Uri.encode(it) } ?: "")
         io.execute {
-            val r = Net.get(store, "/api/social/feed?tab=${Uri.encode(key)}&limit=20$before", headers())
+            val r = Net.get(store, "/api/social/feed?tab=${Uri.encode(parts[0])}$filters&limit=20$before", headers())
             m.runOnUiThread {
                 busy.remove(key); loadedAt[key] = System.currentTimeMillis()
                 if (r.ok) {
@@ -1548,11 +1649,11 @@ class SocialPage(private val m: MainActivity) {
                     feeds[key] = now; more[key] = r.json.optBoolean("more"); admin = r.json.optBoolean("admin", admin)
                     after?.invoke(added, more[key] != true)
                 } else {
-                    if (key == tab) error = r.error("Couldn't load posts.")
+                    if (key == feedKey()) error = r.error("Couldn't load posts.")
                     if (feeds[key] == null) feeds[key] = mutableListOf()
                     after?.invoke(emptyList(), false)
                 }
-                val showing = (screen == "feed" && key == tab) || (screen == "profile" && key == "user:${profile?.uid}")
+                val showing = (screen == "feed" && key == feedKey()) || (screen == "profile" && key == "user:${profile?.uid}")
                 if (showing && m.tab == "feedback") m.render()
             }
         }
