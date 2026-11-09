@@ -16,12 +16,12 @@ module.exports = function makeAiVideo({ DATA_DIR, media, ai, MODEL, API_KEY, own
   const VMODEL = () => process.env.GEMINI_VIDEO_MODEL || "gemini-omni-1.2-flash";
   // limits: the owner can change them on the Teach page (those win over .env); the server never spends more than CAP a month
   const set = (k, env, d) => { const v = db && db.settings && db.settings[k]; return v !== undefined && v !== null && v !== "" ? Number(v) : (process.env[env] !== undefined ? Number(process.env[env]) : d); };
-  const DAILY = () => Math.max(0, Math.min(6, set("daily", "AI_VIDEOS_DAILY", 2)));
+  const DAILY = () => Math.max(0, Math.min(6, set("daily", "AI_VIDEOS_DAILY", 0)));
   const CAP = () => Math.max(0, set("monthlyUsd", "AI_VIDEO_MONTHLY_USD", 60));
   const SECONDS = () => Math.min(15, Math.max(4, Math.round(set("seconds", "AI_VIDEO_SECONDS", 8))));
-  const CARTOONS = () => Math.max(0, Math.min(10, set("cartoons", "AI_CARTOONS_DAILY", 2)));               // funny AI cartoons a day, by itself
+  const CARTOONS = () => Math.max(0, Math.min(10, set("cartoons", "AI_CARTOONS_DAILY", 1)));               // funny AI cartoons a day, by itself
   const CSECONDS = () => Math.min(15, Math.max(4, Math.round(set("cartoonSeconds", "AI_CARTOON_SECONDS", 10))));
-  const PUBLIC_DAY = () => Math.max(0, Math.min(200, set("publicDay", "AI_CARTOONS_PUBLIC_DAILY", 5)));     // people's own ideas, all together, a day
+  const PUBLIC_DAY = () => Math.max(0, Math.min(200, set("publicDay", "AI_CARTOONS_PUBLIC_DAILY", 2)));     // people's own ideas, all together, a day
   const PUBLIC_EACH = () => Math.max(0, Math.min(5, set("publicEach", "AI_CARTOONS_PUBLIC_EACH", 1)));      // each person, a day
   const RATE = 0.075;         // US$ a second at 720p (a little above Google's price, to stay safely under the limit)
   const ON = () => !!KEY() && String(process.env.AI_VIDEOS || "true") !== "false" && String(process.env.MEDIA_AUTO || "true") !== "false";
@@ -275,7 +275,8 @@ ${s.lines.map((l, i) => `Dialogue: 1,${ts(i * per + 0.4)},${ts(Math.min(total, (
     /** How many AI cartoons this person (and everyone) can still make today. */
     left(dev) {
       roll();
-      if (!ON() || db.spent + CSECONDS() * RATE > CAP()) return { all: 0, you: 0 };
+      // (people's own ideas don't depend on MEDIA_AUTO, which is only about posting by itself)
+      if (!KEY() || String(process.env.AI_VIDEOS || "true") === "false" || db.spent + CSECONDS() * RATE > CAP()) return { all: 0, you: 0 };
       return { all: Math.max(0, PUBLIC_DAY() - (db.pubDay || 0)), you: Math.max(0, PUBLIC_EACH() - ((db.pubEach || {})[dev] || 0)) };
     },
     take(dev) { roll(); db.pubDay = (db.pubDay || 0) + 1; db.pubEach = db.pubEach || {}; db.pubEach[dev] = (db.pubEach[dev] || 0) + 1; save(); },
