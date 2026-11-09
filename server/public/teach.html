@@ -142,6 +142,19 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
+      <h2>🐶 Puppy cartoons · బిగ్‌డీ కార్టూన్లు</h2>
+      <p class="hint">Our own cartoons, made fully on our server: our own brain writes each one (a joke, riddle, fact, kids story or good thought), the voice speaks it and the puppy talks. It learns by itself: the kinds people like (likes, comments, views) are made more often. People can also make their own in the app (Media › 🐶).</p>
+      <p id="ctState" class="msg"></p>
+      <table class="tbl" id="ctLearn"></table>
+      <ul id="ctList"></ul>
+      <label for="ctType">Make one now</label>
+      <select id="ctType"><option value="joke">😄 హాస్యం · Joke</option><option value="riddle">🤔 పొడుపు కథ · Riddle</option><option value="fact">💡 మీకు తెలుసా · Fact</option><option value="story">📖 కథ · Story</option><option value="thought">🌟 మంచి మాట · Good thought</option></select>
+      <input id="ctIdea" placeholder="An idea (you can leave it empty)">
+      <button id="ctMake" type="button">Make a cartoon</button>
+      <p id="ctMsg" class="msg"></p>
+    </section>
+
+    <section class="card">
       <h2>🤖 AI videos · AI వీడియోలు</h2>
       <p class="hint">Every day Google's Gemini video model makes short videos for Media: a devotional one at 5 AM, and a kids story, health tip or farming tip at 4 PM. Only safe, timeless topics (never news or real people), with Telugu words on the video and a clear "AI-made" label. It needs GEMINI_API_KEY with billing on, and it never spends more than the monthly limit.</p>
       <p id="aivState" class="msg"></p>
@@ -355,8 +368,26 @@ $("aivMake").onclick = async () => {
   finally { $("aivMake").disabled = false; }
 };
 
+const KIND = { joke: "😄 Joke", riddle: "🤔 Riddle", fact: "💡 Fact", story: "📖 Story", thought: "🌟 Good thought" };
+function showCt(d) {
+  say($("ctState"), `${d.on ? "On" : "Off (CARTOONS=false)"} · made by itself today ${d.madeToday} of ${d.daily} · made by people today ${d.publicToday}${d.waiting ? " · " + d.waiting + " waiting" : ""}${d.busy ? " · making one now…" : ""}`, d.on);
+  const t = $("ctLearn"); t.textContent = "";
+  const head = t.insertRow(); for (const x of ["Kind", "Made (30 days)", "People's liking (avg)"]) { const th = document.createElement("th"); th.textContent = x; head.append(th); }
+  for (const [k, v] of Object.entries(d.learned)) { const r = t.insertRow(); r.insertCell().textContent = KIND[k] || k; r.insertCell().textContent = v.made; r.insertCell().textContent = v.avg === null ? "learning…" : v.avg; }
+  const ul = $("ctList"); ul.textContent = "";
+  for (const m of d.recent || []) ul.append(row(`🐶 ${m.title}`, "", `${KIND[m.type] || m.type} · ${m.pub ? "made by someone in the app" : "made by itself"} · written by ${m.by === "own" ? "our own brain" : "Claude"}${m.score !== null && m.score !== undefined ? " · liking " + Math.round(m.score) : ""}`, "", null));
+}
+async function loadCt() { showCt(await api("cartoon")); }
+$("ctMake").onclick = async () => {
+  $("ctMake").disabled = true;
+  try { showCt(await api("cartoon/make", { type: $("ctType").value, prompt: $("ctIdea").value.trim() })); $("ctIdea").value = ""; say($("ctMsg"), "Started. It takes 1 to 3 minutes; then it is in Media.", true); setTimeout(() => loadCt().catch(() => {}), 120000); }
+  catch (e) { say($("ctMsg"), e.message, false); }
+  finally { $("ctMake").disabled = false; }
+};
+
 async function refresh() {
   loadFeedback().catch(() => {});
+  loadCt().catch(() => {});
   loadAiv().catch(() => {});
   loadBrain().catch(() => {});
   loadMedia().catch(() => {});

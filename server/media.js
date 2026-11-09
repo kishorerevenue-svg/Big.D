@@ -50,7 +50,9 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
     health: { te: "ఆరోగ్యం", en: "Health", search: 0, daily: 1, keepDays: 365,
       brief: "Simple, trusted health tips for families (water, food, exercise, sleep, BP, sugar, children's and elders' health, seasonal illnesses). Always add to see a doctor for real problems. No miracle cures, no medicine doses." },
     facts: { te: "విజ్ఞానం", en: "Facts", search: 1, daily: 2, keepDays: 365,
-      brief: "Interesting, true facts people love to share (మీకు తెలుసా?): science, space, nature, animals, the human body, India's history, inventions, world records. Only well-known, checked facts; no rumours, no 'shocking' claims." }
+      brief: "Interesting, true facts people love to share (మీకు తెలుసా?): science, space, nature, animals, the human body, India's history, inventions, world records. Only well-known, checked facts; no rumours, no 'shocking' claims." },
+    fun: { te: "వినోదం", en: "Fun", search: 0, daily: 1, keepDays: 120,
+      brief: "Clean, kind jokes, riddles (పొడుపు కథలు) and good thoughts for the whole family. Never make fun of any group of people or any real person." }
   };
 
   // ---------- storage ----------
@@ -350,7 +352,7 @@ Reply with only a JSON object, no other text:
       yt: o.yt || null, by: o.by || "auto", likes: [], mood: MOODS.includes(o.mood) ? o.mood : undefined, issue: ISSUES.includes(o.issue) ? o.issue : undefined,
       kind: o.kind ? str(o.kind, 20) : undefined, writer: o.writer ? str(o.writer, 20) : undefined, key: o.key ? str(o.key, 80) : undefined, meta: o.meta,
       scene: o.scene ? str(String(o.scene).replace(/[^a-zA-Z\s-]/g, " ").replace(/\s+/g, " "), 50) || undefined : undefined,
-      video: o.video && /^\/media\/ai\/\d+\.mp4$/.test(o.video.url || "") ? { url: o.video.url, poster: str(o.video.poster, 80), dur: Number(o.video.dur) || 0, w: Number(o.video.w) || 0, h: Number(o.video.h) || 0 } : undefined };
+      video: o.video && /^\/media\/(?:ai\/\d+|cartoon\/[a-z0-9_]+)\.mp4$/.test(o.video.url || "") ? { url: o.video.url, poster: str(o.video.poster, 80), dur: Number(o.video.dur) || 0, w: Number(o.video.w) || 0, h: Number(o.video.h) || 0 } : undefined };
     if (o.img !== undefined) it.img = /^https:\/\/\S+$/.test(String(o.img)) ? str(o.img, 600) : "";
     db.items.push(it); prune(); save();
     if (url && it.img === undefined) setTimeout(fillPictures, 2000);

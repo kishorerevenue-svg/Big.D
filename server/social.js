@@ -90,9 +90,10 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
   }
 
   // ---------- official accounts: one per Media section ----------
-  const ICON = { news: "📰", movies: "🎬", kids: "🧒", crypto: "🪙", realestate: "🏠", jobs: "💼", devotional: "🛕", farming: "🌾", health: "🩺", facts: "💡" };
+  const ICON = { news: "📰", movies: "🎬", kids: "🧒", crypto: "🪙", realestate: "🏠", jobs: "💼", devotional: "🛕", farming: "🌾", health: "🩺", facts: "💡", fun: "😄" };
   const BIO = {
     facts: "మీకు తెలుసా? ఆసక్తికరమైన నిజాలు · Interesting true facts",
+    fun: "నవ్వులు, పొడుపు కథలు, మంచి మాటలు, బిగ్‌డీ కార్టూన్లు · Jokes, riddles and puppy cartoons",
     news: "రోజూ ముఖ్యమైన వార్తలు · Daily news for Telugu people", movies: "కొత్త సినిమాలు, విమర్శకుల అభిప్రాయాలు, ట్రైలర్లు · Movies, reviews, trailers",
     kids: "పిల్లలకు కథలు, పాటలు, పొడుపు కథలు · Stories and rhymes for kids", crypto: "క్రిప్టో వార్తలు, జాగ్రత్తలు · Crypto news (not financial advice)",
     realestate: "AP, తెలంగాణ రియల్ ఎస్టేట్ వార్తలు · Real estate news (not advice)", jobs: "కొత్త ఉద్యోగ నోటిఫికేషన్లు · New job notifications",
@@ -132,7 +133,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
       mood: i.mood || "", issue: i.issue || "", kind: i.kind || "", writer: i.writer || "", video: i.video || null,
       reel: i.reel && reels && reels.has(i.id) ? "/media/reel/" + i.id + ".mp4" : "" };   // a short video of this news, to share
   }
-  function userPostToPost(p) { return { key: "p" + p.id, uid: p.uid, at: p.at, title: "", text: p.text, photos: (p.photos || []).map(fileUrl), video: p.video ? videoView(p.video) : null, yt: p.link && p.link.yt ? { id: p.link.yt, ch: p.link.site || "" } : null, link: p.link || null, source: null, cat: OFFICIAL[p.uid] ? OFFICIAL[p.uid].cat : "", emoji: "" }; }
+  function userPostToPost(p) { return { key: "p" + p.id, uid: p.uid, at: p.at, title: "", text: p.text, photos: (p.photos || []).map(fileUrl), video: p.cartoon || (p.video ? videoView(p.video) : null), yt: p.link && p.link.yt ? { id: p.link.yt, ch: p.link.site || "" } : null, link: p.link || null, source: null, cat: OFFICIAL[p.uid] ? OFFICIAL[p.uid].cat : "", emoji: "" }; }
   function postView(x, me, counts) {
     const s = x.key[0] === "p" ? db.posts.find(p => "p" + p.id === x.key) : null;
     const st = s || stat(x.key);
@@ -720,5 +721,15 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     return { users: Object.values(db.users).filter(u => u.name).length, posts: db.posts.filter(x => !x.removed).length, photos: Object.keys(db.uploads).length - vids.length,
       videos: vids.length, videoMB: Math.round(vids.reduce((n, u) => n + (u.bytes || 0), 0) / 1048576), reported };
   }
-  return { handle, stats };
+  /** Likes, comments and views of a Media post (the cartoon maker learns from them). */
+  function engagement(key) { const s = db.stats[key] || {}; return { likes: (s.likes || []).length, comments: s.comments || 0, views: s.views || 0 }; }
+  /** A puppy cartoon someone made, posted on their own profile. */
+  function postCartoon(req, text, video) {
+    const uid = uidOf(req, false);
+    if (!uid || !db.users[uid]) return { error: "Make your profile first (Media › 👤), then post your cartoon." };
+    db.posts.push({ id: db.nextPost++, uid, at: Date.now(), text: String(text).slice(0, 900), photos: [], cartoon: video, link: null, likes: [], views: 0, comments: 0, reports: [] });
+    save();
+    return { ok: true };
+  }
+  return { handle, stats, engagement, postCartoon };
 };

@@ -28,6 +28,7 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -149,7 +150,7 @@ class SocialPage(private val m: MainActivity) {
         private val PINK = Color.parseColor("#F91880")
         private val SOFT = Color.parseColor("#E9EEF0")
         private val CAT_COLOR = mapOf("news" to "#3B82F6", "movies" to "#F97316", "jobs" to "#6366F1", "devotional" to "#FB923C", "kids" to "#F472B6",
-            "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B", "facts" to "#8B5CF6")
+            "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B", "facts" to "#8B5CF6", "fun" to "#EC4899")
     }
 
     private class Tab(val key: String, val label: String)
@@ -157,8 +158,8 @@ class SocialPage(private val m: MainActivity) {
 
     private val tabs = listOf(Tab("foryou", "✨ For you"), Tab("popular", "🔥 Popular"), Tab("following", "Following"), Tab("people", "👥 ప్రజలు"),
         Tab("news", "📰 వార్తలు"), Tab("movies", "🎬 సినిమా"), Tab("jobs", "💼 ఉద్యోగాలు"), Tab("devotional", "🛕 భక్తి"), Tab("kids", "🧒 పిల్లలు"),
-        Tab("facts", "💡 విజ్ఞానం"), Tab("health", "🩺 ఆరోగ్యం"), Tab("farming", "🌾 వ్యవసాయం"), Tab("realestate", "🏠 రియల్ ఎస్టేట్"), Tab("crypto", "🪙 క్రిప్టో"))
-    private val sectionKeys = setOf("news", "movies", "jobs", "devotional", "kids", "health", "farming", "realestate", "crypto", "facts")
+        Tab("fun", "😄 వినోదం"), Tab("facts", "💡 విజ్ఞానం"), Tab("health", "🩺 ఆరోగ్యం"), Tab("farming", "🌾 వ్యవసాయం"), Tab("realestate", "🏠 రియల్ ఎస్టేట్"), Tab("crypto", "🪙 క్రిప్టో"))
+    private val sectionKeys = setOf("news", "movies", "jobs", "devotional", "kids", "health", "farming", "realestate", "crypto", "facts", "fun")
     // filters: by mood and by issue (the server tags every Media post)
     private val moods = listOf("" to "😊 Mood · మూడ్", "happy" to "😊 Happy · సంతోషం", "inspiring" to "✨ Inspiring · స్ఫూర్తి", "devotional" to "🙏 Devotional · భక్తి",
         "useful" to "💡 Useful · ఉపయోగం", "calm" to "🕊️ Calm · ప్రశాంతం", "funny" to "😄 Funny · నవ్వు", "serious" to "⚠️ Serious · ముఖ్యం", "sad" to "😢 Sad · బాధ")
@@ -271,6 +272,7 @@ class SocialPage(private val m: MainActivity) {
             "compose" -> buildCompose()
             "comments" -> buildComments()
             "reports" -> buildReports()
+            "cartoon" -> buildCartoon()
             else -> buildFeed()
         }
     }
@@ -335,6 +337,15 @@ class SocialPage(private val m: MainActivity) {
             put(ui.row(ui.button("Make my profile", "primary") { startEdit() }), 10)
         }, 12)
         note(tab)?.let { m.add(ui.text(it, 12.5f, Ui.MUTED), 10) }
+        if (tab == "foryou" || tab == "fun" || tab == "kids") m.add(LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(10), dp(10), dp(10))
+            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(Color.parseColor("#FFF1D6"), Color.parseColor("#FFE0EC"))).apply { cornerRadius = dp(18).toFloat() }
+            addView(ui.text("🐶", 30f, Ui.INK))
+            addView(ui.stack(ui.text("Make a puppy cartoon · కార్టూన్", 15f, Ui.INK, bold = true), ui.text("Your idea → a cartoon video by our own brain", 12.5f, Ui.MUTED)).apply { setPadding(dp(10), 0, dp(6), 0) },
+                LinearLayout.LayoutParams(0, -2, 1f))
+            addView(ui.button("Make", "primary") { go("cartoon") })
+            setOnClickListener { go("cartoon") }
+        }, 10)
         val fk = feedKey()
         if (admin) m.add(ui.row(ui.button("🛡 Reports", "ghost") { openReports() }), 10)
         if (admin && tab in sectionKeys) m.add(ui.row(ui.button("🔄 AI posts now") { generate(tab) }, ui.button("✍️ Post here", "primary") { startCompose(asUid = "s_$tab") }), 10)
@@ -387,6 +398,7 @@ class SocialPage(private val m: MainActivity) {
         "kids" -> "👨‍👩‍👧 Stories and rhymes for parents to read to children."
         "people" -> "👥 Posts from people using BigD AI."
         "popular" -> "🔥 What people liked, commented on and read most in the last 3 days."
+        "fun" -> "😄 Clean jokes, riddles, good thoughts and BigD puppy cartoons, made by our own brain."
         "facts" -> "💡 మీకు తెలుసా? True, interesting facts, written by our own brain from Wikipedia and trusted sources."
         else -> null
     }
@@ -420,6 +432,118 @@ class SocialPage(private val m: MainActivity) {
                 if (isMood) mood = list[i].first else issue = list[i].first
                 error = ""; m.render(); m.scrollTop()
             }.show()
+    }
+
+    // ------------------------------ 🐶 puppy cartoons (anyone can ask for one) ------------------------------
+    private val ctKinds = listOf("joke" to "😄 హాస్యం · Joke", "riddle" to "🤔 పొడుపు కథ · Riddle", "story" to "📖 కథ · Story", "fact" to "💡 మీకు తెలుసా · Fact", "thought" to "🌟 మంచి మాట · Good thought")
+    private var ctKind = "joke"
+    private var ctIdea = ""
+    private var ctJob: JSONObject? = null
+    private var ctBusy = false
+    private var ctError = ""
+    private val ctPoll = Runnable { pollCartoon() }
+
+    private fun buildCartoon() {
+        backBar("🐶 Puppy cartoon · కార్టూన్")
+        m.add(ui.text("Tell the puppy your idea. Our own brain writes it, the puppy says it in its own voice, and you get a cartoon video in 1 to 3 minutes. You can make 3 a day.", 14f, Ui.MUTED), 8)
+        val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
+        ctKinds.forEachIndexed { i, (k, label) ->
+            row.addView(ui.chip(label, ctKind == k) { ctKind = k; m.render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(6) })
+        }
+        m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(row) }, 12)
+        val box = EditText(m).apply {
+            hint = "ఉదా: సైకిల్ నేర్చుకుంటున్న కుక్కపిల్ల · e.g. a puppy learning to ride a cycle"; setText(ctIdea); textSize = 15f; minLines = 2; maxLines = 4
+            background = ui.round(Color.WHITE, 14, Ui.LINE); setPadding(dp(12), dp(10), dp(12), dp(10))
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(e: android.text.Editable?) { ctIdea = e?.toString() ?: "" }
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
+        }
+        m.add(box, 10)
+        m.add(ui.text("You can leave it empty: the puppy picks something itself. Kind, happy ideas only.", 12f, Ui.MUTED), 4)
+        val job = ctJob
+        val st = job?.optString("status") ?: ""
+        val working = ctBusy || st == "waiting" || st == "making"
+        m.add(ui.button(if (working) "⏳ Making your cartoon…" else "🎬 Make my cartoon", "primary") { if (!working) makeCartoon() }, 12)
+        if (ctError.isNotBlank()) m.add(ui.text("⚠️ $ctError", 14f, Ui.DANGER), 10)
+        if (job != null) when (st) {
+            "waiting" -> m.add(ui.text("⏳ Waiting… ${job.optInt("position")} before yours.", 14f, Ui.INK), 12)
+            "making" -> m.add(ui.text("🐶 The puppy is making your cartoon… (1 to 3 minutes)", 14f, Ui.INK), 12)
+            "failed" -> m.add(ui.text("⚠️ " + job.optString("error").ifBlank { "Couldn't make it. Please try again." }, 14f, Ui.DANGER), 12)
+            "done" -> {
+                val v = job.optJSONObject("video")
+                m.add(ui.text("🎉 " + job.optString("title"), 17f, Ui.INK, bold = true), 14)
+                if (v != null) m.add(FrameLayout(m).apply {
+                    background = ui.round(Color.BLACK, 16); clipToOutline = true; contentDescription = "Play your cartoon"
+                    addView(ImageView(m).apply { scaleType = ImageView.ScaleType.FIT_CENTER; Images.load(abs(v.optString("poster")), this, 720) }, FrameLayout.LayoutParams(-1, dp(360)))
+                    addView(TextView(m).apply { text = "▶"; textSize = 26f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+                        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#99000000")) } }, FrameLayout.LayoutParams(dp(64), dp(64), Gravity.CENTER))
+                    setOnClickListener {
+                        MediaViewer.items = listOf(MediaViewer.Item("file", abs(v.optString("url")), "", "🐶 BigD cartoon", job.optString("title"), 0, false, abs(v.optString("poster"))))
+                        MediaViewer.start = 0; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
+                        m.leavingForSystemScreen = true; m.startActivity(Intent(m, MediaViewer::class.java))
+                    }
+                }, 10)
+                m.add(ui.row(ui.button("📤 Share", "primary") { shareCartoon(job) },
+                    ui.button(if (job.optBoolean("posted")) "✓ Posted" else "📝 Post on my profile", "ghost") { if (!job.optBoolean("posted")) postCartoon(job) }), 10)
+            }
+        }
+        m.shareAndAbout()
+    }
+
+    private fun makeCartoon() {
+        ctBusy = true; ctError = ""; m.render()
+        io.execute {
+            val r = Net.post(store, "/api/cartoon/make", JSONObject().put("type", ctKind).put("prompt", ctIdea.trim()), headers(), 20_000)
+            m.runOnUiThread {
+                ctBusy = false
+                if (r.ok) { ctJob = r.json; main.removeCallbacks(ctPoll); main.postDelayed(ctPoll, 4000) } else ctError = r.error("Couldn't start it. Please try again.")
+                refreshIf("cartoon")
+            }
+        }
+    }
+
+    private fun pollCartoon() {
+        val id = ctJob?.optString("id") ?: return
+        io.execute {
+            val r = Net.get(store, "/api/cartoon/status?id=" + Uri.encode(id), headers())
+            m.runOnUiThread {
+                if (r.ok) ctJob = r.json
+                val st = ctJob?.optString("status") ?: ""
+                if (st == "waiting" || st == "making" || !r.ok) main.postDelayed(ctPoll, 5000)
+                refreshIf("cartoon")
+            }
+        }
+    }
+
+    private fun postCartoon(job: JSONObject) {
+        io.execute {
+            val r = Net.post(store, "/api/cartoon/post", JSONObject().put("id", job.optString("id")), headers(), 20_000)
+            m.runOnUiThread {
+                if (r.ok) { ctJob = r.json; feeds.remove("foryou"); feeds.remove("people"); Toast.makeText(m, "Posted on your profile 🎉", Toast.LENGTH_SHORT).show() }
+                else Toast.makeText(m, r.error("Couldn't post it."), Toast.LENGTH_LONG).show()
+                refreshIf("cartoon")
+            }
+        }
+    }
+
+    /** Downloads the cartoon, then shares the video file (WhatsApp, status, anywhere). */
+    private fun shareCartoon(job: JSONObject) {
+        val url = abs(job.optJSONObject("video")?.optString("url") ?: return)
+        val name = "BigD-cartoon-" + job.optString("id").filter { it.isLetterOrDigit() } + ".mp4"
+        Toast.makeText(m, "🎬 Getting the video ready…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val f = ShareFiles.download(m, url, name)
+            m.runOnUiThread {
+                if (f == null) { Toast.makeText(m, "Couldn't get the video. Please try again.", Toast.LENGTH_LONG).show(); return@runOnUiThread }
+                val uri = ShareFiles.uri(m, name)
+                val send = Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri)
+                    .putExtra(Intent.EXTRA_TEXT, "🐶 " + job.optString("title") + "\n📲 BigD AI · bigdai.tech").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                send.clipData = android.content.ClipData.newRawUri("video", uri)
+                try { m.leavingForSystemScreen = true; m.startActivity(Intent.createChooser(send, "Share the cartoon").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch (e: Exception) { }
+            }
+        }.start()
     }
 
     // ------------------------------ YouTube strips ------------------------------

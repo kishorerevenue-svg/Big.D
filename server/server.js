@@ -377,6 +377,9 @@ const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, ai: le
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Daily AI videos (Gemini Omni): safe, timeless topics only, labelled "AI-made", with a monthly money limit
 const aiVideo = require("./aivideo.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice });
+// BigD puppy cartoons: made on our own server, written by our own brain, learning from what people like
+const cartoon = require("./cartoon.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice, h: { send, readBody, allowed, clientIp },
+  engagement: id => social.engagement("m" + id) });
 // YouTube in every Media section: trusted channels' new videos, live TV and live darshan, Shorts, trending
 const youtube = require("./youtube.js")({ DATA_DIR, media, ownBrain, h: { send, readBody, allowed, clientIp } });
 // profiles, posts with photos and links, comments, likes, follows (the Media tab works like X)
@@ -401,6 +404,7 @@ const server = http.createServer(async (req, res) => {
   if (await media.handle(req, res, url, origin)) return;
   if (await youtube.handle(req, res, url, origin)) return;
   if (aiVideo.handle(req, res, url)) return;
+  if (await cartoon.handle(req, res, url, origin, social)) return;
   if (await social.handle(req, res, url, origin)) return;
   if (await tools(req, res, url, origin)) return;
 
@@ -538,6 +542,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/teach/media") return send(res, 200, media.teach.info());
       if (req.method === "GET" && url.pathname === "/api/teach/youtube") return send(res, 200, { sections: youtube.list(), stats: youtube.stats() });
       if (req.method === "GET" && url.pathname === "/api/teach/aivideo") return send(res, 200, aiVideo.status());
+      if (req.method === "GET" && url.pathname === "/api/teach/cartoon") return send(res, 200, cartoon.status());
       if (req.method === "GET" && url.pathname === "/api/teach/feedback") {
         let lines = [];
         try { lines = fs.readFileSync(path.join(DATA_DIR, "feedback.jsonl"), "utf8").trim().split("\n").filter(Boolean).slice(-200).map(l => JSON.parse(l)).reverse(); } catch (e) { }
@@ -574,6 +579,7 @@ const server = http.createServer(async (req, res) => {
           aiVideo.makeOne(cat).catch(() => {});
           return send(res, 200, { ok: true });
         }
+        if (url.pathname === "/api/teach/cartoon/make") { cartoon.add(cartoon.TYPES[body.type] ? body.type : "joke", String(body.prompt || "").slice(0, 300)); return send(res, 200, cartoon.status()); }
         if (url.pathname === "/api/teach/aivideo/delete") return send(res, 200, { ok: aiVideo.remove(body.id), ...aiVideo.status() });
         if (url.pathname === "/api/teach/text") {
           const text = String(body.text || "").trim();
