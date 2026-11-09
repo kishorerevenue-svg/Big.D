@@ -4,6 +4,7 @@ import android.animation.ObjectAnimator
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -181,8 +182,8 @@ class MediaViewer : Activity() {
         likeBtn.visibility = if (canAct) View.VISIBLE else View.GONE
         talkBtn.visibility = if (canAct && onComments != null) View.VISIBLE else View.GONE
         paintLike()
-        ytBtn.visibility = if (cur.kind == "video") View.VISIBLE else View.GONE
-        if (cur.kind == "video") play(i)
+        ytBtn.visibility = if (cur.kind == "video" || cur.kind == "short") View.VISIBLE else View.GONE
+        if (cur.kind == "video" || cur.kind == "short") play(i)
         if (cur.kind == "file") playFile(i)
     }
 
@@ -210,6 +211,15 @@ class MediaViewer : Activity() {
                 // tap: pause or play again
                 if (vv.isPlaying) { vv.pause(); sign.visibility = View.VISIBLE } else if (fileAt == k) { vv.start(); sign.visibility = View.GONE } else playFile(k)
             }
+        } else if (item.kind == "short") {
+            // a YouTube Short: tall, the whole screen (like Reels)
+            val box = FrameLayout(this).apply { setBackgroundColor(Color.BLACK); contentDescription = "Play video" }
+            box.addView(ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load("https://i.ytimg.com/vi/${item.src}/hqdefault.jpg", this, 720) },
+                FrameLayout.LayoutParams(-1, -1))
+            box.addView(TextView(this).apply { text = "▶"; textSize = 26f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; background = ui.round(Color.parseColor("#E62117"), 16) },
+                FrameLayout.LayoutParams(dp(76), dp(52), Gravity.CENTER))
+            box.setOnClickListener { play(k) }
+            pg.addView(box, FrameLayout.LayoutParams(-1, -1))
         } else {
             val box = Box169(this).apply { setBackgroundColor(Color.BLACK); contentDescription = "Play video" }
             box.addView(ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load("https://i.ytimg.com/vi/${item.src}/hqdefault.jpg", this, 640) },
@@ -264,7 +274,7 @@ class MediaViewer : Activity() {
     private fun play(k: Int) {
         if (k != at) return
         val item = items[k]
-        if (item.kind != "video") return
+        if (item.kind != "video" && item.kind != "short") return
         val box = pages[k].getChildAt(0) as? FrameLayout ?: return
         val w = web ?: makeWeb().also { web = it }
         if (webAt == k && w.parent === box) return
@@ -307,6 +317,7 @@ class MediaViewer : Activity() {
 
     private fun stopVideo() {
         if (full != null) hideFull(true)
+        if (wide) { wide = false; bars(true); pager.locked = false; chrome = true; setChrome(true) }
         val w = web ?: return
         w.loadUrl("about:blank")   // stops the sound at once
         (w.parent as? ViewGroup)?.removeView(w)
@@ -351,6 +362,36 @@ class MediaViewer : Activity() {
         if (full != null) hideFull(true) else @Suppress("DEPRECATION") super.onBackPressed()
     }
 
+    // ---------- turning the phone sideways: the playing video fills the screen; turn it back for the page ----------
+    private var wide = false
+    override fun onConfigurationChanged(c: Configuration) {
+        super.onConfigurationChanged(c)
+        if (full != null) return                  // YouTube's own full screen is on
+        val w = web
+        if (c.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            if (wide || w == null || webAt < 0 || w.parent == null) return
+            wide = true
+            (w.parent as? ViewGroup)?.removeView(w)
+            root.addView(w, FrameLayout.LayoutParams(-1, -1))
+            topBar.visibility = View.GONE; bottomBar.visibility = View.GONE
+            pager.locked = true; bars(false)
+        } else if (wide) {
+            wide = false
+            if (w != null && w.parent === root) { root.removeView(w); (pages.getOrNull(webAt)?.getChildAt(0) as? FrameLayout)?.addView(w, FrameLayout.LayoutParams(-1, -1)) }
+            pager.locked = false; bars(true); chrome = true; setChrome(true)
+        }
+    }
+
+    /** Hides or shows the phone's own bars (time, battery; back and home). */
+    @Suppress("DEPRECATION")
+    private fun bars(show: Boolean) {
+        if (Build.VERSION.SDK_INT >= 30) window.insetsController?.let { c ->
+            if (show) c.show(WindowInsets.Type.systemBars())
+            else { c.hide(WindowInsets.Type.systemBars()); c.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE }
+        } else window.decorView.systemUiVisibility = if (show) View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            else View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+    }
+
     // ---------- buttons ----------
     private fun paintLike() {
         val cur = items.getOrNull(at) ?: return
@@ -375,14 +416,14 @@ class MediaViewer : Activity() {
 
     private fun share() {
         val cur = items.getOrNull(at) ?: return
-        val link = when (cur.kind) { "video" -> "https://youtu.be/${cur.src}"; else -> cur.src }
+        val link = when (cur.kind) { "video" -> "https://youtu.be/${cur.src}"; "short" -> "https://youtube.com/shorts/${cur.src}"; else -> cur.src }
         val t = listOf(cur.words.take(1200), link, "— ${cur.who.substringBefore("  @")} · BigD AI 🐾 $server").filter { it.isNotBlank() }.joinToString("\n\n")
         try { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share")) } catch (e: Exception) { }
     }
 
     private fun openYouTube() {
         val cur = items.getOrNull(at) ?: return
-        if (cur.kind == "video") { stopVideo(); openOut("https://www.youtube.com/watch?v=${cur.src}") }
+        if (cur.kind == "video" || cur.kind == "short") { stopVideo(); openOut(if (cur.kind == "short") "https://www.youtube.com/shorts/${cur.src}" else "https://www.youtube.com/watch?v=${cur.src}") }
     }
 
     private fun openOut(u: String) {

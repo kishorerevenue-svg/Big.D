@@ -35,7 +35,7 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
     health: [], jobs: [], realestate: [], crypto: []
   };
   // most-watched new videos posted in Media per day (and per 2-hour run)
-  const DAILY = { news: 6, movies: 6, devotional: 4, kids: 2, farming: 2, health: 2, jobs: 2, realestate: 1, crypto: 1 };
+  const DAILY = { news: 10, movies: 10, devotional: 6, kids: 4, farming: 3, health: 2, jobs: 2, realestate: 1, crypto: 1 };
   const keyOf = x => x.id || x.handle;
   function channels(cat) {
     const removed = db.removed[cat] || [];
@@ -102,7 +102,7 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
       let shorts = [];
       try { shorts = await feed(`playlist_id=UUSH${tail}`); } catch (e) { }
       Object.assign(st, { id, name: x.name || (long[0] || shorts[0] || {}).ch || st.name || "", at: Date.now(), err: "", fails: 0,
-        videos: long.slice(0, 15).map(v => ({ ...v, desc: v.desc.slice(0, 600) })), shorts: shorts.slice(0, 10).map(v => ({ ...v, desc: "" })) });
+        videos: long.slice(0, 15).map(v => ({ ...v, desc: v.desc.slice(0, 600) })), shorts: shorts.slice(0, 15).map(v => ({ ...v, desc: "" })) });
     } catch (e) {
       Object.assign(st, { at: Date.now(), err: String(e.message || e).slice(0, 80), fails: (st.fails || 0) + 1 });
     }
@@ -245,8 +245,8 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     const list = cat && media.CATS[cat] ? channels(cat).map(x => ({ ...x, cat })) : allChannels();
     const view = v => ({ id: v.id, title: v.title, ch: v.ch, at: v.at, views: v.views || 0 });
     const live = list.map(x => { const st = db.ch[keyOf(x)] || {}; return st.live ? { id: st.live.id, title: st.live.title, ch: x.name || st.name, cat: x.cat, since: st.live.since, live: true } : null; }).filter(Boolean);
-    const latest = list.flatMap(x => ((db.ch[keyOf(x)] || {}).videos || []).filter(fine).slice(0, 5).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 30);
-    const shorts = list.flatMap(x => ((db.ch[keyOf(x)] || {}).shorts || []).filter(fine).slice(0, 4).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 30);
+    const latest = list.flatMap(x => ((db.ch[keyOf(x)] || {}).videos || []).filter(fine).slice(0, 8).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 40);
+    const shorts = list.flatMap(x => ((db.ch[keyOf(x)] || {}).shorts || []).filter(fine).slice(0, 10).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 100);
     return { live, latest, shorts, trending: cat && cat !== "all" ? [] : db.trending.list, key: !!KEY() };
   }
   const reads = new Map();

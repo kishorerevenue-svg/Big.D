@@ -441,13 +441,14 @@ class SocialPage(private val m: MainActivity) {
     }
 
     private fun strip(title: String, a: JSONArray, live: Boolean = false, tall: Boolean = false) {
-        val posts = (0 until minOf(a.length(), 20)).mapNotNull { a.optJSONObject(it) }.filter { it.optString("id").length == 11 }.map { o ->
+        val all = (0 until a.length()).mapNotNull { a.optJSONObject(it) }.filter { it.optString("id").length == 11 }.map { o ->
             val ch = o.optString("ch")
             SPost("yt:" + o.optString("id"), SUser("", ch.ifBlank { "YouTube" }, "", "", "", if (live) "🔴" else "▶️", false, false, 0, 0, 0, false, false),
                 o.optLong("at"), o.optString("title"), "", emptyList(), o.optString("id"), ch, "", "", "", "", "YouTube · $ch", "", o.optString("cat"), "▶️", 0, false, o.optInt("views"), 0, false)
         }
-        if (posts.isEmpty()) return
-        m.add(ui.text(title, 15f, Ui.INK, bold = true), 14)
+        if (all.isEmpty()) return
+        val posts = all.take(20)
+        m.add(ui.text(title + (if (all.size > posts.size) "  ·  ${all.size}" else ""), 15f, Ui.INK, bold = true), 14)
         val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
         posts.forEachIndexed { i, p ->
             val card = LinearLayout(m).apply {
@@ -464,7 +465,7 @@ class SocialPage(private val m: MainActivity) {
                 }, LinearLayout.LayoutParams(-1, dp(if (tall) 200 else 112)))
                 addView(ui.text(p.title, 13f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(4), 0, 0) })
                 addView(ui.text(p.author.name + (if (p.views > 0 && !live) " · ${num(p.views)} views" else ""), 11.5f, Ui.MUTED).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
-                setOnClickListener { openVideos(posts, i) }
+                setOnClickListener { openVideos(all, i, tall) }
             }
             row.addView(card, LinearLayout.LayoutParams(dp(if (tall) 120 else 200), -2).apply { if (i > 0) marginStart = dp(10) })
         }
@@ -472,8 +473,8 @@ class SocialPage(private val m: MainActivity) {
     }
 
     /** YouTube videos full screen (YouTube's own player); swipe for the next one in the strip. */
-    private fun openVideos(list: List<SPost>, start: Int) {
-        MediaViewer.items = list.map { x -> MediaViewer.Item("video", x.ytId, "", x.author.name, x.title, 0, false) }
+    private fun openVideos(list: List<SPost>, start: Int, shorts: Boolean = false) {
+        MediaViewer.items = list.map { x -> MediaViewer.Item(if (shorts) "short" else "video", x.ytId, "", x.author.name, x.title, 0, false) }
         MediaViewer.start = start; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
         m.leavingForSystemScreen = true
         m.startActivity(Intent(m, MediaViewer::class.java))

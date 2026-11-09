@@ -3,6 +3,7 @@ package com.soulfriend.pet
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
@@ -598,6 +599,7 @@ class StoryReader : Activity() {
 
     private fun stopVideo() {
         if (full != null) hideFull(true)
+        if (wide) { wide = false; bars(true); pager.locked = false; topBar.visibility = View.VISIBLE }
         val w = web ?: return
         w.loadUrl("about:blank")   // stops the sound at once
         (w.parent as? ViewGroup)?.removeView(w)
@@ -660,6 +662,36 @@ class StoryReader : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (full != null) hideFull(true) else @Suppress("DEPRECATION") super.onBackPressed()
+    }
+
+    // ---------- turning the phone sideways: the playing video fills the screen; turn it back for the page ----------
+    private var wide = false
+    override fun onConfigurationChanged(c: Configuration) {
+        super.onConfigurationChanged(c)
+        if (full != null) return                  // YouTube's own full screen is on
+        val w = web
+        if (c.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            if (wide || w == null || webAt < 0 || w.parent == null) return
+            wide = true
+            (w.parent as? ViewGroup)?.removeView(w)
+            root.addView(w, FrameLayout.LayoutParams(-1, -1))
+            topBar.visibility = View.GONE
+            pager.locked = true; bars(false)
+        } else if (wide) {
+            wide = false
+            if (w != null && w.parent === root) { root.removeView(w); (pages.getOrNull(webAt)?.tag as? Holder)?.yt?.addView(w, FrameLayout.LayoutParams(-1, -1)) }
+            pager.locked = false; bars(true); topBar.visibility = View.VISIBLE
+        }
+    }
+
+    /** Hides or shows the phone's own bars (time, battery; back and home). */
+    @Suppress("DEPRECATION")
+    private fun bars(show: Boolean) {
+        if (Build.VERSION.SDK_INT >= 30) window.insetsController?.let { c ->
+            if (show) c.show(WindowInsets.Type.systemBars())
+            else { c.hide(WindowInsets.Type.systemBars()); c.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE }
+        } else window.decorView.systemUiVisibility = if (show) View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            else View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
 
     override fun onPause() {
