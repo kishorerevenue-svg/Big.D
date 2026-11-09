@@ -111,7 +111,7 @@ The characters (use 1 to 3; write their key):
 "place" is one of: ${PLACES.join(", ")}.
 Each beat is one character doing one thing and (usually) saying one short line. "do" is one of: talk, enter (walks in), exit (walks out), run, jump, slip (slips on a banana peel and falls; what they hold flies up and lands on their head), fall, laugh, surprised, think, dance, sleep, cry, wave, give (gives their prop to another character), eat (eats their prop), balance (balances the prop on their head).
 "prop" (or "none") is one of: ${PROPS.join(", ")} (tray = a tray of tea glasses).
-3 to 7 beats. Every line in simple, everyday Telugu (Telugu script), at most 12 words. Make it funny or sweet, with a clear ending: the last line is the punchline or the moral.
+3 to 6 beats. Every line in simple, everyday Telugu (Telugu script), at most 10 words. Make it funny or sweet, with a clear ending: the last line is the punchline or the moral.
 Be kind: never make fun of women or men, any caste, religion, region, colour, body or disability, or any real person; no politics, no violence, nothing scary or adult. Slapstick stays gentle: nobody gets hurt.
 If the idea you are given is unkind, unsafe, about real or famous people, or not something to show children, set "skip" to true.
 Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "cast": ["..."], "beats": [{"who": "...", "do": "...", "say": "...", "prop": "..."}], "mood": one of funny, happy, inspiring, calm, useful, "skip": false}`;
@@ -121,6 +121,20 @@ Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "ca
       do: { type: "string", enum: ACTIONS }, say: { type: "string" }, prop: { type: "string", enum: [...PROPS, "none"] } } } },
     mood: { type: "string", enum: ["happy", "funny", "inspiring", "calm", "useful"] }, skip: { type: "boolean" } } };
   const clean = t => String(t || "").replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
+  /** Reads the screenplay JSON, even when it was cut off at the end (then the beats that are complete). */
+  function parseLoose(text) {
+    const a = text.indexOf("{"), b = text.lastIndexOf("}");
+    if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch (e) { } }
+    const bi = text.indexOf('"beats"');
+    if (bi < 0) return null;
+    const str = k => { const m = text.match(new RegExp('"' + k + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"')); try { return m ? JSON.parse('"' + m[1] + '"') : ""; } catch (e) { return ""; } };
+    const beats = [];
+    for (const m of text.slice(bi).matchAll(/\{[^{}]*\}/g)) { try { beats.push(JSON.parse(m[0])); } catch (e) { } }
+    const castM = text.match(/"cast"\s*:\s*\[([^\]]*)\]/);
+    const skipM = text.match(/"skip"\s*:\s*(true|false)/);
+    return { title: str("title"), place: str("place"), mood: str("mood"), cast: castM ? [...castM[1].matchAll(/"([a-z]+)"/g)].map(x => x[1]) : [],
+      beats, skip: !!skipM && skipM[1] === "true" };
+  }
   /** Checks and tidies a screenplay; throws when it isn't good enough to make. */
   function tidy(j, type) {
     const cast = [...new Set((Array.isArray(j.cast) ? j.cast : []).map(String).filter(c => CHARS.includes(c)))].slice(0, 3);
@@ -143,13 +157,19 @@ Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "ca
       [`Make a new ${TYPES[type].en.toLowerCase()} for today.`, fav.length ? `People liked these recently (make something new in the same spirit, not a copy): ${fav.join(" | ")}` : "",
         asked.length ? `Ideas people asked for recently (for inspiration): ${asked.join(" | ")}` : "", `Seed: ${crypto.randomBytes(3).toString("hex")}`].filter(Boolean).join("\n");
     let j = null, by = "own";
-    try { j = await ownBrain.writeJson({ system: SYSTEM(type), prompt, schema: SCHEMA, maxTokens: 900, timeoutMs: 180000 }); }
+    // (Telugu takes many tokens: room for a whole screenplay, and what was cut off at the end is left out)
+    try { j = await ownBrain.writeJson({ system: SYSTEM(type), prompt, schema: SCHEMA, maxTokens: 2500, timeoutMs: 240000 }); }
     catch (e) {
       if (!API_KEY) throw new Error(e.reason === "busy" ? "our brain is busy, try again in a little while" : "our brain isn't ready yet");
       by = "claude";
-      const data = await ai({ model: MODEL, max_tokens: 1200, system: SYSTEM(type), messages: [{ role: "user", content: prompt }] }, { tries: 1, backup: true });
-      const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
-      try { j = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch (x) { j = null; }
+      for (let k = 0; k < 2 && !j; k++) {     // once more (shorter) if the first answer can't be read
+        const ask = k ? prompt + "\n(Reply with the JSON only: 4 beats, short lines.)" : prompt;
+        const data = await ai({ model: MODEL, max_tokens: 4000, system: SYSTEM(type), messages: [{ role: "user", content: ask }] }, { tries: 1, backup: true });
+        const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+        j = parseLoose(text);
+        if (j && !j.skip && !(Array.isArray(j.beats) && j.beats.length >= 2)) j = null;
+        if (!j) console.error("Cartoon: the screenplay couldn't be read:", text.slice(0, 300).replace(/\s+/g, " "));
+      }
     }
     if (!j) throw new Error("couldn't write it, please try again");
     if (j.skip) throw Object.assign(new Error("Sorry, we can't make that one. Please try a kind, happy idea."), { refused: true });
@@ -473,5 +493,5 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}à
     if (o && o.daily !== undefined && o.daily !== "" && isFinite(Number(o.daily))) db.settings.daily = Math.max(0, Math.min(24, Math.round(Number(o.daily))));
     save(); return status();
   }
-  return { handle, status, settings, add, tick, TYPES, _test: { script, render, learned, pickType, db: () => db } };
+  return { handle, status, settings, add, tick, TYPES, _test: { parseLoose, tidy, script, render, learned, pickType, db: () => db } };
 };
