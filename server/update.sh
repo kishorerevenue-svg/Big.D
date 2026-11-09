@@ -19,6 +19,13 @@ if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; 
   DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg >/dev/null 2>&1 && echo "ffmpeg installed" || echo "ffmpeg install failed (will try again next time)"
 fi
 
+# our own cartoon maker needs python3 with Pillow (installed once)
+if ! python3 -c "import PIL" >/dev/null 2>&1; then
+  echo "installing Pillow for the cartoon maker..."
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-pil >/dev/null 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get update -y -q >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-pil >/dev/null 2>&1; }
+  python3 -c "import PIL" >/dev/null 2>&1 && echo "Pillow installed" || echo "Pillow install failed (will try again next time)"
+fi
+
 cd "$REPO_DIR" || exit 1
 old="$(git rev-parse HEAD)"
 git pull -q || { echo "git pull failed"; exit 1; }

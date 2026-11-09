@@ -142,10 +142,10 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
-      <h2>🐶 Puppy cartoons · బిగ్‌డీ కార్టూన్లు</h2>
-      <p class="hint">Our own cartoons, made fully on our server: our own brain writes each one (a joke, riddle, fact, kids story or good thought), the voice speaks it and the puppy talks. It learns by itself: the kinds people like (likes, comments, views) are made more often. People can also make their own in the app (Media › 🐶).</p>
+      <h2>🎬 BigD cartoons (our own maker) · బిగ్‌డీ కార్టూన్లు</h2>
+      <p class="hint">Our own cartoons, made fully on our server for free (no paid AI, no GPU): our own brain writes a tiny screenplay (a joke, riddle, fact, kids story or good thought) and BigD's characters act it out: Ramu the tea seller, Ammamma, Chinnu, Chitti, farmer Ramayya, the teacher, the puppy, a cat and a parrot, in a market, village, farm, tea shop, school and more, with bubbles, sounds and music. It learns by itself: the kinds people like (likes, comments, views) are made more often. People can also make their own in the app (Media › 🎬 Make a cartoon).</p>
       <p id="ctState" class="msg"></p>
-      <label for="ctDaily">Puppy cartoons made by itself each day for Media (0 = none; people can still choose the puppy in the app)</label>
+      <label for="ctDaily">Cartoons made by itself each day for Media (0 = none; people can still make their own in the app)</label>
       <input id="ctDaily" type="number" min="0" max="24" style="max-width:140px">
       <button id="ctDailySave" type="button" class="ghost" style="margin-top:8px">Save</button>
       <table class="tbl" id="ctLearn"></table>
@@ -391,7 +391,7 @@ $("aivMake").onclick = async () => {
 const KIND = { joke: "😄 Joke", riddle: "🤔 Riddle", fact: "💡 Fact", story: "📖 Story", thought: "🌟 Good thought" };
 function showCt(d) {
   if (document.activeElement !== $("ctDaily")) $("ctDaily").value = d.daily;
-  say($("ctState"), `${d.on ? "On" : "Off (CARTOONS=false)"} · made by itself today ${d.madeToday} of ${d.daily} · puppy cartoons made by people today ${d.publicToday}${d.waiting ? " · " + d.waiting + " waiting" : ""}${d.busy ? " · making one now…" : ""}`, d.on);
+  say($("ctState"), `${d.on ? "On" : "Off (CARTOONS=false)"} · cartoon maker: ${d.maker === "ours" ? "our own (ready)" : d.makerNote || "the old puppy"} · made by itself today ${d.madeToday} of ${d.daily} · free cartoons made by people today ${d.publicToday}${d.waiting ? " · " + d.waiting + " waiting" : ""}${d.busy ? " · making one now…" : ""}`, d.on);
   const t = $("ctLearn"); t.textContent = "";
   const head = t.insertRow(); for (const x of ["Kind", "Made (30 days)", "People's liking (avg)"]) { const th = document.createElement("th"); th.textContent = x; head.append(th); }
   for (const [k, v] of Object.entries(d.learned)) { const r = t.insertRow(); r.insertCell().textContent = KIND[k] || k; r.insertCell().textContent = v.made; r.insertCell().textContent = v.avg === null ? "learning…" : v.avg; }

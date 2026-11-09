@@ -1,14 +1,15 @@
-// BigD puppy cartoons: our own cartoon videos, made fully on our server (no paid video AI).
-//  - OUR OWN BRAIN writes each one (a joke, riddle, fact, kids story or good thought) in simple Telugu; Claude only
-//    when our own brain isn't installed.
-//  - The natural voice speaks each line (GOOGLE_TTS_KEY); the puppy's mouth moves with the voice, it blinks and
-//    bobs; the words come in a speech bubble; music fits the mood. 720x1280, about 15 to 40 seconds.
+// BigD cartoons: our own cartoon videos, made fully on our server (no paid video AI, no GPU).
+//  - OUR OWN BRAIN writes each one as a tiny screenplay (a joke, riddle, fact, kids story or good thought) in simple
+//    Telugu; Claude only when our own brain can't. BigD's own characters act it out: Ramu the tea seller, Ammamma,
+//    Chinnu, Chitti, Ramayya the farmer, the teacher, the BigD puppy, a cat and a parrot, in a market, village, farm,
+//    tea shop, beach, park, home, school or on stage. They walk, talk, slip, jump, laugh, dance... (toon/toon.py).
+//  - Speech bubbles, sound effects, talk sounds (or the natural voice, GOOGLE_TTS_KEY) and music by mood.
 //  - It LEARNS BY ITSELF: after each cartoon has been out a while, its likes, comments and views are counted; the
-//    kinds people like get made more often, and the brain is shown the favourites (and the ideas people asked for)
-//    so new ones are in that spirit.
+//    kinds people like get made more often, and the brain is shown the favourites (and the ideas people asked for).
 //  - Anyone using the app can ask for one with their own idea (a few a day each); they can watch it, share it and
 //    post it on their profile. Unkind or unsafe ideas are refused.
-// CARTOONS_DAILY made by itself a day (default 6), posted in Media (😄 Fun, 🧒 Kids, 💡 Facts).
+//  - Needs python3 with Pillow on the server (installed by itself the first time); until then the old puppy cartoon.
+// CARTOONS_DAILY made by itself a day (default 4, the Teach page can change it), posted in Media (😄 Fun, 🧒 Kids, 💡 Facts).
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -21,8 +22,8 @@ module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, own
   const DIR = path.join(DATA_DIR, "cartoons");
   fs.mkdirSync(DIR, { recursive: true });
   const FILE = path.join(DATA_DIR, "cartoons.json");
-  // puppy cartoons made by itself for Media: the owner sets how many a day on the Teach page (0 = off, the default)
-  const DAILY = () => { const v = db && db.settings && db.settings.daily; return Math.max(0, Math.min(24, Number(v !== undefined && v !== null ? v : (process.env.CARTOONS_DAILY ?? 0)))); };
+  // cartoons made by itself for Media: the owner sets how many a day on the Teach page (default 4)
+  const DAILY = () => { const v = db && db.settings && db.settings.daily; return Math.max(0, Math.min(24, Number(v !== undefined && v !== null ? v : (process.env.CARTOONS_DAILY ?? 4)))); };
   const EACH = () => Math.max(0, Number(process.env.CARTOON_PUBLIC_EACH ?? 3));        // a day, for each person
   const PUBLIC_DAY = () => Math.max(0, Number(process.env.CARTOON_PUBLIC_DAILY ?? 60)); // a day, everyone together
   const ON = String(process.env.CARTOONS || "true") !== "false";
@@ -35,13 +36,40 @@ module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, own
   const roll = () => { if (db.day !== today()) { db.day = today(); db.auto = 0; db.pub = 0; db.perDevice = {}; save(); } };
   const run = (cmd, args, opt = {}) => new Promise((res, rej) => execFile(cmd, args, { timeout: 5 * 60e3, maxBuffer: 64e6, ...opt }, (e, out, err) => e ? rej(Object.assign(e, { stderr: err })) : res(out)));
 
+  // ---------- our own cartoon maker (toon/toon.py, needs python3 with Pillow) ----------
+  const PY = process.env.PYTHON || "python3";
+  const TOON = path.join(__dirname, "toon", "toon.py");
+  let toonOk = false, toonNote = "checking…";
+  const checkToon = () => new Promise(res => execFile(PY, ["-c", "import PIL"], { timeout: 30000 }, e => res(!e)));
+  const toonReady = (async () => {
+    if (String(process.env.TOON || "true") === "false") { toonNote = "off (TOON=false): the old puppy cartoon"; return; }
+    toonOk = await checkToon();
+    if (toonOk) { toonNote = "ready"; return; }
+    if (process.getuid && process.getuid() === 0 && String(process.env.TOON_AUTOINSTALL || "true") !== "false") {
+      toonNote = "installing Pillow for the cartoon maker (a few minutes)…";
+      const sh = "export DEBIAN_FRONTEND=noninteractive; apt-get install -y -q python3-pil >/dev/null 2>&1 || (apt-get update -y -q >/dev/null 2>&1 && apt-get install -y -q python3-pil >/dev/null 2>&1)";
+      execFile("bash", ["-c", sh], { timeout: 20 * 60e3 }, async () => {
+        toonOk = await checkToon();
+        toonNote = toonOk ? "ready" : "couldn't install python3-pil; on the server run: apt-get install -y python3-pil";
+        console.log("Cartoons:", toonNote);
+      });
+    } else toonNote = "needs python3-pil; on the server run: apt-get install -y python3-pil";
+  })();
+  const CHARS = ["bigd", "chaiwala", "ammamma", "chinnu", "chitti", "raithu", "teacher", "pilli", "chilaka"];
+  const NAMES = { bigd: "బిగ్‌డీ", chaiwala: "రాము", ammamma: "అమ్మమ్మ", chinnu: "చిన్ను", chitti: "చిట్టి", raithu: "రామయ్య", teacher: "టీచర్", pilli: "పిల్లి", chilaka: "చిలుక" };
+  const VOICE_OF = { bigd: "puppy", chaiwala: "bear", raithu: "robot", ammamma: "panda", teacher: "kitten", chinnu: "chameleon", chitti: "bunny", pilli: "kitty", chilaka: "parrot" };
+  const PLACES = ["market", "village", "farm", "teashop", "beach", "park", "home", "school", "stage", "night"];
+  const ACTIONS = ["talk", "enter", "exit", "run", "jump", "slip", "fall", "laugh", "surprised", "think", "dance", "sleep", "cry", "wave", "give", "eat", "balance"];
+  const PROPS = ["tea", "tray", "kettle", "banana", "ball", "book", "mango", "umbrella", "phone", "kite", "laddu", "flower", "bag", "icecream", "letter"];
+  const OLD_SCENE = { home: "room", school: "school", night: "night", stage: "stage" };
+
   // ---------- kinds of cartoons ----------
   const TYPES = {
-    joke: { te: "హాస్యం", en: "Joke", cat: "fun", scene: "stage", mood: "funny", music: "music-kids.m4a" },
-    riddle: { te: "పొడుపు కథ", en: "Riddle", cat: "fun", scene: "school", mood: "happy", music: "music-happy.m4a" },
-    fact: { te: "మీకు తెలుసా", en: "Fact", cat: "facts", scene: "school", mood: "useful", music: "music-inspiring.m4a" },
-    story: { te: "కథ", en: "Story", cat: "kids", scene: "park", mood: "happy", music: "music-happy.m4a" },
-    thought: { te: "మంచి మాట", en: "Good thought", cat: "fun", scene: "park", mood: "inspiring", music: "music-inspiring.m4a" }
+    joke: { te: "హాస్యం", en: "Joke", cat: "fun", scene: "stage", place: "market", mood: "funny", music: "music-kids.m4a" },
+    riddle: { te: "పొడుపు కథ", en: "Riddle", cat: "fun", scene: "school", place: "school", mood: "happy", music: "music-happy.m4a" },
+    fact: { te: "మీకు తెలుసా", en: "Fact", cat: "facts", scene: "school", place: "school", mood: "useful", music: "music-inspiring.m4a" },
+    story: { te: "కథ", en: "Story", cat: "kids", scene: "park", place: "village", mood: "happy", music: "music-happy.m4a" },
+    thought: { te: "మంచి మాట", en: "Good thought", cat: "fun", scene: "park", place: "park", mood: "inspiring", music: "music-inspiring.m4a" }
   };
   const SCENES = ["park", "room", "night", "school", "stage"];
 
@@ -67,37 +95,65 @@ module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, own
   const favourites = () => db.made.filter(m => !m.pub && m.itemId && Date.now() - m.at > 12 * 3600e3 && Date.now() - m.at < 45 * 86400e3)
     .map(m => [m, score(m)]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([m]) => m.title);
 
-  // ---------- the script, by our own brain ----------
-  const SYSTEM = (type) => `You write a very short cartoon for BigD's puppy (a cute, kind cartoon puppy called "బిగ్‌డీ"), for a Telugu app used by families in Andhra Pradesh and Telangana, with children watching too.
-Kind: ${TYPES[type].en} (${TYPES[type].te}). The puppy says every line itself, in simple, everyday Telugu (Telugu script).
-3 to 6 short lines, each at most 14 words.${type === "riddle" ? ' The last line is the answer and starts with "జవాబు:".' : ""}${type === "fact" ? " Only true, well-known facts; nothing doubtful." : ""}${type === "story" ? " A tiny story with a happy ending and a clear moral in the last line." : ""}${type === "joke" ? " A clean, gentle joke from everyday Telugu life." : ""}
-Be kind: never make fun of women or men, any caste, religion, region, colour, body or disability, or any real person; no politics, no violence, nothing scary, sad or adult.
-"scene" is where the puppy is: one of ${SCENES.join(", ")}.
-If the idea you are given is unkind, unsafe, about real people, or not something to show children, set "skip" to true.
-Reply only with JSON: {"title": "<Telugu, at most 8 words>", "lines": ["...", "..."], "scene": "...", "mood": one of happy, funny, inspiring, calm, useful, "skip": false}`;
-  const SCHEMA = { type: "object", required: ["title", "lines", "scene", "mood", "skip"], properties: { title: { type: "string" }, lines: { type: "array", items: { type: "string" } },
-    scene: { type: "string", enum: SCENES }, mood: { type: "string", enum: ["happy", "funny", "inspiring", "calm", "useful"] }, skip: { type: "boolean" } } };
+  // ---------- the screenplay, by our own brain ----------
+  const SYSTEM = (type) => `You write a very short cartoon for BigD AI, a Telugu app used by families in Andhra Pradesh and Telangana, with children watching too.
+Kind: ${TYPES[type].en} (${TYPES[type].te}).${type === "riddle" ? ' A riddle: one character asks it, another thinks, and the last line gives the answer, starting with "జవాబు:".' : ""}${type === "fact" ? " Only true, well-known facts; nothing doubtful. The teacher or Ammamma tells it to a child." : ""}${type === "story" ? " A tiny story with a happy ending and a clear moral in the last line." : ""}${type === "joke" ? " A clean, gentle joke from everyday Telugu life, with a funny action (a slip, a surprise, a dance...) when it fits." : ""}${type === "thought" ? " A good thought for the day, said kindly." : ""}
+The characters (use 1 to 3; write their key):
+- bigd: BigD the puppy (బిగ్‌డీ), the app's cute, kind puppy
+- chaiwala: Ramu the tea seller (రాము), round and jolly
+- ammamma: Ammamma (అమ్మమ్మ), a wise, funny grandma
+- chinnu: Chinnu (చిన్ను), a naughty school boy
+- chitti: Chitti (చిట్టి), a clever little girl
+- raithu: Ramayya the farmer (రామయ్య)
+- teacher: the teacher (టీచర్)
+- pilli: a talking cat (పిల్లి)
+- chilaka: a talking parrot (చిలుక)
+"place" is one of: ${PLACES.join(", ")}.
+Each beat is one character doing one thing and (usually) saying one short line. "do" is one of: talk, enter (walks in), exit (walks out), run, jump, slip (slips on a banana peel and falls; what they hold flies up and lands on their head), fall, laugh, surprised, think, dance, sleep, cry, wave, give (gives their prop to another character), eat (eats their prop), balance (balances the prop on their head).
+"prop" (or "none") is one of: ${PROPS.join(", ")} (tray = a tray of tea glasses).
+3 to 7 beats. Every line in simple, everyday Telugu (Telugu script), at most 12 words. Make it funny or sweet, with a clear ending: the last line is the punchline or the moral.
+Be kind: never make fun of women or men, any caste, religion, region, colour, body or disability, or any real person; no politics, no violence, nothing scary or adult. Slapstick stays gentle: nobody gets hurt.
+If the idea you are given is unkind, unsafe, about real or famous people, or not something to show children, set "skip" to true.
+Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "cast": ["..."], "beats": [{"who": "...", "do": "...", "say": "...", "prop": "..."}], "mood": one of funny, happy, inspiring, calm, useful, "skip": false}`;
+  const SCHEMA = { type: "object", required: ["title", "place", "cast", "beats", "mood", "skip"], properties: { title: { type: "string" },
+    place: { type: "string", enum: PLACES }, cast: { type: "array", items: { type: "string", enum: CHARS } },
+    beats: { type: "array", items: { type: "object", required: ["who", "do", "say"], properties: { who: { type: "string", enum: CHARS },
+      do: { type: "string", enum: ACTIONS }, say: { type: "string" }, prop: { type: "string", enum: [...PROPS, "none"] } } } },
+    mood: { type: "string", enum: ["happy", "funny", "inspiring", "calm", "useful"] }, skip: { type: "boolean" } } };
+  const clean = t => String(t || "").replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
+  /** Checks and tidies a screenplay; throws when it isn't good enough to make. */
+  function tidy(j, type) {
+    const cast = [...new Set((Array.isArray(j.cast) ? j.cast : []).map(String).filter(c => CHARS.includes(c)))].slice(0, 3);
+    let beats = (Array.isArray(j.beats) ? j.beats : []).map(b => ({ who: String((b && b.who) || ""), do: ACTIONS.includes(b && b.do) ? b.do : "talk",
+      say: clean(b && b.say).slice(0, 110), prop: PROPS.includes(b && b.prop) ? b.prop : "" }));
+    for (const b of beats) if (CHARS.includes(b.who) && !cast.includes(b.who) && cast.length < 3) cast.push(b.who);
+    if (!cast.length) cast.push("bigd");
+    beats = beats.filter(b => cast.includes(b.who)).slice(0, 7);
+    const says = beats.filter(b => b.say.length > 1);
+    const tel = x => (x.match(/[ఀ-౿]/g) || []).length;
+    if (says.length < 2 || tel(says.map(b => b.say).join("")) < 15) throw new Error("couldn't write it well, please try again");
+    const place = PLACES.includes(j.place) ? j.place : (TYPES[type].place || "park");
+    const mood = ["happy", "funny", "inspiring", "calm", "useful"].includes(j.mood) ? j.mood : TYPES[type].mood;
+    return { title: clean(j.title || TYPES[type].te).slice(0, 80), place, cast, beats, mood,
+      says: says.map(b => b.say), lines: says.map(b => `${NAMES[b.who]}: ${b.say}`), scene: OLD_SCENE[place] || TYPES[type].scene };
+  }
   async function script(type, idea) {
     const fav = favourites(), asked = db.asks.slice(-6).map(a => a.prompt);
-    const prompt = idea ? `The person's idea: «${idea}»` :
+    const prompt = idea ? `The person's idea: «${idea}»\nTurn it into this cartoon with the characters, place and props above (pick the closest ones).` :
       [`Make a new ${TYPES[type].en.toLowerCase()} for today.`, fav.length ? `People liked these recently (make something new in the same spirit, not a copy): ${fav.join(" | ")}` : "",
         asked.length ? `Ideas people asked for recently (for inspiration): ${asked.join(" | ")}` : "", `Seed: ${crypto.randomBytes(3).toString("hex")}`].filter(Boolean).join("\n");
     let j = null, by = "own";
-    try { j = await ownBrain.writeJson({ system: SYSTEM(type), prompt, schema: SCHEMA, maxTokens: 600, timeoutMs: 180000 }); }
+    try { j = await ownBrain.writeJson({ system: SYSTEM(type), prompt, schema: SCHEMA, maxTokens: 900, timeoutMs: 180000 }); }
     catch (e) {
       if (!API_KEY) throw new Error(e.reason === "busy" ? "our brain is busy, try again in a little while" : "our brain isn't ready yet");
       by = "claude";
-      const data = await ai({ model: MODEL, max_tokens: 900, system: SYSTEM(type), messages: [{ role: "user", content: prompt }] }, { tries: 1, backup: true });
+      const data = await ai({ model: MODEL, max_tokens: 1200, system: SYSTEM(type), messages: [{ role: "user", content: prompt }] }, { tries: 1, backup: true });
       const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
       try { j = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch (x) { j = null; }
     }
     if (!j) throw new Error("couldn't write it, please try again");
-    if (j.skip) throw Object.assign(new Error("Sorry, the puppy can't make that one. Please try a kind, happy idea."), { refused: true });
-    const lines = (Array.isArray(j.lines) ? j.lines : []).map(l => String(l).replace(/\s+/g, " ").trim().slice(0, 120)).filter(l => l.length > 2).slice(0, 6);
-    const tel = s => (s.match(/[ఀ-౿]/g) || []).length;
-    if (lines.length < 2 || tel(lines.join("")) < 15) throw new Error("couldn't write it well, please try again");
-    return { title: String(j.title || TYPES[type].te).trim().slice(0, 80), lines, scene: SCENES.includes(j.scene) ? j.scene : TYPES[type].scene,
-      mood: ["happy", "funny", "inspiring", "calm", "useful"].includes(j.mood) ? j.mood : TYPES[type].mood, by };
+    if (j.skip) throw Object.assign(new Error("Sorry, we can't make that one. Please try a kind, happy idea."), { refused: true });
+    return Object.assign(tidy(j, type), { by });
   }
 
   // ---------- making the video ----------
@@ -120,11 +176,12 @@ Reply only with JSON: {"title": "<Telugu, at most 8 words>", "lines": ["...", ".
       // 1. the voice, line by line (so the words on screen match it); without the voice, a reading time for each line
       const STEP = 0.1, parts = [];
       let t = 0.8;
-      for (let i = 0; i < s.lines.length; i++) {
-        if (type === "riddle" && i === s.lines.length - 1) t += 1.4;     // a little wait before the answer
+      const said = s.says || s.lines;
+      for (let i = 0; i < said.length; i++) {
+        if (type === "riddle" && i === said.length - 1) t += 1.4;     // a little wait before the answer
         let samples = null;
-        if (voice && voice.enabled) { try { samples = await pcm((await voice.speak(s.lines[i], "puppy", s.mood === "calm" ? "calm" : "happy")).file); } catch (e) { samples = null; } }
-        const dur = samples ? samples.length / 2 / RATE : Math.max(2.2, s.lines[i].length * 0.075);
+        if (voice && voice.enabled) { try { samples = await pcm((await voice.speak(said[i], "puppy", s.mood === "calm" ? "calm" : "happy")).file); } catch (e) { samples = null; } }
+        const dur = samples ? samples.length / 2 / RATE : Math.max(2.2, said[i].length * 0.075);
         parts.push({ at: t, dur, samples });
         t += dur + 0.45;
       }
@@ -183,7 +240,7 @@ Style: EndSub,Hind Guntur,34,&H00FFFFFF,&H00FFFFFF,&H00402010,&H90000000,1,0,0,0
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 Dialogue: 2,${ts(0)},${ts(end)},Label,,0,0,0,,BigD cartoon
 Dialogue: 1,${ts(0.2)},${ts(end)},Title,,0,0,0,,{\\fad(400,200)}${esc(s.title)}
-${parts.map((p, i) => `Dialogue: 1,${ts(p.at - 0.1)},${ts(Math.min(end, p.at + p.dur + 0.35))},Bubble,,0,0,0,,{\\fad(150,100)}${esc(s.lines[i])}`).join("\n")}
+${parts.map((p, i) => `Dialogue: 1,${ts(p.at - 0.1)},${ts(Math.min(end, p.at + p.dur + 0.35))},Bubble,,0,0,0,,{\\fad(150,100)}${esc(said[i])}`).join("\n")}
 Dialogue: 3,${ts(end)},${ts(total)},End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}BigD AI
 Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}కార్టూన్లు · వార్తలు · సహాయం · bigdai.tech
 `;
@@ -204,6 +261,40 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       fs.renameSync(out + ".part.mp4", out);
       await run(FFMPEG, ["-y", "-v", "error", "-ss", String(Math.min(3, total / 3).toFixed(1)), "-i", out, "-frames:v", "1", "-q:v", "4", path.join(DIR, id + ".jpg")]).catch(() => {});
       return Math.round(total);
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  }
+
+  /** Our own cartoon maker: BigD's characters act out the screenplay (toon/toon.py). Returns the length in seconds. */
+  async function renderToon(id, s, type) {
+    const tmp = path.join(DIR, id + "-tmp");
+    fs.mkdirSync(tmp, { recursive: true });
+    try {
+      const beats = [];
+      for (const [i, b] of s.beats.entries()) {
+        const nb = { who: b.who, do: b.do, say: b.say, prop: b.prop || "" };
+        if (b.say && voice && voice.enabled) {     // the natural voice for each line, when the server has it
+          try {
+            const samples = await pcm((await voice.speak(b.say, VOICE_OF[b.who] || "puppy", s.mood === "calm" ? "calm" : "happy")).file);
+            const f = path.join(tmp, `v${i}.wav`);
+            fs.writeFileSync(f, wav(samples));
+            nb.voice = f;
+          } catch (e) { }
+        }
+        beats.push(nb);
+      }
+      const music = path.join(__dirname, "assets", TYPES[type].music);
+      const out = path.join(DIR, id + ".mp4"), poster = path.join(DIR, id + ".jpg");
+      const plan = { title: s.title, place: s.place, cast: s.cast, beats, mood: s.mood, type, seed: crypto.randomBytes(2).readUInt16LE(0),
+        out, poster, tmp, cache: path.join(DIR, "cache"), fonts: FONTS, ffmpeg: FFMPEG, music: fs.existsSync(music) ? music : path.join(__dirname, "assets", "reel-music.m4a") };
+      fs.writeFileSync(path.join(tmp, "plan.json"), JSON.stringify(plan));
+      const res = await run("nice", ["-n", "10", PY, TOON, path.join(tmp, "plan.json")], { timeout: 12 * 60e3 });
+      let dur = 0;
+      try { dur = JSON.parse(String(res).trim().split("\n").pop()).dur; } catch (e) { }
+      if (!fs.existsSync(out)) throw new Error("the cartoon maker made no video");
+      if (!fs.existsSync(poster)) await run(FFMPEG, ["-y", "-v", "error", "-ss", "3", "-i", out, "-frames:v", "1", "-q:v", "4", poster]).catch(() => {});
+      return Math.round(dur || 20);
+    } catch (e) {
+      throw new Error("the cartoon maker failed: " + String((e.stderr && String(e.stderr).trim().split("\n").pop()) || e.message).slice(0, 200));
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
 
@@ -239,11 +330,13 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       try {
         const s = await script(job.type, job.prompt);
         job.title = s.title; job.lines = s.lines;
-        job.dur = await render(job.id, s, job.type);
+        await toonReady;
+        job.dur = toonOk ? await renderToon(job.id, s, job.type) : await render(job.id, s, job.type);
+        job.maker = toonOk ? "toon" : "puppy";
         job.status = "done"; job.by = s.by;
         db.made.push({ id: job.id, type: job.type, title: s.title, at: Date.now(), pub: !!job.device, itemId: 0, by: s.by });
         if (!job.device) {
-          const it = media.addItem({ cat: TYPES[job.type].cat, title: "🐶 " + s.title, body: s.lines.join("\n"), emoji: "🐶", mood: s.mood, issue: job.type === "story" ? "children" : "other",
+          const it = media.addItem({ cat: TYPES[job.type].cat, title: "🎬 " + s.title, body: s.lines.join("\n"), emoji: "🎬", mood: s.mood, issue: job.type === "story" ? "children" : "other",
             kind: "cartoon", writer: s.by, by: "auto", img: "", key: "cartoon:" + job.id, video: { url: `/media/cartoon/${job.id}.mp4`, poster: `/media/cartoon/${job.id}.jpg`, dur: job.dur, w: 720, h: 1280 } });
           if (it) db.made[db.made.length - 1].itemId = it.id;
         }
@@ -272,6 +365,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
   const SLOTS = [7, 9, 11, 13, 15, 17, 19, 20, 21, 8, 10, 12, 14, 16, 18, 22];
   function tick() {
     if (!ON || String(process.env.MEDIA_AUTO || "true") === "false" || busy || queue.length) return;
+    if (!toonOk && !(db.settings && db.settings.daily !== undefined)) return;     // not the old puppy by itself
     roll();
     if (db.auto >= DAILY() || ist().getUTCHours() < SLOTS[Math.min(db.auto, SLOTS.length - 1)] || ist().getUTCHours() > 22) return;
     db.auto++; save();
@@ -326,14 +420,14 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       const type = TYPES[body.type] ? body.type : "joke";
       const idea = String(body.prompt || "").replace(/\s+/g, " ").trim().slice(0, 1000);
       // maker: "ai" (the AI cartoon of their idea), "puppy" (our simple puppy cartoon, chosen by the person), or none (older apps: AI if there is one, else the puppy)
-      const maker = ["ai", "puppy"].includes(body.maker) ? body.maker : "";
+      const maker = body.maker === "free" ? "puppy" : ["ai", "puppy"].includes(body.maker) ? body.maker : "";
       if (!ON) return send(503, { error: "Cartoons are off right now." }), true;
       if (BAD.test(idea)) return send(400, { error: "Sorry, we can't make that one. Please try a kind, happy idea." }), true;
       if (queue.length >= 15) return send(429, { error: "So many people are making cartoons now! Please try again in a little while." }), true;
       const ai = maker === "puppy" ? { on: false } : aiState(dev);
       if (maker === "ai" && !ai.on) return send(409, { error: WHY[ai.reason] || WHY.no_key, reason: ai.reason }), true;
       if (!ai.on && !admin) {   // the free puppy: a few a day for each person
-        if ((db.perDevice[dev] || 0) >= EACH()) return send(429, { error: `You can make ${EACH()} puppy cartoons a day. Please come back tomorrow! 🐶` }), true;
+        if ((db.perDevice[dev] || 0) >= EACH()) return send(429, { error: `You can make ${EACH()} free cartoons a day. Please come back tomorrow! 🎬` }), true;
         if (db.pub >= PUBLIC_DAY()) return send(429, { error: "So many people are making cartoons today! Please try again tomorrow." }), true;
         db.perDevice[dev] = (db.perDevice[dev] || 0) + 1; db.pub++;
       }
@@ -358,7 +452,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       const job = db.jobs[String(body.id || "")];
       if (!job || job.status !== "done" || job.device !== devOf(req)) return send(404, { error: "Not found" }), true;
       if (job.posted) return send(200, view(job)), true;
-      const text = job.ai ? `🤖 ${job.title}\n${(job.lines || []).join("\n")}\n\n🤖 AI-made video · AI తో తయారైన వీడియో` : `🐶 ${job.title}\n${(job.lines || []).join("\n")}`;
+      const text = job.ai ? `🤖 ${job.title}\n${(job.lines || []).join("\n")}\n\n🤖 AI-made video · AI తో తయారైన వీడియో` : `🎬 ${job.title}\n${(job.lines || []).join("\n")}`;
       const r = social && social.postCartoon(req, text.slice(0, 900), view(job).video);
       if (!r || r.error) return send(400, { error: (r && r.error) || "Couldn't post it." }), true;
       job.posted = true; save();
@@ -369,7 +463,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
 
   function status() {
     roll();
-    return { on: ON, daily: DAILY(), madeToday: db.auto, publicToday: db.pub, waiting: queue.length, busy, learned: learned(), favourites: favourites(),
+    return { on: ON, maker: toonOk ? "ours" : "puppy", makerNote: toonNote, daily: DAILY(), madeToday: db.auto, publicToday: db.pub, waiting: queue.length, busy, learned: learned(), favourites: favourites(),
       recent: db.made.slice(-12).reverse().map(m => ({ id: m.id, type: m.type, title: m.title, at: m.at, pub: m.pub, by: m.by, score: m.itemId ? score(m) : null })),
       asks: db.asks.slice(-10).reverse() };
   }
