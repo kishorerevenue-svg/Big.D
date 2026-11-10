@@ -181,6 +181,23 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <!-- BigD Chat: one chat (one-to-one, a group, or my notes); also opens bigd://chat/<name> invite links -->
+        <activity
+            android:name=".ChatActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bigd" android:host="chat" />
+            </intent-filter>
+        </activity>
+        <!-- BigD Chat: a quiet check for new messages every 15 minutes while the app is closed -->
+        <receiver android:name=".ChatAlarm" android:exported="false" />
+
         <receiver android:name=".ReminderReceiver" android:exported="false" />
 
         <!-- Good-morning briefing -->

@@ -84,6 +84,7 @@ class MainActivity : Activity() {
 
     internal val letter by lazy { LetterHelper(this) }
     internal val messages by lazy { MessagesPage(this) }
+    internal val chatPage by lazy { ChatPage(this) }
     private var socialPage: SocialPage? = null
     internal val social: SocialPage get() = socialPage ?: SocialPage(this).also { socialPage = it }
     internal val translate by lazy { TranslatePage(this) }
@@ -129,6 +130,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this); vault = VaultStore(this)
         Reminders.ensureChannel(this)
+        if (ChatSync.isSetUp(this)) ChatAlarm.schedule(this)
         window.statusBarColor = Ui.BG
         if (Build.VERSION.SDK_INT >= 23) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(28)) }
@@ -228,6 +230,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume(); resumedNow = true; leavingForSystemScreen = false; render()
+        ChatSync.hold(this, "main")      // BigD Chat: new messages come at once while the app is open
         if (BuildConfig.AUTO_CARDS && store.autoCards && AutoCards.allowed(this)) AutoCards.schedule(this)
         // a new version out? (BigD AI Lite asks the server at most every 6 hours; the card appears on Home)
         if (BuildConfig.SELF_UPDATE) { val had = Updates.waiting(store)?.code; Updates.check(store) { info -> if (info != null && info.code != had && tab == "home" && !isFinishing) render() } }
@@ -244,6 +247,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         resumedNow = false
+        ChatSync.release("main")
         mirrorBanner?.let { hideMirror() }
         socialPage?.flushViews()
         familyPage?.onPause()

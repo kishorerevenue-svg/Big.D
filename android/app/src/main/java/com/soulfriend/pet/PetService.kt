@@ -110,6 +110,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         addPet()
         if (BuildConfig.HANDS_FREE && store.remoteOn) showRemote()
         MessageHub.listener = { m, autoSent -> onMessage(m, autoSent) }
+        ChatSync.hold(this, "pet")       // while the pet floats, BigD Chat messages come at once
         tts = TextToSpeech(this, this)
         SoundFx.load(this)
         say("Hi! I'm BigD AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
@@ -147,6 +148,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         running = false
+        ChatSync.release("pet")
         natural.stop(); voicePool.shutdownNow()
         MessageHub.listener = null
         closeMsgCard()

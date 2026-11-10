@@ -731,5 +731,29 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     save();
     return { ok: true };
   }
-  return { handle, stats, engagement, postCartoon };
+  // ---------- for BigD Chat (chat.js): who is this phone, and finding people by name or @name ----------
+  /** This phone's profile id, or "" (no profile yet). */
+  const who = req => uidOf(req, false);
+  /** A person as chat shows them, or null (no profile, or banned). */
+  function person(uid) {
+    const u = db.users[uid];
+    if (!u || !u.name || u.banned) return null;
+    return { uid, name: u.name, handle: u.handle || "", emoji: u.emoji || "🐾", avatar: fileUrl(u.avatar) };
+  }
+  const byHandle = h => { const x = String(h || "").toLowerCase().replace(/^@/, ""); const u = x && Object.values(db.users).find(v => v.handle === x); return u ? person(u.uid) : null; };
+  /** People whose @name or name starts with / contains [q] (at most [n]); exact @name first. */
+  function findPeople(q, me, n = 15, can = () => true) {
+    const x = String(q || "").toLowerCase().replace(/^@/, "").trim();
+    if (x.length < 2) return [];
+    const out = [];
+    for (const u of Object.values(db.users)) {
+      if (u.uid === me || !u.name || u.banned || !can(u.uid)) continue;
+      const h = u.handle || "", nm = u.name.toLowerCase();
+      const s = h === x ? 3 : h.startsWith(x) ? 2 : nm.startsWith(x) || nm.includes(" " + x) ? 1.5 : h.includes(x) || nm.includes(x) ? 1 : 0;
+      if (s) out.push([s, u.uid]);
+    }
+    return out.sort((a, b) => b[0] - a[0]).slice(0, n).map(([, uid]) => person(uid)).filter(Boolean);
+  }
+
+  return { handle, stats, engagement, postCartoon, who, person, byHandle, findPeople };
 };

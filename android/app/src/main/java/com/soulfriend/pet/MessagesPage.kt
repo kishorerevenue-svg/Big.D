@@ -78,7 +78,8 @@ class MessagesPage(private val m: MainActivity) {
 
     fun build() {
         resultView = null
-        m.pageHeader("Messages · మెసేజ్‌లు", "Is a message safe or a fraud? Check it here: text, a screenshot or a QR code. Then understand it, reply, or report it.")
+        m.pageHeader("Messages · మెసేజ్‌లు", "Chat with your people on BigD, and check whether a message is safe or a fraud.")
+        m.chatPage.build()
 
         m.add(ui.section("🛡️ Is this message safe?", "Paste a message you got, share it to BigD AI, or check a picture of it.").apply {
             val box = ui.input("Paste or type the message here…", input, multi = true)
