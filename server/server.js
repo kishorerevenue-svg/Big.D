@@ -292,7 +292,9 @@ async function askPet(messages, lang, ctx, ownOnly = false) {
       try { const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy); return strip({ ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true }); }
       catch (e) { console.error("Our own brain couldn't look:", e.message); }
     }
-    return selfBrain.noEyes(lang, sctx, info, q);
+    // no AI can look now: an error with a kind message, so the phone reads the English letters in the photo by itself
+    const no = selfBrain.noEyes(lang, sctx, info, q);
+    throw Object.assign(new Error("no eyes right now"), { status: 503, userMessage: no.reply });
   }
   // 1. the self brain, when it knows (at once); 2. our own brain (slow on a small server); 3. the self brain's best try
   const fast = await selfBrain.answer(q, lang, sctx, { strong: true, info });
@@ -545,6 +547,7 @@ const server = http.createServer(async (req, res) => {
       if (SAVE_CHATS) { const u = messages[messages.length - 1].content; appendLine("chats.jsonl", { at: new Date().toISOString(), app: "pet", user: typeof u === "string" ? u : "[photo] " + u[1].text, ...out }); }
       return send(res, 200, out, origin);
     } catch (e) {
+      if (e.userMessage) return send(res, 503, { error: e.userMessage }, origin);
       console.error("Claude API error:", e.status || "", e.message);
       return send(res, 502, { error: "The AI is busy right now. Please try again." }, origin);
     }
