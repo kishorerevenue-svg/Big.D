@@ -28,12 +28,13 @@ INTRO, GAP, FIN, END = 0.7, 0.35, 1.6, 2.0
 CHARS = ["bigd", "chaiwala", "ammamma", "chinnu", "chitti", "raithu", "teacher", "pilli", "chilaka"]
 PLACES = ["market", "village", "farm", "teashop", "beach", "park", "home", "school", "stage", "night"]
 ACTIONS = ["talk", "enter", "exit", "run", "jump", "slip", "fall", "laugh", "surprised", "think", "dance", "sleep",
-           "cry", "wave", "give", "eat", "balance"]
+           "cry", "wave", "give", "eat", "balance", "point", "clap", "shrug", "facepalm", "crossarms", "cheer", "kneel",
+           "angry", "shy"]
 PROPS = ["tea", "tray", "kettle", "banana", "ball", "book", "mango", "umbrella", "phone", "kite", "laddu", "flower",
          "bag", "icecream", "letter"]
 GROUND = ("banana", "ball")
 PITCH = {"chaiwala": 150, "raithu": 135, "ammamma": 235, "teacher": 255, "chinnu": 330, "chitti": 385, "bigd": 300,
-         "pilli": 520, "chilaka": 640}
+         "pilli": 520, "chilaka": 640, "chai": 165, "idli": 340, "mango": 390, "tatayya": 140}
 
 
 # ================================================================ drawing helpers
@@ -1295,10 +1296,12 @@ def read_secs(text):
     return clamp(0.8 + n * 0.11, 1.5, 6.0)
 
 
-LEAD = {"talk": 0.2, "exit": 0.2, "run": 1.3, "jump": 0.95, "slip": 1.7, "fall": 1.0, "laugh": 0.15, "surprised": 0.55,
+LEAD = {"talk": 0.2, "exit": 0.2, "run": 1.3, "jump": 0.95, "slip": 2.3, "fall": 1.6, "laugh": 0.15, "surprised": 0.55,
         "think": 0.9, "dance": 1.3, "sleep": 0.25, "cry": 0.3, "wave": 0.3, "eat": 1.25, "balance": 1.0, "enter": 0.0,
-        "give": 0.0}
-MINB = {"laugh": 1.5, "dance": 2.0, "cry": 1.5, "wave": 1.3, "think": 1.2, "sleep": 0.4, "balance": 1.4, "jump": 0.3}
+        "give": 0.0, "point": 0.2, "clap": 0.3, "shrug": 0.35, "facepalm": 0.45, "crossarms": 0.3, "cheer": 0.25,
+        "kneel": 0.7, "angry": 0.3, "shy": 0.3}
+MINB = {"laugh": 1.5, "dance": 2.0, "cry": 1.5, "wave": 1.3, "think": 1.2, "sleep": 0.4, "balance": 1.4, "jump": 0.3,
+        "clap": 1.3, "cheer": 1.3, "angry": 1.3, "shy": 1.2, "facepalm": 1.0, "kneel": 0.6}
 SLIP_WALK, SLIP_SLIDE = 0.75, 0.3
 
 
@@ -1367,7 +1370,8 @@ class Story:
                 dirn = 1 if off > s["x"] else -1
             elif do == "give":
                 others = [o for o in self.actors if o.name != a.name and st[o.name]["on"]]
-                tg = min(others, key=lambda o: abs(st[o.name]["x"] - s["x"]))
+                nxt = raw[i + 1].get("who") if i + 1 < len(raw) else None      # usually the one who speaks next gets it
+                tg = next((o for o in others if o.name == nxt), None) or min(others, key=lambda o: abs(st[o.name]["x"] - s["x"]))
                 tx = st[tg.name]["x"]
                 dirn = 1 if tx > s["x"] else -1
                 stop = tx - dirn * (110 + 60 * max(a.rig.get("s", 0.7), tg.rig.get("s", 0.7)))
@@ -1394,7 +1398,7 @@ class Story:
                 b["x0"] = b["x1"] = b["lx"] = s["x"]
                 post = 0.75
             elif do == "balance":
-                b["prop"] = prop or (s["head"] if s["head"] else s["held"]) or ("tray" if a.name == "chaiwala" else "book")
+                b["prop"] = prop or (s["head"] if s["head"] else s["held"]) or ("tray" if a.name in ("chaiwala", "chai") else "book")
             elif do == "eat":
                 b["prop"] = prop if prop in ("laddu", "mango", "icecream", "banana", "tea") else (
                     s["held"] if s["held"] in ("laddu", "mango", "icecream", "banana", "tea") else "laddu")
@@ -2263,7 +2267,10 @@ def make_ass(story, title, path):
         ev.append("Dialogue: 2,%s,%s,Bubble,,0,0,0,,{\\an2\\pos(%d,%d)}%s" % (t0, t1, bx, by, txt))
     ev.append("Dialogue: 5,%s,%s,End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}BigD AI" % (ts(end0), ts(total)))
     ev.append("Dialogue: 5,%s,%s,EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}కార్టూన్లు · వార్తలు · సహాయం · bigdai.tech" % (ts(end0), ts(total)))
-    ass = """[Script Info]
+    write_ass(path, ev)
+
+
+ASS_HEAD = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 720
 PlayResY: 1280
@@ -2280,9 +2287,12 @@ Style: EndSub,Hind Guntur,34,&H00FFFFFF,&H00FFFFFF,&H00402010,&H90000000,1,0,0,0
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-""" + "\n".join(ev) + "\n"
+"""
+
+
+def write_ass(path, events):
     with open(path, "w", encoding="utf-8") as f:
-        f.write(ass)
+        f.write(ASS_HEAD + "\n".join(events) + "\n")
 
 
 def make_sound(story, path):
@@ -2311,22 +2321,7 @@ def render(plan):
     make_ass(story, plan.get("title", ""), ass)
     make_sound(story, snd)
     total = story.total
-    ffmpeg = plan.get("ffmpeg") or "ffmpeg"
-    music = plan.get("music")
-    q = lambda p: p.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-    cmd = [ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "%dx%d" % (W, H), "-r", str(FPS), "-i", "-",
-           "-i", snd]
-    if music and os.path.exists(music):
-        cmd += ["-stream_loop", "-1", "-i", music]
-    else:
-        cmd += ["-f", "lavfi", "-t", "%.2f" % total, "-i", "anullsrc=r=24000:cl=mono"]
-    fc = ("[0:v]ass=%s:fontsdir=%s:shaping=complex,format=yuv420p[v];" % (q(ass), q(plan.get("fonts") or FONTS)) +
-          "[2:a]volume=%.2f,afade=t=out:st=%.2f:d=1.5[m];[1:a]volume=1.0[s];[s][m]amix=inputs=2:duration=first:dropout_transition=0,volume=2[a]"
-          % (float(plan.get("music_volume", 0.2)), max(0.0, total - 1.6)))
-    out = plan["out"]
-    cmd += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", "%.2f" % total, "-c:v", "libx264", "-preset", "veryfast",
-            "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-movflags", "+faststart", out + ".part.mp4"]
-    ff = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    ff = start_ffmpeg(plan, ass, snd, total)
     n = int(total * FPS)
     poster_t = plan.get("poster_t") or story.poster_time()
     if poster_t >= story.end0:
@@ -2345,11 +2340,34 @@ def render(plan):
         ff.stdin.close()
     except BrokenPipeError:
         pass
+    finish_ffmpeg(ff, plan["out"])
+    return total
+
+
+def start_ffmpeg(plan, ass, snd, total):
+    """ffmpeg reads the pictures from us, adds the words, the sounds and the music, and writes plan["out"]."""
+    ffmpeg = plan.get("ffmpeg") or "ffmpeg"
+    music = plan.get("music")
+    q = lambda p: p.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    cmd = [ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "%dx%d" % (W, H), "-r", str(FPS), "-i", "-",
+           "-i", snd]
+    if music and os.path.exists(music):
+        cmd += ["-stream_loop", "-1", "-i", music]
+    else:
+        cmd += ["-f", "lavfi", "-t", "%.2f" % total, "-i", "anullsrc=r=24000:cl=mono"]
+    fc = ("[0:v]ass=%s:fontsdir=%s:shaping=complex,format=yuv420p[v];" % (q(ass), q(plan.get("fonts") or FONTS)) +
+          "[2:a]volume=%.2f,afade=t=out:st=%.2f:d=1.5[m];[1:a]volume=1.0[s];[s][m]amix=inputs=2:duration=first:dropout_transition=0,volume=2[a]"
+          % (float(plan.get("music_volume", 0.2)), max(0.0, total - 1.6)))
+    cmd += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", "%.2f" % total, "-c:v", "libx264", "-preset", "veryfast",
+            "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-movflags", "+faststart", plan["out"] + ".part.mp4"]
+    return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def finish_ffmpeg(ff, out):
     err = ff.stderr.read().decode("utf-8", "replace")
     if ff.wait() != 0:
         raise RuntimeError("ffmpeg: " + err.strip()[-400:])
     os.replace(out + ".part.mp4", out)
-    return total
 
 
 def _poster_time(self):
@@ -2368,13 +2386,13 @@ Story.poster_time = _poster_time
 # ================================================================ checking by hand
 DEMO = {
     "title": "చాయ్ వాలా జారుడు", "place": "teashop", "mood": "funny", "type": "joke", "seed": 3,
-    "cast": ["chaiwala", "chinnu"],
+    "cast": ["chai", "idli"],
     "beats": [
-        {"who": "chaiwala", "do": "balance", "prop": "tray", "say": "ఆరు గ్లాసుల టీ! ఒక్క చుక్క కూడా కింద పడదు!"},
-        {"who": "chinnu", "do": "surprised", "say": "అన్నా, జాగ్రత్త! కింద అరటి తొక్క!"},
-        {"who": "chaiwala", "do": "slip", "prop": "banana", "say": "అయ్యో... నా టీ!"},
-        {"who": "chinnu", "do": "laugh", "say": "హహ్హా! గ్లాసులన్నీ మీ తల మీదే!"},
-        {"who": "chaiwala", "do": "talk", "say": "చూశావా? ఒక్క చుక్క కూడా పడలేదు!"},
+        {"who": "chai", "do": "balance", "prop": "tray", "say": "ఆరు గ్లాసుల టీ! ఒక్క చుక్క కూడా కింద పడదు!"},
+        {"who": "idli", "do": "point", "say": "అన్నా, జాగ్రత్త! కింద అరటి తొక్క!"},
+        {"who": "chai", "do": "slip", "prop": "banana", "say": "అయ్యో... నా టీ!"},
+        {"who": "idli", "do": "laugh", "say": "హహ్హా! గ్లాసులన్నీ మీ తల మీదే!"},
+        {"who": "chai", "do": "shrug", "say": "చూశావా? ఒక్క చుక్క కూడా పడలేదు!"},
     ],
 }
 
@@ -2419,7 +2437,12 @@ def main():
     else:
         with open(sys.argv[1], encoding="utf-8") as f:
             plan = json.load(f)
-    dur = render(plan)
+    if plan.get("style", "doodle") == "doodle":
+        sys.path.insert(0, HERE)
+        import doodle
+        dur = doodle.render(plan)
+    else:
+        dur = render(plan)
     print(json.dumps({"dur": round(dur, 2)}))
 
 

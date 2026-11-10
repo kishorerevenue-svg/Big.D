@@ -22,7 +22,8 @@ module.exports = function makeFreeVoice({ DATA_DIR, FFMPEG = "ffmpeg" }) {
   const ON = String(process.env.TOON_VOICE || "true") !== "false";
   // [speed (bigger = slower), pitch]
   const STYLE = { bigd: [0.95, 1.22], chaiwala: [1.0, 0.76], ammamma: [1.12, 0.9], chinnu: [0.95, 1.12], chitti: [0.95, 1.2],
-    raithu: [1.05, 0.72], teacher: [1.0, 1.0], pilli: [0.95, 1.32], chilaka: [0.9, 1.45] };
+    raithu: [1.05, 0.72], teacher: [1.0, 1.0], pilli: [0.95, 1.32], chilaka: [0.9, 1.45],
+    chai: [1.0, 0.8], idli: [0.95, 1.12], mango: [0.95, 1.22], tatayya: [1.1, 0.72] };
   let state = ON ? "not ready yet" : "off (TOON_VOICE=false)";
   let ok = false, busy = null, failedAt = 0;
 

@@ -482,7 +482,7 @@ class SocialPage(private val m: MainActivity) {
         }
         m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(row) }, 12)
         val box = EditText(m).apply {
-            hint = "ఉదా: టీ గ్లాసులతో జారిపడిన టీ కొట్టు రాము · e.g. the tea seller slips with six glasses of tea"; setText(ctIdea); textSize = 15f; minLines = 2; maxLines = 8
+            hint = "ఉదా: ఆరు టీ గ్లాసులతో జారిపడిన చాయ్ · e.g. Chai slips with six glasses of tea"; setText(ctIdea); textSize = 15f; minLines = 2; maxLines = 8
             filters = arrayOf(android.text.InputFilter.LengthFilter(1000))
             background = ui.round(Color.WHITE, 14, Ui.LINE); setPadding(dp(12), dp(10), dp(12), dp(10))
             addTextChangedListener(object : android.text.TextWatcher {
@@ -505,7 +505,7 @@ class SocialPage(private val m: MainActivity) {
             }
             else -> {
                 // no AI cartoon now: our own free cartoon maker
-                m.add(ui.text("🎨 Our own cartoon maker (free): BigD's characters act out your idea: Ramu the tea seller, Ammamma, Chinnu, Chitti, farmer Ramayya, the teacher, the BigD puppy, a cat and a parrot, in a market, village, farm, tea shop, school and more.${if (owner) "" else " ${info.optInt("leftForYou")} left today."}", 13f, Ui.MUTED), 12)
+                m.add(ui.text("🎨 Our own cartoon maker (free): BigD's cute characters act out your idea: Chai, Idli, Mango, the BigD puppy, Ammamma, Tatayya, the teacher, a cat and a parrot, in a tea shop, market, village, school, on stage and more.${if (owner) "" else " ${info.optInt("leftForYou")} left today."}", 13f, Ui.MUTED), 12)
                 m.add(ui.button("🎬 Make my cartoon (free)", "primary") { makeCartoon("free") }, 6)
             }
         }

@@ -55,11 +55,15 @@ module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, own
       });
     } else toonNote = "needs python3-pil; on the server run: apt-get install -y python3-pil";
   })();
-  const CHARS = ["bigd", "chaiwala", "ammamma", "chinnu", "chitti", "raithu", "teacher", "pilli", "chilaka"];
-  const NAMES = { bigd: "బిగ్‌డీ", chaiwala: "రాము", ammamma: "అమ్మమ్మ", chinnu: "చిన్ను", chitti: "చిట్టి", raithu: "రామయ్య", teacher: "టీచర్", pilli: "పిల్లి", chilaka: "చిలుక" };
-  const VOICE_OF = { bigd: "puppy", chaiwala: "bear", raithu: "robot", ammamma: "panda", teacher: "kitten", chinnu: "chameleon", chitti: "bunny", pilli: "kitty", chilaka: "parrot" };
+  // the characters of the cute (doodle) look; the first look's names still work (chaiwala = chai, chinnu = idli, ...)
+  const CHARS = ["chai", "idli", "mango", "bigd", "ammamma", "tatayya", "teacher", "pilli", "chilaka"];
+  const ALIAS = { chaiwala: "chai", chinnu: "idli", chitti: "mango", raithu: "tatayya" };
+  const NAMES = { chai: "చాయ్", idli: "ఇడ్లీ", mango: "మామిడి", bigd: "బిగ్‌డీ", ammamma: "అమ్మమ్మ", tatayya: "తాతయ్య", teacher: "టీచర్", pilli: "పిల్లి", chilaka: "చిలుక" };
+  const VOICE_OF = { bigd: "puppy", chai: "bear", tatayya: "robot", ammamma: "panda", teacher: "kitten", idli: "chameleon", mango: "bunny", pilli: "kitty", chilaka: "parrot" };
+  const STYLE = process.env.TOON_STYLE || "doodle";
   const PLACES = ["market", "village", "farm", "teashop", "beach", "park", "home", "school", "stage", "night"];
-  const ACTIONS = ["talk", "enter", "exit", "run", "jump", "slip", "fall", "laugh", "surprised", "think", "dance", "sleep", "cry", "wave", "give", "eat", "balance"];
+  const ACTIONS = ["talk", "enter", "exit", "run", "jump", "slip", "fall", "laugh", "surprised", "think", "dance", "sleep", "cry", "wave", "give", "eat", "balance",
+    "point", "clap", "shrug", "facepalm", "crossarms", "cheer", "kneel", "angry", "shy"];
   const PROPS = ["tea", "tray", "kettle", "banana", "ball", "book", "mango", "umbrella", "phone", "kite", "laddu", "flower", "bag", "icecream", "letter"];
   const OLD_SCENE = { home: "room", school: "school", night: "night", stage: "stage" };
 
@@ -98,20 +102,20 @@ module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, own
   // ---------- the screenplay, by our own brain ----------
   const SYSTEM = (type) => `You write a very short cartoon for BigD AI, a Telugu app used by families in Andhra Pradesh and Telangana, with children watching too.
 Kind: ${TYPES[type].en} (${TYPES[type].te}).${type === "riddle" ? ' A riddle: one character asks it, another thinks, and the last line gives the answer, starting with "జవాబు:".' : ""}${type === "fact" ? " Only true, well-known facts; nothing doubtful. The teacher or Ammamma tells it to a child." : ""}${type === "story" ? " A tiny story with a happy ending and a clear moral in the last line." : ""}${type === "joke" ? " A clean, gentle joke from everyday Telugu life, with a funny action (a slip, a surprise, a dance...) when it fits." : ""}${type === "thought" ? " A good thought for the day, said kindly." : ""}
-The characters (use 1 to 3; write their key):
+The characters (use 1 to 3; write their key). They are cute cartoon characters:
+- chai: Chai (చాయ్), a jolly fellow with a glass of tea for a head
+- idli: Idli (ఇడ్లీ), a naughty little boy with an idli for a head
+- mango: Mango (మామిడి), a clever little girl with a mango for a head
 - bigd: BigD the puppy (బిగ్‌డీ), the app's cute, kind puppy
-- chaiwala: Ramu the tea seller (రాము), round and jolly
 - ammamma: Ammamma (అమ్మమ్మ), a wise, funny grandma
-- chinnu: Chinnu (చిన్ను), a naughty school boy
-- chitti: Chitti (చిట్టి), a clever little girl
-- raithu: Ramayya the farmer (రామయ్య)
+- tatayya: Tatayya (తాతయ్య), a sweet old grandpa, a farmer
 - teacher: the teacher (టీచర్)
 - pilli: a talking cat (పిల్లి)
-- chilaka: a talking parrot (చిలుక)
+- chilaka: a talking parrot (చిలుక) that copies words
 "place" is one of: ${PLACES.join(", ")}.
-Each beat is one character doing one thing and (usually) saying one short line. "do" is one of: talk, enter (walks in), exit (walks out), run, jump, slip (slips on a banana peel and falls; what they hold flies up and lands on their head), fall, laugh, surprised, think, dance, sleep, cry, wave, give (gives their prop to another character), eat (eats their prop), balance (balances the prop on their head).
+Each beat is one character doing one thing and (usually) saying one short line. "do" is one of: talk, enter (walks in), exit (walks out), run, jump, slip (slips on a banana peel and falls; what they hold flies up and lands on their head), fall, laugh, surprised, think, dance, sleep, cry, wave, give (gives their prop to another character), eat (eats their prop), balance (balances the prop on their head), point (points at someone), clap, shrug, facepalm (hand on the face), crossarms (arms crossed), cheer (both arms up), kneel, angry (stamps the feet), shy.
 "prop" (or "none") is one of: ${PROPS.join(", ")} (tray = a tray of tea glasses).
-3 to 6 beats. Every line in simple, everyday Telugu (Telugu script), at most 10 words. Make it funny or sweet, with a clear ending: the last line is the punchline or the moral.
+Like the cartoons trending on Reels: the first line is a hook that grabs attention at once, then a quick story, then a funny or sweet twist at the end (the punchline or the moral). 3 to 5 beats, 8 to 20 seconds. Every line in simple, everyday Telugu (Telugu script), at most 10 words.
 Be kind: never make fun of women or men, any caste, religion, region, colour, body or disability, or any real person; no politics, no violence, nothing scary or adult. Slapstick stays gentle: nobody gets hurt.
 If the idea you are given is unkind, unsafe, about real or famous people, or not something to show children, set "skip" to true.
 Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "cast": ["..."], "beats": [{"who": "...", "do": "...", "say": "...", "prop": "..."}], "mood": one of funny, happy, inspiring, calm, useful, "skip": false}`;
@@ -121,6 +125,15 @@ Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "ca
       do: { type: "string", enum: ACTIONS }, say: { type: "string" }, prop: { type: "string", enum: [...PROPS, "none"] } } } },
     mood: { type: "string", enum: ["happy", "funny", "inspiring", "calm", "useful"] }, skip: { type: "boolean" } } };
   const clean = t => String(t || "").replace(/[{}\\]/g, "").replace(/\s+/g, " ").trim();
+  /** It learns from the internet every day: light topics from today's Media posts (festivals, weather, farming, facts,
+   *  kids) give the writer fresh ideas. (Never the news or politics.) */
+  function todayTopics() {
+    const out = [];
+    for (const c of ["devotional", "farming", "facts", "kids", "fun"]) {
+      try { out.push(...(media && media.recentTitles ? media.recentTitles(c, 2) : [])); } catch (e) { }
+    }
+    return out.map(t => String(t || "").replace(/^[^\p{L}\p{N}]+/u, "").slice(0, 80)).filter(t => t.length > 3).slice(0, 8);
+  }
   /** Reads the screenplay JSON, even when it was cut off at the end (then the beats that are complete). */
   function parseLoose(text) {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
@@ -137,12 +150,13 @@ Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "ca
   }
   /** Checks and tidies a screenplay; throws when it isn't good enough to make. */
   function tidy(j, type) {
-    const cast = [...new Set((Array.isArray(j.cast) ? j.cast : []).map(String).filter(c => CHARS.includes(c)))].slice(0, 3);
-    let beats = (Array.isArray(j.beats) ? j.beats : []).map(b => ({ who: String((b && b.who) || ""), do: ACTIONS.includes(b && b.do) ? b.do : "talk",
+    const key = c => ALIAS[String(c || "")] || String(c || "");
+    const cast = [...new Set((Array.isArray(j.cast) ? j.cast : []).map(key).filter(c => CHARS.includes(c)))].slice(0, 3);
+    let beats = (Array.isArray(j.beats) ? j.beats : []).map(b => ({ who: key(b && b.who), do: ACTIONS.includes(b && b.do) ? b.do : "talk",
       say: clean(b && b.say).slice(0, 110), prop: PROPS.includes(b && b.prop) ? b.prop : "" }));
     for (const b of beats) if (CHARS.includes(b.who) && !cast.includes(b.who) && cast.length < 3) cast.push(b.who);
     if (!cast.length) cast.push("bigd");
-    beats = beats.filter(b => cast.includes(b.who)).slice(0, 7);
+    beats = beats.filter(b => cast.includes(b.who)).slice(0, 6);
     const says = beats.filter(b => b.say.length > 1);
     const tel = x => (x.match(/[ఀ-౿]/g) || []).length;
     if (says.length < 2 || tel(says.map(b => b.say).join("")) < 15) throw new Error("couldn't write it well, please try again");
@@ -155,7 +169,9 @@ Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "ca
     const fav = favourites(), asked = db.asks.slice(-6).map(a => a.prompt);
     const prompt = idea ? `The person's idea: «${idea}»\nTurn it into this cartoon with the characters, place and props above (pick the closest ones).` :
       [`Make a new ${TYPES[type].en.toLowerCase()} for today.`, fav.length ? `People liked these recently (make something new in the same spirit, not a copy): ${fav.join(" | ")}` : "",
-        asked.length ? `Ideas people asked for recently (for inspiration): ${asked.join(" | ")}` : "", `Seed: ${crypto.randomBytes(3).toString("hex")}`].filter(Boolean).join("\n");
+        asked.length ? `Ideas people asked for recently (for inspiration): ${asked.join(" | ")}` : "",
+        todayTopics().length ? `What people are reading about today (only if one fits and stays kind; never real people or politics): ${todayTopics().join(" | ")}` : "",
+        `Seed: ${crypto.randomBytes(3).toString("hex")}`].filter(Boolean).join("\n");
     let j = null, by = "own";
     // (Telugu takes many tokens: room for a whole screenplay, and what was cut off at the end is left out)
     try { j = await ownBrain.writeJson({ system: SYSTEM(type), prompt, schema: SCHEMA, maxTokens: 2500, timeoutMs: 240000 }); }
@@ -313,7 +329,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       }
       const music = path.join(__dirname, "assets", TYPES[type].music);
       const out = path.join(DIR, id + ".mp4"), poster = path.join(DIR, id + ".jpg");
-      const plan = { title: s.title, place: s.place, cast: s.cast, beats, mood: s.mood, type, seed: crypto.randomBytes(2).readUInt16LE(0),
+      const plan = { style: STYLE, title: s.title, place: s.place, cast: s.cast, beats, mood: s.mood, type, seed: crypto.randomBytes(2).readUInt16LE(0),
         out, poster, tmp, cache: path.join(DIR, "cache"), fonts: FONTS, ffmpeg: FFMPEG, music: fs.existsSync(music) ? music : path.join(__dirname, "assets", "reel-music.m4a") };
       fs.writeFileSync(path.join(tmp, "plan.json"), JSON.stringify(plan));
       const res = await run("nice", ["-n", "10", PY, TOON, path.join(tmp, "plan.json")], { timeout: 12 * 60e3 });
