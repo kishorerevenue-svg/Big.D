@@ -129,6 +129,8 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this); vault = VaultStore(this)
+        // like WhatsApp: everyone logs in first (mobile number or email + password), once
+        if (!store.loggedIn) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
         Reminders.ensureChannel(this)
         if (ChatSync.isSetUp(this)) ChatAlarm.schedule(this)
         window.statusBarColor = Ui.BG

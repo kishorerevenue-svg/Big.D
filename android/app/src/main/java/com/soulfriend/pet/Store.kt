@@ -122,6 +122,15 @@ class Store(context: Context) {
         get() = p.getBoolean("remoteOn", false)
         set(v) { p.edit().putBoolean("remoteOn", v).apply() }
 
+    /** Logged in with a mobile number (or email) and password: the first screen (LoginActivity) is done. */
+    var loggedIn: Boolean
+        get() = p.getBoolean("loggedIn", false)
+        set(v) { p.edit().putBoolean("loggedIn", v).apply() }
+    /** The login, shown safely (e.g. ••••••2345). */
+    var loginShown: String
+        get() = p.getString("loginShown", "") ?: ""
+        set(v) { p.edit().putString("loginShown", v).apply() }
+
     /** First-time setup guide finished? */
     var onboarded: Boolean
         get() = p.getBoolean("onboarded", false)

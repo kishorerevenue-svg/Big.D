@@ -181,6 +181,13 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <!-- The first screen: log in with a mobile number (or email) and password, like WhatsApp -->
+        <activity
+            android:name=".LoginActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
         <!-- BigD Chat: one chat (one-to-one, a group, or my notes); also opens bigd://chat/<name> invite links -->
         <activity
             android:name=".ChatActivity"

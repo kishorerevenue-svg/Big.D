@@ -531,6 +531,37 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         save(); send(res, 200, { profile: userView(uid, uid), code: u.code, login: loginShown(u.login) }, origin); return true;
       }
 
+      if (p === "/api/social/account") {
+        // the app's first screen: is there a BigD account with this mobile number (or email)?
+        const lim = limit(req, "account", 60, 400); if (lim) { send(res, 429, { error: lim }, origin); return true; }
+        const L = loginId(body.id);
+        if (!L) { send(res, 400, { error: "Type your 10-digit mobile number." }, origin); return true; }
+        const other = userByLogin(L.id);
+        send(res, 200, { kind: L.kind, exists: !!other, mine: !!other && other.uid === uid, name: user && user.name ? user.name : "", hasLogin: !!(user && user.login) }, origin); return true;
+      }
+      if (p === "/api/social/signup") {
+        // a new BigD account: mobile number (or email), password and name. A profile already on this phone keeps
+        // everything it has (posts, chats): the login is added to it.
+        if (banned) { send(res, 403, { error: "You can't make an account." }, origin); return true; }
+        const lim = limit(req, "signup", 10, 800); if (lim) { send(res, 429, { error: lim }, origin); return true; }
+        const L = loginId(body.id);
+        if (!L) { send(res, 400, { error: "Type your 10-digit mobile number." }, origin); return true; }
+        const pw = String(body.password || "");
+        if (pw.length < 6 || pw.length > 64) { send(res, 400, { error: "The password needs 6 or more letters or numbers." }, origin); return true; }
+        if (EASY.has(pw.toLowerCase())) { send(res, 400, { error: "That password is too easy to guess. Please choose another one." }, origin); return true; }
+        const other = userByLogin(L.id);
+        if (other && other.uid !== uid) { send(res, 409, { error: L.kind === "email" ? "This email already has a BigD account. Enter its password." : "This number already has a BigD account. Enter its password.", exists: true }, origin); return true; }
+        const name = str(body.name, 30).replace(/[\r\n]/g, " ").trim() || (user && user.name) || "";
+        if (name.length < 2) { send(res, 400, { error: "Write your name (at least 2 letters)." }, origin); return true; }
+        if (!(user && user.name === name)) { const chk = await checkText(name); if (!chk.ok) { send(res, 400, { error: chk.reason || "Please change your name." }, origin); return true; } }
+        const u = db.users[uid] || (db.users[uid] = { uid, at: Date.now(), code: crypto.randomBytes(5).toString("hex").toUpperCase() });
+        if (!u.code) u.code = crypto.randomBytes(5).toString("hex").toUpperCase();
+        u.name = name; u.emoji = u.emoji || "🐾"; u.bio = u.bio || ""; u.handle = u.handle || handleFree(name);
+        const salt = crypto.randomBytes(16).toString("hex");
+        u.login = { kind: L.kind, id: L.id, salt, hash: await scrypt(pw, salt), at: Date.now() };
+        save(); send(res, 200, { profile: userView(uid, uid), code: u.code, login: loginShown(u.login) }, origin); return true;
+      }
+
       if (p === "/api/social/login-set") {
         // add (or change) "log in with phone number or email + password" for this phone's profile
         if (!(user && user.name)) { send(res, 400, { error: "First make your profile." }, origin); return true; }
