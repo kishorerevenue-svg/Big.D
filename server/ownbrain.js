@@ -42,8 +42,8 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
   // then Claude is tried again (if it is still down: 2, 4… up to 10 minutes), and is used again as soon as it answers.
   // Only real outages count (busy, no connection, a wrong or expired key, no credit), not one bad request.
   const claude = { fails: 0, skipUntil: 0 };
-  const outage = e => !e || !e.status || [401, 403, 408, 409, 425, 429, 500, 502, 503, 504, 529].includes(e.status) ||
-    (e.status === 400 && /credit|billing|balance|quota|disabled/i.test(e.message || ""));
+  const outage = e => !e || !e.status || !!e.resting || [401, 403, 408, 409, 425, 429, 500, 502, 503, 504, 529].includes(e.status) ||
+    (e.status === 400 && /credit|billing|balance|quota|disabled|usage limit|spend limit|regain access/i.test(e.message || ""));
   function claudeFailed(e) {
     if (!outage(e)) return;
     claude.fails++;

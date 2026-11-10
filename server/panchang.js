@@ -162,7 +162,7 @@ function panchang(dateIst, place = "vijayawada") {
     ruthu: RUTHU[Math.floor(masa.index / 2)], masa: MASA[masa.index], adhika: masa.adhika, masaIndex: masa.index,
     paksha: ti < 15 ? "శుక్ల పక్షం" : "బహుళ పక్షం", tithiIndex: ti,
     tithi: tithiName(ti), tithiEnd, nextTithi: tithiName((ti + 1) % 30),
-    nakshatra: NAKSHATRA[ni], nakEnd, nextNakshatra: NAKSHATRA[(ni + 1) % 27],
+    nakshatra: NAKSHATRA[ni], nakIndex: ni, nakEnd, nextNakshatra: NAKSHATRA[(ni + 1) % 27],
     yoga: YOGA[yi], yogaEnd, karana: karanaName(ki),
     rahu: span(RAHU[weekday]), yama: span(YAMA[weekday]), gulika: span(GULIKA[weekday])
   };
@@ -203,4 +203,4 @@ function post(dateIst, place = "vijayawada") {
   return { title: `నేటి పంచాంగం · ${VARA[p.weekday]}, ${d} ${MONTH[mo - 1]} ${y}`, body: lines.join("\n"), emoji: "📿", data: p };
 }
 
-module.exports = { panchang, post, sunLon, moonLon, elongation, newMoon, crossing, jdOf, sidereal, masaAt, samvatsara };
+module.exports = { panchang, post, sunLon, moonLon, elongation, newMoon, crossing, jdOf, sidereal, masaAt, samvatsara, sunEvent, PLACES, VARA, MONTH };

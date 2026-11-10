@@ -6,6 +6,9 @@
 //  - Speech bubbles, sound effects, talk sounds (or the natural voice, GOOGLE_TTS_KEY) and music by mood.
 //  - It LEARNS BY ITSELF: after each cartoon has been out a while, its likes, comments and views are counted; the
 //    kinds people like get made more often, and the brain is shown the favourites (and the ideas people asked for).
+//  - It knows what's happening (trends.js): on a festival day (or the day before) the day's first cartoon is about
+//    the festival, and the writer sees today's kind themes from Google Trends India (a cricket match day, exam
+//    results, a rainy day…; never names, politics or news).
 //  - Anyone using the app can ask for one with their own idea (a few a day each); they can watch it, share it and
 //    post it on their profile. Unkind or unsafe ideas are refused.
 //  - Needs python3 with Pillow on the server (installed by itself the first time); until then the old puppy cartoon.
@@ -15,7 +18,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 
-module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, ownBrain, voice, h, engagement, aiPeople, isAdmin, freeVoice }) {
+module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, ownBrain, voice, h, engagement, aiPeople, isAdmin, freeVoice, trends, claudeOut }) {
   const FFMPEG = process.env.FFMPEG || "ffmpeg";
   const ART = path.join(__dirname, "assets", "cartoon");
   const FONTS = path.join(__dirname, "fonts");
@@ -134,6 +137,37 @@ Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "ca
     }
     return out.map(t => String(t || "").replace(/^[^\p{L}\p{N}]+/u, "").slice(0, 80)).filter(t => t.length > 3).slice(0, 8);
   }
+  /** Festivals coming up (from our own panchangam) and what India is searching for today (Google Trends, as kind themes). */
+  function todayLines() {
+    const out = [];
+    try {
+      const soon = trends ? trends.upcoming(3) : [];
+      if (soon.length) out.push("Festivals: " + soon.map(f => `${f.en} (${f.te}) ${f.inDays === 0 ? "is today" : f.inDays === 1 ? "is tomorrow" : "is in " + f.inDays + " days"}${f.approx ? " (about)" : ""}: ${f.show}`).join("; "));
+      const th = trends ? trends.themes() : [];
+      if (th.length) out.push("What people in India are searching for today, as kind themes (use one only if it fits; never real people, teams or brands): " + th.map(t => t.en).join("; "));
+    } catch (e) { }
+    return out;
+  }
+  /** The day's festival theme for the first cartoon of a festival day (or the day before). */
+  function festivalTheme() {
+    try {
+      const n = trends && trends.festivalNow();
+      if (!n) return "";
+      const f = n.f, when = n.when === "today" ? (f.approx ? "around today" : "today") : (f.approx ? "around tomorrow" : "tomorrow");
+      return `${f.en} (${f.te}) is ${when}. Make the cartoon about this festival, warmly and respectfully, the way families in Andhra Pradesh and Telangana enjoy it: ${f.show}. ` +
+        (n.when === "tomorrow" ? "Show the happy preparations for it. " : "") + "Never make fun of any faith or its customs, and keep it safe for children.";
+    } catch (e) { return ""; }
+  }
+  /** Is our cartoon writer resting? (Claude's monthly limit is used up and our own brain is too small to write.) */
+  const writerResting = () => { const o = claudeOut && claudeOut(); return !!o && !(ownBrain && ownBrain.quick && ownBrain.quick().ready && ownBrain.canWrite && ownBrain.canWrite()); };
+  function restingError() {
+    const o = claudeOut && claudeOut();
+    const d = o && o.why === "limit" && o.until ? new Date(o.until + 5.5 * 3600e3) : null;
+    const MONTH = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const MONTH_TE = ["జనవరి", "ఫిబ్రవరి", "మార్చి", "ఏప్రిల్", "మే", "జూన్", "జూలై", "ఆగస్టు", "సెప్టెంబర్", "అక్టోబర్", "నవంబర్", "డిసెంబర్"];
+    return d ? `మా కార్టూన్ రచయిత ${d.getUTCDate()} ${MONTH_TE[d.getUTCMonth()]} వరకు విశ్రాంతిలో ఉన్నారు. · Our cartoon writer is resting until ${d.getUTCDate()} ${MONTH[d.getUTCMonth()]}. Please try again then.`
+      : "మా కార్టూన్ రచయిత కొంతసేపు విశ్రాంతిలో ఉన్నారు. · Our cartoon writer is resting for a while. Please try again later.";
+  }
   /** Reads the screenplay JSON, even when it was cut off at the end (then the beats that are complete). */
   function parseLoose(text) {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
@@ -165,12 +199,14 @@ Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "ca
     return { title: clean(j.title || TYPES[type].te).slice(0, 80), place, cast, beats, mood,
       says: says.map(b => b.say), lines: says.map(b => `${NAMES[b.who]}: ${b.say}`), scene: OLD_SCENE[place] || TYPES[type].scene };
   }
-  async function script(type, idea) {
+  async function script(type, idea, theme) {
     const fav = favourites(), asked = db.asks.slice(-6).map(a => a.prompt);
     const prompt = idea ? `The person's idea: «${idea}»\nTurn it into this cartoon with the characters, place and props above (pick the closest ones).` :
-      [`Make a new ${TYPES[type].en.toLowerCase()} for today.`, fav.length ? `People liked these recently (make something new in the same spirit, not a copy): ${fav.join(" | ")}` : "",
-        asked.length ? `Ideas people asked for recently (for inspiration): ${asked.join(" | ")}` : "",
-        todayTopics().length ? `What people are reading about today (only if one fits and stays kind; never real people or politics): ${todayTopics().join(" | ")}` : "",
+      [theme ? `TODAY'S THEME (make the cartoon about it): ${theme}` : `Make a new ${TYPES[type].en.toLowerCase()} for today.`,
+        fav.length ? `People liked these recently (make something new in the same spirit, not a copy): ${fav.join(" | ")}` : "",
+        asked.length && !theme ? `Ideas people asked for recently (for inspiration): ${asked.join(" | ")}` : "",
+        todayTopics().length && !theme ? `What people are reading about today (only if one fits and stays kind; never real people or politics): ${todayTopics().join(" | ")}` : "",
+        ...(theme ? [] : todayLines()),
         `Seed: ${crypto.randomBytes(3).toString("hex")}`].filter(Boolean).join("\n");
     let j = null, by = "own";
     // (Telugu takes many tokens: room for a whole screenplay, and what was cut off at the end is left out)
@@ -180,7 +216,9 @@ Reply only with JSON: {"title": "<Telugu, at most 6 words>", "place": "...", "ca
       by = "claude";
       for (let k = 0; k < 2 && !j; k++) {     // once more (shorter) if the first answer can't be read
         const ask = k ? prompt + "\n(Reply with the JSON only: 4 beats, short lines.)" : prompt;
-        const data = await ai({ model: MODEL, max_tokens: 4000, system: SYSTEM(type), messages: [{ role: "user", content: ask }] }, { tries: 1, backup: true });
+        let data;
+        try { data = await ai({ model: MODEL, max_tokens: 4000, system: SYSTEM(type), messages: [{ role: "user", content: ask }] }, { tries: 1, backup: true }); }
+        catch (x) { if (x.resting || x.why || (claudeOut && claudeOut())) throw new Error(restingError()); throw x; }
         const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("");
         j = parseLoose(text);
         if (j && !j.skip && !(Array.isArray(j.beats) && j.beats.length >= 2)) j = null;
@@ -373,7 +411,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
         }
       }
       try {
-        const s = await script(job.type, job.prompt);
+        const s = await script(job.type, job.prompt, job.theme);
         job.title = s.title; job.lines = s.lines;
         await toonReady;
         job.dur = toonOk ? await renderToon(job.id, s, job.type) : await render(job.id, s, job.type);
@@ -397,9 +435,9 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
     }
     busy = false;
   }
-  function add(type, prompt, device, aiCartoon, admin) {
+  function add(type, prompt, device, aiCartoon, admin, theme) {
     const id = (device ? "p" : "a") + (db.next++) + (device ? "_" + crypto.randomBytes(4).toString("hex") : "");
-    const job = { id, type, prompt: prompt || "", device: device || "", status: "waiting", at: Date.now(), ai: !!aiCartoon, admin: !!admin };
+    const job = { id, type, prompt: prompt || "", device: device || "", status: "waiting", at: Date.now(), ai: !!aiCartoon, admin: !!admin, theme: theme || "" };
     db.jobs[id] = job;
     for (const [k, j] of Object.entries(db.jobs)) if (Date.now() - j.at > 3 * 86400e3) delete db.jobs[k];
     queue.push(job); save(); pump();
@@ -413,8 +451,13 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
     if (!toonOk && !(db.settings && db.settings.daily !== undefined)) return;     // not the old puppy by itself
     roll();
     if (db.auto >= DAILY() || ist().getUTCHours() < SLOTS[Math.min(db.auto, SLOTS.length - 1)] || ist().getUTCHours() > 22) return;
-    db.auto++; save();
-    add(pickType());
+    if (writerResting()) return;      // no writer today (Claude's monthly limit): nothing to make, nothing to fail
+    db.auto++;
+    // a festival today (or tomorrow): the day's first cartoon is about it
+    const theme = db.festDay !== today() ? festivalTheme() : "";
+    if (theme) db.festDay = today();
+    save();
+    add(theme ? "story" : pickType(), "", "", false, false, theme);
   }
   if (ON) { setTimeout(tick, 4 * 60_000).unref(); setInterval(tick, 10 * 60_000).unref(); }
   // videos are kept 60 days (the ones people made: 7 days, unless they posted them)
@@ -471,6 +514,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
       if (queue.length >= 15) return send(429, { error: "So many people are making cartoons now! Please try again in a little while." }), true;
       const ai = maker === "puppy" ? { on: false } : aiState(dev);
       if (maker === "ai" && !ai.on) return send(409, { error: WHY[ai.reason] || WHY.no_key, reason: ai.reason }), true;
+      if (!ai.on && writerResting()) return send(409, { error: restingError(), reason: "resting" }), true;     // tell them now, not after a wait
       if (!ai.on && !admin) {   // the free puppy: a few a day for each person
         if ((db.perDevice[dev] || 0) >= EACH()) return send(429, { error: `You can make ${EACH()} free cartoons a day. Please come back tomorrow! 🎬` }), true;
         if (db.pub >= PUBLIC_DAY()) return send(429, { error: "So many people are making cartoons today! Please try again tomorrow." }), true;
@@ -511,7 +555,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
     return { on: ON, maker: toonOk ? "ours" : "puppy", makerNote: toonNote,
       voice: voice && voice.enabled ? "the natural Google voice" : freeVoice ? "our free Telugu voice: " + freeVoice.state() : "talk sounds", daily: DAILY(), madeToday: db.auto, publicToday: db.pub, waiting: queue.length, busy, learned: learned(), favourites: favourites(),
       recent: db.made.slice(-12).reverse().map(m => ({ id: m.id, type: m.type, title: m.title, at: m.at, pub: m.pub, by: m.by, score: m.itemId ? score(m) : null })),
-      asks: db.asks.slice(-10).reverse() };
+      asks: db.asks.slice(-10).reverse(), writerResting: writerResting(), trends: trends ? trends.status() : null };
   }
   /** The owner sets how many puppy cartoons are made by itself each day (0 = none). */
   function settings(o) {

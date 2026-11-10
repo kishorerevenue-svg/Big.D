@@ -1,8 +1,12 @@
 // Learning from common questions. When many different people ask BigD the same general question
 // ("what is PM Kisan?", "how do I link Aadhaar with PAN?"), the server prepares a short, checked answer at night
 // (with Claude and the internet) and keeps it. Then:
-//  - our own brain uses it when Claude can't answer, and
+//  - our own brains (selfbrain.js, ownbrain.js) use it when Claude can't answer, and
 //  - the same question asked again as a first message is answered at once from it (fast, and no AI bill).
+// BigD also learns from Claude as it talks: when Claude answers a general question and says the answer is right for
+// anyone (nothing about the person: Claude marks it, and the server checks it has none of the person's words), the
+// answer is kept here too, so BigD can answer it by itself while Claude can't (its monthly limit is used up…).
+// Those are kept 90 days. LEARN_FROM_CLAUDE=false turns this off.
 // Only general questions are counted: nothing about the person (I, my, నా, నేను…), no long numbers, no links,
 // no greetings or commands, nothing about today/news/prices. Who asked is never kept: only a salted, one-way
 // mark so the same phone isn't counted twice. Questions nobody else asks are forgotten after 30 days.
@@ -78,22 +82,60 @@ module.exports = function makeAnswers({ DATA_DIR, learn }) {
     if (keys.length > 6000) { keys.sort((a, b) => (qs[a].last < qs[b].last ? -1 : 1)).slice(0, 1000).forEach(x => delete qs[x]); }
   }
 
-  /** The learned answer for a question, if one fits: { answer, score, id }. */
-  function lookup(q) {
+  /** The learned answer for a question, if one fits: { answer, score, id, from }. */
+  function lookup(q, { min = 0.75 } = {}) {
     if (off()) return null;
     const k = key(q);
     if (!k) return null;
     let best = null, score = 0;
     for (const a of learned) { if (te(a.key) !== te(k)) continue; const s = a.key === k ? 1 : alike(k, a.key); if (s > score) { score = s; best = a; } }
-    if (!best || score < 0.75) return null;
-    return { answer: best.answer, score, id: best.id, sources: best.sources || [] };
+    if (!best || score < min) return null;
+    return { answer: best.answer, score, id: best.id, sources: best.sources || [], from: best.from || "night", at: best.at };
   }
+  /** Counts one more use of a learned answer. */
+  function used(id) { const a = learned.find(x => x.id === id); if (a) { a.uses = (a.uses || 0) + 1; dirty = true; } }
 
-  /** A first question that is (almost) word for word a learned one: answer at once. */
+  // ---------- learning from Claude's own answers ----------
+  const CHAT_DAYS = 90, MAX = () => Math.max(100, Number(process.env.LEARNED_MAX || 3000));
+  /** Keeps Claude's answer to a general question (true when kept). [personal]: the person's own words (names, numbers
+   *  from their memories and notes); an answer that contains any of them is not kept. */
+  function keep(q, answer, { sources = [], personal = [] } = {}) {
+    if (off() || /^(off|no|false|0)$/i.test(process.env.LEARN_FROM_CLAUDE || "") || !general(q)) return false;
+    const a = String(answer || "").trim();
+    if (a.length < 25 || a.length > 1500 || /[\w.+-]+@[\w-]+\.\w/.test(a)) return false;
+    const low = a.toLowerCase();
+    if (personal.some(w => w && low.includes(String(w).toLowerCase()))) return false;
+    const k = key(q);
+    if (!k) return false;
+    const old = learned.find(x => x.key === k);
+    if (old && (old.from || "night") !== "chat") return false;                  // an answer prepared (and checked) at night stays
+    if (old && Date.now() - Date.parse(old.at) < 7 * 86400e3) return false;      // learned this week already
+    learned = learned.filter(x => x.key !== k);
+    learned.push({ id: crypto.randomBytes(5).toString("hex"), key: k, q: String(q).trim().slice(0, 200), lang: te(q) ? "te" : "en", answer: a,
+      sources: (sources || []).slice(0, 3), at: new Date().toISOString(), uses: old ? old.uses || 0 : 0, from: "chat" });
+    tidyUp();
+    dirty = true;
+    return true;
+  }
+  /** Chat answers are forgotten after 90 days; at most LEARNED_MAX answers (the least used chat ones go first). */
+  function tidyUp() {
+    const now = Date.now();
+    learned = learned.filter(x => (x.from || "night") !== "chat" || now - Date.parse(x.at) < CHAT_DAYS * 86400e3);
+    if (learned.length > MAX()) {
+      const chat = learned.filter(x => x.from === "chat").sort((a, b) => (a.uses || 0) - (b.uses || 0) || Date.parse(a.at) - Date.parse(b.at));
+      const drop = new Set(chat.slice(0, learned.length - MAX()).map(x => x.id));
+      learned = learned.filter(x => !drop.has(x.id));
+    }
+  }
+  setInterval(() => { const n = learned.length; tidyUp(); if (learned.length !== n) { dirty = true; save(); } }, 12 * 3600e3).unref();
+
+  /** A first question that is (almost) word for word a learned one: answer at once. (An answer learned from a chat
+   *  is used this way for 30 days; after that Claude answers it fresh, and the old one is only for when it can't.) */
   function direct(q) {
     if (/^(off|no|false|0)$/i.test(process.env.LEARNED_DIRECT || "") || !general(q)) return null;
     const hit = lookup(q);
     if (!hit || hit.score < 0.9) return null;
+    if (hit.from === "chat" && Date.now() - Date.parse(hit.at) > 30 * 86400e3) return null;
     const a = learned.find(x => x.id === hit.id);
     if (a) { a.uses = (a.uses || 0) + 1; dirty = true; }
     return hit;
@@ -141,11 +183,13 @@ Reply only with JSON: {"answer": "...", "skip": false}`;
   function list() {
     const top = Object.entries(qs).map(([k, e]) => ({ key: k, q: e.q, lang: e.lang, people: e.askers.length, times: e.n, last: e.last, skipped: !!e.skip }))
       .sort((a, b) => b.people - a.people || b.times - a.times).slice(0, 60);
-    return { on: !off(), minPeople: MIN(), questions: top, learned: learned.slice().sort((a, b) => (b.uses || 0) - (a.uses || 0)) };
+    const sorted = learned.slice().sort((a, b) => (b.uses || 0) - (a.uses || 0) || (Date.parse(b.at) - Date.parse(a.at)));
+    return { on: !off(), fromClaude: !/^(off|no|false|0)$/i.test(process.env.LEARN_FROM_CLAUDE || ""), minPeople: MIN(), questions: top,
+      learned: sorted.slice(0, 300).map(a => Object.assign({}, a, { from: a.from || "night" })), total: learned.length, fromChat: learned.filter(a => a.from === "chat").length };
   }
   function remove(id) { const n = learned.length; learned = learned.filter(a => a.id !== id); dirty = true; save(); return learned.length < n; }
   function forget(k) { const had = !!qs[k]; delete qs[k]; learned = learned.filter(a => a.key !== k); dirty = true; save(); return had; }
-  function stats() { return { on: !off(), questions: Object.keys(qs).length, learned: learned.length, used: learned.reduce((s, a) => s + (a.uses || 0), 0) }; }
+  function stats() { return { on: !off(), questions: Object.keys(qs).length, learned: learned.length, fromChat: learned.filter(a => a.from === "chat").length, used: learned.reduce((s, a) => s + (a.uses || 0), 0) }; }
 
-  return { note, lookup, direct, general, prepare, list, remove, forget, stats, _key: key };
+  return { note, lookup, used, keep, direct, general, prepare, list, remove, forget, stats, _key: key };
 };

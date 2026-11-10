@@ -66,6 +66,19 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
     }).filter(x => x.s > 1.2).sort((a, b) => b.s - a.s).slice(0, max).map(x => x.c);
   }
 
+  /** The best passages with how well they match ([{ title, text, score, of }], of = the question's words found). */
+  function searchKnowledge(question, max = 2) {
+    if (!chunks.length) return [];
+    const q = [...new Set(tokenize(question))];
+    if (!q.length) return [];
+    const N = chunks.length;
+    const df = new Map(q.map(t => [t, chunks.filter(c => c.tokens.has(t)).length]));
+    return chunks.map(c => {
+      let s = 0, n = 0; for (const t of q) if (c.tokens.has(t)) { s += Math.log(1 + N / (df.get(t) || 1)); n++; }
+      return { title: c.title, text: c.text, score: s, of: n / q.length };
+    }).filter(x => x.score > 1.2).sort((a, b) => b.score - a.score).slice(0, max);
+  }
+
   function knowledgeBlock(question) {
     const hits = relevant(question);
     if (!hits.length) return "";
@@ -78,11 +91,51 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
   // 2. Still busy: the same question goes to a second Claude model (Haiku <-> Sonnet), which has its own capacity.
   // 3. Claude can't answer at all (also a wrong or expired key, or no credit): Google Gemini answers, if GEMINI_API_KEY is set.
   //    Use a Gemini key with billing on: Google doesn't use paid requests to improve its products (free keys it does).
+  // 4. Claude's account can't answer for a while: this month's usage limit is used up ("You will regain access on
+  //    2026-12-01"), no credit is left, or the key is wrong. Then nothing waits for Claude: every request is answered at
+  //    once by our own brains (selfbrain.js, ownbrain.js) until the date Claude gave. Every 30 minutes one request still
+  //    goes to Claude, so it is used again as soon as the owner adds credit or raises the limit.
   const BUSY = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
-  const isBusy = e => !e || !e.status || BUSY.has(e.status);
-  const accountProblem = e => !!e && (e.status === 401 || e.status === 403 || (e.status === 400 && /credit|billing|balance|quota|disabled/i.test(e.message || "")));
+  const isBusy = e => !e || (!e.status && !e.resting) || BUSY.has(e.status);
+  const LIMIT_RE = /usage limits?|spend(?:ing)? limit|regain access|limit (?:has been |was )?reached|reached (?:your|the) [\w ]*limit|monthly limit/i;
+  const CREDIT_RE = /credit balance|billing|purchase credits|payment|out of credits?|no credits?/i;
+  const accountProblem = e => !!e && (!!e.resting || e.status === 401 || e.status === 403 ||
+    (e.status === 400 && (/credit|billing|balance|quota|disabled/i.test(e.message || "") || LIMIT_RE.test(e.message || ""))));
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const stats = { calls: 0, retried: 0, backupModel: 0, gemini: 0, failed: 0, lastProblem: "" };
+  const stats = { calls: 0, retried: 0, backupModel: 0, gemini: 0, failed: 0, lastProblem: "", rested: 0 };
+
+  /** Why Claude's account can't answer for a while ("limit", "credit", "key"), or "" for an ordinary problem. */
+  function restWhy(e) {
+    if (!e || e.resting) return "";
+    const m = String(e.message || "");
+    if (e.status === 401) return "key";
+    if ([400, 403, 429].includes(e.status) && LIMIT_RE.test(m)) return "limit";
+    if ([400, 402, 403].includes(e.status) && CREDIT_RE.test(m)) return "credit";
+    return "";
+  }
+  let out = null;   // { why, since, until, probeAt, message }
+  const PROBE = () => Math.max(60e3, Number(process.env.CLAUDE_PROBE_MINUTES || 30) * 60e3);
+  function noteOut(e, why) {
+    const msg = String(e.message || "");
+    const m = msg.match(/regain access on (\d{4}-\d{2}-\d{2})(?:\D{1,8}(\d{1,2}):(\d{2}))?/i);
+    const until = m ? Date.parse(`${m[1]}T${m[2] ? m[2].padStart(2, "0") + ":" + m[3] : "00:00"}:00Z`) || 0 : 0;
+    const first = !out;
+    out = { why, since: out ? out.since : Date.now(), until, probeAt: Date.now() + PROBE(), message: msg.slice(0, 220) };
+    if (first) console.error(`AI: Claude can't answer for a while (${why}${until ? ", back on " + new Date(until).toISOString().slice(0, 10) : ""}): our own brains answer meanwhile`);
+  }
+  function clearOut() { if (out) { console.log("AI: Claude answers again"); out = null; } }
+  /** null while Claude can answer; else why it can't: { why: "limit" | "credit" | "key", since, until (0 = not known), message }. */
+  function claudeOut() {
+    if (out && out.until && Date.now() >= out.until && out.probeAt > Date.now()) out.probeAt = Date.now();   // its date has come: ask again
+    return out ? { why: out.why, since: out.since, until: out.until, message: out.message } : null;
+  }
+  /** True when this request shouldn't go to Claude (it's resting); now and then one request goes, to see if it's back. */
+  function resting() {
+    if (!out) return false;
+    claudeOut();
+    if (Date.now() >= out.probeAt) { out.probeAt = Date.now() + PROBE(); return false; }
+    return true;
+  }
   const geminiKey = () => process.env.GEMINI_API_KEY || "";
   const geminiModel = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
@@ -93,6 +146,7 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
 
   /** One request to Claude's Messages API, tried again (up to [tries] more times) when Claude is busy. Returns Claude's JSON. */
   async function anthropic(body, { tries = 2, backup = false } = {}) {
+    if (resting()) { stats.rested++; throw Object.assign(new Error(out.message || "Claude can't answer for a while"), { status: 400, resting: true, why: out.why }); }
     let last = null;
     const timeoutMs = 45000 + (Number(body.max_tokens) || 1500) * 12;
     for (let i = 0; i <= tries; i++) {
@@ -104,11 +158,13 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
           body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs)
         });
         const data = await r.json().catch(() => ({}));
-        if (r.ok) return data;
+        if (r.ok) { clearOut(); return data; }
         const err = new Error((data.error && data.error.message) || "api_error " + r.status);
         err.status = r.status; err.retryAfter = Number(r.headers.get("retry-after")) || 0;
         last = err;
-        if (!BUSY.has(r.status)) break;          // a wrong request, key or credit: trying again won't help
+        const why = restWhy(err);
+        if (why) { noteOut(err, why); err.why = why; break; }   // the monthly limit, credit or key: rest Claude for a while
+        if (!BUSY.has(r.status)) break;          // a wrong request: trying again won't help
       } catch (e) {
         last = Object.assign(new Error("no connection to Claude: " + (e.name === "TimeoutError" ? "timed out" : e.message)), { status: 0 });
         if (e.name === "TimeoutError") break;     // no answer for a long time: don't make people wait for more tries of the same model
@@ -214,7 +270,8 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
   /** For /health: is the backup on, and how often was it needed since the server started. */
   function aiStatus() {
     return { backupModel: backupFor(MODEL) || "none", gemini: geminiKey() ? geminiModel() : "off", calls: stats.calls, retried: stats.retried,
-      usedBackupModel: stats.backupModel, usedGemini: stats.gemini, failed: stats.failed, lastProblem: stats.lastProblem };
+      usedBackupModel: stats.backupModel, usedGemini: stats.gemini, failed: stats.failed, lastProblem: stats.lastProblem,
+      claudeResting: claudeOut(), notSentWhileResting: stats.rested };
   }
 
   // ---------- turning uploads into text ----------
@@ -255,5 +312,5 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
     return { title: title.replace(/\s+/g, " ").trim(), text };
   }
 
-  return { addKnowledge, removeKnowledge, listKnowledge, knowledgeBlock, callClaude, anthropic, aiStatus, fileToText, urlToText };
+  return { addKnowledge, removeKnowledge, listKnowledge, knowledgeBlock, searchKnowledge, callClaude, anthropic, aiStatus, claudeOut, accountProblem, fileToText, urlToText };
 };

@@ -146,8 +146,9 @@ When their message starts with "[Your eyes: back camera…]" or "[Your eyes: fro
 - If the photo doesn't show what they asked about (for example they meant something from your conversation), just answer from the conversation.${SEARCH_RULE}${ctx.knowledge || ""}
 
 Sound effect (optional "sound"): add one only when it really fits the moment: "laugh" for a joke or something funny, "tada" when tasks are done or they succeeded, "applause" for their good news or achievement, "wow" for an amazing fact or a surprise, "oops" for a small mistake or a missing detail, "drumroll" just before revealing a result or answer to a quiz, "boing" for silly fun, "ding" for a reminder or a good idea, "whoosh" when opening something, "sad" for a small disappointment. Most replies have no sound. Never add a sound to serious topics (illness, death, accidents, danger, lost money, fraud warnings).
+"everyone": true only when "reply" is a general answer that would be right for anyone asking the same question (facts, how-to steps, explanations) and says nothing about this person (no name, family, place, lists, notes, memories or plans); otherwise false. (BigD learns such answers to help others when you are away.)
 Reply with only a JSON object, no other text:
-{"emotion":"<one of: ${PET_EMOTIONS.join(", ")}>","reply":"<what you say>","sound":"<optional, from the list above>","actions":[ ... ]}
+{"emotion":"<one of: ${PET_EMOTIONS.join(", ")}>","reply":"<what you say>","sound":"<optional, from the list above>","actions":[ ... ],"everyone":false}
 (When you searched the internet, still end with this JSON object.)`;
 }
 
@@ -231,34 +232,76 @@ function parsePet(text) {
   const actions = (obj && Array.isArray(obj.actions) ? obj.actions : [])
     .filter(a => a && ACTION_TYPES.includes(a.type)).slice(0, 6)
     .map(a => { const o = {}; for (const [k, v] of Object.entries(a)) o[k] = typeof v === "string" ? v.slice(0, 6000) : v; return o; });
-  return { emotion, reply, actions, ...(sound ? { sound } : {}) };
+  return { emotion, reply, actions, ...(sound ? { sound } : {}), everyone: !!(obj && obj.everyone === true) };
 }
 
 // "it", "this", "అది"…: the question needs the conversation, so a prepared answer can't be used for it
 const NEEDS_CONTEXT = /\b(it|this|that|they|them|those|these|he|she|his|her|him|there|again|more|also)\b|అది|ఇది|వాళ్ళు|ఆయన|ఆమె|ఇంకా|మళ్ళీ/i;
 
-/** The pet's answer: a prepared answer to a common question, else Claude (with its backups), else our own brain. */
+/** Words about this person (from their memories, notes and list, and names in the chat), so an answer that mentions
+ *  them is never kept as a general answer for everyone. */
+const COMMON = new Set(("like likes have with this that from they them what when where which will would should could there their about your yours also very much many " +
+  "some more most only just than then into over under after before because good well make made take give know want need help time today tomorrow every other each " +
+  "been being were does done doing said says call name love loves people thing things work works home family friend friends mother father please thanks morning " +
+  "evening night daily week month year years days office school house ఉంది ఉన్నాయి కోసం మీరు మీకు నాకు చాలా కూడా ఇంకా అంటే ఏమిటి గురించి చేయండి చేయాలి తర్వాత " +
+  "ముందు రోజు ఈరోజు సమయం ఇంటి ఇల్లు అమ్మ నాన్న పేరు ఇష్టం మంచి ఉదయం సాయంత్రం రాత్రి").split(/\s+/));
+function personalWords(messages, ctx, q) {
+  const toks = t => String(t || "").toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) || [];
+  const inQ = new Set(toks(q)), out = new Set();
+  const add = w => { const t = w.toLowerCase(); if (t.length >= 4 && !COMMON.has(t) && !inQ.has(t)) out.add(t); };
+  const mine = [...(ctx.memories || []), ...(ctx.notes || []), ...(ctx.todos || []).map(t => t && t.text)];
+  for (const s of mine) { for (const w of toks(s)) add(w); for (const d of String(s || "").match(/\d{4,}/g) || []) out.add(d); }
+  for (const m of messages.slice(0, -1)) if (m.role === "user" && typeof m.content === "string") for (const w of m.content.match(/(?<=\S\s+)[A-Z][a-z]{3,}/g) || []) add(w);
+  return [...out].slice(0, 400);
+}
+
+/** The pet's answer: a prepared or learned answer, else Claude (with its backups), else our self brain (no AI, at
+ *  once: news, panchangam, festivals, stories, jokes, learned answers…), else our own brain (an AI model on this
+ *  server), else the self brain's best try (it always answers). [ctx.why]: why Claude isn't asked (ownOnly). */
 async function askPet(messages, lang, ctx, ownOnly = false) {
   const last = messages[messages.length - 1];
   const hasImage = Array.isArray(last.content);
-  if (!hasImage && !NEEDS_CONTEXT.test(last.content)) {
-    const hit = answers.direct(last.content);
+  const q = hasImage ? String((last.content[1] && last.content[1].text) || "") : String(last.content || "");
+  if (!hasImage && !NEEDS_CONTEXT.test(q)) {
+    const hit = answers.direct(q);
     if (hit) return { emotion: "happy", reply: hit.answer, actions: [], sources: hit.sources, brain: "learned", learned: true };
   }
-  if (!ownOnly && !(ownBrain.skipClaude() && await ownBrain.ready())) {
-    const model = pickModel(hasImage ? last.content[1].text : last.content, hasImage);
+  let why = ownOnly ? ctx.why || "busy_day" : "";
+  if (!ownOnly && !ownBrain.skipClaude()) {
+    const model = pickModel(q, hasImage);
     try {
       const out = await learn.callClaude({ system: petPrompt(lang, ctx), messages, maxTokens: 6000, model });
       ownBrain.claudeWorked();
-      return { ...parsePet(out.text), sources: out.sources, brain: model === SMART_MODEL ? "smart" : "fast" };
+      const p = parsePet(out.text);
+      // Claude teaches BigD: a general answer, right for anyone, is kept for when Claude can't answer
+      if (!hasImage && p.everyone && ctx.learn !== false && !p.actions.length) { try { answers.keep(q, p.reply, { sources: out.sources, personal: personalWords(messages, ctx, q) }); } catch (e) { } }
+      delete p.everyone;
+      return { ...p, sources: out.sources, brain: out.via === "gemini" ? "gemini" : model === SMART_MODEL ? "smart" : "fast" };
     } catch (e) {
       ownBrain.claudeFailed(e);
-      if (!(await ownBrain.ready())) throw e;
-      console.error("Claude couldn't answer (" + (e.status || "no connection") + "): our own brain answers");
+      why = e.resting || learn.accountProblem(e) ? "resting" : "down";
+      console.error("Claude couldn't answer (" + (e.status || "no connection") + "): our own brains answer");
     }
+  } else if (!ownOnly) why = learn.claudeOut() ? "resting" : "down";
+  const out = learn.claudeOut();
+  const info = { why, reason: out && out.why, until: out && out.why === "limit" ? out.until : 0 };
+  const sctx = Object.assign({}, ctx, { admin: !!ctx.admin });
+  const strip = o => { delete o.everyone; return o; };
+  if (hasImage) {
+    if (ownBrain.quick().vision && await ownBrain.ready()) {
+      try { const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy); return strip({ ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true }); }
+      catch (e) { console.error("Our own brain couldn't look:", e.message); }
+    }
+    return selfBrain.noEyes(lang, sctx, info, q);
   }
-  const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy);
-  return { ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true };
+  // 1. the self brain, when it knows (at once); 2. our own brain (slow on a small server); 3. the self brain's best try
+  const fast = await selfBrain.answer(q, lang, sctx, { strong: true, info });
+  if (fast) return fast;
+  if (await ownBrain.ready()) {
+    try { const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy); return strip({ ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true }); }
+    catch (e) { console.error("Our own brain couldn't answer:", e.message); }
+  }
+  return await selfBrain.answer(q, lang, sctx, { strong: false, info });
 }
 
 // ---------- simple per-device rate limit ----------
@@ -381,12 +424,19 @@ const aiVideo = require("./aivideo.js")({ DATA_DIR, media, ai: learn.anthropic, 
 // our own free Telugu voice for the cartoons (downloads itself once, about 90 MB)
 const freeVoice = require("./freevoice.js")({ DATA_DIR, FFMPEG: process.env.FFMPEG || "ffmpeg" });
 setTimeout(() => freeVoice.ready(), 30000).unref();
+// what's happening today: Google Trends themes (kind ones only) and the festival calendar, for cartoons and the self brain
+const trends = require("./trends.js")();
+// BigD's self brain: answers at once without any AI model (news, panchangam, festivals, stories, jokes, learned answers…)
+const selfBrain = require("./selfbrain.js")({ media, answers, learn, trends, PETS, EMOTIONS: PET_EMOTIONS });
+/** The owner (the Team password in the app, X-Admin-Key). */
+function isOwner(req) {
+  const given = String(req.headers["x-admin-key"] || ""), pw = process.env.ADMIN_PASSWORD || TEACH_PASSWORD;
+  if (!pw || !given) return false;
+  return crypto.timingSafeEqual(crypto.createHash("sha256").update(given).digest(), crypto.createHash("sha256").update(pw).digest());
+}
 const cartoon = require("./cartoon.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice, h: { send, readBody, allowed, clientIp },
-  engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, freeVoice, isAdmin: req => {   // the owner (Team password in the app): no daily cartoon limits
-    const given = String(req.headers["x-admin-key"] || ""), pw = process.env.ADMIN_PASSWORD || TEACH_PASSWORD;
-    if (!pw || !given) return false;
-    return crypto.timingSafeEqual(crypto.createHash("sha256").update(given).digest(), crypto.createHash("sha256").update(pw).digest());
-  } });
+  engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, freeVoice, trends, claudeOut: learn.claudeOut,
+  isAdmin: isOwner });   // the owner: no daily cartoon limits
 // YouTube in every Media section: trusted channels' new videos, live TV and live darshan, Shorts, trending
 const youtube = require("./youtube.js")({ DATA_DIR, media, ownBrain, h: { send, readBody, allowed, clientIp } });
 // profiles, posts with photos and links, comments, likes, follows (the Media tab works like X)
@@ -456,11 +506,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/pet") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
-    // no Claude key, or today's AI budget used up: our own brain answers (it costs nothing)
-    let ownOnly = false;
-    if (!API_KEY) { if (await ownBrain.ready()) ownOnly = true; else return send(res, 500, { error: "Server has no API key yet. Add it to the .env file." }, origin); }
-    if (daily.day === today() && daily.total >= DAILY_TOTAL && await ownBrain.ready()) ownOnly = true;
-    else { const lim = dailyCheck(req, "msg"); if (lim) return send(res, 429, { error: lim }, origin); }
+    // no Claude key, today's AI budget or this person's free AI messages used up: our own brains answer (they cost nothing)
+    let ownOnly = false, why = "";
+    if (!API_KEY) { ownOnly = true; why = "no_key"; }
+    else if (daily.day === today() && daily.total >= DAILY_TOTAL) { ownOnly = true; why = "busy_day"; }
+    else if (!learn.claudeOut()) { const lim = dailyCheck(req, "msg"); if (lim) { ownOnly = true; why = /very busy/.test(lim) ? "busy_day" : "your_day"; } }
+    // (while Claude rests, our own brains answer and nothing is counted: they cost nothing)
     let body;
     try { body = await readBody(req, 8 * 1024 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
     const messages = cleanMessages(body.messages);
@@ -472,7 +523,9 @@ const server = http.createServer(async (req, res) => {
       todos: (Array.isArray(body.todos) ? body.todos : []).slice(0, 50).map(t => ({ text: String((t && t.text) || "").slice(0, 200), done: !!(t && t.done) })),
       notes: (Array.isArray(body.notes) ? body.notes : []).slice(-10).map(n => String(n).slice(0, 300)),
       memories: (Array.isArray(body.memories) ? body.memories : []).slice(-40).map(n => String(n).slice(0, 300)),
-      knowledge: learn.knowledgeBlock(messages[messages.length - 1].content)
+      knowledge: learn.knowledgeBlock(messages[messages.length - 1].content),
+      learn: body.learn !== false, why, admin: isOwner(req),
+      device: crypto.createHash("sha256").update("self|" + (String(req.headers["x-device"] || "") || clientIp(req))).digest("hex").slice(0, 16)
     };
     const img = body.image;
     if (img && typeof img.data === "string" && ["image/jpeg", "image/png", "image/webp"].includes(img.mediaType) && img.data.length < 7_000_000) {
@@ -520,19 +573,22 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/briefing") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many requests." }, origin);
-    if (!API_KEY) return send(res, 500, { error: "Server has no API key yet." }, origin);
-    { const lim = dailyCheck(req, "brief"); if (lim) return send(res, 429, { error: lim }, origin); }
+    const lim = dailyCheck(req, "brief");
+    if (lim && /already/i.test(lim)) return send(res, 429, { error: lim }, origin);
     let body;
     try { body = await readBody(req, 32 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
     const lang = ["auto", "te", "en"].includes(body.lang) ? body.lang : "auto";
     const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map(x => String(x).slice(0, 200));
     const ctx = { now: String(body.now || "").slice(0, 40), tz: String(body.tz || "Asia/Kolkata").slice(0, 40), city: String(body.city || "").slice(0, 80),
       pet: PETS[body.pet] ? body.pet : "puppy", todos: list(body.todos, 10), reminders: list(body.reminders, 10) };
+    // no key, or today's AI messages used up: the self brain writes it (panchangam, festival, weather, reminders)
+    if (!API_KEY || lim) { try { return send(res, 200, await selfBrain.briefing(ctx, lang), origin); } catch (e) { return send(res, 502, { error: "The AI is busy right now." }, origin); } }
     try {
       return send(res, 200, await morningBriefing(ctx, lang), origin);
     } catch (e) {
-      console.error("Briefing error:", e.status || "", e.message);
-      return send(res, 502, { error: "The AI is busy right now." }, origin);
+      console.error("Briefing error:", e.status || "", e.message, "(the self brain writes it)");
+      try { return send(res, 200, await selfBrain.briefing(ctx, lang), origin); }
+      catch (e2) { return send(res, 502, { error: "The AI is busy right now." }, origin); }
     }
   }
 
@@ -544,7 +600,7 @@ const server = http.createServer(async (req, res) => {
     try {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
       // our own brain and the answers learned from common questions
-      if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list() });
+      if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list(), claude: learn.claudeOut(), self: selfBrain.stats(), trends: trends.status() });
       // Media: where the posts come from (news feeds), and how many came today
       if (req.method === "GET" && url.pathname === "/api/teach/media") return send(res, 200, media.teach.info());
       if (req.method === "GET" && url.pathname === "/api/teach/youtube") return send(res, 200, { sections: youtube.list(), stats: youtube.stats() });

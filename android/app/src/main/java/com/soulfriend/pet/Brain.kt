@@ -52,7 +52,15 @@ class Brain(private val store: Store) {
                     main.post {
                         // the server's own brain answered (the big AI is away): reminders, alarms, calls and apps are still
                         // done by the phone's small brain, which knows how; everything else is the own brain's answer
-                        val j = if (json.optBoolean("own") && photo == null) (try { LocalBrain.device(store.ctx, store, text) } catch (e: Exception) { null }) ?: json else json
+                        val dev = if (json.optBoolean("own") && photo == null) (try { LocalBrain.device(store.ctx, store, text) } catch (e: Exception) { null }) else null
+                        if (dev == null && json.optBoolean("weak") && photo == null && local) {
+                            // the server had no real answer this time: the phone tries too (the weather here, news,
+                            // Wikipedia, BigD Brain), and only then the server's kind "here's what I can do"
+                            history.removeAt(history.lastIndex)
+                            offline(text, onReply) { keep(text, json); onReply(json) }
+                            return@post
+                        }
+                        val j = dev ?: json
                         if (photo != null) history[history.lastIndex] = JSONObject().put("role", "user").put("content", "[I showed you a photo] $text")
                         history.add(JSONObject().put("role", "assistant").put("content", j.optString("reply", "Woof!")))
                         onReply(j)

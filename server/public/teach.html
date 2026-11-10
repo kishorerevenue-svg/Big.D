@@ -88,6 +88,8 @@ summary{cursor:pointer;font-weight:600}
     <section class="card">
       <h2>🧠 Our own brain · సొంత మెదడు</h2>
       <p class="hint">A free, open AI model (Google Gemma) that runs on this server. It answers when Claude can't: Claude is down, there is no key, or today's budget is used up. It reads the news, Wikipedia, the weather and what you teach here before answering. ఇది మన సర్వర్‌లోనే ఉండే సొంత మెదడు, ఏ కంపెనీ మీదా ఆధారపడదు.</p>
+      <p id="claudeState" class="msg"></p>
+      <p id="selfState" class="hint"></p>
       <p id="brainState" class="msg"></p>
       <button id="brainInstall" type="button">Install our own brain</button>
       <pre id="brainLog" hidden></pre>
@@ -99,6 +101,7 @@ summary{cursor:pointer;font-weight:600}
 
     <section class="card">
       <h2>📚 Learned answers · నేర్చుకున్న జవాబులు</h2>
+      <p class="hint">BigD learns from Claude as it talks: when Claude answers a general question that is right for anyone (never anything about a person), the answer is kept here for 90 days, so BigD can answer it by itself when Claude can't (for example when this month's limit is used up). Delete any answer you don't want. </p>
       <p class="hint">When <span id="minPeople">3</span> or more different people ask the same general question, an answer is prepared at night (with Claude and the internet) and kept here. The same question is then answered at once, and our own brain uses it when Claude can't answer. Only the question is counted, never who asked; questions about a person, about today, or with long numbers are never kept. Delete any answer you don't like.</p>
       <ul id="learned"></ul>
       <p class="hint" id="learnedEmpty">No learned answers yet.</p>
@@ -145,6 +148,7 @@ summary{cursor:pointer;font-weight:600}
       <h2>🎬 BigD cartoons (our own maker) · బిగ్‌డీ కార్టూన్లు</h2>
       <p class="hint">Our own cartoons, made fully on our server for free (no paid AI, no GPU): our own brain writes a tiny screenplay (a joke, riddle, fact, kids story or good thought) and BigD's cute characters act it out (elbows, knees, faces and the camera all move): Chai, Idli, Mango, the BigD puppy, Ammamma, Tatayya, the teacher, a cat and a parrot, in a tea shop, market, village, farm, school, on stage and more, with bubbles, voices, sounds and music. It also reads today's Media posts for fresh ideas. It learns by itself: the kinds people like (likes, comments, views) are made more often. People can also make their own in the app (Media › 🎬 Make a cartoon).</p>
       <p id="ctState" class="msg"></p>
+      <p id="ctTrends" class="hint"></p>
       <label for="ctDaily">Cartoons made by itself each day for Media (0 = none; people can still make their own in the app)</label>
       <input id="ctDaily" type="number" min="0" max="24" style="max-width:140px">
       <button id="ctDailySave" type="button" class="ghost" style="margin-top:8px">Save</button>
@@ -242,8 +246,19 @@ function row(title, text, small, buttonText, onClick) {
 }
 
 let brainTimer = 0;
+const SKILL = { chat: "chat", care: "kind words", panchangam: "panchangam", festival: "festivals", news: "news", jobs: "jobs", farming: "farming", movies: "movies", riddle: "riddles",
+  joke: "jokes", story: "stories", fact: "facts", devotional: "devotional", health: "health", crypto: "crypto", realestate: "real estate", weather: "weather", learned: "learned answers",
+  library: "your library", media: "Media posts", wikipedia: "Wikipedia", photo: "photos (can't see)", fallback: "didn't know", briefing: "morning briefings" };
 async function loadBrain() {
-  const { brain, learning } = await api("brain");
+  const { brain, learning, claude, self } = await api("brain");
+  if (claude) {
+    const why = claude.why === "limit" ? "this month's usage limit is used up" : claude.why === "credit" ? "the credit is used up" : claude.why === "key" ? "the API key is wrong or expired" : "an account problem";
+    say($("claudeState"), `⏸ Claude is resting: ${why}${claude.until ? " (back on " + new Date(claude.until).toLocaleDateString() + ")" : ""}. Meanwhile BigD's self brain and our own brain answer everyone, and Claude is checked again every 30 minutes. To bring Claude back now, raise the monthly limit or add credit at console.anthropic.com.`, false);
+  } else say($("claudeState"), "✓ Claude is answering.", true);
+  if (self) {
+    const top = Object.entries(self.skills || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `${SKILL[k] || k} ${n}`).join(", ");
+    $("selfState").textContent = `🧠 Self brain (no AI needed: news, panchangam, festivals, stories, jokes, facts, jobs, farming, weather, Wikipedia, your library and the answers learned from Claude): answered ${self.answered} times since the server started${top ? " (" + top + ")" : ""}.`;
+  }
   const st = $("brainState");
   if (brain.ready) say(st, `✓ Ready: ${brain.model}${brain.vision ? " (it can also look at photos)" : ""}. Answered ${brain.answered} times since the server started${brain.lastSeconds ? ", the last one in " + brain.lastSeconds + " seconds" : ""}.${brain.claudeResting ? " Claude is down right now, so it is answering everyone." : ""}`, true);
   else if (brain.installing) say(st, "Installing… this can take 10 to 40 minutes (a few GB to download). You can close this page.", true);
@@ -258,7 +273,8 @@ async function loadBrain() {
   $("minPeople").textContent = learning.minPeople;
   const ul = $("learned"); ul.textContent = "";
   $("learnedEmpty").hidden = learning.learned.length > 0;
-  for (const a of learning.learned) ul.append(row(a.q, a.answer, `used ${a.uses || 0} times · prepared ${new Date(a.at).toLocaleDateString()} · ${a.lang === "te" ? "Telugu" : "English"}`, "Delete", () => api("learned/delete", { id: a.id })));
+  for (const a of learning.learned) ul.append(row(a.q, a.answer, `used ${a.uses || 0} times · ${a.from === "chat" ? "learned from Claude in a chat" : "prepared"} ${new Date(a.at).toLocaleDateString()} · ${a.lang === "te" ? "Telugu" : "English"}`, "Delete", () => api("learned/delete", { id: a.id })));
+  if (learning.total > learning.learned.length) ul.append(row(`…and ${learning.total - learning.learned.length} more`, "", "the most used are shown", "", null));
   const qu = $("questions"); qu.textContent = "";
   $("qEmpty").hidden = learning.questions.length > 0;
   for (const q of learning.questions) qu.append(row(q.q, "", `${q.people} ${q.people === 1 ? "person" : "people"} · asked ${q.times} times${q.skipped ? " · no general answer (it depends on the person or the day)" : ""}`, "Forget", () => api("questions/forget", { key: q.key })));
@@ -391,6 +407,10 @@ $("aivMake").onclick = async () => {
 const KIND = { joke: "😄 Joke", riddle: "🤔 Riddle", fact: "💡 Fact", story: "📖 Story", thought: "🌟 Good thought" };
 function showCt(d) {
   if (document.activeElement !== $("ctDaily")) $("ctDaily").value = d.daily;
+  const tr = d.trends || {};
+  $("ctTrends").textContent = (d.writerResting ? "⏸ The cartoon writer is resting (Claude's limit is used up and our own brain is too small to write), so no cartoons are made by itself until Claude is back. " : "") +
+    (tr.festivalsSoon && tr.festivalsSoon.length ? "🪔 Festivals soon (a festival day's first cartoon is about it): " + tr.festivalsSoon.map(f => `${f.en} ${new Date(f.date).toLocaleDateString()}${f.approx ? " (about)" : ""}`).join(", ") + ". " : "") +
+    (tr.on === false ? "Google Trends is off (TRENDS=false)." : tr.themes && tr.themes.length ? "📈 Today's kind themes from Google Trends: " + tr.themes.map(t => t.en.split(":")[0]).join(", ") + "." : tr.ok === false && tr.error ? "📈 Google Trends: " + tr.error : "📈 Google Trends: no kind themes right now.");
   say($("ctState"), `${d.on ? "On" : "Off (CARTOONS=false)"} · cartoon maker: ${d.maker === "ours" ? "our own (ready)" : d.makerNote || "the old puppy"} · voice: ${d.voice || "talk sounds"} · made by itself today ${d.madeToday} of ${d.daily} · free cartoons made by people today ${d.publicToday}${d.waiting ? " · " + d.waiting + " waiting" : ""}${d.busy ? " · making one now…" : ""}`, d.on);
   const t = $("ctLearn"); t.textContent = "";
   const head = t.insertRow(); for (const x of ["Kind", "Made (30 days)", "People's liking (avg)"]) { const th = document.createElement("th"); th.textContent = x; head.append(th); }
