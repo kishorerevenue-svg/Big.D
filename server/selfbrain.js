@@ -220,8 +220,18 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     return R("festival", say(te, `ఈరోజు పెద్ద పండుగ ఏమీ లేదు. ${soon.length ? "రాబోయే పండుగలు: " + soonTxt + "." : ""}`, `No big festival today. ${soon.length ? "Coming up: " + soonTxt + "." : ""}`), "happy");
   }
 
+  /** Fresh headlines straight from Google News (when BigD's own Media news is old, e.g. while Claude rests). */
+  async function googleNews(topic, te) {
+    const hl = te ? "hl=te&gl=IN&ceid=IN:te" : "hl=en-IN&gl=IN&ceid=IN:en";
+    const u = topic ? `https://news.google.com/rss/search?q=${encodeURIComponent(topic + " when:2d")}&${hl}` : `https://news.google.com/rss?${hl}`;
+    const r = await get(u, 7000);
+    if (!r.ok) return [];
+    const xml = await r.text();
+    const dec = x => String(x).replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, "\"").replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
+    return [...xml.matchAll(/<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<link>([\s\S]*?)<\/link>/g)].slice(0, 3).map(m => ({ title: dec(m[1]), url: dec(m[2]) }));
+  }
   function listTitles(list, n) { return list.slice(0, n).map((i, k) => `${k + 1}. ${String(i.title).replace(/^[^\p{L}\p{N}]+/u, "")}`).join("\n"); }
-  function sections(q, te, ctx) {
+  async function sections(q, te, ctx) {
     const dev = (ctx && ctx.device) || "?";
     const one = (skill, list, emoji, emotion, max = 700, extra = {}) => {
       if (!list.length) return null;
@@ -233,11 +243,19 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     // news (on a topic, if they named one)
     if (re("\\bnews\\b|headline|varthalu|vartalu|vaartalu|vaarthalu|వార్త|న్యూస్|ముఖ్యాంశాలు").test(q)) {
       const all = posts("news", { days: 3 });
-      const topic = q.replace(re("\\b(latest|today'?s?|news|headlines?|tell me|the|about|on|what'?s|what is|in|of|any|top|varthalu|vartalu|cheppu)\\b|వార్తలు|వార్త|న్యూస్|ఈరోజు|ఈ రోజు|తాజా|చెప్పు|చెప్పండి|గురించి|సమాచారం|ముఖ్య|ఏమిటి|ఏంటి"), " ").replace(/[?.!,]/g, " ").trim();
+      const topic = q.replace(new RegExp("\\b(latest|today'?s?|news|headlines?|tell me|the|about|on|what'?s|what is|in|of|any|top|please|varthalu|vartalu|vaartalu|cheppu)\\b|వార్తలు|వార్త|న్యూస్|ఈరోజు|ఈ రోజు|తాజా|చెప్పండి|చెప్పు|గురించి|సమాచారం|ముఖ్య|ఏమిటి|ఏంటి", "gi"), " ").replace(/[?.!,]/g, " ").replace(/\s+/g, " ").trim();
       const tw = words(topic);
       if (tw.length) {
         const hit = all.concat(posts("news", { days: 14 })).filter((i, k, a) => a.indexOf(i) === k).filter(i => { const t = tokensOf(i); return tw.every(w => t.title.some(x => same(x, w)) || t.body.some(x => same(x, w))); });
         if (hit.length) return R("news", say(te, `📰 ${topic} గురించి తాజా వార్తలు:\n`, `📰 The latest news about ${topic}:\n`) + listTitles(hit, 3) + "\n" + clip(hit[0].body, 300), "thinking", { sources: srcOf(hit[0]) });
+      }
+      // nothing new in BigD's Media (or not on that topic): the headlines straight from Google News
+      if (!all.length || tw.length) {
+        try {
+          const g = await googleNews(tw.length ? topic : "", te);
+          if (g.length) return R("news", say(te, tw.length ? `📰 ${topic} గురించి ఇప్పటి వార్తలు (Google News):\n` : "📰 ఇప్పటి ముఖ్య వార్తలు (Google News):\n", tw.length ? `📰 News about ${topic} right now (Google News):\n` : "📰 Top news right now (Google News):\n") +
+            g.map((x, k) => `${k + 1}. ${x.title}`).join("\n"), "thinking", { sources: g.slice(0, 3).map(x => ({ title: x.title.slice(0, 80), url: x.url })) });
+        } catch (e) { }
       }
       if (!all.length) return R("news", say(te, "📰 ఈరోజు ఇంకా కొత్త వార్తలు రాలేదు. కొంచెం తర్వాత మళ్ళీ అడగండి.", "📰 No new news has come in yet today. Please ask again a little later."), "thinking");
       return R("news", say(te, "📰 ఈరోజు ముఖ్య వార్తలు:\n", "📰 Today's top news (in Telugu, from BigD Media):\n") + listTitles(all, 3) + "\n" + clip(all[0].body, 260) + say(te, "\nమరిన్ని వివరాలు మీడియా పేజీలో.", "\nThere's more on the Media page."), "thinking", { sources: srcOf(all[0]) });
@@ -322,7 +340,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
   // ---------- Wikipedia ----------
   const DEFINE = re("^(what|who|whom)('?s| is| are| was| were)\\b|\\b(meaning of|define|explain|tell me about|history of)\\b|అంటే ఏమిటి|అంటే ఏంటి|ఎవరు\\??$|గురించి చెప్పు|గురించి చెప్పండి|ఏమిటి\\??$|ante enti|evaru");
   async function wiki(q, te) {
-    const term = q.replace(re("\\b(who|what|whom|is|are|was|were|tell me|about|explain|the|a|an|meaning of|define|history of|please|bro)\\b"), " ")
+    const term = q.replace(new RegExp("\\b(who|what|whom|is|are|was|were|tell me|about|explain|the|a|an|meaning of|define|history of|please|bro)\\b", "gi"), " ")
       .replace(/ఎవరు|ఏమిటి|ఏంటి|అంటే|గురించి|చెప్పు|చెప్పండి|వివరించు|ఎవరో|ఏమిటో/g, " ").replace(/[?.!,]/g, " ").replace(/\s+/g, " ").trim();
     if (term.length < 3) return null;
     const tw = words(term);
@@ -364,7 +382,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
       if (SYMPTOM.test(q) && re("\\b(i|me|my|mine|i'?ve|i'?m|have|having|got)\\b|నాకు|నా |మా |ఉంది|వచ్చింది|naku").test(q))
         return R("health", say(te, "ఆరోగ్యం విషయంలో నా సొంత మెదడు సలహా ఇవ్వలేదు. 🙏 ఎక్కువగా ఉంటే దగ్గర్లోని డాక్టర్‌ని కలవండి; అత్యవసరమైతే వెంటనే 108 కి కాల్ చేయండి.",
           "I can't give health advice on my own. 🙏 If it's bad, please see a doctor nearby; in an emergency, call 108 right away."), "sad");
-      const sec = sections(q, te, ctx);
+      const sec = await sections(q, te, ctx);
       if (sec) return sec;
       const w = await weather(q, te);
       if (w) return w;
