@@ -32,7 +32,7 @@ object Updates {
         if (!force && System.currentTimeMillis() - store.updateCheckedAt < 6 * 3600_000L) { done(waiting(store)); return }
         io.execute {
             val info = try {
-                val c = URL(store.server + "/app/latest").openConnection() as HttpURLConnection
+                val c = URL(store.server + "/app/latest" + if (force) "?fresh=1" else "").openConnection() as HttpURLConnection
                 c.connectTimeout = 10_000; c.readTimeout = 15_000
                 val ok = c.responseCode == 200
                 val j = if (ok) JSONObject(c.inputStream.bufferedReader().use { it.readText() }) else null

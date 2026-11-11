@@ -66,6 +66,9 @@ class MainActivity : Activity() {
     private lateinit var navRight: LinearLayout
     private lateinit var mediaFab: TextView       // the round Media button in the middle of the bottom bar
     private lateinit var rootFrame: FrameLayout
+    /** The page area (above the bottom bar): the page scrolls in it; a bar can stay fixed at its top ([setTopBar]). */
+    private lateinit var bodyFrame: FrameLayout
+    private var topBar: View? = null
     @Volatile private var resumedNow = false
     private lateinit var mediaLabel: TextView
     private lateinit var fab: TextView
@@ -174,6 +177,7 @@ class MainActivity : Activity() {
         }
         scroll.setOnScrollChangeListener { _, _, _, _, _ -> if (tab == "feedback") socialPage?.checkSeen() }
         val body = FrameLayout(this).apply {
+            bodyFrame = this
             addView(scroll, FrameLayout.LayoutParams(-1, -1))
             addView(fab, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(18), dp(18)) })
         }
@@ -278,6 +282,14 @@ class MainActivity : Activity() {
         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (e: Exception) { leavingForSystemScreen = false; toast("Couldn't open $url") }
     }
     internal fun scrollTop() { scroll.post { scroll.scrollTo(0, 0) } }
+    /** A bar fixed at the top of the page while the page scrolls under it (Habit Chat while chats are picked), or none. */
+    internal fun setTopBar(v: View?) {
+        topBar?.let { bodyFrame.removeView(it) }
+        topBar = v
+        if (v != null) bodyFrame.addView(v, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+    }
+    /** A page started or stopped needing Back for itself (e.g. picked chats). */
+    internal fun backChanged() = updateBack()
     internal val scrollY: Int get() = scroll.scrollY
     internal fun scrollToY(y: Int) { scroll.post { scroll.scrollTo(0, y) } }
     /** Scrolls so that [v] is in view (a little below the top). */
@@ -291,6 +303,8 @@ class MainActivity : Activity() {
     // =================== frame ===================
     internal fun render() {
         val keepY = if (renderedTab == tab) scroll.scrollY else 0
+        if (renderedTab == "messages" && tab != "messages") chatPage.leave()
+        setTopBar(null)
         content.removeAllViews()
         if (!store.onboarded) { nav.visibility = View.GONE; mediaFab.visibility = View.GONE; fab.visibility = View.GONE; secure(false); renderSetup(); renderedTab = ""; updateBack(); return }
         nav.visibility = View.VISIBLE; mediaFab.visibility = View.VISIBLE
@@ -340,7 +354,7 @@ class MainActivity : Activity() {
     private fun updateBack() {
         if (Build.VERSION.SDK_INT < 33) return
         val sub = socialPage?.screen
-        val want = store.onboarded && ((tab == "feedback" && sub != null && sub != "feed") || tab in TOOL_PAGES)
+        val want = store.onboarded && ((tab == "feedback" && sub != null && sub != "feed") || tab in TOOL_PAGES || (tab == "messages" && chatPage.picking))
         if (want && backCb == null) {
             val cb = android.window.OnBackInvokedCallback { if (!pageBack()) dropBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
@@ -359,6 +373,7 @@ class MainActivity : Activity() {
         if (!store.onboarded) return false
         return when (tab) {
             "feedback" -> social.back()
+            "messages" -> chatPage.back()
             "family" -> { if (!family.back()) go("home"); true }
             in TOOL_PAGES -> { go("home"); true }
             else -> false
