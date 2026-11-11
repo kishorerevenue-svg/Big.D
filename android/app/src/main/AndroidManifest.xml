@@ -83,7 +83,7 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Habit.App">
 
         <activity
             android:name=".MainActivity"
@@ -127,7 +127,7 @@
             android:name=".MediaViewer"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Habit.Black" />
 
         <!-- Translate: the camera app saves the photo of a board or letter here (inside the app only) -->
         <provider
@@ -148,7 +148,7 @@
             android:name=".StoryReader"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Habit.Black" />
 
         <!-- The pet's eyes: a see-through screen with a small note at the top (the app you were in stays behind it) -->
         <activity
@@ -193,7 +193,7 @@
             android:name=".LoginActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+            android:theme="@style/Habit.App" />
 
         <!-- Habit Chat: one chat (one-to-one, a group, or my notes); also opens bigd://chat/<name> invite links -->
         <activity
@@ -201,7 +201,7 @@
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            android:theme="@style/Habit.Chat">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -215,14 +215,14 @@
             android:name=".ChatInfoActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+            android:theme="@style/Habit.Chat" />
         <!-- Habit Chat status updates (24 hours): watch them, or make one -->
         <activity
             android:name=".StatusActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Habit.Black" />
         <!-- Habit Chat: a quiet check for new messages every 15 minutes while the app is closed -->
         <receiver android:name=".ChatAlarm" android:exported="false" />
         <!-- Habit voice and video calls (CallManager): the call screen, "Decline" on the ring, and staying on during a call -->
@@ -236,20 +236,20 @@
             android:turnScreenOn="true"
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Habit.Black" />
         <receiver android:name=".CallActionReceiver" android:exported="false" />
         <!-- 💻 Linked devices: Habit Chat on a computer (bigdai.tech/web), linked with a QR code -->
         <activity
             android:name=".LinkedDevicesActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Habit.Chat" />
         <!-- Habit Chat settings (wallpaper, notifications, read receipts, downloads, hidden chats, blocked people) -->
         <activity
             android:name=".ChatSettingsActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Habit.Chat" />
         <service
             android:name=".CallService"
             android:exported="false"

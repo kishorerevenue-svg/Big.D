@@ -368,7 +368,7 @@ class SocialPage(private val m: MainActivity) {
         if (!list.isNullOrEmpty()) m.add(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(TextView(m).apply {
-                text = "▶  Reels · వీడియోలా"; textSize = 15f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                text = "▶  Reels · వీడియోలా"; textSize = 15f; setTextColor(Color.WHITE); typeface = Fonts.bold(context); gravity = Gravity.CENTER
                 background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(Color.parseColor("#FF7A45"), Color.parseColor("#E8336D"))).apply { cornerRadius = dp(24).toFloat() }
                 contentDescription = "Play the news like a video: each post is read aloud and the next comes by itself"
                 setOnClickListener { openReader(list[0], auto = true) }
@@ -631,7 +631,7 @@ class SocialPage(private val m: MainActivity) {
                     background = ui.round(Color.BLACK, 14); clipToOutline = true
                     addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP
                         Images.load("https://i.ytimg.com/vi/${p.ytId}/${if (tall) "hqdefault" else if (live) "mqdefault_live" else "mqdefault"}.jpg", this, 480) }, FrameLayout.LayoutParams(-1, -1))
-                    if (live) addView(TextView(m).apply { text = "● LIVE"; textSize = 11f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+                    if (live) addView(TextView(m).apply { text = "● LIVE"; textSize = 11f; setTextColor(Color.WHITE); typeface = Fonts.bold(context)
                         setPadding(dp(6), dp(2), dp(6), dp(2)); background = ui.round(Color.parseColor("#E62117"), 6) },
                         FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(6), dp(6), 0, 0) })
                     else addView(TextView(m).apply { text = "▶"; textSize = 16f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; background = ui.round(Color.parseColor("#B3E62117"), 10) },
@@ -682,7 +682,7 @@ class SocialPage(private val m: MainActivity) {
     }
 
     private fun badge() = TextView(m).apply {
-        text = "✓"; textSize = 10f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; includeFontPadding = false
+        text = "✓"; textSize = 10f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Fonts.bold(context); includeFontPadding = false
         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(BLUE) }
     }
 

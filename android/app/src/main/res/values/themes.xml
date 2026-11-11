@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Habit AI's two looks: "Navy and gold" (dark) and "Clean light". Both use Plus Jakarta Sans.
+     The chat screens pick one in ChatTheme.apply(): the phone's dark mode, or the choice in Chat settings. -->
+<resources>
+    <style name="Habit.Light" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">@font/jakarta</item>
+        <item name="android:colorAccent">#10163A</item>
+        <item name="android:colorPrimary">#FFFFFF</item>
+        <item name="android:colorPrimaryDark">#FFFFFF</item>
+        <item name="android:windowBackground">@color/habit_light_bg</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <style name="Habit.Dark" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">@font/jakarta</item>
+        <item name="android:colorAccent">#F5C451</item>
+        <item name="android:colorPrimary">#10152F</item>
+        <item name="android:colorPrimaryDark">#10152F</item>
+        <item name="android:colorBackground">#151B3D</item>
+        <item name="android:windowBackground">@color/habit_navy</item>
+        <item name="android:statusBarColor">#10152F</item>
+        <item name="android:navigationBarColor">#0B1026</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+    <!-- The chat screens' theme in the app's list of screens (the phone's dark mode picks values-night). -->
+    <style name="Habit.Chat" parent="Habit.Light" />
+    <!-- The rest of the app (Home, Tasks, Files…): the light look, with the new font. -->
+    <style name="Habit.App" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">@font/jakarta</item>
+    </style>
+    <!-- Full-screen dark screens (videos, stories, calls, status): the new font only. -->
+    <style name="Habit.Black" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">@font/jakarta</item>
+    </style>
+</resources>

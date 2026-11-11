@@ -82,36 +82,38 @@ class ChatPage(private val m: MainActivity) {
     private fun txt(s: String, size: Float, color: Int = C.TXT, bold: Boolean = false) = ui.text(s, size, color, bold)
 
     private fun draw(s: LinearLayout) {
+        ChatTheme.refresh(m)
         s.removeAllViews()
-        // the top: title, 📷, ⋮
+        // the top: the big title, then round buttons: scan a QR code, more
         s.addView(LinearLayout(m).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(2), dp(4), 0, dp(6))
-            addView(txt("Habit Chat", 25f, C.TXT, true).apply { letterSpacing = -0.01f }, LinearLayout.LayoutParams(0, -2, 1f))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(2), 0, dp(4))
+            addView(txt(t("Chats", "చాట్‌లు"), 30f, C.TXT).apply { typeface = Fonts.heavy(m); letterSpacing = -0.02f; setLineSpacing(0f, 1f) }, LinearLayout.LayoutParams(0, -2, 1f))
             if (ChatSync.isSetUp(m)) {
-                addView(icon("📷", t("Scan a QR code", "QR స్కాన్")) { m.startActivity(Intent(m, ChatActivity::class.java).putExtra("action", "scan")) })
-                addView(icon("⋮", t("More", "ఇంకా")) { topMenu(it) })
+                addView(roundIcon(R.drawable.ic_camera, t("Scan a QR code", "QR స్కాన్")) { m.startActivity(Intent(m, ChatActivity::class.java).putExtra("action", "scan")) })
+                addView(roundIcon(R.drawable.ic_more, t("More", "ఇంకా")) { topMenu(it) }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(8) })
             }
         })
         if (!ChatSync.isSetUp(m)) { intro(s); return }
         db.ensureAi()
-        // 💬 Chats · ⭕ Updates · 🏘️ Communities · 📞 Calls
-        val tabs = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; background = C.round(C.BAR, dp(22).toFloat()); setPadding(dp(4), dp(4), dp(4), dp(4)) }
+        // Chats · Updates · Communities · Calls
+        val tabs = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; background = C.round(C.CARD, dp(24).toFloat(), C.EDGE, dp(1)); setPadding(dp(4), dp(4), dp(4), dp(4)) }
         tabsBox = tabs
         fillTabs(tabs)
-        s.addView(tabs, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
+        s.addView(tabs, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         if (page == "chats") {
             // the search bar: chats, people, contacts, or ask the AI
             val search = EditText(m).apply {
-                hint = "🔍  " + t("Ask Habit AI or search", "Habit AI ని అడగండి లేదా వెతకండి"); setText(query)
-                textSize = 15.5f; setTextColor(C.TXT); setHintTextColor(C.SUB); setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT
-                background = C.round(C.BAR, dp(26).toFloat()); setPadding(dp(18), dp(12), dp(18), dp(12))
+                hint = t("Ask Habit AI or search", "Habit AI ని అడగండి లేదా వెతకండి"); setText(query)
+                textSize = 15f; setTextColor(C.TXT); setHintTextColor(C.SUB); setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT
+                background = C.round(C.CARD, dp(25).toFloat(), C.EDGE, dp(1)); setPadding(dp(18), dp(13), dp(18), dp(13)); minHeight = dp(50)
+                setCompoundDrawablesRelative(Ico.d(m, R.drawable.ic_search, C.SUB, dp(20)), null, null, null); compoundDrawablePadding = dp(10)
             }
             search.onText { q ->
                 query = q.trim(); listBox?.let { fillList(it) }
                 handler.removeCallbacksAndMessages("people")
                 if (query.length >= 2) handler.postAtTime({ findPeople(query) }, "people", android.os.SystemClock.uptimeMillis() + 450)
             }
-            s.addView(search, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+            s.addView(search, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
             val chips = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL }
             chipsBox = chips
             fillChips(chips)
@@ -120,8 +122,9 @@ class ChatPage(private val m: MainActivity) {
         val list = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL }
         listBox = list
         fillList(list)
-        s.addView(list, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        s.addView(View(m), LinearLayout.LayoutParams(-1, dp(70)))      // room for the ➕ button
+        // the rows reach a little closer to the screen's edges than the rest
+        s.addView(list, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6); marginStart = -dp(8); marginEnd = -dp(8) })
+        s.addView(View(m), LinearLayout.LayoutParams(-1, dp(80)))      // room for the new-chat button
     }
 
     private fun fillTabs(box: LinearLayout) {
@@ -129,14 +132,20 @@ class ChatPage(private val m: MainActivity) {
         val unread = db.convs().count { !hidden(it.cid) && (it.unread > 0 || markedUnread(it.cid)) && !it.muted }
         val newStatus = ChatStatus.unseenCount(m)
         val missed = db.callLogs(30).count { it.body.optString("st") == "missed" && it.at > (db.kv("callsSeen").toLongOrNull() ?: 0L) }
-        listOf(Triple("chats", "💬", t("Chats", "చాట్‌లు") to unread), Triple("updates", "⭕", t("Updates", "అప్‌డేట్స్") to newStatus),
-            Triple("comms", "🏘️", t("Communities", "కమ్యూనిటీలు") to 0), Triple("calls", "📞", t("Calls", "కాల్స్") to missed)).forEach { (k, icon, p) ->
+        listOf(Triple("chats", R.drawable.ic_chat, t("Chats", "చాట్‌లు") to unread), Triple("updates", R.drawable.ic_status, t("Updates", "అప్‌డేట్స్") to newStatus),
+            Triple("comms", R.drawable.ic_community, t("Communities", "కమ్యూనిటీలు") to 0), Triple("calls", R.drawable.ic_phone, t("Calls", "కాల్స్") to missed)).forEach { (k, icon, p) ->
             val on = page == k
             box.addView(LinearLayout(m).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(2), dp(6), dp(2), dp(6))
-                background = if (on) C.round(C.GOLD, dp(18).toFloat()) else null
-                addView(txt(icon + if (p.second > 0) " " + (if (p.second > 99) "99+" else p.second.toString()) else "", 15f, if (on) C.NAVY else C.TXT, true).apply { gravity = Gravity.CENTER })
-                addView(txt(p.first, 11f, if (on) C.NAVY else C.SUB, on).apply { gravity = Gravity.CENTER; maxLines = 1 })
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(2), dp(7), dp(2), dp(6))
+                background = if (on) C.round(C.PRIMARY, dp(20).toFloat()) else null
+                addView(FrameLayout(m).apply {
+                    addView(ImageView(m).apply { setImageDrawable(m.getDrawable(icon)!!.mutate()); imageTintList = android.content.res.ColorStateList.valueOf(if (on) C.ON_PRIMARY_ICON else C.SUB) }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+                    if (p.second > 0) addView(txt(if (p.second > 99) "99+" else p.second.toString(), 10f, if (on) C.PRIMARY else C.ON_GOLD).apply {
+                        typeface = Fonts.heavy(m); gravity = Gravity.CENTER; includeFontPadding = false; setPadding(dp(4), 0, dp(4), 0); minWidth = dp(16)
+                        background = C.round(if (on) C.ON_PRIMARY else C.GOLD, dp(8).toFloat())
+                    }, FrameLayout.LayoutParams(-2, dp(16), Gravity.TOP or Gravity.END))
+                }, LinearLayout.LayoutParams(dp(46), dp(22)))
+                addView(txt(p.first, 11.5f, if (on) C.ON_PRIMARY else C.SUB).apply { typeface = if (on) Fonts.heavy(m) else Fonts.semi(m); gravity = Gravity.CENTER; maxLines = 1; setPadding(0, dp(2), 0, 0); setLineSpacing(0f, 1f) })
                 setOnClickListener {
                     page = k; hiddenOpen = false
                     if (k == "calls") db.setKv("callsSeen", System.currentTimeMillis().toString())
@@ -146,15 +155,15 @@ class ChatPage(private val m: MainActivity) {
         }
     }
 
-    private fun icon(label: String, desc: String, onClick: (View) -> Unit) = TextView(m).apply {
-        text = label; textSize = 21f; gravity = Gravity.CENTER; setTextColor(C.TXT); contentDescription = desc
-        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)); setOnClickListener { onClick(it) }
-    }
+    /** A line icon to tap (no circle behind it). */
+    private fun icon(res: Int, desc: String, color: Int = C.TXT, onClick: (View) -> Unit) = Ico.view(m, res, color, 22, 44, desc, null, onClick)
+    /** A round button at the top: an icon on a soft circle. */
+    private fun roundIcon(res: Int, desc: String, onClick: (View) -> Unit) = Ico.view(m, res, C.TXT, 20, 44, desc, C.round(C.CARD, dp(22).toFloat(), C.EDGE, dp(1)), onClick)
 
     private fun intro(s: LinearLayout) {
         s.addView(LinearLayout(m).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(18), dp(18), dp(18)); background = C.round(C.CARD, dp(20).toFloat())
-            addView(txt("💬 " + t("Chat, call and share, like WhatsApp", "వాట్సాప్ లాగా చాట్, కాల్, షేర్"), 17f, C.GOLD, true))
+            orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(18), dp(18), dp(18)); background = C.round(C.CARD, dp(24).toFloat(), C.EDGE, dp(1))
+            addView(txt(t("Chat, call and share, like WhatsApp", "వాట్సాప్ లాగా చాట్, కాల్, షేర్"), 18f, C.TXT).apply { typeface = Fonts.heavy(m) })
             addView(txt(t("Chat with family and friends who use Habit AI: messages, groups, communities, voice and video calls, status updates, photos, videos, documents, voice notes, stickers, polls, and reminders and work tasks. " +
                 "🔒 Locked end to end: only the people in a chat can read it, not even Habit's server.",
                 "Habit AI వాడే కుటుంబం, స్నేహితులతో: మెసేజ్‌లు, గ్రూప్‌లు, కమ్యూనిటీలు, వాయిస్, వీడియో కాల్స్, స్టేటస్, ఫోటోలు, వీడియోలు, ఫైల్స్, వాయిస్ మెసేజ్‌లు, స్టిక్కర్లు, పోల్స్, రిమైండర్లు, పనులు. " +
@@ -165,13 +174,15 @@ class ChatPage(private val m: MainActivity) {
     }
 
     private fun goldButton(label: String, onClick: () -> Unit) = TextView(m).apply {
-        text = label; textSize = 15.5f; setTextColor(C.NAVY); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-        setPadding(dp(16), dp(13), dp(16), dp(13)); background = C.round(C.GOLD, dp(26).toFloat()); setOnClickListener { onClick() }
+        text = label; textSize = 15.5f; setTextColor(C.ON_PRIMARY); typeface = Fonts.heavy(context); gravity = Gravity.CENTER
+        setPadding(dp(16), dp(14), dp(16), dp(14)); background = C.round(C.PRIMARY, dp(26).toFloat()); setOnClickListener { onClick() }
     }
+    /** A chip: the chosen one filled (gold on navy, navy on white), the others soft with a thin edge. */
     private fun pill(label: String, on: Boolean, onClick: () -> Unit) = TextView(m).apply {
-        text = label; textSize = 14f; gravity = Gravity.CENTER; typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-        setTextColor(if (on) C.NAVY else C.TXT); setPadding(dp(15), dp(8), dp(15), dp(8))
-        background = C.round(if (on) C.GOLD else C.CARD, dp(18).toFloat()); setOnClickListener { onClick() }
+        text = label; textSize = 13.5f; gravity = Gravity.CENTER; typeface = if (on) Fonts.heavy(context) else Fonts.semi(context); includeFontPadding = false
+        setTextColor(if (on) C.ON_PRIMARY else C.TXT); setPadding(dp(16), 0, dp(16), 0); minHeight = dp(36); minimumHeight = dp(36)
+        background = if (on) C.round(C.PRIMARY, dp(18).toFloat()) else C.round(C.CARD, dp(18).toFloat(), if (C.dark) Color.parseColor("#1AFFFFFF") else C.LINE, dp(1))
+        setOnClickListener { onClick() }
     }
 
     // ---------- chips: All · Unread · ⭐ Favourites · Groups · my lists · ＋ ----------
@@ -181,14 +192,15 @@ class ChatPage(private val m: MainActivity) {
         val unread = all.count { it.unread > 0 || markedUnread(it.cid) }
         val groups = all.count { it.isGroup }
         val chips = mutableListOf("all" to t("All", "అన్నీ"), "unread" to t("Unread", "చదవనివి") + if (unread > 0) " $unread" else "",
-            "fav" to "⭐ " + t("Favourites", "ఇష్టమైనవి"), "groups" to t("Groups", "గ్రూప్‌లు") + if (groups > 0) " $groups" else "")
+            "fav" to t("Favourites", "ఇష్టమైనవి"), "groups" to t("Groups", "గ్రూప్‌లు") + if (groups > 0) " $groups" else "")
         ChatLists.all(m).forEach { chips.add("list:" + it.id to it.name) }
         chips.forEach { (k, label) ->
             box.addView(pill(label, filter == k) { filter = k; hiddenOpen = false; chipsBox?.let { fillChips(it) }; listBox?.let { fillList(it) } }.apply {
                 if (k.startsWith("list:")) setOnLongClickListener { listMenu(k.removePrefix("list:")); true }
             }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) })
         }
-        box.addView(pill("＋", false) { ChatLists.newList(m, emptySet()) { redraw() } }.apply { contentDescription = t("New list", "కొత్త లిస్ట్") }, LinearLayout.LayoutParams(-2, -2))
+        box.addView(Ico.view(m, R.drawable.ic_plus, C.TXT, 18, 36, t("New list", "కొత్త లిస్ట్"), C.round(C.CARD, dp(18).toFloat(), if (C.dark) Color.parseColor("#1AFFFFFF") else C.LINE, dp(1))) { ChatLists.newList(m, emptySet()) { redraw() } },
+            LinearLayout.LayoutParams(dp(36), dp(36)))
     }
     private fun listMenu(id: String) {
         val l = ChatLists.all(m).firstOrNull { it.id == id } ?: return
@@ -224,20 +236,22 @@ class ChatPage(private val m: MainActivity) {
         if (hiddenOpen) {
             pool = locked
             box.addView(LinearLayout(m).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(10), dp(4), dp(6))
-                addView(txt("🔒 " + t("Locked chats", "లాక్ చేసిన చాట్‌లు"), 16f, C.GOLD, true), LinearLayout.LayoutParams(0, -2, 1f))
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(10), dp(12), dp(6))
+                addView(txt("", 16f, C.GOLD_TXT, true).apply { text = Ico.withIcon(m, R.drawable.ic_lock, C.GOLD_TXT, dp(18), t("Locked chats", "లాక్ చేసిన చాట్‌లు")) }, LinearLayout.LayoutParams(0, -2, 1f))
                 addView(pill(t("Close", "మూసివేయి"), false) { hiddenOpen = false; listBox?.let { fillList(it) } })
             })
         } else if (locked.isNotEmpty() && query.isEmpty() && filter == "all") {
             box.addView(LinearLayout(m).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(12), dp(8), dp(12))
-                addView(txt("🔒", 20f), LinearLayout.LayoutParams(dp(48), -2))
-                addView(txt(t("Locked chats", "లాక్ చేసిన చాట్‌లు") + "  (${locked.size})", 15.5f, C.SUB), LinearLayout.LayoutParams(0, -2, 1f))
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(8)); background = C.press(m, dp(22).toFloat(), null)
+                addView(Ico.view(m, R.drawable.ic_lock, C.SUB, 20, 52, "", C.circle(C.CARD2)), LinearLayout.LayoutParams(dp(52), dp(52)))
+                addView(txt(t("Locked chats", "లాక్ చేసిన చాట్‌లు"), 15.5f, C.TXT, true).apply { setPadding(dp(14), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(txt(locked.size.toString(), 13f, C.SUB, true))
+                addView(Ico.view(m, R.drawable.ic_chevron_right, C.SUB, 18, 28, ""), LinearLayout.LayoutParams(dp(28), dp(28)))
                 setOnClickListener { openHidden() }
             })
         }
         val q = query.lowercase()
-        if (q.length >= 2 && !hiddenOpen) box.addView(personRow("🐾", t("Ask Habit AI", "Habit AI ని అడగండి"), "\"$query\"", goldMini(t("Ask", "అడుగు")) { askAi(query) }, null) { askAi(query) })
+        if (q.length >= 2 && !hiddenOpen) box.addView(personRow("🐾", t("Ask Habit AI", "Habit AI ని అడగండి"), "\"$query\"", goldMini(t("Ask", "అడుగు")) { askAi(query) }, null, R.drawable.ic_sparkle) { askAi(query) })
         val requests = pool.filter { !it.accepted && it.member && !it.isLocal }
         var chats = pool.filter { it.accepted || !it.member || it.isLocal }
         chats = when {
@@ -250,9 +264,9 @@ class ChatPage(private val m: MainActivity) {
         if (q.isNotEmpty()) chats = chats.filter { it.name.lowercase().contains(q) || it.preview.lowercase().contains(q) || it.data.optString("handle").lowercase().contains(q) }
         chats = chats.sortedWith(compareByDescending<ChatConv> { pinned(it.cid) }.thenByDescending { if (pinned(it.cid)) pinAt(it.cid) else 0L }.thenByDescending { it.last })
         if (requests.isNotEmpty() && q.isEmpty() && filter == "all" && !hiddenOpen) {
-            box.addView(txt("📨 " + t("Requests", "రిక్వెస్ట్‌లు") + " (${requests.size})", 14f, C.GOLD, true).apply { setPadding(dp(4), dp(12), 0, dp(2)) })
+            box.addView(heading(t("Requests", "రిక్వెస్ట్‌లు") + " · ${requests.size}"))
             requests.forEach { box.addView(row(it, true)) }
-            box.addView(View(m).apply { setBackgroundColor(C.LINE) }, LinearLayout.LayoutParams(-1, 1).apply { topMargin = dp(6); bottomMargin = dp(4) })
+            box.addView(View(m).apply { setBackgroundColor(C.LINE) }, LinearLayout.LayoutParams(-1, 1).apply { topMargin = dp(6); bottomMargin = dp(4); marginStart = dp(12); marginEnd = dp(12) })
         }
         chats.forEach { box.addView(row(it, false)) }
         if (chats.isEmpty()) box.addView(txt(when {
@@ -262,28 +276,36 @@ class ChatPage(private val m: MainActivity) {
             filter == "fav" -> t("No favourites yet. Long-press a chat › ⭐ Add to favourites.", "ఇంకా ఇష్టమైనవి లేవు. చాట్‌ని నొక్కి పట్టి › ⭐ ఎంచుకోండి.")
             filter.startsWith("list:") -> t("No chats in this list. Long-press a chat › 📋 Add to list.", "ఈ లిస్ట్‌లో చాట్‌లు లేవు. చాట్‌ని నొక్కి పట్టి › 📋 లిస్ట్‌లో చేర్చు.")
             else -> t("No chats yet. Tap ➕ to start one, or invite your people below.", "ఇంకా చాట్‌లు లేవు. ➕ నొక్కి మొదలుపెట్టండి, లేదా కింద మీ వాళ్ళను ఆహ్వానించండి.")
-        }, 14f, C.SUB).apply { setPadding(dp(6), dp(16), dp(6), dp(10)) })
+        }, 14f, C.SUB).apply { setPadding(dp(14), dp(16), dp(14), dp(10)) })
         if (hiddenOpen) return
         if (q.length >= 2) { searchMore(box); return }
         if (filter == "all") invites(box)
     }
 
     private fun row(c: ChatConv, request: Boolean): View {
-        val r = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(11), dp(4), dp(11)) }
-        r.addView(ChatDraw.avatar(m, store, c.emoji, if (c.isDm) c.avatar else "", dp(50)), LinearLayout.LayoutParams(dp(50), dp(50)))
-        val mid = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(13), 0, dp(8), 0) }
-        c.comm?.let { k -> mid.addView(txt("🏘️ " + k.optString("name") + "  ›", 11.5f, C.SUB).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }) }
+        val pin = pinned(c.cid) && !request
+        val r = LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = C.press(m, dp(22).toFloat(), if (pin) C.round(C.ROW_HI, dp(22).toFloat()) else null)
+            if (pin && !C.dark) elevation = dp(1).toFloat()
+        }
+        r.addView(ChatDraw.avatar(m, store, c.emoji, if (c.isDm) c.avatar else "", dp(52), null, c.name, c.isGroup || c.isBcast, c.cid, c.isAi), LinearLayout.LayoutParams(dp(52), dp(52)))
+        val mid = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(8), 0) }
+        c.comm?.let { k -> mid.addView(txt(k.optString("name") + "  ›", 11.5f, C.SUB).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }) }
         val tasks = db.tasks(c.cid).size
+        // the name, then "2 tasks" right after it (the name gets shorter, not the chip)
         mid.addView(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            addView(txt((if (c.isAnn) "📢 " else "") + c.name, 16.5f, C.TXT, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f).apply { weight = 1f })
-            if (tasks > 0) addView(txt("📋 $tasks", 12f, C.NAVY, true).apply { setPadding(dp(7), dp(1), dp(7), dp(1)); background = C.round(C.GOLD, dp(9).toFloat()) },
-                LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
-        }, LinearLayout.LayoutParams(-1, -2))
+            addView(txt((if (c.isAnn) "📢 " else "") + c.name, 16f, C.TXT, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setLineSpacing(0f, 1f) }, LinearLayout.LayoutParams(-2, -2, 1f))
+            if (tasks > 0) addView(txt(if (tasks == 1) t("1 task", "1 పని") else t("$tasks tasks", "$tasks పనులు"), 11.5f, C.GOLD_TXT).apply {
+                typeface = Fonts.heavy(m); gravity = Gravity.CENTER; includeFontPadding = false; setPadding(dp(8), 0, dp(8), 0); background = C.round(C.GOLD_SOFT, dp(10).toFloat())
+            }, LinearLayout.LayoutParams(-2, dp(20)).apply { marginStart = dp(6) })
+        }, LinearLayout.LayoutParams(-2, -2))
         val last = if (!request && c.member && !c.isSelf && !c.isAi) db.lastMsg(c.cid) else null
         val me = ChatSync.myUid(m)
-        val tick = if (last != null && last.sender == me && !c.isLocal && last.kind != "sys" && last.kind != "clog") when (c.ticks(last.seq, me)) { 3 -> "✓✓ "; 2 -> "✓✓ "; 1 -> "✓ "; else -> "🕓 " } else ""
+        val tick = if (last != null && last.sender == me && !c.isLocal && last.kind != "sys" && last.kind != "clog") when (c.ticks(last.seq, me)) { 3 -> 3; 2 -> 2; 1 -> 1; else -> -1 } else 0
         val typing = ChatSync.typingIn(c.cid).firstOrNull()
+        val busy = typing != null || (c.isAi && ChatSync.aiBusy)
         val pv = when {
             typing != null -> (if (c.isGroup) c.nameOf(typing.first).substringBefore(' ') + " " else "") + (if (typing.second == "rec") t("recording audio…", "ఆడియో రికార్డ్ చేస్తున్నారు…") else t("typing…", "టైప్ చేస్తున్నారు…"))
             c.isAi && ChatSync.aiBusy -> t("typing…", "టైప్ చేస్తోంది…")
@@ -294,31 +316,50 @@ class ChatPage(private val m: MainActivity) {
             c.isSelf -> t("Notes and reminders for yourself", "మీ కోసం నోట్స్, రిమైండర్లు")
             c.isAi -> t("Ask me anything · reminders, letters, answers", "ఏదైనా అడగండి · రిమైండర్లు, లెటర్లు, జవాబులు")
             c.isBcast -> "📢 " + t("${c.members().size} recipients", "${c.members().size} మందికి")
-            else -> t("🔒 Say hi!", "🔒 హాయ్ చెప్పండి!")
+            else -> t("Say hi!", "హాయ్ చెప్పండి!")
         }
+        val unread = c.unread > 0 || markedUnread(c.cid)
+        val pvColor = if (unread) C.TXT2 else C.SUB
         mid.addView(TextView(m).apply {
-            val sp = android.text.SpannableString(tick + pv)
-            if (tick.isNotEmpty()) sp.setSpan(android.text.style.ForegroundColorSpan(if (last != null && c.ticks(last.seq, me) == 3) C.READ else C.SUB), 0, tick.length, 0)
-            text = sp; textSize = 14f; setTextColor(if (typing != null || (c.isAi && ChatSync.aiBusy)) C.GOLD else C.SUB); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            textSize = 14f; maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setLineSpacing(0f, 1f); setPadding(0, dp(4), 0, 0)
+            if (busy) { text = pv; setTextColor(C.GOLD_TXT); typeface = Fonts.semi(m) }
+            else { text = previewLine(pv, if (busy) 0 else tick, pvColor); setTextColor(pvColor); typeface = Fonts.regular(m) }
         })
         r.addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
-        val unread = c.unread > 0 || markedUnread(c.cid)
         val end = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
-        if (c.last > 10 && !c.isSelf) end.addView(txt(whenText(c.last), 12f, if (unread && !c.muted) C.GOLD else C.SUB).apply { gravity = Gravity.END })
+        val hot = unread && !c.muted
+        if (c.last > 10 && !c.isSelf) end.addView(txt(whenText(c.last), 12f, if (hot) C.GOLD_TXT else C.SUB).apply { gravity = Gravity.END; typeface = if (hot) Fonts.bold(m) else Fonts.regular(m); setLineSpacing(0f, 1f) })
         end.addView(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            if (ChatTheme.disappear(m, c.cid) > 0) addView(txt("⏱", 12.5f, C.SUB))
-            if (c.muted) addView(txt("🔕", 12.5f, C.SUB))
-            if (pinned(c.cid)) addView(txt(" 📌", 12.5f, C.SUB))
-            if (c.unread > 0) addView(txt(if (c.unread > 99) "99+" else c.unread.toString(), 11.5f, C.NAVY, true).apply {
-                gravity = Gravity.CENTER; minWidth = dp(22); setPadding(dp(6), dp(2), dp(6), dp(2)); background = C.round(if (c.muted) C.SUB else C.GOLD, dp(11).toFloat())
-            }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(5) })
+            fun mark(res: Int) = addView(ImageView(m).apply { setImageDrawable(m.getDrawable(res)!!.mutate()); imageTintList = android.content.res.ColorStateList.valueOf(C.SUB) }, LinearLayout.LayoutParams(dp(15), dp(15)).apply { marginStart = dp(5) })
+            if (ChatTheme.disappear(m, c.cid) > 0) mark(R.drawable.ic_timer)
+            if (c.muted) mark(R.drawable.ic_bell_off)
+            if (pinned(c.cid)) mark(R.drawable.ic_pin)
+            if (c.unread > 0) addView(txt(if (c.unread > 99) "99+" else c.unread.toString(), 12f, C.ON_GOLD).apply {
+                typeface = Fonts.heavy(m); gravity = Gravity.CENTER; includeFontPadding = false; minWidth = dp(22); setPadding(dp(6), 0, dp(6), 0)
+                background = C.round(if (c.muted) C.SUB else C.GOLD, dp(11).toFloat())
+            }, LinearLayout.LayoutParams(-2, dp(22)).apply { marginStart = dp(6) })
             else if (markedUnread(c.cid)) addView(View(m).apply { background = ChatTheme.circle(C.GOLD) }, LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginStart = dp(6) })
-        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(5) })
+        }, LinearLayout.LayoutParams(-2, dp(22)).apply { topMargin = dp(6) })
         r.addView(end)
         r.setOnClickListener { db.setKv("unr:${c.cid}", ""); ChatActivity.open(m, c.cid) }
         r.setOnLongClickListener { chatMenu(c); true }
         return r
+    }
+    /** The last message in a row: ticks, then an icon for photos, voice notes, places… instead of the emoji. */
+    private val pvIcons = listOf("📷 " to R.drawable.ic_image, "🎤 " to R.drawable.ic_mic, "📍 " to R.drawable.ic_map_pin, "📄 " to R.drawable.ic_doc,
+        "🎬 " to R.drawable.ic_video, "👤 " to R.drawable.ic_person, "📅 " to R.drawable.ic_calendar, "📊 " to R.drawable.ic_poll, "🏷️ " to R.drawable.ic_sticker,
+        "👁 " to R.drawable.ic_eye, "🎞️ " to R.drawable.ic_image, "🚫 " to R.drawable.ic_close, "⏱ " to R.drawable.ic_timer, "📌 " to R.drawable.ic_tasks)
+    private fun previewLine(pv: String, tick: Int, color: Int): CharSequence {
+        val sb = android.text.SpannableStringBuilder()
+        if (tick != 0) sb.append(Ico.withIcon(m, when (tick) { -1 -> R.drawable.ic_clock; 1 -> R.drawable.ic_tick; else -> R.drawable.ic_ticks }, if (tick == 3) C.READ else C.SUB, dp(16), ""))
+        var who = ""; var body = pv
+        val colon = pv.indexOf(": ")
+        if (colon in 1..30 && pvIcons.any { pv.startsWith(it.first, colon + 2) }) { who = pv.substring(0, colon + 2); body = pv.substring(colon + 2) }
+        val hit = pvIcons.firstOrNull { body.startsWith(it.first) }
+        if (hit != null) { sb.append(Ico.withIcon(m, hit.second, if (hit.second == R.drawable.ic_mic) C.GOLD_TXT else color, dp(15), "")); sb.append(who).append(body.removePrefix(hit.first)) }
+        else sb.append(pv)
+        return sb
     }
 
     private fun whenText(at: Long): String {
@@ -387,7 +428,7 @@ class ChatPage(private val m: MainActivity) {
 
     fun pickWall(cid: String) {
         val walls = ChatTheme.WALLS
-        val cur = if (cid.isEmpty()) db.kv("set:wall").toIntOrNull() ?: 0 else ChatTheme.wallOf(m, cid)
+        val cur = if (cid.isEmpty()) db.kv("set:wall").toIntOrNull() ?: ChatTheme.DEFAULT_WALL else ChatTheme.wallOf(m, cid)
         AlertDialog.Builder(m).setTitle(t("🎨 Chat theme", "🎨 చాట్ థీమ్"))
             .setSingleChoiceItems(walls.map { (if (it.id == cur) "✓ " else "") + if (te) it.te else it.en }.toTypedArray(), walls.indexOfFirst { it.id == cur }) { d, i ->
                 db.setKv(if (cid.isEmpty()) "set:wall" else "wall:$cid", walls[i].id.toString()); d.dismiss(); m.toast(t("Theme changed 🎨", "థీమ్ మార్చాం 🎨"))
@@ -415,18 +456,18 @@ class ChatPage(private val m: MainActivity) {
         val mine = ChatStatus.mine
         val me = ChatSync.me(m)
         box.addView(LinearLayout(m).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(10), dp(4), dp(10))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(10), dp(8), dp(10)); background = C.press(m, dp(22).toFloat(), null)
             addView(FrameLayout(m).apply {
-                addView(ChatDraw.avatar(m, store, me.optString("emoji", "🐾"), me.optString("avatar"), dp(54), if (mine.isNotEmpty()) C.GOLD else null), FrameLayout.LayoutParams(dp(54), dp(54)))
-                if (mine.isEmpty()) addView(txt("+", 15f, C.NAVY, true).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(C.GOLD) }, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.BOTTOM or Gravity.END))
+                addView(ChatDraw.avatar(m, store, me.optString("emoji", "🐾"), me.optString("avatar"), dp(54), if (mine.isNotEmpty()) C.GOLD else null, me.optString("name"), key = me.optString("uid")), FrameLayout.LayoutParams(dp(54), dp(54)))
+                if (mine.isEmpty()) addView(Ico.view(m, R.drawable.ic_plus, C.ON_PRIMARY_ICON, 14, 22, "", C.circle(C.PRIMARY)), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.BOTTOM or Gravity.END))
             }, LinearLayout.LayoutParams(dp(56), dp(56)))
             addView(LinearLayout(m).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0)
                 addView(txt(t("My status", "నా స్టేటస్"), 16f, C.TXT, true))
                 addView(txt(if (mine.isEmpty()) t("Tap to add a status update", "స్టేటస్ పెట్టడానికి నొక్కండి") else t("${mine.size} updates · ", "${mine.size} అప్‌డేట్స్ · ") + ChatStatus.ago(mine.last().item.at, te) + " · 👁 " + mine.sumOf { it.views.size }, 13f, C.SUB))
             }, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(icon("✏️", t("Text status", "టెక్స్ట్ స్టేటస్")) { StatusActivity.write(m) })
-            addView(icon("📷", t("Photo or video status", "ఫోటో / వీడియో స్టేటస్")) { StatusActivity.media(m) })
+            addView(icon(R.drawable.ic_edit, t("Text status", "టెక్స్ట్ స్టేటస్")) { StatusActivity.write(m) })
+            addView(icon(R.drawable.ic_camera, t("Photo or video status", "ఫోటో / వీడియో స్టేటస్")) { StatusActivity.media(m) })
             setOnClickListener { if (mine.isEmpty()) newStatus() else StatusActivity.watch(m, "me") }
         })
         val muted = ChatStatus.muted(m)
@@ -434,21 +475,21 @@ class ChatPage(private val m: MainActivity) {
         val recent = all.filter { it.unseen && it.uid !in muted }
         val viewed = all.filter { !it.unseen && it.uid !in muted }
         val mutedList = all.filter { it.uid in muted }
-        if (recent.isNotEmpty()) { box.addView(txt(t("Recent updates", "కొత్త అప్‌డేట్స్"), 13f, C.SUB, true).apply { setPadding(dp(6), dp(12), 0, dp(2)) }); recent.forEach { box.addView(statusRow(it, C.GOLD)) } }
-        if (viewed.isNotEmpty()) { box.addView(txt(t("Viewed updates", "చూసిన అప్‌డేట్స్"), 13f, C.SUB, true).apply { setPadding(dp(6), dp(12), 0, dp(2)) }); viewed.forEach { box.addView(statusRow(it, C.LINE)) } }
-        if (mutedList.isNotEmpty()) { box.addView(txt(t("Muted updates", "మ్యూట్ చేసినవి"), 13f, C.SUB, true).apply { setPadding(dp(6), dp(12), 0, dp(2)) }); mutedList.forEach { box.addView(statusRow(it, C.LINE).apply { alpha = 0.55f }) } }
-        if (all.isEmpty()) box.addView(txt(t("No updates from your people yet. Status updates stay for 24 hours and are locked end to end.", "మీ వాళ్ళ నుంచి ఇంకా అప్‌డేట్స్ లేవు. స్టేటస్ 24 గంటలు ఉంటుంది, ఎండ్ టు ఎండ్ లాక్."), 13.5f, C.SUB).apply { setPadding(dp(6), dp(14), dp(6), dp(6)) })
+        if (recent.isNotEmpty()) { box.addView(heading(t("Recent updates", "కొత్త అప్‌డేట్స్"))); recent.forEach { box.addView(statusRow(it, C.GOLD)) } }
+        if (viewed.isNotEmpty()) { box.addView(heading(t("Viewed updates", "చూసిన అప్‌డేట్స్"))); viewed.forEach { box.addView(statusRow(it, C.LINE)) } }
+        if (mutedList.isNotEmpty()) { box.addView(heading(t("Muted updates", "మ్యూట్ చేసినవి"))); mutedList.forEach { box.addView(statusRow(it, C.LINE).apply { alpha = 0.55f }) } }
+        if (all.isEmpty()) box.addView(txt(t("No updates from your people yet. Status updates stay for 24 hours and are locked end to end.", "మీ వాళ్ళ నుంచి ఇంకా అప్‌డేట్స్ లేవు. స్టేటస్ 24 గంటలు ఉంటుంది, ఎండ్ టు ఎండ్ లాక్."), 13.5f, C.SUB).apply { setPadding(dp(14), dp(14), dp(14), dp(6)) })
         box.addView(LinearLayout(m).apply {
-            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, 0)
-            addView(pill("🔒 " + t("Status privacy", "స్టేటస్ గోప్యత"), false) { ChatStatus.privacyDialog(m, store) })
+            orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(12), 0, 0)
+            addView(pill(t("Status privacy", "స్టేటస్ గోప్యత"), false) { ChatStatus.privacyDialog(m, store) }.apply { setCompoundDrawablesRelative(Ico.d(m, R.drawable.ic_lock, C.TXT, dp(16)), null, null, null); compoundDrawablePadding = dp(6) })
         })
         // channels: Habit Media is where people post publicly
         box.addView(heading(t("Channels", "ఛానెల్స్")))
-        box.addView(personRow("📺", "Habit Media", t("Posts, videos and news from people you follow", "మీరు ఫాలో అయ్యేవాళ్ళ పోస్ట్‌లు, వీడియోలు, వార్తలు"), goldMini(t("Open", "తెరువు")) { m.go("feedback") }, null) { m.go("feedback") })
+        box.addView(personRow("📺", "Habit Media", t("Posts, videos and news from people you follow", "మీరు ఫాలో అయ్యేవాళ్ళ పోస్ట్‌లు, వీడియోలు, వార్తలు"), goldMini(t("Open", "తెరువు")) { m.go("feedback") }, null, R.drawable.ic_media) { m.go("feedback") })
     }
     private fun statusRow(o: ChatStatus.Owner, ring: Int): LinearLayout = LinearLayout(m).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(9), dp(4), dp(9))
-        addView(ChatDraw.avatar(m, store, o.emoji, o.avatar, dp(52), ring), LinearLayout.LayoutParams(dp(54), dp(54)))
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(9), dp(12), dp(9)); background = C.press(m, dp(22).toFloat(), null)
+        addView(ChatDraw.avatar(m, store, o.emoji, o.avatar, dp(52), ring, o.name, key = o.uid), LinearLayout.LayoutParams(dp(54), dp(54)))
         addView(LinearLayout(m).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0)
             addView(txt(o.name, 16f, C.TXT, true))
@@ -474,30 +515,31 @@ class ChatPage(private val m: MainActivity) {
             Thread { val l = Communities.load(store); m.runOnUiThread { if (l != null) { comms = l; if (page == "comms") listBox?.let { fillList(it) } } } }.start()
         }
         box.addView(LinearLayout(m).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(14), dp(8), dp(14)); background = C.round(C.CARD, dp(16).toFloat())
-            addView(txt("🏘️", 24f).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(48), -2))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(14), dp(14), dp(14)); background = C.press(m, dp(22).toFloat(), C.round(C.CARD, dp(22).toFloat(), C.EDGE, dp(1)))
+            val (tb, tf) = C.TINTS[1]
+            addView(Ico.view(m, R.drawable.ic_community, tf, 24, 48, "", C.round(tb, dp(16).toFloat())), LinearLayout.LayoutParams(dp(48), dp(48)))
             addView(LinearLayout(m).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(dp(8), 0, 0, 0)
-                addView(txt(t("New community", "కొత్త కమ్యూనిటీ"), 16f, C.GOLD, true))
+                orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
+                addView(txt(t("New community", "కొత్త కమ్యూనిటీ"), 16f, C.TXT, true))
                 addView(txt(t("Bring your groups together, with one announcements group for everyone (e.g. all your office groups).", "మీ గ్రూప్‌లను ఒకచోట చేర్చండి, అందరికీ ఒక ప్రకటనల గ్రూప్‌తో (ఉదా: మీ ఆఫీస్ గ్రూప్‌లు అన్నీ)."), 13f, C.SUB))
             }, LinearLayout.LayoutParams(0, -2, 1f))
             setOnClickListener { Communities.create(m, store) { redraw() } }
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); marginStart = dp(8); marginEnd = dp(8) })
         val list = comms
         if (list == null) { box.addView(txt("⏳", 18f, C.SUB).apply { gravity = Gravity.CENTER; setPadding(0, dp(20), 0, 0) }); return }
-        if (list.isEmpty()) { box.addView(txt(t("You're not in any community yet.", "మీరు ఇంకా ఏ కమ్యూనిటీలో లేరు."), 14f, C.SUB).apply { setPadding(dp(6), dp(16), dp(6), dp(6)) }); return }
+        if (list.isEmpty()) { box.addView(txt(t("You're not in any community yet.", "మీరు ఇంకా ఏ కమ్యూనిటీలో లేరు."), 14f, C.SUB).apply { setPadding(dp(14), dp(16), dp(14), dp(6)) }); return }
         for (k in list) {
             box.addView(LinearLayout(m).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(12), dp(12), dp(8)); background = C.round(C.BAR, dp(16).toFloat())
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(14), dp(10), dp(8)); background = C.round(C.CARD, dp(22).toFloat(), C.EDGE, dp(1))
                 addView(LinearLayout(m).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    addView(txt(k.optString("emoji", "🏘️"), 24f).apply { gravity = Gravity.CENTER; background = C.round(C.CARD, dp(12).toFloat()) }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                    addView(txt(k.optString("emoji", "🏘️"), 24f).apply { gravity = Gravity.CENTER; background = C.round(C.tint(k.optString("id")).first, dp(16).toFloat()) }, LinearLayout.LayoutParams(dp(48), dp(48)))
                     addView(LinearLayout(m).apply {
                         orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
                         addView(txt(k.optString("name"), 17f, C.TXT, true))
                         addView(txt(t("${k.optInt("people")} people · ${k.optJSONArray("groups")?.length() ?: 0} groups", "${k.optInt("people")} మంది · ${k.optJSONArray("groups")?.length() ?: 0} గ్రూప్‌లు") + if (k.optBoolean("admin")) t(" · you're an admin", " · మీరు అడ్మిన్") else "", 12.5f, C.SUB))
                     }, LinearLayout.LayoutParams(0, -2, 1f))
-                    addView(icon("⋯", t("Community", "కమ్యూనిటీ")) { Communities.show(m, store, k.optString("id")) })
+                    addView(icon(R.drawable.ic_more, t("Community", "కమ్యూనిటీ"), C.SUB) { Communities.show(m, store, k.optString("id")) })
                 })
                 val ann = k.optString("ann")
                 if (ann.isNotEmpty()) addView(subRow("📢", t("Announcements", "ప్రకటనలు"), db.conv(ann)?.preview ?: "") { if (db.conv(ann) != null) ChatActivity.open(m, ann) else m.toast(t("It's coming… try again in a moment.", "వస్తోంది… కాసేపట్లో మళ్ళీ ప్రయత్నించండి.")) })
@@ -508,12 +550,12 @@ class ChatPage(private val m: MainActivity) {
                         if (g.optBoolean("joined") && db.conv(g.optString("cid")) != null) ChatActivity.open(m, g.optString("cid")) else Communities.join(m, store, k.optString("id"), g)
                     })
                 }
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12); marginStart = dp(8); marginEnd = dp(8) })
         }
     }
     private fun subRow(icon: String, name: String, sub: String, onClick: () -> Unit) = LinearLayout(m).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(6), dp(10), dp(4), dp(6))
-        addView(txt(icon, 19f).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(C.CARD) }, LinearLayout.LayoutParams(dp(40), dp(40)))
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(10), dp(4), dp(6))
+        addView(txt(icon, 19f).apply { gravity = Gravity.CENTER; background = C.round(C.CARD2, dp(14).toFloat()) }, LinearLayout.LayoutParams(dp(40), dp(40)))
         addView(LinearLayout(m).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
             addView(txt(name, 15f, C.TXT, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
@@ -525,18 +567,18 @@ class ChatPage(private val m: MainActivity) {
     // ---------- 📞 Calls: every Habit call, newest first ----------
     private fun calls(box: LinearLayout) {
         box.addView(LinearLayout(m).apply {
-            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, dp(4))
-            addView(pill("📞 " + t("New call", "కొత్త కాల్"), false) { newCall() })
-            addView(pill("☎️ " + t("Phone contact", "ఫోన్ కాంటాక్ట్"), false) { m.startActivity(Intent(m, ChatActivity::class.java).putExtra("action", "contact")) }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+            orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(10), 0, dp(4))
+            addView(pill(t("New call", "కొత్త కాల్"), true) { newCall() }.apply { setCompoundDrawablesRelative(Ico.d(m, R.drawable.ic_phone, C.ON_PRIMARY, dp(16)), null, null, null); compoundDrawablePadding = dp(6) })
+            addView(pill(t("Phone contact", "ఫోన్ కాంటాక్ట్"), false) { m.startActivity(Intent(m, ChatActivity::class.java).putExtra("action", "contact")) }.apply { setCompoundDrawablesRelative(Ico.d(m, R.drawable.ic_person, C.TXT, dp(16)), null, null, null); compoundDrawablePadding = dp(6) }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
         })
         val favs = db.convs().filter { it.isDm && fav(it.cid) && it.accepted && !it.blocked }
         if (favs.isNotEmpty()) {
             box.addView(heading(t("Favourites", "ఇష్టమైనవి")))
-            for (c in favs) box.addView(personRow(c.emoji, c.name, "", icon("🎥", t("Video call", "వీడియో కాల్")) { callChat(c.cid, true) }, icon("📞", t("Voice call", "వాయిస్ కాల్")) { callChat(c.cid, false) }) { ChatActivity.open(m, c.cid) })
+            for (c in favs) box.addView(personRow(c.emoji, c.name, "", icon(R.drawable.ic_video, t("Video call", "వీడియో కాల్")) { callChat(c.cid, true) }, icon(R.drawable.ic_phone, t("Voice call", "వాయిస్ కాల్")) { callChat(c.cid, false) }) { ChatActivity.open(m, c.cid) })
         }
         box.addView(heading(t("Recent", "ఇటీవలివి")))
         val logs = db.callLogs(150)
-        if (logs.isEmpty()) { box.addView(txt(t("No calls yet. Tap 📞 New call, or open a chat and tap 📞 or 🎥.", "ఇంకా కాల్స్ లేవు. 📞 కొత్త కాల్ నొక్కండి, లేదా చాట్ తెరిచి 📞 / 🎥 నొక్కండి."), 14f, C.SUB).apply { setPadding(dp(6), dp(10), dp(6), dp(10)) }); return }
+        if (logs.isEmpty()) { box.addView(txt(t("No calls yet. Tap New call, or open a chat and tap the phone or video button.", "ఇంకా కాల్స్ లేవు. కొత్త కాల్ నొక్కండి, లేదా చాట్ తెరిచి ఫోన్ / వీడియో బటన్ నొక్కండి."), 14f, C.SUB).apply { setPadding(dp(14), dp(10), dp(14), dp(10)) }); return }
         val me = ChatSync.myUid(m)
         for (l in logs) {
             val c = db.conv(l.cid) ?: continue
@@ -545,14 +587,14 @@ class ChatPage(private val m: MainActivity) {
             val missed = b.optString("st") == "missed"
             val out = b.optBoolean("out") || l.sender == me
             box.addView(LinearLayout(m).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(10), dp(4), dp(10))
-                addView(ChatDraw.avatar(m, store, c.emoji, if (c.isDm) c.avatar else "", dp(46)), LinearLayout.LayoutParams(dp(46), dp(46)))
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(9), dp(8), dp(9)); background = C.press(m, dp(22).toFloat(), null)
+                addView(ChatDraw.avatar(m, store, c.emoji, if (c.isDm) c.avatar else "", dp(48), null, c.name, c.isGroup || c.isBcast, c.cid, c.isAi), LinearLayout.LayoutParams(dp(48), dp(48)))
                 addView(LinearLayout(m).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(dp(13), 0, dp(8), 0)
                     addView(txt(c.name, 16f, if (missed) C.DANGER else C.TXT, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
                     addView(txt((if (missed) "↙ " else if (out) "↗ " else "↙ ") + CallManager.logText(m, l).substringAfter(' ') + " · " + whenText(l.at), 13f, if (missed) C.DANGER else C.SUB).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
                 }, LinearLayout.LayoutParams(0, -2, 1f))
-                if (c.isDm && c.member && c.accepted && !c.blocked) addView(icon(if (b.optBoolean("video")) "🎥" else "📞", t("Call back", "మళ్ళీ కాల్")) { callChat(c.cid, b.optBoolean("video")) })
+                if (c.isDm && c.member && c.accepted && !c.blocked) addView(icon(if (b.optBoolean("video")) R.drawable.ic_video else R.drawable.ic_phone, t("Call back", "మళ్ళీ కాల్"), C.GOLD_TXT) { callChat(c.cid, b.optBoolean("video")) })
                 setOnClickListener { ChatActivity.open(m, c.cid) }
             })
         }
@@ -586,7 +628,7 @@ class ChatPage(private val m: MainActivity) {
         box.addView(heading(t("Phone contacts", "ఫోన్ కాంటాక్ట్‌లు")))
         if (!ChatContacts.allowed(m)) { allowContacts(box); return }
         val found = ChatContacts.search(m, query)
-        if (found.isEmpty()) box.addView(txt(t("No contact with \"$query\".", "\"$query\" తో కాంటాక్ట్ లేదు."), 14f, C.SUB).apply { setPadding(dp(6), dp(6), dp(6), dp(6)) })
+        if (found.isEmpty()) box.addView(txt(t("No contact with \"$query\".", "\"$query\" తో కాంటాక్ట్ లేదు."), 14f, C.SUB).apply { setPadding(dp(14), dp(6), dp(14), dp(6)) })
         for (p in found) box.addView(contactRow(p))
     }
 
@@ -596,31 +638,32 @@ class ChatPage(private val m: MainActivity) {
         if (!ChatContacts.allowed(m)) { allowContacts(box); return }
         val ppl = ChatContacts.suggested(m, 8)
         if (ppl.isEmpty()) box.addView(txt(t("Star (⭐) your close people in the phone's Contacts app and they show here. Find anyone else with the search bar above.",
-            "ఫోన్ కాంటాక్ట్స్ యాప్‌లో మీ దగ్గరి వాళ్ళకు ⭐ పెట్టండి, వాళ్ళు ఇక్కడ కనిపిస్తారు. మిగతావాళ్ళను పైన సెర్చ్‌లో వెతకండి."), 13.5f, C.SUB).apply { setPadding(dp(6), dp(4), dp(6), dp(6)) })
+            "ఫోన్ కాంటాక్ట్స్ యాప్‌లో మీ దగ్గరి వాళ్ళకు ⭐ పెట్టండి, వాళ్ళు ఇక్కడ కనిపిస్తారు. మిగతావాళ్ళను పైన సెర్చ్‌లో వెతకండి."), 13.5f, C.SUB).apply { setPadding(dp(14), dp(4), dp(14), dp(6)) })
         for (p in ppl) box.addView(contactRow(p))
-        box.addView(txt(t("🔍 Anyone else: type their name in the search bar.", "🔍 మిగతావాళ్ళు: పైన సెర్చ్‌లో పేరు టైప్ చేయండి."), 13f, C.SUB).apply { setPadding(dp(6), dp(8), dp(6), 0) })
+        box.addView(txt("", 13f, C.SUB).apply { text = Ico.withIcon(m, R.drawable.ic_search, C.SUB, dp(15), t("Anyone else: type their name in the search bar.", "మిగతావాళ్ళు: పైన సెర్చ్‌లో పేరు టైప్ చేయండి.")); setPadding(dp(14), dp(8), dp(14), 0) })
         box.addView(LinearLayout(m).apply {
-            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, 0)
-            addView(pill("📤 " + t("Share my invite link", "నా ఆహ్వాన లింక్ పంపు"), false) { shareInvite() })
+            orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(12), 0, 0)
+            addView(pill(t("Share my invite link", "నా ఆహ్వాన లింక్ పంపు"), false) { shareInvite() }.apply { setCompoundDrawablesRelative(Ico.d(m, R.drawable.ic_forward, C.TXT, dp(16)), null, null, null); compoundDrawablePadding = dp(6) })
         })
     }
     private fun allowContacts(box: LinearLayout) {
         box.addView(LinearLayout(m).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)); background = C.round(C.CARD, dp(16).toFloat())
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)); background = C.round(C.CARD, dp(22).toFloat(), C.EDGE, dp(1))
             addView(txt(t("See your contacts here to invite or call them. They stay on your phone: nothing is uploaded.",
                 "ఆహ్వానించడానికి, కాల్ చేయడానికి మీ కాంటాక్ట్‌లు ఇక్కడ చూడండి. అవి మీ ఫోన్‌లోనే ఉంటాయి: ఏదీ అప్‌లోడ్ కాదు."), 14f, C.TXT))
             addView(goldButton(t("Allow contacts", "కాంటాక్ట్‌లకు అనుమతి")) { m.requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), MainActivity.REQ_CHAT_CONTACTS) },
                 LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6); marginStart = dp(8); marginEnd = dp(8) })
     }
-    private fun heading(s: String) = txt(s.uppercase(Locale.getDefault()), 12f, C.GOLD, true).apply { letterSpacing = 0.06f; setPadding(dp(6), dp(18), dp(6), dp(4)) }
+    private fun heading(s: String) = txt(s.uppercase(Locale.getDefault()), 12f, C.GOLD_TXT).apply { typeface = Fonts.heavy(m); letterSpacing = 0.07f; setPadding(dp(14), dp(18), dp(14), dp(6)) }
     private fun goldMini(label: String, onClick: () -> Unit) = TextView(m).apply {
-        text = label; textSize = 13.5f; setTextColor(C.NAVY); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-        setPadding(dp(14), dp(7), dp(14), dp(7)); background = C.round(C.GOLD, dp(16).toFloat()); setOnClickListener { onClick() }
+        text = label; textSize = 13.5f; setTextColor(C.ON_PRIMARY); typeface = Fonts.heavy(context); gravity = Gravity.CENTER; includeFontPadding = false
+        setPadding(dp(16), dp(9), dp(16), dp(9)); background = C.round(C.PRIMARY, dp(18).toFloat()); setOnClickListener { onClick() }
     }
-    private fun personRow(emoji: String, name: String, sub: String, button: View?, second: View?, onClick: (() -> Unit)?) = LinearLayout(m).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(9), dp(4), dp(9))
-        addView(TextView(m).apply { text = emoji; textSize = 20f; gravity = Gravity.CENTER; background = ChatTheme.circle(C.CARD) }, LinearLayout.LayoutParams(dp(44), dp(44)))
+    private fun personRow(emoji: String, name: String, sub: String, button: View?, second: View?, iconRes: Int = 0, onClick: (() -> Unit)?) = LinearLayout(m).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(9), dp(10), dp(9)); if (onClick != null) background = C.press(m, dp(22).toFloat(), null)
+        if (iconRes != 0) { val (tb, tf) = C.TINTS[4]; addView(Ico.view(m, iconRes, tf, 22, 46, "", C.circle(tb)), LinearLayout.LayoutParams(dp(46), dp(46))) }
+        else addView(ChatDraw.avatar(m, store, emoji, "", dp(46), null, name.removePrefix("⭐ ")), LinearLayout.LayoutParams(dp(46), dp(46)))
         addView(LinearLayout(m).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(8), 0)
             addView(txt(name, 15.5f, C.TXT, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
@@ -631,10 +674,9 @@ class ChatPage(private val m: MainActivity) {
         if (onClick != null) setOnClickListener { onClick() }
     }
     private fun contactRow(p: ChatContacts.Person): View {
-        val first = p.name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "👤"
-        return personRow(first, (if (p.starred) "⭐ " else "") + p.name, p.number,
+        return personRow("", (if (p.starred) "⭐ " else "") + p.name, p.number,
             goldMini(t("Invite", "ఆహ్వానించు")) { ChatContacts.invite(m, store, p) },
-            icon("📞", t("Phone call", "ఫోన్ కాల్")) { ChatContacts.call(m, p) }, null)
+            icon(R.drawable.ic_phone, t("Phone call", "ఫోన్ కాల్")) { ChatContacts.call(m, p) }, onClick = null)
     }
 
     // ---------- the ⋮ menu and the ➕ button ----------

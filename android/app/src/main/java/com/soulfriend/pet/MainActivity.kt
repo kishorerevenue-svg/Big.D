@@ -150,7 +150,7 @@ class MainActivity : Activity() {
         // the middle of the bottom bar: a raised round Media button with its name under it
         navLeft = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutTransition = LayoutTransition().apply { enableTransitionType(LayoutTransition.CHANGING); setDuration(220) } }
         navRight = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutTransition = LayoutTransition().apply { enableTransitionType(LayoutTransition.CHANGING); setDuration(220) } }
-        mediaLabel = TextView(this).apply { text = "Media"; textSize = 11.5f; gravity = Gravity.CENTER; typeface = Typeface.create("sans-serif-medium", Typeface.BOLD) }
+        mediaLabel = TextView(this).apply { text = "Media"; textSize = 11.5f; gravity = Gravity.CENTER; typeface = Fonts.bold(context) }
         val navMid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; contentDescription = "Media"
             addView(mediaLabel, LinearLayout.LayoutParams(-1, -2))
@@ -167,7 +167,7 @@ class MainActivity : Activity() {
         // the round + button on the Media page (write a post)
         fab = TextView(this).apply {
             text = "+"; textSize = 30f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; includeFontPadding = false
-            typeface = Typeface.DEFAULT_BOLD; contentDescription = "New post"; visibility = View.GONE
+            typeface = Fonts.bold(context); contentDescription = "New post"; visibility = View.GONE
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.TEAL) }
             elevation = dp(8).toFloat()
             setOnClickListener { social.startCompose() }
@@ -311,11 +311,20 @@ class MainActivity : Activity() {
         renderedTab = tab
         if (keepY > 0) scroll.post { scroll.scrollTo(0, keepY) }
         val chat = tab == "messages"
-        scroll.setBackgroundColor(if (chat) ChatTheme.NAVY else Color.TRANSPARENT)
-        window.statusBarColor = if (chat) ChatTheme.NAVY else Ui.BG
-        window.decorView.systemUiVisibility = if (chat) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        fab.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (chat) ChatTheme.GOLD else Ui.TEAL) }
-        fab.setTextColor(if (chat) ChatTheme.NAVY else Color.WHITE)
+        if (chat) ChatTheme.refresh(this)
+        scroll.setBackgroundColor(if (chat) ChatTheme.BG else Color.TRANSPARENT)
+        rootFrame.setBackgroundColor(if (chat) ChatTheme.BG else Ui.BG)
+        window.statusBarColor = if (chat) ChatTheme.BG else Ui.BG
+        window.decorView.systemUiVisibility = if (chat && ChatTheme.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        if (chat) {
+            // Habit Chat's new-chat button: a rounded square with a pen (gold on navy, navy on white)
+            val ld = android.graphics.drawable.LayerDrawable(arrayOf(ChatTheme.round(ChatTheme.PRIMARY, dp(20).toFloat()), Ico.d(this, R.drawable.ic_edit, ChatTheme.ON_PRIMARY_ICON)))
+            ld.setLayerGravity(1, Gravity.CENTER); ld.setLayerSize(1, dp(26), dp(26))
+            fab.text = ""; fab.background = ld
+        } else {
+            fab.text = "+"; fab.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.TEAL) }
+            fab.setTextColor(Color.WHITE)
+        }
         fab.contentDescription = if (chat) "New chat" else "New post"
         fab.setOnClickListener { if (tab == "messages") chatPage.plusMenu() else social.startCompose() }
         fab.visibility = if ((tab == "feedback" && social.showFab) || (chat && ChatSync.isSetUp(this))) View.VISIBLE else View.GONE
@@ -407,7 +416,7 @@ class MainActivity : Activity() {
             addView(TextView(this@MainActivity).apply { text = icon; textSize = 20f; gravity = Gravity.CENTER })
             val two = label.contains("\n")
             addView(TextView(this@MainActivity).apply {
-                text = label; textSize = if (two) 11.5f else 13f; setTextColor(Ui.TEAL_DARK); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                text = label; textSize = if (two) 11.5f else 13f; setTextColor(Ui.TEAL_DARK); typeface = Fonts.bold(context)
                 maxLines = if (two) 2 else 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, 0, 0)
                 if (two) setLineSpacing(0f, 0.95f)
             })

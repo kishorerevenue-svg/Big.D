@@ -108,7 +108,7 @@ class FamilyPage(private val m: MainActivity) {
             gravity = Gravity.CENTER_HORIZONTAL
             val hint = ui.text("Press and hold for 3 seconds", 15.5f, Ui.DANGER, bold = true).apply { gravity = Gravity.CENTER }
             val btn = TextView(m).apply {
-                text = "🆘\nSOS"; textSize = 30f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
+                text = "🆘\nSOS"; textSize = 30f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Fonts.bold(context)
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.DANGER); setStroke(m.dp(8), Color.parseColor("#F6C3C4")) }
                 elevation = m.dp(6).toFloat()
                 contentDescription = "SOS. Press and hold for 3 seconds to call your family for help."

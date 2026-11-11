@@ -102,7 +102,7 @@ class MediaViewer : Activity() {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(Color.parseColor("#E6000000"), Color.TRANSPARENT))
         }
-        who = TextView(this).apply { setTextColor(Color.WHITE); textSize = 15f; typeface = Typeface.DEFAULT_BOLD; maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        who = TextView(this).apply { setTextColor(Color.WHITE); textSize = 15f; typeface = Fonts.bold(context); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         words = TextView(this).apply {
             setTextColor(Color.parseColor("#EDEDED")); textSize = 14f; maxLines = 3; ellipsize = TextUtils.TruncateAt.END; setLineSpacing(0f, 1.15f)
             setOnClickListener { maxLines = if (maxLines == 3) 14 else 3 }

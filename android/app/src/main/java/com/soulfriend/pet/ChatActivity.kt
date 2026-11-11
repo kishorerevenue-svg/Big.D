@@ -40,6 +40,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
@@ -90,7 +91,6 @@ class ChatActivity : Activity() {
         /** Files bigger than this don't go (the server keeps chat files up to 32 MB). */
         const val MAX_FILE = 32L * 1024 * 1024
         val MINE = ChatTheme.MINE
-        val BLUE = ChatTheme.READ
         val NAMES = ChatTheme.NAMES
         /** Kinds that are real messages (they can be replied to, forwarded, starred…). */
         val CONTENT = setOf("text", "photo", "voice", "video", "doc", "sticker", "gif", "poll", "event", "loc", "contact")
@@ -124,10 +124,15 @@ class ChatActivity : Activity() {
     private lateinit var inputRow: LinearLayout
     private lateinit var notice: TextView
     private lateinit var input: EditText
-    private lateinit var action: TextView
-    private lateinit var emojiBtn: TextView
-    private lateinit var tasksBtn: TextView
-    private lateinit var camBtn: TextView
+    private lateinit var action: ImageView
+    private lateinit var emojiBtn: ImageView
+    private lateinit var tasksBtn: ImageView
+    private lateinit var camBtn: ImageView
+    private lateinit var onlineDot: View
+    /** The look this screen was drawn in (it is drawn again if the phone's dark mode or the setting changes). */
+    private var builtDark = true
+    /** The colours of the bubble being drawn (mine or theirs); the page's colours otherwise. */
+    private var ink = ChatTheme.ink(false)
     private lateinit var callBtns: LinearLayout
     private lateinit var tasksChip: TextView
     private lateinit var lpBox: LinearLayout
@@ -167,14 +172,16 @@ class ChatActivity : Activity() {
     private var playingId = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ChatTheme.apply(this); builtDark = ChatTheme.dark
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this); db = ChatDb.get(this)
-        window.statusBarColor = ChatTheme.BAR
+        ink = ChatTheme.ink(false)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         me = ChatSync.myUid(this)
         cid = intent.getStringExtra("cid") ?: ""
         pendingGoto = intent.getStringExtra("goto") ?: ""
         build()
+        ChatTheme.bars(this, ChatTheme.BAR, ChatTheme.CHAT_BG)
         when {
             intent.getStringExtra("action") == "scan" -> scanQr()
             intent.getStringExtra("action") == "contact" -> pickContact()
@@ -194,6 +201,7 @@ class ChatActivity : Activity() {
         ChatSync.hold(this, "chat")
         if (cid.isNotEmpty()) { ChatSync.openCid = cid; ChatSync.clearNotification(this, cid); render(); setWall() }
         handler.post(presenceTick)
+        ChatTheme.refresh(this); if (ChatTheme.dark != builtDark) recreate()
     }
     override fun onPause() {
         super.onPause()
@@ -246,17 +254,25 @@ class ChatActivity : Activity() {
 
     // =================== the screen ===================
     private fun build() {
-        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.NAVY); fitsSystemWindows = true }
-        // header: ←, picture, name and who's in it (tap: contact / group info), 🎥 📞 ⋮
-        head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(6), dp(4), dp(6)); setBackgroundColor(ChatTheme.BAR) }
-        head.addView(iconButton("←") { finish() })
-        avatarBox = FrameLayout(this).apply { setOnClickListener { openInfo() } }
-        head.addView(avatarBox, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(2); marginEnd = dp(10) })
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; fitsSystemWindows = true }
+        root.background = ChatTheme.Backdrop(root, ChatTheme.BAR, ChatTheme.CHAT_BG)
+        // header: back, picture (with the green "online" dot), name and who's in it (tap: contact / group info), video, call, more
+        head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(4), dp(2), dp(4)); minimumHeight = dp(62); setBackgroundColor(ChatTheme.BAR) }
+        head.addView(iconBtn(R.drawable.ic_back, t("Back", "వెనక్కి")) { finish() })
+        val pic = FrameLayout(this).apply { setOnClickListener { openInfo() } }
+        avatarBox = FrameLayout(this)
+        pic.addView(avatarBox, FrameLayout.LayoutParams(dp(42), dp(42)))
+        onlineDot = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(ChatTheme.ONLINE); setStroke(dp(2), ChatTheme.BAR) }
+            visibility = View.GONE
+        }
+        pic.addView(onlineDot, FrameLayout.LayoutParams(dp(13), dp(13), Gravity.BOTTOM or Gravity.END))
+        head.addView(pic, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(2); marginEnd = dp(10) })
         val names = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        title = ui.text("", 17f, ChatTheme.TXT, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        sub = ui.text("", 12.5f, ChatTheme.SUB).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        tasksChip = ui.text("", 12f, ChatTheme.NAVY, bold = true).apply {
-            setPadding(dp(8), dp(2), dp(8), dp(2)); background = ui.round(ChatTheme.GOLD, 10); visibility = View.GONE
+        title = ui.text("", 16.5f, ChatTheme.TXT, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setLineSpacing(0f, 1f) }
+        sub = ui.text("", 12.5f, ChatTheme.SUB).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setLineSpacing(0f, 1f) }
+        tasksChip = tasksPill().apply {
+            visibility = View.GONE
             setOnClickListener { pinnedOpen = !pinnedOpen; conv()?.let { renderPinned(it) } }
         }
         names.addView(LinearLayout(this).apply {
@@ -268,29 +284,29 @@ class ChatActivity : Activity() {
         names.setOnClickListener { openInfo() }
         head.addView(names, LinearLayout.LayoutParams(0, -2, 1f))
         callBtns = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        callBtns.addView(iconButton("🎥") { startCall(true) }.apply { contentDescription = "Video call" })
-        callBtns.addView(iconButton("📞") { startCall(false) }.apply { contentDescription = "Voice call" })
+        callBtns.addView(iconBtn(R.drawable.ic_video, t("Video call", "వీడియో కాల్")) { startCall(true) })
+        callBtns.addView(iconBtn(R.drawable.ic_phone, t("Voice call", "వాయిస్ కాల్"), size = 21) { startCall(false) })
         head.addView(callBtns)
-        head.addView(iconButton("⋮") { menu(it) })
+        head.addView(iconBtn(R.drawable.ic_more, t("More", "ఇంకా"), size = 20, box = 40) { menu(it) })
         root.addView(head)
         // 🔍 search in the chat (in place of the header)
-        searchBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(6), dp(4), dp(6)); setBackgroundColor(ChatTheme.BAR); visibility = View.GONE }
+        searchBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(4)); minimumHeight = dp(62); setBackgroundColor(ChatTheme.BAR); visibility = View.GONE }
         root.addView(searchBar)
-        root.addView(View(this).apply { setBackgroundColor(ChatTheme.LINE) }, LinearLayout.LayoutParams(-1, 1))
+        root.addView(View(this).apply { setBackgroundColor(ChatTheme.DIVIDER) }, LinearLayout.LayoutParams(-1, 1))
         banner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(banner)
         pinMsgBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(pinMsgBar)
         pinned = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(pinned)
-        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), dp(8), dp(10), dp(12)) }
+        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(6), dp(12), dp(12)) }
         scroll = ScrollView(this).apply { addView(list); isFillViewport = true }
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        replyBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.BAR) }
+        replyBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.CHAT_BG) }
         root.addView(replyBar)
-        lpBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.BAR) }
+        lpBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.CHAT_BG) }
         root.addView(lpBox)
-        bar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.BAR) }
+        bar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.CHAT_BG) }
         root.addView(bar)
         panelBox = FrameLayout(this).apply { visibility = View.GONE }
         root.addView(panelBox, LinearLayout.LayoutParams(-1, dp(300)))
@@ -304,40 +320,46 @@ class ChatActivity : Activity() {
         scroll.background = ChatTheme.WallDrawable(ChatTheme.wall(ChatTheme.wallOf(this, cid)), resources.displayMetrics.density)
     }
 
-    private fun iconButton(label: String, onClick: (View) -> Unit) = TextView(this).apply {
-        text = label; textSize = 21f; gravity = Gravity.CENTER; setTextColor(ChatTheme.TXT)
-        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)); setOnClickListener { onClick(it) }
-        background = ui.round(Color.TRANSPARENT, 22)
+    /** A round tap area with a line icon. */
+    private fun iconBtn(res: Int, desc: String, color: Int = ChatTheme.TXT, size: Int = 22, box: Int = 44, onClick: (View) -> Unit) =
+        Ico.view(this, res, color, size, box, desc, null, onClick)
+    /** "2 tasks": the pill that opens the open tasks (gold on navy, navy on white). */
+    private fun tasksPill() = TextView(this).apply {
+        textSize = 12.5f; setTextColor(ChatTheme.ON_PRIMARY); typeface = Fonts.heavy(context); gravity = Gravity.CENTER
+        setPadding(dp(10), dp(4), dp(12), dp(4)); background = ui.round(ChatTheme.PRIMARY, 14); includeFontPadding = false
     }
-    private fun smallIcon(label: String, desc: String, onClick: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 19f; gravity = Gravity.CENTER; setTextColor(ChatTheme.SUB); contentDescription = desc
-        layoutParams = LinearLayout.LayoutParams(dp(38), dp(44)); setOnClickListener { onClick() }
+    private fun setTasksPill(v: TextView, n: Int) {
+        Ico.label(v, R.drawable.ic_tasks, ChatTheme.ON_PRIMARY, if (n == 1) t("1 task", "1 పని") else t("$n tasks", "$n పనులు") + if (pinnedOpen) "  ▴" else "", 14)
     }
 
-    /** The typing bar: [😊 Message 📎 📋 📷] then 🎤 (or ➤ when there is text). Or a line saying why I can't write here. */
+    /** The typing bar: a round box [smile · Message · attach · tasks · camera] and the round mic (send when there is text).
+     *  Or a line saying why I can't write here. */
     private fun buildBar() {
         bar.removeAllViews()
-        notice = ui.text("", 14f, ChatTheme.SUB).apply { gravity = Gravity.CENTER; setPadding(dp(16), dp(16), dp(16), dp(18)); visibility = View.GONE }
+        bar.setPadding(dp(8), dp(6), dp(8), dp(10))
+        notice = ui.text("", 14f, ChatTheme.SUB).apply { gravity = Gravity.CENTER; setPadding(dp(16), dp(10), dp(16), dp(8)); visibility = View.GONE }
         bar.addView(notice, LinearLayout.LayoutParams(-1, -2))
-        inputRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(dp(6), dp(6), dp(6), dp(8)) }
+        inputRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
         bar.addView(inputRow, LinearLayout.LayoutParams(-1, -2))
         if (recorder != null) {
             val secs = ((System.currentTimeMillis() - recStart) / 1000).toInt()
-            inputRow.addView(iconButton("🗑️") { cancelRecording() })
-            inputRow.addView(ui.text("🔴 " + t("Recording", "రికార్డ్ అవుతోంది") + "  %d:%02d".format(secs / 60, secs % 60), 15f, ChatTheme.DANGER, bold = true).apply { gravity = Gravity.CENTER_VERTICAL },
-                LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(8) })
-            inputRow.addView(roundButton("➤") { stopRecording(true) })
+            val pill = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; background = composerBg(); minimumHeight = dp(52); setPadding(dp(4), 0, dp(14), 0) }
+            pill.addView(iconBtn(R.drawable.ic_trash, t("Cancel the recording", "రికార్డింగ్ రద్దు"), ChatTheme.DANGER, 21, 44) { cancelRecording() })
+            pill.addView(View(this).apply { background = ChatTheme.circle(ChatTheme.DANGER); alpha = if (secs % 2 == 0) 1f else 0.35f }, LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginStart = dp(4); marginEnd = dp(10) })
+            pill.addView(ui.text(t("Recording", "రికార్డ్ అవుతోంది") + "   %d:%02d".format(secs / 60, secs % 60), 15f, ChatTheme.TXT, bold = true), LinearLayout.LayoutParams(0, -2, 1f))
+            inputRow.addView(pill, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8) })
+            inputRow.addView(roundButton(R.drawable.ic_send, t("Send the voice note", "వాయిస్ మెసేజ్ పంపు")) { stopRecording(true) })
             inputRow.postDelayed({ if (recorder != null) buildBar() }, 1000)
             if (secs % 4 == 0 && conv()?.isLocal == false) ChatSync.typing(store, cid, "rec")
             return
         }
         val c = conv()
-        val boxRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; background = ui.round(ChatTheme.CARD, 24, ChatTheme.LINE); setPadding(dp(4), 0, dp(4), 0) }
-        emojiBtn = smallIcon(if (panelOpen) "⌨️" else "😊", t("Emoji, GIFs and stickers", "ఎమోజీ, GIF, స్టిక్కర్లు")) { if (panelOpen) closePanel(showKeyboard = true) else openPanel() }
+        val boxRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; background = composerBg(); minimumHeight = dp(52); setPadding(dp(5), 0, dp(4), 0) }
+        emojiBtn = iconBtn(if (panelOpen) R.drawable.ic_keyboard else R.drawable.ic_smile, t("Emoji, GIFs and stickers", "ఎమోజీ, GIF, స్టిక్కర్లు"), ChatTheme.SUB, 22, 42) { if (panelOpen) closePanel(showKeyboard = true) else openPanel() }
         boxRow.addView(emojiBtn)
         input = EditText(this).apply {
-            hint = t("Message", "మెసేజ్"); textSize = 16f * ChatTheme.fontScale(this@ChatActivity); maxLines = 5; minHeight = dp(44); background = null
-            setTextColor(ChatTheme.TXT); setHintTextColor(ChatTheme.SUB); setPadding(dp(4), dp(8), dp(4), dp(8))
+            hint = t("Message", "మెసేజ్"); textSize = 15.5f * ChatTheme.fontScale(this@ChatActivity); maxLines = 5; minHeight = dp(48); background = null
+            setTextColor(ChatTheme.TXT); setHintTextColor(ChatTheme.SUB); setPadding(dp(4), dp(11), dp(4), dp(11))
             if (ChatTheme.enterSends(this@ChatActivity)) {
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES; imeOptions = EditorInfo.IME_ACTION_SEND; setHorizontallyScrolling(false)
                 setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { sendText(); true } else false }
@@ -347,13 +369,13 @@ class ChatActivity : Activity() {
             setOnFocusChangeListener { _, f -> if (f && panelOpen) closePanel(showKeyboard = false) }
         }
         boxRow.addView(input, LinearLayout.LayoutParams(0, -2, 1f))
-        boxRow.addView(smallIcon("📎", t("Attach", "జత చేయి")) { attach() })
-        tasksBtn = smallIcon("📋", t("New task or reminder", "కొత్త పని / రిమైండర్")) { newTask() }
+        boxRow.addView(iconBtn(R.drawable.ic_attach, t("Attach", "జత చేయి"), ChatTheme.SUB, 21, 40) { attach() })
+        tasksBtn = iconBtn(R.drawable.ic_tasks, t("New task or reminder", "కొత్త పని / రిమైండర్"), ChatTheme.SUB, 21, 40) { newTask() }
         if (c == null || (!c.isAi && !c.isBcast)) boxRow.addView(tasksBtn)
-        camBtn = smallIcon("📷", t("Camera", "కెమెరా")) { camera() }
+        camBtn = iconBtn(R.drawable.ic_camera, t("Camera", "కెమెరా"), ChatTheme.SUB, 21, 40) { camera() }
         boxRow.addView(camBtn)
-        inputRow.addView(boxRow, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(6) })
-        action = roundButton(if (input.text.isNullOrBlank()) "🎤" else "➤") { if (input.text.isNullOrBlank()) { if (conv()?.isAi == true) toast(t("Type your question for Habit AI.", "Habit AI కి మీ ప్రశ్న టైప్ చేయండి.")) else startRecording() } else sendText() }
+        inputRow.addView(boxRow, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8) })
+        action = roundButton(R.drawable.ic_mic, t("Record a voice note", "వాయిస్ మెసేజ్ రికార్డ్")) { if (input.text.isNullOrBlank()) { if (conv()?.isAi == true) toast(t("Type your question for Habit AI.", "Habit AI కి మీ ప్రశ్న టైప్ చేయండి.")) else startRecording() } else sendText() }
         inputRow.addView(action)
         updateBarIcons()
         input.addTextChangedListener(object : TextWatcher {
@@ -373,14 +395,16 @@ class ChatActivity : Activity() {
     }
     private fun updateBarIcons() {
         val empty = input.text.isNullOrBlank()
-        action.text = if (empty) (if (conv()?.isAi == true) "➤" else "🎤") else "➤"
+        val send = !empty || conv()?.isAi == true
+        Ico.tint(action, if (send) R.drawable.ic_send else R.drawable.ic_mic, ChatTheme.ON_PRIMARY_ICON)
+        action.contentDescription = if (send) t("Send", "పంపు") else t("Record a voice note", "వాయిస్ మెసేజ్ రికార్డ్")
         camBtn.visibility = if (empty) View.VISIBLE else View.GONE
         tasksBtn.visibility = if (empty) View.VISIBLE else View.GONE
     }
-    private fun roundButton(label: String, onClick: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 20f; gravity = Gravity.CENTER; setTextColor(ChatTheme.NAVY); background = ui.round(ChatTheme.GOLD, 23)
-        layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)); setOnClickListener { onClick() }
-    }
+    private fun composerBg() = ChatTheme.round(ChatTheme.CARD, dp(26).toFloat(), ChatTheme.EDGE, dp(1))
+    /** The big round button next to the typing box (gold on navy, navy on white). */
+    private fun roundButton(res: Int, desc: String, onClick: () -> Unit) =
+        Ico.view(this, res, ChatTheme.ON_PRIMARY_ICON, 24, 52, desc, ChatTheme.circle(ChatTheme.PRIMARY)) { onClick() }
 
     // ---------- the 😊 panel (emojis, GIFs, stickers) ----------
     private fun openPanel() {
@@ -398,10 +422,10 @@ class ChatActivity : Activity() {
             onSticker = { ref -> sendSticker(ref) }, onGif = { g -> sendGif(g) }, onCreateSticker = { pickPhoto(REQ_STICKER) }).also { panel = it }
         if (p.view.parent == null) panelBox.addView(p.view, FrameLayout.LayoutParams(-1, -1))
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
-        handler.postDelayed({ panelBox.visibility = View.VISIBLE; panelOpen = true; emojiBtn.text = "⌨️" }, 120)
+        handler.postDelayed({ panelBox.visibility = View.VISIBLE; panelOpen = true; Ico.tint(emojiBtn, R.drawable.ic_keyboard, ChatTheme.SUB) }, 120)
     }
     private fun closePanel(showKeyboard: Boolean = false) {
-        panelBox.visibility = View.GONE; panelOpen = false; emojiBtn.text = "😊"
+        panelBox.visibility = View.GONE; panelOpen = false; Ico.tint(emojiBtn, R.drawable.ic_smile, ChatTheme.SUB)
         if (showKeyboard) { input.requestFocus(); getSystemService(InputMethodManager::class.java)?.showSoftInput(input, 0) }
     }
 
@@ -421,8 +445,8 @@ class ChatActivity : Activity() {
         val msgs = db.msgs(cid, showLimit).filter { it.kind !in ChatDb.HIDDEN }
         val atBottom = !scroll.canScrollVertically(1) || lastCount < 0
         list.removeAllViews()
-        if (total > msgs.size) list.addView(ui.text("⬆  " + t("Earlier messages", "పాత మెసేజ్‌లు"), 13.5f, ChatTheme.GOLD, bold = true).apply {
-            gravity = Gravity.CENTER; setPadding(dp(14), dp(8), dp(14), dp(8)); background = ui.round(ChatTheme.CARD, 14)
+        if (total > msgs.size) list.addView(ui.text("⬆  " + t("Earlier messages", "పాత మెసేజ్‌లు"), 13.5f, ChatTheme.GOLD_TXT, bold = true).apply {
+            gravity = Gravity.CENTER; setPadding(dp(16), dp(8), dp(16), dp(8)); background = ChatTheme.round(ChatTheme.DAY_BG, dp(16).toFloat(), ChatTheme.EDGE, dp(1))
             layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(6) }
             setOnClickListener { showLimit += 400; lastCount = -2; render(); scroll.post { scroll.scrollTo(0, 0) } }
         })
@@ -435,7 +459,10 @@ class ChatActivity : Activity() {
                 "📢 ఇక్కడ పంపిన మెసేజ్ ఈ లిస్ట్‌లో ప్రతి ఒక్కరికీ, మీతో వాళ్ళ సొంత చాట్‌లో వెళ్తుంది. ఒకరినొకరు చూడరు.")
             else -> t("🔒 Messages here are locked end to end: only the people in this chat can read them, not even Habit's server. Say hi! 👋",
                 "🔒 ఇక్కడి మెసేజ్‌లు ఎండ్ టు ఎండ్ లాక్: ఈ చాట్‌లో ఉన్నవాళ్ళు మాత్రమే చదవగలరు, Habit సర్వర్ కూడా చదవలేదు. హాయ్ చెప్పండి! 👋")
-        }, 13.5f, ChatTheme.SUB).apply { gravity = Gravity.CENTER; setPadding(dp(16), dp(24), dp(16), dp(24)) })
+        }, 13.5f, ChatTheme.SUB).apply {
+            gravity = Gravity.CENTER; setPadding(dp(18), dp(14), dp(18), dp(14)); background = ChatTheme.round(ChatTheme.DAY_BG, dp(18).toFloat(), ChatTheme.EDGE, dp(1))
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(16), dp(20), dp(16), dp(20)) }
+        })
         var day: LocalDate? = null
         for (m in msgs) {
             val d = Instant.ofEpochMilli(m.at).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -464,11 +491,15 @@ class ChatActivity : Activity() {
         if (key != shownAvatar) {
             shownAvatar = key
             avatarBox.removeAllViews()
-            avatarBox.addView(ChatDraw.avatar(this, store, c.emoji, if (c.isDm) c.avatar else "", dp(42)), FrameLayout.LayoutParams(-1, -1))
+            avatarBox.addView(ChatDraw.avatar(this, store, c.emoji, if (c.isDm) c.avatar else "", dp(42), null, c.name, c.isGroup || c.isBcast, c.cid, c.isAi), FrameLayout.LayoutParams(-1, -1))
         }
         title.text = c.name
         sub.text = subtitle(c)
-        sub.setTextColor(if (ChatSync.typingIn(cid).isNotEmpty() || (c.isAi && ChatSync.aiBusy) || presence.startsWith(t("online", "ఆన్‌లైన్"))) ChatTheme.GOLD else ChatTheme.SUB)
+        val typing = ChatSync.typingIn(cid).isNotEmpty() || (c.isAi && ChatSync.aiBusy)
+        val online = presence.isNotEmpty() && presence == t("online", "ఆన్‌లైన్‌లో ఉన్నారు")
+        sub.setTextColor(if (typing) ChatTheme.GOLD_TXT else if (online) ChatTheme.ONLINE_TXT else ChatTheme.SUB)
+        sub.typeface = if (typing || online) Fonts.semi(this) else Fonts.regular(this)
+        onlineDot.visibility = if (online && c.isDm) View.VISIBLE else View.GONE
         callBtns.visibility = if (c.isDm && c.accepted && !c.blocked && c.member) View.VISIBLE else View.GONE
     }
     private fun subtitle(c: ChatConv): String {
@@ -505,16 +536,18 @@ class ChatActivity : Activity() {
     private fun dayLine(d: LocalDate): View {
         val today = LocalDate.now()
         val s = when (d) { today -> t("Today", "ఈరోజు"); today.minusDays(1) -> t("Yesterday", "నిన్న"); else -> d.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.getDefault())) }
-        return ui.text(s, 12f, ChatTheme.SUB, bold = true).apply {
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(4), dp(12), dp(4)); background = ui.round(ChatTheme.CARD, 10)
-            layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(10); bottomMargin = dp(4) }
+        return ui.text(s, 12f, ChatTheme.DAY_TXT, bold = true).apply {
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(5), dp(12), dp(5)); setLineSpacing(0f, 1f)
+            background = ChatTheme.round(ChatTheme.DAY_BG, dp(13).toFloat(), ChatTheme.EDGE, dp(1))
+            layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(12); bottomMargin = dp(4) }
         }
     }
     private fun time(at: Long) = Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH))
     private fun nameColor(uid: String) = NAMES[Math.floorMod(uid.hashCode(), NAMES.size)]
     private fun centerLine(s: String) = ui.text(s, 12.5f, ChatTheme.SUB).apply {
-        gravity = Gravity.CENTER; setPadding(dp(12), dp(6), dp(12), dp(6)); background = ui.round(ChatTheme.CARD, 10)
-        layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(6) }
+        gravity = Gravity.CENTER; setPadding(dp(14), dp(6), dp(14), dp(6)); maxWidth = (resources.displayMetrics.widthPixels * 0.86).toInt()
+        background = ChatTheme.round(ChatTheme.DAY_BG, dp(14).toFloat(), ChatTheme.EDGE, dp(1))
+        layoutParams = LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8) }
     }
 
     // ---------- one message ----------
@@ -525,19 +558,41 @@ class ChatActivity : Activity() {
             else t("turned off disappearing messages.", "కనిపించకుండా పోయే మెసేజ్‌లు ఆఫ్ చేశారు.")))
         val mine = m.sender == me || c.isSelf
         val bare = m.kind == "sticker"
+        // a new task is a card of its own (nearly full width), not a bubble
+        val card = m.kind == "task" && m.body.optString("action") == "new"
+        val page = ink; val pageMine = inkMine
+        ink = ChatTheme.ink(mine && !card); inkMine = mine && !card
+        try { return drawBubble(c, m, mine, bare, card, ink) } finally { ink = page; inkMine = pageMine }
+    }
+    private var inkMine = false
+    private fun drawBubble(c: ChatConv, m: ChatMsg, mine: Boolean, bare: Boolean, card: Boolean, k: ChatTheme.Ink): View {
         val fs = ChatTheme.fontScale(this)
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(11), dp(7), dp(11), dp(6)); background = if (bare) null else ui.round(if (mine) MINE else ChatTheme.CARD, 14) }
-        if (m.sender == "ai") box.addView(ui.text("🐾 Habit AI", 12.5f, ChatTheme.GOLD, bold = true))
-        else if (c.isGroup && !mine) box.addView(ui.text(c.nameOf(m.sender), 13f, nameColor(m.sender), bold = true))
-        if (m.body.optBoolean("fwd")) box.addView(ui.text("↪️ " + t("Forwarded", "ఫార్వర్డ్ చేసినది"), 12f, ChatTheme.SUB).apply { setTypeface(typeface, Typeface.ITALIC) })
+        val media = (m.kind == "photo" && !m.body.optBoolean("once")) || m.kind == "video" || m.kind == "gif"
+        val r = dp(20).toFloat(); val small = dp(6).toFloat()
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            when {
+                bare -> { }
+                card -> { setPadding(dp(14), dp(13), dp(14), dp(10)); background = ChatTheme.round(ChatTheme.CARD, dp(22).toFloat(), if (ChatTheme.dark) Color.parseColor("#59F5C451") else ChatTheme.GOLD, if (ChatTheme.dark) dp(1) else dp(2)) }
+                else -> {
+                    if (media) setPadding(dp(4), dp(4), dp(4), dp(5)) else setPadding(dp(11), dp(7), dp(11), dp(6))
+                    background = if (mine) ChatTheme.corners(k.bg, r, small, r, r) else ChatTheme.corners(k.bg, small, r, r, r, k.edge, dp(1))
+                }
+            }
+        }
+        val inset = if (media) dp(6) else 0      // words above or under a photo line up with the photo's edge
+        if (m.sender == "ai") box.addView(ui.text("", 12.5f, k.gold, bold = true).apply { text = Ico.withIcon(context, R.drawable.ic_sparkle, k.gold, dp(14), "Habit AI"); setPadding(inset, 0, 0, dp(2)) })
+        else if (c.isGroup && !mine && !card) box.addView(ui.text(c.nameOf(m.sender), 13f, nameColor(m.sender), bold = true).apply { setPadding(inset, 0, 0, dp(2)) })
+        if (m.body.optBoolean("fwd")) box.addView(ui.text("", 12f, k.sub).apply { text = Ico.withIcon(context, R.drawable.ic_forward, k.sub, dp(13), t("Forwarded", "ఫార్వర్డ్ చేసినది")); setTypeface(typeface, Typeface.ITALIC); setPadding(inset, 0, 0, dp(2)) })
         m.body.optJSONObject("re")?.let { box.addView(quoteView(c, it, true)) }
+        val foot = footView(c, m, mine, bare, k)
         when (m.kind) {
             "text" -> {
                 m.body.optJSONObject("lp")?.let { box.addView(previewCard(it, true)) }
-                box.addView(ui.text("", 16f * fs, ChatTheme.TXT).apply { text = rich(m.body.optString("text")); maxWidth = (resources.displayMetrics.widthPixels * 0.78).toInt() - dp(22); Linkify.addLinks(this, Linkify.WEB_URLS or Linkify.PHONE_NUMBERS); setLinkTextColor(ChatTheme.READ) })
+                box.addView(ui.text("", 15.5f * fs, k.txt).apply { text = rich(m.body.optString("text")); maxWidth = (resources.displayMetrics.widthPixels * 0.78).toInt() - dp(22); Linkify.addLinks(this, Linkify.WEB_URLS or Linkify.PHONE_NUMBERS); setLinkTextColor(k.link); setLineSpacing(0f, 1.15f) })
             }
             "photo" -> box.addView(if (m.body.optBoolean("once")) onceView(m) else photoView(m))
-            "voice" -> box.addView(voiceView(m))
+            "voice" -> box.addView(voiceView(m, foot))
             "video" -> box.addView(videoView(m))
             "doc" -> box.addView(docView(m))
             "sticker" -> box.addView(stickerView(m))
@@ -548,43 +603,59 @@ class ChatActivity : Activity() {
             "contact" -> box.addView(contactView(m))
             "task" -> box.addView(taskInline(c, m))
             "clog" -> box.addView(callLogView(m))
-            "gone" -> box.addView(ui.text("🚫 " + t("This message was deleted", "ఈ మెసేజ్ తొలగించబడింది"), 14.5f, ChatTheme.SUB).apply { setTypeface(typeface, Typeface.ITALIC) })
-            else -> box.addView(ui.text("🔒 " + t("This message couldn't be opened on this phone (it was locked for an older key, or it needs a newer Habit AI).", "ఈ మెసేజ్ ఈ ఫోన్‌లో తెరవలేకపోయాం (కొత్త Habit AI కావాలేమో)."), 14f, ChatTheme.SUB))
+            "gone" -> box.addView(ui.text("", 14.5f, k.sub).apply { text = Ico.withIcon(context, R.drawable.ic_close, k.sub, dp(15), t("This message was deleted", "ఈ మెసేజ్ తొలగించబడింది")); setTypeface(typeface, Typeface.ITALIC) })
+            else -> box.addView(ui.text("", 14f, k.sub).apply { text = Ico.withIcon(context, R.drawable.ic_lock, k.sub, dp(15), t("This message couldn't be opened on this phone (it was locked for an older key, or it needs a newer Habit AI).", "ఈ మెసేజ్ ఈ ఫోన్‌లో తెరవలేకపోయాం (కొత్త Habit AI కావాలేమో).")) })
         }
-        if ((m.kind == "photo" || m.kind == "video" || m.kind == "gif") && m.body.optString("text").isNotBlank() && !m.body.optBoolean("once"))
-            box.addView(ui.text("", 15.5f * fs, ChatTheme.TXT).apply { text = rich(m.body.optString("text")); setPadding(0, dp(4), 0, 0); Linkify.addLinks(this, Linkify.WEB_URLS); setLinkTextColor(ChatTheme.READ) })
-        // the time and the ticks (⭐ starred, "Edited")
-        val tick = when {
-            !mine || c.isLocal -> ""
-            m.state == -1 -> " ⚠️"
-            m.state == 0 || m.seq <= 0 -> " 🕓"
-            else -> when (c.ticks(m.seq, me)) { 3 -> " ✓✓"; 2 -> " ✓✓"; else -> " ✓" }
-        }
-        val foot = (if (m.body.optBoolean("_star")) "⭐ " else "") + (if (m.body.optBoolean("_ed")) t("Edited · ", "మార్చారు · ") else "") +
-            (if (m.body.has("_exp")) "⏱ " else "") + time(m.at) + tick
-        box.addView(ui.text(foot, 11f, if (mine && !c.isLocal && c.ticks(m.seq, me) == 3 && m.state == 1) BLUE else ChatTheme.SUB).apply {
-            gravity = Gravity.END; if (bare) { setPadding(dp(8), dp(1), dp(8), dp(1)); background = ui.round(Color.parseColor("#99000000"), 8) } }, LinearLayout.LayoutParams(if (bare) -2 else -1, -2).apply { gravity = Gravity.END })
-        if (m.state == -1) box.addView(ui.text(t("Not sent. Tap to try again.", "పంపలేదు. మళ్ళీ ప్రయత్నించడానికి నొక్కండి."), 12f, ChatTheme.DANGER))
-        // the bubble, its reactions under it, and the quick ↪ forward for photos, videos and links
+        if (media && m.body.optString("text").isNotBlank())
+            box.addView(ui.text("", 15.5f * fs, k.txt).apply { text = rich(m.body.optString("text")); setPadding(dp(6), dp(6), dp(6), 0); Linkify.addLinks(this, Linkify.WEB_URLS); setLinkTextColor(k.link); setLineSpacing(0f, 1.15f) })
+        // the time and the ticks (voice notes have them next to their length)
+        if (m.kind != "voice") box.addView(foot, LinearLayout.LayoutParams(if (bare) -2 else -1, -2).apply { gravity = Gravity.END; if (media) marginEnd = dp(6) })
+        if (m.state == -1) box.addView(ui.text(t("Not sent. Tap to try again.", "పంపలేదు. మళ్ళీ ప్రయత్నించడానికి నొక్కండి."), 12f, if (mine) k.txt else ChatTheme.DANGER, bold = true).apply { setPadding(inset, dp(2), 0, 0) })
+        // the bubble, its reactions under it, and the quick forward button for photos, videos and links
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = if (mine) Gravity.END else Gravity.START }
-        col.addView(box, LinearLayout.LayoutParams(-2, -2))
-        reactions(m)?.let { col.addView(it, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(5); if (mine) marginEnd = dp(8) else marginStart = dp(8) }) }
+        col.addView(box, LinearLayout.LayoutParams(if (card) -1 else -2, -2))
+        reactions(m)?.let { col.addView(it, LinearLayout.LayoutParams(-2, -2).apply { topMargin = -dp(7); if (mine) marginEnd = dp(10) else marginStart = dp(10) }) }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = (if (mine) Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL }
         val quick = !c.isLocal && (m.kind in setOf("photo", "video", "gif", "doc") && !m.body.optBoolean("once") || (m.kind == "text" && m.body.has("lp")))
-        val fwd = if (quick) TextView(this).apply { text = "↪"; textSize = 17f; gravity = Gravity.CENTER; setTextColor(ChatTheme.TXT); background = ChatTheme.circle(Color.parseColor("#55000000")); contentDescription = t("Forward", "ఫార్వర్డ్"); setOnClickListener { forward(m) } } else null
+        val fwd = if (quick) Ico.view(this, R.drawable.ic_forward, ChatTheme.TXT2, 17, 34, t("Forward", "ఫార్వర్డ్"), ChatTheme.round(ChatTheme.CARD, dp(17).toFloat(), ChatTheme.EDGE, dp(1))) { forward(m) } else null
         if (mine && fwd != null) row.addView(fwd, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginEnd = dp(6) })
         val w = (resources.displayMetrics.widthPixels * 0.80).toInt()
-        row.addView(col, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
+        row.addView(col, if (card) LinearLayout.LayoutParams(0, -2, 1f).apply { topMargin = dp(6); bottomMargin = dp(2); if (mine) marginStart = dp(22) else marginEnd = dp(22) }
+            else LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
         if (!mine && fwd != null) row.addView(fwd, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginStart = dp(6) })
-        box.post { if (box.width > w) box.layoutParams = (box.layoutParams as LinearLayout.LayoutParams).apply { width = w } }
+        if (!card) box.post { if (box.width > w) box.layoutParams = (box.layoutParams as LinearLayout.LayoutParams).apply { width = w } }
         box.setOnClickListener { if (m.state == -1) retry(m) }
         box.setOnLongClickListener { msgMenu(c, m); true }
         return row
     }
+    /** The time, ⭐ starred, "Edited", ⏱ and the ticks (a clock while it is still being sent). */
+    private fun footView(c: ChatConv, m: ChatMsg, mine: Boolean, bare: Boolean, k: ChatTheme.Ink): View {
+        val col = if (bare) Color.WHITE else k.sub
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            if (bare) { setPadding(dp(8), dp(2), dp(6), dp(2)); background = ui.round(Color.parseColor("#99000000"), 10) } else setPadding(0, dp(2), 0, 0)
+        }
+        if (m.body.optBoolean("_star")) row.addView(smallIcon(R.drawable.ic_star, col), LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginEnd = dp(4) })
+        val words = (if (m.body.optBoolean("_ed")) t("Edited · ", "మార్చారు · ") else "") + (if (m.body.has("_exp")) "⏱ " else "") + time(m.at)
+        row.addView(ui.text(words, 11f, col).apply { setLineSpacing(0f, 1f) })
+        if (mine && !c.isLocal) {
+            val read = c.ticks(m.seq, me) == 3 && m.state == 1
+            val res = when {
+                m.state == -1 -> R.drawable.ic_close
+                m.state == 0 || m.seq <= 0 -> R.drawable.ic_clock
+                else -> if (c.ticks(m.seq, me) >= 2) R.drawable.ic_ticks else R.drawable.ic_tick
+            }
+            val tc = when { bare && read -> Color.parseColor("#7CC8FF"); bare -> Color.WHITE; m.state == -1 -> ChatTheme.DANGER; read -> k.read; else -> k.tick }
+            val size = if (res == R.drawable.ic_clock) 13 else 16
+            row.addView(smallIcon(res, tc), LinearLayout.LayoutParams(dp(size), dp(size)).apply { marginStart = dp(3) })
+        }
+        return row
+    }
+    private fun smallIcon(res: Int, color: Int) = ImageView(this).apply { setImageDrawable(getDrawable(res)!!.mutate()); imageTintList = android.content.res.ColorStateList.valueOf(color) }
     /** Text with @mentions in gold and the 🔍 search words marked. */
     private fun rich(s: String): CharSequence {
         val sb = SpannableStringBuilder(s)
-        for (r in Regex("""@[\p{L}\p{M}\p{N}_.]+""").findAll(s)) { sb.setSpan(ForegroundColorSpan(ChatTheme.GOLD), r.range.first, r.range.last + 1, 0); sb.setSpan(StyleSpan(Typeface.BOLD), r.range.first, r.range.last + 1, 0) }
+        for (r in Regex("""@[\p{L}\p{M}\p{N}_.]+""").findAll(s)) { sb.setSpan(ForegroundColorSpan(ink.gold), r.range.first, r.range.last + 1, 0); sb.setSpan(StyleSpan(Typeface.BOLD), r.range.first, r.range.last + 1, 0) }
         if (searchQ.isNotEmpty()) { val low = s.lowercase(); val q = searchQ.lowercase(); var i = low.indexOf(q); while (i >= 0) { sb.setSpan(BackgroundColorSpan(Color.parseColor("#88F6C453")), i, i + q.length, 0); i = low.indexOf(q, i + q.length) } }
         return sb
     }
@@ -596,8 +667,8 @@ class ChatActivity : Activity() {
         rx.keys().forEach { u -> rx.optJSONObject(u)?.optString("e")?.takeIf { it.isNotEmpty() }?.let { counts[it] = (counts[it] ?: 0) + 1 } }
         if (counts.isEmpty()) return null
         val label = counts.entries.sortedByDescending { it.value }.take(3).joinToString("") { it.key } + (if (rx.length() > 1) " " + rx.length() else "")
-        return ui.text(label, 13f, ChatTheme.TXT).apply {
-            setPadding(dp(8), dp(2), dp(8), dp(3)); background = ui.round(ChatTheme.BAR, 12, ChatTheme.LINE)
+        return ui.text(label, 12.5f, ChatTheme.TXT, bold = true).apply {
+            setPadding(dp(9), dp(3), dp(9), dp(4)); setLineSpacing(0f, 1f); background = ChatTheme.round(ChatTheme.BAR, dp(13).toFloat(), if (ChatTheme.dark) Color.parseColor("#1FFFFFFF") else ChatTheme.LINE, dp(1))
             setOnClickListener { whoReacted(m) }
         }
     }
@@ -640,23 +711,23 @@ class ChatActivity : Activity() {
             })
         items.add(t("🗑️ Delete for me", "🗑️ నాకు మాత్రమే తొలగించు") to { m.body.optString("local").takeIf { it.isNotEmpty() }?.let { try { File(it).delete() } catch (e: Exception) { } }; db.deleteMsg(cid, m.id); render() })
         if (m.sender != me && m.sender != "ai" && !c.isLocal) items.add(t("⚠️ Report", "⚠️ రిపోర్ట్") to { report(listOf(m), m.sender) })
-        // the dialog: the quick reactions on top (like WhatsApp), then the list
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(10), dp(8), dp(4)) }
-        var dlg: AlertDialog? = null
+        // a sheet from the bottom: the quick reactions on top (like WhatsApp), then the list
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(6), dp(8), dp(4)) }
+        var dlg: Dialog? = null
         if (content && (!c.isLocal || c.isSelf)) {
             val mineNow = m.body.optJSONObject("_rx")?.optJSONObject(me)?.optString("e") ?: ""
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(6), dp(4), dp(6), dp(10)) }
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(8), dp(6), dp(8), dp(10)) }
             for (e in Emojis.QUICK) row.addView(TextView(this).apply {
-                text = e; textSize = 25f; gravity = Gravity.CENTER; background = if (e == mineNow) ui.round(Color.parseColor("#33F6B53D"), 22) else null
+                text = e; textSize = 25f; gravity = Gravity.CENTER; background = if (e == mineNow) ChatTheme.circle(ChatTheme.PILL) else Ico.ripple(context)
                 setOnClickListener { dlg?.dismiss(); ChatSync.react(this@ChatActivity, store, m, if (e == mineNow) "" else e); render() }
             }, LinearLayout.LayoutParams(0, dp(48), 1f))
-            row.addView(TextView(this).apply { text = "➕"; textSize = 21f; gravity = Gravity.CENTER; setTextColor(Ui.MUTED); setOnClickListener { dlg?.dismiss(); anyReaction(m) } }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            row.addView(Ico.view(this, R.drawable.ic_plus, ChatTheme.SUB, 22, 48, t("More reactions", "ఇంకా స్పందనలు"), ChatTheme.circle(ChatTheme.CARD2)) { dlg?.dismiss(); anyReaction(m) },
+                LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
             box.addView(row)
-            box.addView(View(this).apply { setBackgroundColor(Ui.LINE) }, LinearLayout.LayoutParams(-1, 1))
+            box.addView(View(this).apply { setBackgroundColor(ChatTheme.LINE) }, LinearLayout.LayoutParams(-1, 1).apply { marginStart = dp(12); marginEnd = dp(12) })
         }
-        for ((label, f) in items) box.addView(ui.text(label, 16f, Ui.INK).apply { setPadding(dp(18), dp(13), dp(18), dp(13)); setOnClickListener { dlg?.dismiss(); f() } })
-        dlg = AlertDialog.Builder(this).setView(ScrollView(this).apply { addView(box) }).create()
-        dlg.show()
+        for ((label, f) in items) box.addView(ui.text(label, 15.5f, ChatTheme.TXT).apply { setPadding(dp(18), dp(13), dp(18), dp(13)); background = Ico.rowRipple(context); setOnClickListener { dlg?.dismiss(); f() } })
+        dlg = ChatTheme.sheet(this, ScrollView(this).apply { addView(box); isVerticalScrollBarEnabled = false })
     }
     private fun anyReaction(m: ChatMsg) {
         val all = Emojis.recent(this).take(16) + Emojis.CATS.flatMap { it.list }.take(160)
@@ -721,10 +792,9 @@ class ChatActivity : Activity() {
         if (bmp != null) { iv.setImageBitmap(bmp); iv.setOnClickListener { showPhoto(File(local)) } }
         else {
             m.body.optString("thumb").takeIf { it.isNotEmpty() }?.let { try { val b = ChatCrypto.unb64(it); iv.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { } }
-            iv.setBackgroundColor(ChatTheme.LINE)
             if (m.body.optString("file").isNotEmpty()) ChatSync.fetchFile(this, store, m)
         }
-        iv.clipToOutline = true; iv.background = ui.round(ChatTheme.LINE, 10)
+        iv.clipToOutline = true; iv.background = ui.round(ChatTheme.LINE, 16)
         iv.setOnLongClickListener { conv()?.let { msgMenu(it, m) }; true }
         return iv
     }
@@ -739,8 +809,10 @@ class ChatActivity : Activity() {
             else -> "👁  " + t("Photo · tap to view once", "ఫోటో · ఒకసారి చూడటానికి నొక్కండి")
         }
         if (!mine && !opened && !fileReady(m) && m.body.optString("file").isNotEmpty()) ChatSync.fetchFile(this, store, m)
-        return ui.text(label, 15f, if (!mine && !opened) ChatTheme.GOLD else ChatTheme.SUB, bold = !mine && !opened).apply {
-            setPadding(dp(4), dp(8), dp(8), dp(8)); minWidth = dp(200)
+        val col = if (!mine && !opened) ink.gold else ink.sub
+        return ui.text("", 15f, col, bold = !mine && !opened).apply {
+            text = if (label.startsWith("👁")) Ico.withIcon(context, R.drawable.ic_eye, col, dp(18), label.removePrefix("👁").trim()) else label
+            setPadding(dp(2), dp(8), dp(8), dp(8)); minWidth = dp(200)
             if (!mine && !opened && fileReady(m)) setOnClickListener {
                 val f = File(m.body.optString("local"))
                 val d = Dialog(this@ChatActivity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
@@ -786,22 +858,23 @@ class ChatActivity : Activity() {
         val wPx = dp(220)
         val ratio = m.body.optInt("h", 3).toFloat() / maxOf(1, m.body.optInt("w", 4))
         val frame = FrameLayout(this)
-        val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(ChatTheme.LINE) }
+        val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
         frame.addView(iv, FrameLayout.LayoutParams(wPx, (wPx * ratio.coerceIn(0.4f, 1.5f)).toInt()))
         if (fileReady(m)) AnimImg.show(iv, m.body.optString("local"))
         else {
             m.body.optString("thumb").takeIf { it.isNotEmpty() }?.let { try { val b = ChatCrypto.unb64(it); iv.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { } }
             if (m.body.optString("file").isNotEmpty()) ChatSync.fetchFile(this, store, m)
         }
-        frame.addView(ui.text("GIF", 11f, Color.WHITE, bold = true).apply { setPadding(dp(6), dp(1), dp(6), dp(1)); background = ui.round(Color.parseColor("#99000000"), 6) },
-            FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(6), 0, 0, dp(6)) })
-        frame.clipToOutline = true; frame.background = ui.round(ChatTheme.LINE, 10)
+        frame.addView(ui.text("GIF", 11f, Color.WHITE, bold = true).apply { setPadding(dp(7), dp(1), dp(7), dp(2)); background = ui.round(Color.parseColor("#99000000"), 8); setLineSpacing(0f, 1f) },
+            FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(8), 0, 0, dp(8)) })
+        frame.clipToOutline = true; frame.background = ui.round(ChatTheme.LINE, 16)
         frame.setOnLongClickListener { conv()?.let { msgMenu(it, m) }; true }
         return frame
     }
     /** A link's preview: picture, title, words and the site (in a message, or above the typing bar). */
     private fun previewCard(lp: JSONObject, inBubble: Boolean): View = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; background = ui.round(Color.parseColor("#33000000"), 10); clipToOutline = true
+        val k = ink
+        orientation = LinearLayout.VERTICAL; background = if (inBubble) ui.round(k.inner, 14) else ChatTheme.round(ChatTheme.CARD, dp(14).toFloat(), ChatTheme.EDGE, dp(1)); clipToOutline = true
         lp.optString("img").takeIf { it.isNotEmpty() }?.let { s ->
             try {
                 val b = ChatCrypto.unb64(s); val bm = BitmapFactory.decodeByteArray(b, 0, b.size)
@@ -810,9 +883,9 @@ class ChatActivity : Activity() {
             } catch (e: Exception) { }
         }
         val words = LinearLayout(this@ChatActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), dp(7), dp(10), dp(8)) }
-        if (lp.optString("t").isNotBlank()) words.addView(ui.text(lp.optString("t"), 14.5f, ChatTheme.TXT, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
-        if (lp.optString("d").isNotBlank()) words.addView(ui.text(lp.optString("d"), 13f, ChatTheme.SUB).apply { maxLines = if (inBubble) 3 else 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        words.addView(ui.text("🔗 " + lp.optString("s"), 12f, ChatTheme.GOLD))
+        if (lp.optString("t").isNotBlank()) words.addView(ui.text(lp.optString("t"), 14.5f, k.txt, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        if (lp.optString("d").isNotBlank()) words.addView(ui.text(lp.optString("d"), 13f, k.sub).apply { maxLines = if (inBubble) 3 else 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        words.addView(ui.text("", 12f, k.gold, bold = true).apply { text = Ico.withIcon(context, R.drawable.ic_link, k.gold, dp(13), lp.optString("s")) })
         addView(words)
         layoutParams = LinearLayout.LayoutParams(if (inBubble) dp(250) else -1, -2).apply { bottomMargin = dp(5) }
         if (inBubble) setOnClickListener { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(lp.optString("u")))) } catch (e: Exception) { } }
@@ -827,22 +900,23 @@ class ChatActivity : Activity() {
         votes.keys().forEach { u -> votes.optJSONObject(u)?.optJSONArray("ch")?.let { ch -> for (i in 0 until ch.length()) { val k = ch.optInt(i, -1); if (k in counts.indices) { counts[k]++; if (u == me) myChoices.add(k) } } } }
         val voters = votes.length()
         val top = counts.maxOrNull()?.coerceAtLeast(1) ?: 1
+        val k = ink
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; minimumWidth = dp(240) }
-        box.addView(ui.text("📊 " + b.optString("q"), 16f, ChatTheme.TXT, bold = true))
-        box.addView(ui.text(if (b.optBoolean("multi")) "☑ " + t("Select one or more", "ఒకటి లేదా ఎక్కువ ఎంచుకోండి") else "◉ " + t("Select one", "ఒకటి ఎంచుకోండి"), 12.5f, ChatTheme.SUB).apply { setPadding(0, dp(2), 0, dp(6)) })
+        box.addView(ui.text("", 16f, k.txt, bold = true).apply { text = Ico.withIcon(context, R.drawable.ic_poll, k.gold, dp(17), b.optString("q")) })
+        box.addView(ui.text(if (b.optBoolean("multi")) t("Select one or more", "ఒకటి లేదా ఎక్కువ ఎంచుకోండి") else t("Select one", "ఒకటి ఎంచుకోండి"), 12.5f, k.sub).apply { setPadding(0, dp(2), 0, dp(6)) })
         val canVote = c.member && (c.accepted || c.isLocal)
         for (i in 0 until opts.length()) {
             val picked = i in myChoices
             val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(6)) }
             row.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                addView(ui.text(if (picked) "✅" else if (b.optBoolean("multi")) "⬜" else "⚪", 17f), LinearLayout.LayoutParams(dp(30), -2))
-                addView(ui.text(opts.optString(i), 15f, ChatTheme.TXT), LinearLayout.LayoutParams(0, -2, 1f))
-                addView(ui.text(counts[i].toString(), 14f, ChatTheme.SUB, bold = true))
+                addView(choiceMark(picked, b.optBoolean("multi"), k), LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(8) })
+                addView(ui.text(opts.optString(i), 15f, k.txt), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(ui.text(counts[i].toString(), 14f, k.sub, bold = true))
             })
             row.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; background = ui.round(Color.parseColor("#33000000"), 4)
-                addView(View(this@ChatActivity).apply { background = ui.round(ChatTheme.GOLD, 4) }, LinearLayout.LayoutParams(0, -1, counts[i].toFloat() / top))
+                orientation = LinearLayout.HORIZONTAL; background = ui.round(k.button, 4)
+                addView(View(this@ChatActivity).apply { background = ui.round(k.accent, 4) }, LinearLayout.LayoutParams(0, -1, counts[i].toFloat() / top))
                 addView(View(this@ChatActivity), LinearLayout.LayoutParams(0, -1, 1f - counts[i].toFloat() / top + 0.0001f))
             }, LinearLayout.LayoutParams(-1, dp(5)).apply { marginStart = dp(30); topMargin = dp(4) })
             if (canVote) row.setOnClickListener {
@@ -854,7 +928,7 @@ class ChatActivity : Activity() {
             }
             box.addView(row)
         }
-        box.addView(ui.text(t("$voters voted · View votes", "$voters మంది ఓటు వేశారు · ఓట్లు చూడండి"), 14f, ChatTheme.GOLD, bold = true).apply {
+        box.addView(ui.text(t("$voters voted · View votes", "$voters మంది ఓటు వేశారు · ఓట్లు చూడండి"), 14f, k.gold, bold = true).apply {
             gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(2))
             setOnClickListener {
                 val sb = StringBuilder()
@@ -868,24 +942,31 @@ class ChatActivity : Activity() {
         })
         return box
     }
+    /** A poll's round (one answer) or square (several) tick box. */
+    private fun choiceMark(on: Boolean, multi: Boolean, k: ChatTheme.Ink): View = FrameLayout(this).apply {
+        val r = if (multi) dp(6).toFloat() else dp(11).toFloat()
+        background = if (on) ChatTheme.round(k.accent, r) else ChatTheme.round(Color.TRANSPARENT, r, k.sub, dp(2))
+        if (on) addView(smallIcon(R.drawable.ic_tick, k.onAccent), FrameLayout.LayoutParams(dp(15), dp(15), Gravity.CENTER))
+    }
     // events
     private fun eventView(c: ChatConv, m: ChatMsg): View {
         val b = m.body
         val rs = b.optJSONObject("_rsvp") ?: JSONObject()
         var y = 0; var mb = 0; var n = 0; var mine = ""
         rs.keys().forEach { u -> when (rs.optJSONObject(u)?.optString("a")) { "y" -> y++; "m" -> mb++; "n" -> n++ }; if (u == me) mine = rs.optJSONObject(u)?.optString("a") ?: "" }
+        val ik = ink
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; minimumWidth = dp(240) }
-        box.addView(ui.text("📅 " + t("Event", "కార్యక్రమం"), 12.5f, ChatTheme.GOLD, bold = true))
-        box.addView(ui.text(b.optString("title"), 17f, ChatTheme.TXT, bold = true))
+        box.addView(capsLabel(R.drawable.ic_calendar, t("EVENT", "కార్యక్రమం"), ik.gold))
+        box.addView(ui.text(b.optString("title"), 17f, ik.txt, bold = true).apply { setPadding(0, dp(4), 0, dp(2)) })
         val at = b.optLong("at")
-        if (at > 0) box.addView(ui.text("🕒 " + Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy · h:mm a", Locale.ENGLISH)) + if (at < System.currentTimeMillis()) "  (" + t("over", "అయిపోయింది") + ")" else "", 14f, ChatTheme.TXT))
-        if (b.optString("place").isNotBlank()) box.addView(ui.text("📍 " + b.optString("place"), 14f, ChatTheme.TXT))
-        if (b.optString("note").isNotBlank()) box.addView(ui.text(b.optString("note"), 14f, ChatTheme.SUB).apply { setPadding(0, dp(4), 0, 0) })
-        box.addView(ui.text("✅ $y " + t("going", "వస్తున్నారు") + "   🤔 $mb " + t("maybe", "చూద్దాం") + "   ❌ $n " + t("can't", "రాలేరు"), 13f, ChatTheme.SUB).apply { setPadding(0, dp(6), 0, dp(4)) })
+        if (at > 0) box.addView(ui.text("", 14f, ik.txt).apply { text = Ico.withIcon(context, R.drawable.ic_clock, ik.sub, dp(15), Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy · h:mm a", Locale.ENGLISH)) + if (at < System.currentTimeMillis()) "  (" + t("over", "అయిపోయింది") + ")" else "") })
+        if (b.optString("place").isNotBlank()) box.addView(ui.text("", 14f, ik.txt).apply { text = Ico.withIcon(context, R.drawable.ic_map_pin, ik.sub, dp(15), b.optString("place")) })
+        if (b.optString("note").isNotBlank()) box.addView(ui.text(b.optString("note"), 14f, ik.sub).apply { setPadding(0, dp(4), 0, 0) })
+        box.addView(ui.text("✅ $y " + t("going", "వస్తున్నారు") + "   🤔 $mb " + t("maybe", "చూద్దాం") + "   ❌ $n " + t("can't", "రాలేరు"), 13f, ik.sub).apply { setPadding(0, dp(6), 0, dp(4)) })
         if (c.member && !c.isLocal) box.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             listOf("y" to t("Going", "వస్తాను"), "m" to t("Maybe", "చూద్దాం"), "n" to t("Can't go", "రాలేను")).forEach { (k, l) ->
-                addView(chipButton(l, if (mine == k) ChatTheme.GOOD else ChatTheme.GOLD) { ChatSync.rsvp(this@ChatActivity, store, m, if (mine == k) "" else k); render() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) })
+                addView(chipButton(l, primary = mine == k) { ChatSync.rsvp(this@ChatActivity, store, m, if (mine == k) "" else k); render() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) })
             }
         })
         box.addView(LinearLayout(this).apply {
@@ -910,13 +991,16 @@ class ChatActivity : Activity() {
         val lat = b.optDouble("lat"); val lng = b.optDouble("lng")
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; minimumWidth = dp(230)
+            val k = ink
             addView(FrameLayout(this@ChatActivity).apply {
                 background = ChatTheme.WallDrawable(ChatTheme.wall(2), resources.displayMetrics.density)
-                addView(ui.text("📍", 40f).apply { gravity = Gravity.CENTER }, FrameLayout.LayoutParams(-1, -1))
+                outlineProvider = object : android.view.ViewOutlineProvider() { override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(14).toFloat()) } }
+                clipToOutline = true
+                addView(smallIcon(R.drawable.ic_map_pin, ChatTheme.GOLD_TXT), FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER))
             }, LinearLayout.LayoutParams(-1, dp(110)))
-            addView(ui.text(b.optString("name").ifBlank { t("Location", "లొకేషన్") }, 15f, ChatTheme.TXT, bold = true).apply { setPadding(0, dp(6), 0, 0) })
-            addView(ui.text("%.5f, %.5f".format(Locale.ENGLISH, lat, lng) + (if (b.optInt("acc") > 0) " · ±${b.optInt("acc")} m" else ""), 12.5f, ChatTheme.SUB))
-            addView(ui.text("🗺️ " + t("Open in Maps", "మ్యాప్స్‌లో తెరవండి"), 14f, ChatTheme.GOLD, bold = true).apply { setPadding(0, dp(6), 0, dp(2)) })
+            addView(ui.text(b.optString("name").ifBlank { t("Location", "లొకేషన్") }, 15f, k.txt, bold = true).apply { setPadding(0, dp(6), 0, 0) })
+            addView(ui.text("%.5f, %.5f".format(Locale.ENGLISH, lat, lng) + (if (b.optInt("acc") > 0) " · ±${b.optInt("acc")} m" else ""), 12.5f, k.sub))
+            addView(ui.text("", 14f, k.gold, bold = true).apply { text = Ico.withIcon(context, R.drawable.ic_map_pin, k.gold, dp(15), t("Open in Maps", "మ్యాప్స్‌లో తెరవండి")); setPadding(0, dp(6), 0, dp(2)) })
             setOnClickListener {
                 val label = Uri.encode(b.optString("name").ifBlank { "Location" })
                 try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:$lat,$lng?q=$lat,$lng($label)"))) }
@@ -932,11 +1016,12 @@ class ChatActivity : Activity() {
             orientation = LinearLayout.VERTICAL; minimumWidth = dp(230)
             addView(LinearLayout(this@ChatActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                addView(ui.text(b.optString("name").trim().firstOrNull()?.uppercase() ?: "👤", 20f, ChatTheme.NAVY, bold = true).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(ChatTheme.GOLD) }, LinearLayout.LayoutParams(dp(44), dp(44)))
+                val (bg, fg) = ChatTheme.tint(b.optString("name"))
+                addView(ui.text(ChatDraw.initials(b.optString("name")).ifEmpty { "?" }, 17f, fg, bold = true).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(bg); typeface = Fonts.heavy(context) }, LinearLayout.LayoutParams(dp(44), dp(44)))
                 addView(LinearLayout(this@ChatActivity).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0)
-                    addView(ui.text(b.optString("name"), 15.5f, ChatTheme.TXT, bold = true))
-                    for (i in 0 until phones.length()) addView(ui.text(phones.optString(i), 13f, ChatTheme.SUB))
+                    addView(ui.text(b.optString("name"), 15.5f, ink.txt, bold = true))
+                    for (i in 0 until phones.length()) addView(ui.text(phones.optString(i), 13f, ink.sub))
                 }, LinearLayout.LayoutParams(0, -2, 1f))
             })
             if (first.isNotEmpty()) addView(LinearLayout(this@ChatActivity).apply {
@@ -953,26 +1038,46 @@ class ChatActivity : Activity() {
     }
 
     // voice notes
-    private fun voiceView(m: ChatMsg): View {
+    /** A voice note: the round play button, its sound bars (the played part darker) and its length, then the time and ticks. */
+    private fun voiceView(m: ChatMsg, foot: View): View {
+        val k = ink
         val local = m.body.optString("local")
         val ready = local.isNotEmpty() && File(local).exists()
         val secs = m.body.optInt("dur")
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumWidth = dp(190) }
-        val btn = TextView(this).apply { text = if (playingId == m.id) "⏸" else "▶"; textSize = 20f; gravity = Gravity.CENTER; setTextColor(ChatTheme.NAVY); background = ui.round(ChatTheme.GOLD, 20) }
+        val playing = playingId == m.id
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; minimumWidth = dp(232) }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val res = when { playing -> R.drawable.ic_pause; ready -> R.drawable.ic_play; ChatSync.isFetching(m) -> R.drawable.ic_clock; else -> R.drawable.ic_download }
+        val btn = Ico.view(this, res, k.onAccent, 18, 40, if (playing) t("Pause", "ఆపు") else t("Play the voice note", "వాయిస్ మెసేజ్ వినండి"), ChatTheme.circle(k.accent)) {
+            if (!ready) { ChatSync.fetchFile(this, store, m); render(); return@view }
+            if (playingId == m.id) stopPlaying() else play(m.id, local)
+        }
         row.addView(btn, LinearLayout.LayoutParams(dp(40), dp(40)))
-        row.addView(ui.text("🎤 " + (if (ready) "%d:%02d".format(secs / 60, secs % 60) else t("Loading…", "వస్తోంది…")), 15f, ChatTheme.TXT), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(10) })
-        btn.setOnClickListener { if (!ready) { ChatSync.fetchFile(this, store, m); return@setOnClickListener }; if (playingId == m.id) stopPlaying() else play(m.id, local) }
+        val wave = Wave(this, m.id, k.accent).apply { progress = if (playing) playProgress() else 0f }
+        if (playing) playingWave = wave
+        row.addView(wave, LinearLayout.LayoutParams(0, dp(30), 1f).apply { marginStart = dp(10); marginEnd = dp(4) })
+        box.addView(row)
+        val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(50), 0, 0, 0) }
+        line.addView(ui.text(if (secs > 0) "%d:%02d".format(secs / 60, secs % 60) else if (ready) "" else t("Loading…", "వస్తోంది…"), 11f, k.sub, bold = true).apply { setLineSpacing(0f, 1f) }, LinearLayout.LayoutParams(0, -2, 1f))
+        line.addView(foot)
+        box.addView(line)
         if (!ready && m.body.optString("file").isNotEmpty()) ChatSync.fetchFile(this, store, m)
-        return row
+        return box
+    }
+    private var playingWave: Wave? = null
+    private fun playProgress(): Float = try { player?.let { if (it.duration > 0) it.currentPosition.toFloat() / it.duration else 0f } ?: 0f } catch (e: Exception) { 0f }
+    private val playTick = object : Runnable {
+        override fun run() { if (player == null) return; playingWave?.progress = playProgress(); handler.postDelayed(this, 100) }
     }
     private fun play(id: String, path: String) {
         stopPlaying()
         try {
             player = MediaPlayer().apply { setDataSource(path); setOnCompletionListener { stopPlaying() }; prepare(); start() }
-            playingId = id; render()
+            playingId = id; render(); handler.post(playTick)
         } catch (e: Exception) { toast(t("Couldn't play it.", "ప్లే చేయలేకపోయాం.")) }
     }
     private fun stopPlaying() {
+        handler.removeCallbacks(playTick); playingWave = null
         try { player?.stop() } catch (e: Exception) { }
         try { player?.release() } catch (e: Exception) { }
         player = null
@@ -986,18 +1091,17 @@ class ChatActivity : Activity() {
         val wPx = dp(220)
         val ratio = m.body.optInt("h", 9).toFloat() / maxOf(1, m.body.optInt("w", 16))
         val frame = FrameLayout(this)
-        val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(Color.parseColor("#23302F")) }
+        val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(Color.parseColor("#1B2242")) }
         m.body.optString("thumb").takeIf { it.isNotEmpty() }?.let { try { val b = ChatCrypto.unb64(it); iv.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { } }
         frame.addView(iv, FrameLayout.LayoutParams(wPx, (wPx * ratio.coerceIn(0.5f, 1.4f)).toInt()))
         val ready = fileReady(m)
         val secs = m.body.optInt("dur")
-        frame.addView(TextView(this).apply {
-            text = if (ready) "▶" else if (m.body.optString("file").isNotEmpty() && ChatSync.isFetching(m)) "⏳" else "⬇"
-            textSize = 24f; gravity = Gravity.CENTER; setTextColor(Color.WHITE); background = ui.round(Color.parseColor("#88000000"), 28)
-        }, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER))
-        frame.addView(ui.text("🎬 " + (if (secs > 0) "%d:%02d".format(secs / 60, secs % 60) + " · " else "") + sizeText(m.body.optLong("size")), 12f, Color.WHITE).apply {
-            setPadding(dp(8), dp(2), dp(8), dp(4)); setShadowLayer(4f, 0f, 1f, Color.BLACK) }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
-        frame.clipToOutline = true; frame.background = ui.round(ChatTheme.LINE, 10)
+        val res = if (ready) R.drawable.ic_play else if (m.body.optString("file").isNotEmpty() && ChatSync.isFetching(m)) R.drawable.ic_clock else R.drawable.ic_download
+        frame.addView(Ico.view(this, res, Color.WHITE, 24, 54, "", ChatTheme.circle(Color.parseColor("#80000000"))), FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER))
+        frame.addView(ui.text("", 12f, Color.WHITE, bold = true).apply {
+            text = Ico.withIcon(context, R.drawable.ic_video, Color.WHITE, dp(14), (if (secs > 0) "%d:%02d".format(secs / 60, secs % 60) + " · " else "") + sizeText(m.body.optLong("size")))
+            setPadding(dp(10), dp(2), dp(10), dp(6)); setShadowLayer(4f, 0f, 1f, Color.BLACK) }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
+        frame.clipToOutline = true; frame.background = ui.round(ChatTheme.LINE, 16)
         frame.setOnClickListener { if (fileReady(m)) openFile(m, false) else { ChatSync.fetchFile(this, store, m); toast(t("Downloading…", "డౌన్‌లోడ్ అవుతోంది…")); render() } }
         frame.setOnLongClickListener { conv()?.let { msgMenu(it, m) }; true }
         return frame
@@ -1007,16 +1111,19 @@ class ChatActivity : Activity() {
         val name = m.body.optString("name").ifBlank { t("Document", "ఫైల్") }
         val ext = name.substringAfterLast('.', "").uppercase().take(5)
         val audio = m.body.optString("mime").startsWith("audio")
+        val k = ink
         return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(8), dp(10), dp(8))
-            background = ui.round(Color.parseColor("#33000000"), 10); minimumWidth = dp(220)
-            addView(ui.text(if (audio) "🎵" else if (ext == "PDF") "📕" else "📄", 26f), LinearLayout.LayoutParams(-2, -2))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(7), dp(7), dp(8), dp(7))
+            background = ui.round(k.inner, 14); minimumWidth = dp(232)
+            val (tile, word) = fileTile(ext, audio)
+            addView(ui.text(word, 10.5f, Color.WHITE).apply { gravity = Gravity.CENTER; typeface = Fonts.heavy(context); background = ui.round(tile, 10); setLineSpacing(0f, 1f) }, LinearLayout.LayoutParams(dp(40), dp(48)))
             addView(LinearLayout(this@ChatActivity).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(dp(8), 0, dp(8), 0)
-                addView(ui.text(name, 14.5f, ChatTheme.TXT, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
-                addView(ui.text(listOf(ext, sizeText(m.body.optLong("size"))).filter { it.isNotBlank() }.joinToString(" · "), 12f, ChatTheme.SUB))
+                orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, dp(8), 0)
+                addView(ui.text(name, 14f, k.txt, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
+                addView(ui.text(listOf(ext, sizeText(m.body.optLong("size"))).filter { it.isNotBlank() }.joinToString(" · "), 12f, k.sub))
             }, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(ui.text(if (ready) (if (audio && playingId == m.id) "⏸" else if (audio) "▶" else "↗") else if (ChatSync.isFetching(m)) "⏳" else "⬇", 20f, ChatTheme.GOLD, bold = true))
+            val res = when { !ready && ChatSync.isFetching(m) -> R.drawable.ic_clock; !ready -> R.drawable.ic_download; audio && playingId == m.id -> R.drawable.ic_pause; audio -> R.drawable.ic_play; else -> R.drawable.ic_chevron_right }
+            addView(Ico.view(context, res, k.txt, 18, 36, "", ChatTheme.circle(k.button)), LinearLayout.LayoutParams(dp(36), dp(36)))
             setOnClickListener {
                 if (!fileReady(m)) { ChatSync.fetchFile(this@ChatActivity, store, m); toast(t("Downloading…", "డౌన్‌లోడ్ అవుతోంది…")); render() }
                 else if (audio) { if (playingId == m.id) stopPlaying() else play(m.id, m.body.optString("local")) }
@@ -1024,6 +1131,16 @@ class ChatActivity : Activity() {
             }
             setOnLongClickListener { conv()?.let { msgMenu(it, m) }; true }
         }
+    }
+    /** The coloured tile of a file: its type in short (PDF red, Word blue, Excel green…). */
+    private fun fileTile(ext: String, audio: Boolean): Pair<Int, String> = when {
+        audio -> Color.parseColor("#8E5BE8") to ext.ifBlank { "AUDIO" }.take(4)
+        ext == "PDF" -> Color.parseColor(if (ChatTheme.dark) "#E5484D" else "#D93A3F") to "PDF"
+        ext in setOf("DOC", "DOCX", "TXT", "RTF", "ODT") -> Color.parseColor("#2F6FED") to ext.take(4)
+        ext in setOf("XLS", "XLSX", "CSV", "ODS") -> Color.parseColor("#1E9E5A") to ext.take(4)
+        ext in setOf("PPT", "PPTX", "ODP") -> Color.parseColor("#E8792B") to ext.take(4)
+        ext in setOf("ZIP", "RAR", "7Z") -> Color.parseColor("#6B7280") to ext.take(4)
+        else -> Color.parseColor("#5B6B8C") to ext.ifBlank { "FILE" }.take(4)
     }
     /** Opens a video or document in an app on the phone ([share]: share or save it instead). */
     private fun openFile(m: ChatMsg, share: Boolean) {
@@ -1042,8 +1159,12 @@ class ChatActivity : Activity() {
     private fun callLogView(m: ChatMsg): View = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         val missed = m.body.optString("st") == "missed" && m.sender != me
-        addView(ui.text(CallManager.logText(this@ChatActivity, m), 15f, if (missed) ChatTheme.DANGER else ChatTheme.TXT, bold = missed), LinearLayout.LayoutParams(-2, -2))
-        if (conv()?.isDm == true) addView(ui.text("  " + t("Call back", "మళ్ళీ కాల్"), 13.5f, ChatTheme.GOLD, bold = true).apply {
+        val k = ink
+        val video = m.body.optBoolean("video")
+        addView(Ico.view(this@ChatActivity, if (video) R.drawable.ic_video else R.drawable.ic_phone, if (missed) ChatTheme.DANGER else k.txt, 18, 34, "", ChatTheme.circle(k.button)),
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginEnd = dp(10) })
+        addView(ui.text(CallManager.logText(this@ChatActivity, m), 15f, if (missed) ChatTheme.DANGER else k.txt, bold = missed), LinearLayout.LayoutParams(-2, -2))
+        if (conv()?.isDm == true) addView(ui.text("   " + t("Call back", "మళ్ళీ కాల్"), 13.5f, k.gold, bold = true).apply {
             setOnClickListener { startCall(m.body.optBoolean("video")) } })
     }
 
@@ -1062,18 +1183,21 @@ class ChatActivity : Activity() {
 
     // replies: the quoted message above the typing bar, and inside the bubble
     private fun quoteView(c: ChatConv, re: JSONObject, inBubble: Boolean): View = LinearLayout(this).apply {
+        val k = ink
         orientation = LinearLayout.HORIZONTAL
         val who = re.optString("who")
-        val col = if (who == me) ChatTheme.GOLD else nameColor(who)
+        val onMine = inBubble && inkMine
+        val col = if (onMine) k.accent else if (who == me) ChatTheme.GOLD_TXT else nameColor(who)
         addView(View(this@ChatActivity).apply { setBackgroundColor(col) }, LinearLayout.LayoutParams(dp(4), -1))
         addView(LinearLayout(this@ChatActivity).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(4), dp(8), dp(5))
-            addView(ui.text(if (who == me) t("You", "మీరు") else c.nameOf(who), 12.5f, col, bold = true))
-            addView(ui.text(re.optString("p"), 13.5f, ChatTheme.SUB).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+            orientation = LinearLayout.VERTICAL; setPadding(dp(9), dp(5), dp(9), dp(6))
+            addView(ui.text(if (who == me) t("You", "మీరు") else c.nameOf(who), 12.5f, if (onMine) k.txt else col).apply { typeface = Fonts.heavy(context); setLineSpacing(0f, 1f) })
+            addView(ui.text(re.optString("p"), 13f, k.sub).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
         }, LinearLayout.LayoutParams(-2, -2))
-        background = ui.round(if (inBubble) Color.parseColor("#33000000") else ChatTheme.CARD, 8)
+        background = if (inBubble) ui.round(k.inner, 12) else ui.round(ChatTheme.CARD2, 12)
+        clipToOutline = true
         if (inBubble) {
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) }
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) }
             setOnClickListener { goTo(re.optString("id")) }
         }
     }
@@ -1083,7 +1207,7 @@ class ChatActivity : Activity() {
             val v = list.getChildAt(i)
             if (v.tag == id) {
                 scroll.post { scroll.smoothScrollTo(0, maxOf(0, v.top - dp(80))) }
-                v.setBackgroundColor(Color.parseColor("#33F6B53D")); v.postDelayed({ v.setBackgroundColor(Color.TRANSPARENT) }, 1400)
+                v.setBackgroundColor(ChatTheme.PILL); v.postDelayed({ v.setBackgroundColor(Color.TRANSPARENT) }, 1400)
                 return
             }
         }
@@ -1095,11 +1219,12 @@ class ChatActivity : Activity() {
         replyBar.removeAllViews()
         val r = replyTo ?: return
         val c = conv() ?: return
-        replyBar.setPadding(dp(10), dp(6), dp(6), 0)
+        replyBar.setPadding(dp(8), dp(6), dp(8), 0)
         replyBar.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(6), dp(6), dp(2), dp(6))
+            background = ChatTheme.round(ChatTheme.CARD, dp(18).toFloat(), ChatTheme.EDGE, dp(1))
             addView(quoteView(c, reOf(r), false), LinearLayout.LayoutParams(0, -2, 1f))
-            addView(iconButton("✕") { replyTo = null; renderReplyBar() })
+            addView(iconBtn(R.drawable.ic_close, t("Don't reply", "జవాబు వద్దు"), ChatTheme.SUB, 18, 40) { replyTo = null; renderReplyBar() })
         })
     }
     private fun reOf(m: ChatMsg) = JSONObject().put("id", m.id).put("who", m.sender).put("p", ChatSync.preview(this, m).take(90))
@@ -1139,118 +1264,141 @@ class ChatActivity : Activity() {
         val who = if (m.sender == me || c.isSelf) t("You", "మీరు") else c.nameOf(m.sender)
         return when (b.optString("action")) {
             "new" -> taskCard(c, db.task(cid, tid) ?: JSONObject().put("tid", tid).put("title", b.optString("title")).put("state", "open"), true)
-            "remark" -> ui.text("💬 $who " + t("on", "") + " \"${taskTitle(tid)}\": ${b.optString("text")}", 15f, ChatTheme.TXT)
+            "remark" -> ui.text("💬 $who " + t("on", "") + " \"${taskTitle(tid)}\": ${b.optString("text")}", 15f, ink.txt)
             "done" -> ui.text("✔ $who " + t("marked \"${taskTitle(tid)}\" done", "\"${taskTitle(tid)}\" పని పూర్తయిందని చెప్పారు") + b.optString("text").let { if (it.isBlank()) "" else ": $it" }, 15f, ChatTheme.GOOD, bold = true)
             "close" -> ui.text("✅ $who " + t("closed \"${taskTitle(tid)}\"", "\"${taskTitle(tid)}\" మూసివేశారు"), 15f, ChatTheme.GOOD, bold = true)
-            else -> ui.text("↩ $who " + t("reopened \"${taskTitle(tid)}\"", "\"${taskTitle(tid)}\" మళ్ళీ తెరిచారు") + b.optString("text").let { if (it.isBlank()) "" else ": $it" }, 15f, ChatTheme.GOLD, bold = true)
+            else -> ui.text("↩ $who " + t("reopened \"${taskTitle(tid)}\"", "\"${taskTitle(tid)}\" మళ్ళీ తెరిచారు") + b.optString("text").let { if (it.isBlank()) "" else ": $it" }, 15f, ink.gold, bold = true)
         }
     }
 
     /** A task with its state and the buttons this person may use. */
     private fun taskCard(c: ChatConv, task: JSONObject, full: Boolean): View {
+        val k = ink
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val state = task.optString("state", "open")
         val to = task.optString("to"); val by = task.optString("by")
         val reminder = c.isSelf || to.isEmpty()
-        val head = (if (reminder) "⏰ " + t("Reminder", "రిమైండర్") else "📋 " + t("Task", "పని")) + "  ·  " + when (state) {
-            "done" -> t("Done, waiting for the admin ✔", "పూర్తయింది, అడ్మిన్ కోసం ✔"); "closed" -> t("Closed ✅", "మూసివేశారు ✅"); else -> t("Open", "తెరిచి ఉంది") }
-        box.addView(ui.text(head, 12.5f, when (state) { "closed" -> ChatTheme.GOOD; else -> ChatTheme.GOLD }, bold = true))
-        box.addView(ui.text(task.optString("title"), 16.5f, ChatTheme.TXT, bold = true).apply { if (state == "closed") paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG })
-        if (task.optString("note").isNotBlank()) box.addView(ui.text(task.optString("note"), 14.5f, ChatTheme.TXT))
-        val facts = ArrayList<String>()
-        if (to.isNotEmpty()) facts.add("👤 " + (if (to == me) t("You", "మీరు") else c.nameOf(to)))
-        if (by.isNotEmpty() && !c.isSelf) facts.add("✍️ " + (if (by == me) t("You", "మీరు") else c.nameOf(by)))
-        task.optLong("due").takeIf { it > 0 }?.let { facts.add("📅 " + Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("EEE d MMM, h:mm a", Locale.ENGLISH)) + if (it < System.currentTimeMillis() && state == "open") " ⚠️" else "") }
-        if (facts.isNotEmpty()) box.addView(ui.text(facts.joinToString("   "), 13f, ChatTheme.SUB))
+        val word = (if (reminder) t("REMINDER", "రిమైండర్") else t("TASK", "పని")) + " · " + when (state) {
+            "done" -> t("DONE, WAITING FOR THE ADMIN", "పూర్తయింది, అడ్మిన్ కోసం"); "closed" -> t("CLOSED", "మూసివేశారు"); else -> t("OPEN", "తెరిచి ఉంది") }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(capsLabel(if (reminder) R.drawable.ic_clock else R.drawable.ic_tasks, word, if (state == "open") k.gold else ChatTheme.GOOD), LinearLayout.LayoutParams(0, -2, 1f))
+        if (by.isNotEmpty() && by != me && !c.isSelf) head.addView(ui.text(t("from ", "") + c.nameOf(by).substringBefore(' ') + t("", " నుంచి"), 12f, k.sub).apply { maxLines = 1 })
+        box.addView(head)
+        box.addView(ui.text(task.optString("title"), 16f, k.txt, bold = true).apply { setPadding(0, dp(6), 0, 0); if (state == "closed") paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG })
+        if (task.optString("note").isNotBlank()) box.addView(ui.text(task.optString("note"), 14.5f, k.txt).apply { setPadding(0, dp(2), 0, 0) })
+        val facts = SpannableStringBuilder()
+        val iconPx = dp(14)
+        if (to.isNotEmpty()) facts.append(Ico.withIcon(this, R.drawable.ic_person, k.sub, iconPx, if (to == me) t("For you", "మీ కోసం") else c.nameOf(to)))
+        task.optLong("due").takeIf { it > 0 }?.let {
+            if (facts.isNotEmpty()) facts.append("     ")
+            facts.append(Ico.withIcon(this, R.drawable.ic_clock, k.sub, iconPx, Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("EEE d MMM, h:mm a", Locale.ENGLISH)) + if (it < System.currentTimeMillis() && state == "open") " ⚠️" else ""))
+        }
+        if (facts.isNotEmpty()) box.addView(ui.text("", 12.5f, if (inkMine) k.sub else ChatTheme.TXT2).apply { text = facts; setPadding(0, dp(4), 0, 0) })
         if (full) task.optJSONArray("remarks")?.let { r -> for (i in maxOf(0, r.length() - 3) until r.length()) r.optJSONObject(i)?.let { x ->
-            box.addView(ui.text("💬 " + (if (x.optString("by") == me) t("You", "మీరు") else c.nameOf(x.optString("by"))) + ": " + x.optString("text"), 13.5f, ChatTheme.TXT)) } }
+            box.addView(ui.text("💬 " + (if (x.optString("by") == me) t("You", "మీరు") else c.nameOf(x.optString("by"))) + ": " + x.optString("text"), 13.5f, k.txt).apply { setPadding(0, dp(3), 0, 0) }) } }
         // what this person can do
         val admin = c.isSelf || c.isAdmin(me)
         val btns = ArrayList<View>()
         val tid = task.optString("tid")
         if (state != "closed" && c.member) {
-            if (!c.isSelf) btns.add(chipButton("💬 " + t("Remark", "రిమార్క్")) { remark(tid) })
-            if (state == "open" && !reminder && (to == me || by == me || admin)) btns.add(chipButton("✔ " + t("Done", "పూర్తి")) { markDone(tid) })
-            if (admin) btns.add(chipButton("✅ " + t(if (reminder) "Tick" else "Close", if (reminder) "టిక్" else "మూసివేయి"), ChatTheme.GOOD) { closeTask(tid) })
-        } else if (state == "closed" && admin && c.member) btns.add(chipButton("↩ " + t("Reopen", "మళ్ళీ తెరువు")) { reopen(tid) })
+            val canDone = state == "open" && !reminder && (to == me || by == me || admin)
+            if (canDone) btns.add(chipButton(t("Mark done", "పూర్తయింది"), primary = true) { markDone(tid) })
+            if (!c.isSelf) btns.add(chipButton(t("Add remark", "రిమార్క్ రాయండి")) { remark(tid) })
+            if (admin) btns.add(chipButton(t(if (reminder) "Tick" else "Close", if (reminder) "టిక్" else "మూసివేయి"), if (canDone || !c.isSelf) ChatTheme.GOOD else null, primary = !canDone && c.isSelf) { closeTask(tid) })
+        } else if (state == "closed" && admin && c.member) btns.add(chipButton(t("Reopen", "మళ్ళీ తెరువు")) { reopen(tid) })
         if (btns.isNotEmpty()) {
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6), 0, 0) }
-            btns.forEach { row.addView(it, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) }) }
-            box.addView(row)
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, dp(2)) }
+            btns.forEach { row.addView(it, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) }) }
+            box.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(row) })
         }
         return box
     }
-    private fun chipButton(label: String, color: Int = ChatTheme.GOLD, onClick: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 13.5f; setTextColor(color); typeface = Typeface.DEFAULT_BOLD
-        setPadding(dp(12), dp(7), dp(12), dp(7)); background = ui.round(ChatTheme.CARD, 16, color); setOnClickListener { onClick() }
+    /** A small pill button: [primary] filled (gold on navy; navy inside my gold bubble), else an outline in [color]. */
+    private fun chipButton(label: String, color: Int? = null, primary: Boolean = false, onClick: () -> Unit) = TextView(this).apply {
+        val k = ink
+        text = label; textSize = 13.5f; typeface = Fonts.heavy(context); gravity = Gravity.CENTER; includeFontPadding = false
+        setPadding(dp(16), dp(11), dp(16), dp(11))
+        if (primary) { setTextColor(k.onBtn); background = ui.round(k.btn, 20) }
+        else { setTextColor(color ?: k.txt); background = ChatTheme.round(Color.TRANSPARENT, dp(20).toFloat(), k.outline, dp(1)) }
+        setOnClickListener { onClick() }
+    }
+    /** "TASK · OPEN": small capital words with an icon. */
+    private fun capsLabel(res: Int, words: String, color: Int) = ui.text("", 11.5f, color).apply {
+        text = Ico.withIcon(context, res, color, dp(15), words); typeface = Fonts.heavy(context); letterSpacing = 0.05f; setLineSpacing(0f, 1f); maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
     }
 
-    /** Open tasks: a small 📋 n next to the name; tap it for the list. (A bar at the top too, if chosen in Chat settings.) */
+    /**
+     * The bar under the top bar: the pinned message (tap: go to it; hold: unpin) and "2 tasks" (tap: the open tasks).
+     * With no pinned message, open tasks show as a small pill next to the name (or as this bar, if chosen in Chat settings).
+     */
     private fun renderPinned(c: ChatConv) {
         pinned.removeAllViews()
         val open = db.tasks(cid)
-        tasksChip.visibility = if (open.isEmpty()) View.GONE else View.VISIBLE
-        tasksChip.text = "📋 ${open.size}" + if (pinnedOpen) " ▲" else ""
-        if (open.isEmpty()) return
-        if (!pinnedOpen && !ChatTheme.tasksBar(this)) return
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(9), dp(14), dp(9)); setBackgroundColor(ChatTheme.BAR) }
-        val mineCount = open.count { it.optString("to") == me && it.optString("state") == "open" }
-        bar.addView(ui.text("📋 " + t("${open.size} open", "${open.size} తెరిచి ఉన్నాయి") + (if (mineCount > 0) t(" · $mineCount for you", " · మీకు $mineCount") else "") + " · " +
-            open.joinToString(" · ") { it.optString("title") }, 14f, ChatTheme.TXT, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f))
-        bar.addView(ui.text(if (pinnedOpen) "▲" else "▼", 14f, ChatTheme.SUB))
-        bar.setOnClickListener { pinnedOpen = !pinnedOpen; renderPinned(c) }
-        pinned.addView(bar)
-        if (pinnedOpen) {
-            val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), dp(4), dp(10), dp(8)); setBackgroundColor(ChatTheme.NAVY) }
-            for (task in open) box.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(9), dp(12), dp(9)); background = ui.round(ChatTheme.CARD, 12)
-                addView(taskCard(c, task, true))
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-            val sv = ScrollView(this).apply { addView(box) }
-            pinned.addView(sv, LinearLayout.LayoutParams(-1, minOf(dp(320), dp(150) * open.size)))
+        val p = ChatSync.pinned(this, cid)
+        val showBar = p != null || (open.isNotEmpty() && (pinnedOpen || ChatTheme.tasksBar(this)))
+        tasksChip.visibility = if (open.isNotEmpty() && !showBar) View.VISIBLE else View.GONE
+        if (open.isNotEmpty()) setTasksPill(tasksChip, open.size)
+        if (!showBar) return
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(7), dp(12), dp(7)); minimumHeight = dp(54); setBackgroundColor(ChatTheme.PIN_BG) }
+        bar.addView(smallIcon(if (p != null) R.drawable.ic_pin else R.drawable.ic_tasks, ChatTheme.GOLD_TXT), LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(12) })
+        val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        if (p != null) {
+            words.addView(ui.text(ChatSync.preview(this, p), 13.5f, ChatTheme.TXT, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setLineSpacing(0f, 1f) })
+            words.addView(ui.text(t("Pinned", "పిన్ చేసింది") + " · " + (if (p.sender == me) t("You", "మీరు") else c.nameOf(p.sender)), 12f, ChatTheme.PIN_SUB).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(2), 0, 0) })
+            bar.setOnClickListener { goTo(p.id) }
+            val canUnpin = !c.isLocal && c.member && !(c.isGroup && c.adminsEdit && !c.isAdmin(me))
+            if (canUnpin) bar.setOnLongClickListener {
+                AlertDialog.Builder(this).setMessage(t("Unpin this message?", "ఈ మెసేజ్ పిన్ తీసేయాలా?"))
+                    .setPositiveButton(t("Unpin", "పిన్ తీసేయి")) { _, _ -> ChatSync.pin(this, store, p, false, 0); render() }.setNegativeButton(t("Cancel", "వద్దు"), null).show(); true
+            }
+        } else {
+            val mineCount = open.count { it.optString("to") == me && it.optString("state") == "open" }
+            words.addView(ui.text(open.joinToString(" · ") { it.optString("title") }, 13.5f, ChatTheme.TXT, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setLineSpacing(0f, 1f) })
+            words.addView(ui.text(t("${open.size} open", "${open.size} తెరిచి ఉన్నాయి") + (if (mineCount > 0) t(" · $mineCount for you", " · మీకు $mineCount") else ""), 12f, ChatTheme.PIN_SUB).apply { setPadding(0, dp(2), 0, 0) })
+            bar.setOnClickListener { pinnedOpen = !pinnedOpen; renderPinned(c) }
         }
-        pinned.addView(View(this).apply { setBackgroundColor(ChatTheme.LINE) }, LinearLayout.LayoutParams(-1, 1))
+        bar.addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+        if (open.isNotEmpty()) bar.addView(tasksPill().apply { setTasksPill(this, open.size); setOnClickListener { pinnedOpen = !pinnedOpen; renderPinned(c) } },
+            LinearLayout.LayoutParams(-2, dp(28)).apply { marginStart = dp(10) })
+        pinned.addView(bar)
+        pinned.addView(View(this).apply { setBackgroundColor(ChatTheme.PIN_LINE) }, LinearLayout.LayoutParams(-1, 1))
+        if (pinnedOpen && open.isNotEmpty()) {
+            val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(2), dp(12), dp(10)); setBackgroundColor(ChatTheme.CHAT_BG) }
+            for (task in open) box.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(10)); background = ChatTheme.round(ChatTheme.CARD, dp(20).toFloat(), ChatTheme.EDGE, dp(1))
+                addView(taskCard(c, task, true))
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            val sv = ScrollView(this).apply { addView(box) }
+            pinned.addView(sv, LinearLayout.LayoutParams(-1, minOf(dp(340), dp(176) * open.size)))
+            pinned.addView(View(this).apply { setBackgroundColor(ChatTheme.DIVIDER) }, LinearLayout.LayoutParams(-1, 1))
+        }
     }
-    /** 📌 The pinned message (tap: go to it; ✕: unpin). */
-    private fun renderPinMsg(c: ChatConv) {
-        pinMsgBar.removeAllViews()
-        val p = ChatSync.pinned(this, cid) ?: return
-        val canUnpin = !c.isLocal && c.member && !(c.isGroup && c.adminsEdit && !c.isAdmin(me))
-        pinMsgBar.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(8), dp(4), dp(8)); setBackgroundColor(ChatTheme.BAR)
-            addView(ui.text("📌", 16f), LinearLayout.LayoutParams(dp(28), -2))
-            addView(LinearLayout(this@ChatActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(ui.text(if (p.sender == me) t("You", "మీరు") else c.nameOf(p.sender), 12f, ChatTheme.GOLD, bold = true))
-                addView(ui.text(ChatSync.preview(this@ChatActivity, p), 14f, ChatTheme.TXT).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-            }, LinearLayout.LayoutParams(0, -2, 1f))
-            if (canUnpin) addView(iconButton("✕") { ChatSync.pin(this@ChatActivity, store, p, false, 0); render() })
-            setOnClickListener { goTo(p.id) }
-        })
-        pinMsgBar.addView(View(this).apply { setBackgroundColor(ChatTheme.LINE) }, LinearLayout.LayoutParams(-1, 1))
-    }
+    /** (The pinned message is in [renderPinned]'s bar now.) */
+    private fun renderPinMsg(c: ChatConv) { pinMsgBar.removeAllViews() }
 
     private fun newTask() {
         val c = conv() ?: return
         if (!c.member) return
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), dp(0)) }
-        val titleIn = ui.input(t("What needs doing? e.g. Submit the survey report", "ఏం చేయాలి? ఉదా: సర్వే రిపోర్ట్ ఇవ్వాలి"))
-        val noteIn = ui.input(t("Details (optional)", "వివరాలు (కావాలంటే)"), multi = true)
+        val dl = ChatTheme.dlg(this)
+        val titleIn = ChatTheme.input(this, t("What needs doing? e.g. Submit the survey report", "ఏం చేయాలి? ఉదా: సర్వే రిపోర్ట్ ఇవ్వాలి"))
+        val noteIn = ChatTheme.input(this, t("Details (optional)", "వివరాలు (కావాలంటే)"), multi = true)
         box.addView(titleIn); box.addView(noteIn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         var to = ""
         if (!c.isSelf) {
             val people = c.members()
             val labels = listOf(t("Nobody (a reminder for everyone)", "ఎవరికీ కాదు (అందరికీ రిమైండర్)")) + people.map { if (it.optString("uid") == me) t("Me", "నేను") else it.optString("name") }
-            val pick = ui.text("👤 " + labels[0], 15f, Ui.TEAL, bold = true).apply { setPadding(0, dp(14), 0, dp(4)) }
+            val pick = ui.text("👤 " + labels[0], 15f, dl.accent, bold = true).apply { setPadding(0, dp(14), 0, dp(4)) }
             pick.setOnClickListener { AlertDialog.Builder(this).setTitle(t("Who will do it?", "ఎవరు చేస్తారు?")).setItems(labels.toTypedArray()) { _, i -> to = if (i == 0) "" else people[i - 1].optString("uid"); pick.text = "👤 " + labels[i] }.show() }
             box.addView(pick)
         }
         var due = 0L
-        val when_ = ui.text("📅 " + t("Add a date and time (optional)", "తేదీ, సమయం (కావాలంటే)"), 15f, Ui.TEAL, bold = true).apply { setPadding(0, dp(10), 0, dp(4)) }
+        val when_ = ui.text("📅 " + t("Add a date and time (optional)", "తేదీ, సమయం (కావాలంటే)"), 15f, dl.accent, bold = true).apply { setPadding(0, dp(10), 0, dp(4)) }
         when_.setOnClickListener { pickDateTime { at -> due = at; when_.text = "📅 " + Instant.ofEpochMilli(due).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("EEE d MMM, h:mm a", Locale.ENGLISH)) } }
         box.addView(when_)
         if (c.isGroup) box.addView(ui.text(t("It stays pinned at the top until a group admin closes it. The person can add remarks and mark it done.",
-            "గ్రూప్ అడ్మిన్ మూసేవరకు ఇది పైన ఉంటుంది. ఆ వ్యక్తి రిమార్క్స్ రాసి, పూర్తయిందని చెప్పవచ్చు."), 12.5f, Ui.MUTED).apply { setPadding(0, dp(6), 0, 0) })
+            "గ్రూప్ అడ్మిన్ మూసేవరకు ఇది పైన ఉంటుంది. ఆ వ్యక్తి రిమార్క్స్ రాసి, పూర్తయిందని చెప్పవచ్చు."), 12.5f, dl.sub).apply { setPadding(0, dp(6), 0, 0) })
         AlertDialog.Builder(this).setTitle(if (c.isSelf) t("📌 New reminder", "📌 కొత్త రిమైండర్") else t("📌 New task", "📌 కొత్త పని")).setView(box)
             .setPositiveButton(t("Add", "చేర్చు")) { _, _ ->
                 val title = titleIn.text.toString().trim()
@@ -1267,7 +1415,7 @@ class ChatActivity : Activity() {
         }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
     }
     private fun askText(title: String, hint: String, value: String = "", ok: String = "", then: (String) -> Unit) {
-        val inp = ui.input(hint, value, multi = true)
+        val inp = ChatTheme.input(this, hint, value, multi = true)
         val wrap = FrameLayout(this).apply { setPadding(dp(20), dp(6), dp(20), 0); addView(inp) }
         AlertDialog.Builder(this).setTitle(title).setView(wrap).setPositiveButton(ok.ifEmpty { t("Send", "పంపు") }) { _, _ -> then(inp.text.toString().trim()) }.setNegativeButton(t("Cancel", "వద్దు"), null).show()
     }
@@ -1310,13 +1458,14 @@ class ChatActivity : Activity() {
     private fun renderLp() {
         lpBox.removeAllViews()
         if (lpUrl.isEmpty()) return
-        lpBox.setPadding(dp(10), dp(6), dp(6), 0)
+        lpBox.setPadding(dp(8), dp(6), dp(8), 0)
         lpBox.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             val d = lpData
-            if (d == null) addView(ui.text("🔗 " + t("Getting the link's preview…", "లింక్ ప్రివ్యూ వస్తోంది…"), 13f, ChatTheme.SUB).apply { setPadding(dp(8), dp(8), dp(8), dp(8)) }, LinearLayout.LayoutParams(0, -2, 1f))
-            else addView(previewCard(d, false), LinearLayout.LayoutParams(0, -2, 1f))
-            addView(iconButton("✕") { lpOff = lpUrl; lpUrl = ""; lpData = null; renderLp() })
+            if (d == null) addView(ui.text("", 13f, ChatTheme.SUB).apply { text = Ico.withIcon(context, R.drawable.ic_link, ChatTheme.SUB, dp(14), t("Getting the link's preview…", "లింక్ ప్రివ్యూ వస్తోంది…")); setPadding(dp(14), dp(12), dp(8), dp(12))
+                background = ChatTheme.round(ChatTheme.CARD, dp(14).toFloat(), ChatTheme.EDGE, dp(1)) }, LinearLayout.LayoutParams(0, -2, 1f))
+            else addView(previewCard(d, false).apply { (layoutParams as? LinearLayout.LayoutParams)?.bottomMargin = 0 }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(iconBtn(R.drawable.ic_close, t("Send without the preview", "ప్రివ్యూ లేకుండా పంపు"), ChatTheme.SUB, 18, 40) { lpOff = lpUrl; lpUrl = ""; lpData = null; renderLp() })
         })
     }
     /** "@" in a group: pick the person (or everyone); their name goes into the message. */
@@ -1336,44 +1485,47 @@ class ChatActivity : Activity() {
     // ---------- 📎 attach: a grid like WhatsApp's ----------
     private fun attach() {
         val c = conv() ?: return
-        val items = ArrayList<Triple<String, String, () -> Unit>>()
-        items.add(Triple("🖼️", t("Gallery", "గ్యాలరీ")) { pickPhoto() })
-        items.add(Triple("📷", t("Camera", "కెమెరా")) { camera() })
+        // (icon, tint: 0 gold · 1 teal · 2 lilac · 3 coral · 4 sky · 5 green · 6 pink · 7 orange, name, what it does)
+        class Item(val icon: Int, val tint: Int, val label: String, val f: () -> Unit)
+        val items = ArrayList<Item>()
+        items.add(Item(R.drawable.ic_image, 4, t("Gallery", "గ్యాలరీ")) { pickPhoto() })
+        items.add(Item(R.drawable.ic_camera, 3, t("Camera", "కెమెరా")) { camera() })
         if (!c.isAi) {
-            items.add(Triple("🎬", t("Video", "వీడియో")) { pickVideo() })
-            items.add(Triple("📄", t("Document", "ఫైల్")) { pickDoc() })
-            items.add(Triple("🎵", t("Audio", "ఆడియో")) { pickAudio() })
-            items.add(Triple("📍", t("Location", "లొకేషన్")) { shareLocation() })
-            items.add(Triple("👤", t("Contact", "కాంటాక్ట్")) { shareContact() })
+            items.add(Item(R.drawable.ic_video, 2, t("Video", "వీడియో")) { pickVideo() })
+            items.add(Item(R.drawable.ic_doc, 0, t("Document", "ఫైల్")) { pickDoc() })
+            items.add(Item(R.drawable.ic_headphones, 7, t("Audio", "ఆడియో")) { pickAudio() })
+            items.add(Item(R.drawable.ic_map_pin, 5, t("Location", "లొకేషన్")) { shareLocation() })
+            items.add(Item(R.drawable.ic_person, 1, t("Contact", "కాంటాక్ట్")) { shareContact() })
         }
         if (!c.isAi && !c.isBcast) {
-            items.add(Triple("📊", t("Poll", "పోల్")) { newPoll() })
-            items.add(Triple("📅", t("Event", "కార్యక్రమం")) { newEvent() })
-            if (!c.isSelf) items.add(Triple("👁", t("View once", "ఒకసారి చూసేది")) { pickPhoto(REQ_ONCE) })
-            items.add(Triple("📋", t("Task", "పని")) { newTask() })
+            items.add(Item(R.drawable.ic_poll, 0, t("Poll", "పోల్")) { newPoll() })
+            items.add(Item(R.drawable.ic_calendar, 6, t("Event", "కార్యక్రమం")) { newEvent() })
+            if (!c.isSelf) items.add(Item(R.drawable.ic_eye, 4, t("View once", "ఒకసారి చూసేది")) { pickPhoto(REQ_ONCE) })
+            items.add(Item(R.drawable.ic_tasks, 0, t("Task", "పని")) { newTask() })
         }
-        if (!c.isAi) items.add(Triple("🏷️", t("Sticker", "స్టిక్కర్")) { openPanel(); handler.postDelayed({ panel?.open("sticker") }, 150) })
-        items.add(Triple("✏️", t("Draw", "బొమ్మ గీయి")) {
+        if (!c.isAi) items.add(Item(R.drawable.ic_sticker, 2, t("Sticker", "స్టిక్కర్")) { openPanel(); handler.postDelayed({ panel?.open("sticker") }, 150) })
+        items.add(Item(R.drawable.ic_edit, 3, t("Draw", "బొమ్మ గీయి")) {
             AlertDialog.Builder(this).setTitle(t("✏️ Draw", "✏️ బొమ్మ గీయండి")).setItems(arrayOf(t("On a blank page", "ఖాళీ పేజీ మీద"), t("On a photo", "ఫోటో మీద"))) { _, i -> if (i == 0) doodle(null) else pickPhoto(REQ_DOODLE) }.show()
         })
-        val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(16), dp(12), dp(8)) }
-        var d: AlertDialog? = null
+        val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), dp(14), dp(10), dp(4)) }
+        var d: Dialog? = null
         items.chunked(4).forEach { rowItems ->
             grid.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                rowItems.forEach { (icon, label, f) ->
+                rowItems.forEach { it ->
+                    val (bg, fg) = ChatTheme.TINTS[it.tint]
                     addView(LinearLayout(this@ChatActivity).apply {
-                        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(6), 0, dp(10))
-                        addView(ui.text(icon, 24f).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(Color.parseColor("#EAF0EF")) }, LinearLayout.LayoutParams(dp(54), dp(54)))
-                        addView(ui.text(label, 12.5f, Ui.INK).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) })
-                        setOnClickListener { d?.dismiss(); f() }
+                        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(6), 0, dp(12))
+                        addView(Ico.view(context, it.icon, fg, 24, 58, it.label, ui.round(bg, 20)), LinearLayout.LayoutParams(dp(58), dp(58)))
+                        addView(ui.text(it.label, 12.5f, ChatTheme.TXT).apply { gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0); maxLines = 1 })
+                        background = Ico.rowRipple(context)
+                        setOnClickListener { _ -> d?.dismiss(); it.f() }
                     }, LinearLayout.LayoutParams(0, -2, 1f))
                 }
                 repeat(4 - rowItems.size) { addView(View(this@ChatActivity), LinearLayout.LayoutParams(0, 1, 1f)) }
             })
         }
-        d = AlertDialog.Builder(this).setView(grid).create()
-        d.show()
+        d = ChatTheme.sheet(this, grid)
     }
     private fun pickVideo() {
         val i = if (Build.VERSION.SDK_INT >= 33) Intent(MediaStore.ACTION_PICK_IMAGES).setType("video/*") else Intent(Intent.ACTION_GET_CONTENT).setType("video/*").addCategory(Intent.CATEGORY_OPENABLE)
@@ -1511,7 +1663,7 @@ class ChatActivity : Activity() {
                 var round = true
                 val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(20), dp(10), dp(20), 0) }
                 val prev = ImageView(this).apply { setBackgroundColor(Color.parseColor("#DDE3E2")) }
-                val words = ui.input(t("Words on the sticker (optional)", "స్టిక్కర్ మీద మాటలు (కావాలంటే)"))
+                val words = ChatTheme.input(this, t("Words on the sticker (optional)", "స్టిక్కర్ మీద మాటలు (కావాలంటే)"))
                 fun redraw() { val b = Stickers.fromPhoto(src, round, words.text.toString()); prev.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) }
                 box.addView(prev, LinearLayout.LayoutParams(dp(200), dp(200)))
                 box.addView(LinearLayout(this).apply {
@@ -1545,11 +1697,11 @@ class ChatActivity : Activity() {
         val pad = DoodleView(this, bg)
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
         val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(6), dp(6), dp(6), dp(6)) }
-        tools.addView(iconButton("✕") { d.dismiss() })
+        tools.addView(iconBtn(R.drawable.ic_close, t("Close", "మూసివేయి"), Color.WHITE) { d.dismiss() })
         tools.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        tools.addView(iconButton("↶") { pad.undo() }.apply { contentDescription = t("Undo", "వెనక్కి") })
-        tools.addView(iconButton("✏️") { pad.thick = if (pad.thick > 14f) 7f else pad.thick + 7f; toast(t("Pen size changed", "పెన్ సైజు మార్చాం")) })
-        tools.addView(roundButton("➤") {
+        tools.addView(iconBtn(R.drawable.ic_reply, t("Undo", "వెనక్కి"), Color.WHITE) { pad.undo() })
+        tools.addView(iconBtn(R.drawable.ic_edit, t("Pen size", "పెన్ సైజు"), Color.WHITE) { pad.thick = if (pad.thick > 14f) 7f else pad.thick + 7f; toast(t("Pen size changed", "పెన్ సైజు మార్చాం")) })
+        tools.addView(Ico.view(this, R.drawable.ic_send, ChatTheme.Brand.INK, 22, 48, t("Send", "పంపు"), ChatTheme.circle(ChatTheme.Brand.GOLD)) {
             val b = pad.picture()
             val out = ByteArrayOutputStream(); b.compress(Bitmap.CompressFormat.JPEG, 85, out)
             d.dismiss()
@@ -1575,7 +1727,7 @@ class ChatActivity : Activity() {
         toast(t("Finding where you are…", "మీరు ఎక్కడున్నారో చూస్తున్నాం…"))
         OneLocation.get(this) { l ->
             if (l == null) { toast(t("Couldn't find your location. Turn on Location in quick settings and try again.", "మీ లొకేషన్ దొరకలేదు. క్విక్ సెట్టింగ్స్‌లో లొకేషన్ ఆన్ చేసి మళ్ళీ ప్రయత్నించండి.")); return@get }
-            val label = ui.input(t("Name this place (optional), e.g. Office, Home", "ఈ చోటుకి పేరు (కావాలంటే), ఉదా: ఆఫీస్, ఇల్లు"))
+            val label = ChatTheme.input(this, t("Name this place (optional), e.g. Office, Home", "ఈ చోటుకి పేరు (కావాలంటే), ఉదా: ఆఫీస్, ఇల్లు"))
             val wrap = FrameLayout(this).apply { setPadding(dp(20), dp(6), dp(20), 0); addView(label) }
             AlertDialog.Builder(this).setTitle(t("📍 Send your location?", "📍 మీ లొకేషన్ పంపాలా?"))
                 .setMessage(t("Only the people in this chat can open it (locked end to end). Accuracy: about ${l.accuracy.toInt()} m.", "ఈ చాట్‌లో ఉన్నవాళ్ళు మాత్రమే తెరవగలరు (ఎండ్ టు ఎండ్ లాక్). సుమారు ${l.accuracy.toInt()} మీటర్ల ఖచ్చితత్వం."))
@@ -1598,15 +1750,16 @@ class ChatActivity : Activity() {
     }
     private fun newPoll() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        val q = ui.input(t("Ask a question", "ప్రశ్న అడగండి"))
+        val dl = ChatTheme.dlg(this)
+        val q = ChatTheme.input(this, t("Ask a question", "ప్రశ్న అడగండి"))
         box.addView(q)
-        box.addView(ui.text(t("Options", "ఎంపికలు"), 13f, Ui.MUTED, bold = true).apply { setPadding(0, dp(12), 0, dp(2)) })
+        box.addView(ui.text(t("Options", "ఎంపికలు"), 13f, dl.sub, bold = true).apply { setPadding(0, dp(12), 0, dp(2)) })
         val opts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        fun addOpt() { if (opts.childCount < 12) opts.addView(ui.input(t("Option ${opts.childCount + 1}", "ఎంపిక ${opts.childCount + 1}")), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) }) }
+        fun addOpt() { if (opts.childCount < 12) opts.addView(ChatTheme.input(this, t("Option ${opts.childCount + 1}", "ఎంపిక ${opts.childCount + 1}")), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) }) }
         addOpt(); addOpt()
         box.addView(opts)
-        box.addView(ui.text("➕ " + t("Add option", "ఎంపిక చేర్చు"), 15f, Ui.TEAL, bold = true).apply { setPadding(0, dp(10), 0, dp(4)); setOnClickListener { addOpt() } })
-        val multi = CheckBox(this).apply { text = t("Allow more than one answer", "ఒకటి కంటే ఎక్కువ ఎంచుకోవచ్చు"); isChecked = false; setTextColor(Ui.INK) }
+        box.addView(ui.text("➕ " + t("Add option", "ఎంపిక చేర్చు"), 15f, dl.accent, bold = true).apply { setPadding(0, dp(10), 0, dp(4)); setOnClickListener { addOpt() } })
+        val multi = CheckBox(this).apply { text = t("Allow more than one answer", "ఒకటి కంటే ఎక్కువ ఎంచుకోవచ్చు"); isChecked = false; setTextColor(dl.txt) }
         box.addView(multi)
         AlertDialog.Builder(this).setTitle(t("📊 New poll", "📊 కొత్త పోల్")).setView(ScrollView(this).apply { addView(box) })
             .setPositiveButton(t("Send", "పంపు")) { _, _ ->
@@ -1617,11 +1770,11 @@ class ChatActivity : Activity() {
     }
     private fun newEvent() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        val name = ui.input(t("Event name, e.g. Grama sabha meeting", "కార్యక్రమం పేరు, ఉదా: గ్రామ సభ సమావేశం"))
-        val place = ui.input(t("Place (optional)", "చోటు (కావాలంటే)"))
-        val note = ui.input(t("Details (optional)", "వివరాలు (కావాలంటే)"), multi = true)
+        val name = ChatTheme.input(this, t("Event name, e.g. Grama sabha meeting", "కార్యక్రమం పేరు, ఉదా: గ్రామ సభ సమావేశం"))
+        val place = ChatTheme.input(this, t("Place (optional)", "చోటు (కావాలంటే)"))
+        val note = ChatTheme.input(this, t("Details (optional)", "వివరాలు (కావాలంటే)"), multi = true)
         var at = 0L
-        val whenT = ui.text("📅 " + t("Pick the date and time", "తేదీ, సమయం ఎంచుకోండి"), 15f, Ui.TEAL, bold = true).apply { setPadding(0, dp(12), 0, dp(6)) }
+        val whenT = ui.text("📅 " + t("Pick the date and time", "తేదీ, సమయం ఎంచుకోండి"), 15f, ChatTheme.dlg(this).accent, bold = true).apply { setPadding(0, dp(12), 0, dp(6)) }
         whenT.setOnClickListener { pickDateTime { x -> at = x; whenT.text = "📅 " + Instant.ofEpochMilli(x).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("EEE d MMM yyyy, h:mm a", Locale.ENGLISH)) } }
         box.addView(name); box.addView(whenT); box.addView(place); box.addView(note, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         AlertDialog.Builder(this).setTitle(t("📅 New event", "📅 కొత్త కార్యక్రమం")).setView(ScrollView(this).apply { addView(box) })
@@ -1665,11 +1818,11 @@ class ChatActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT; imeOptions = EditorInfo.IME_ACTION_SEARCH
         }
         hitLabel = ui.text("", 12.5f, ChatTheme.SUB)
-        searchBar.addView(iconButton("←") { closeSearch() })
+        searchBar.addView(iconBtn(R.drawable.ic_back, t("Close search", "వెతకడం ఆపు")) { closeSearch() })
         searchBar.addView(q, LinearLayout.LayoutParams(0, -2, 1f))
         searchBar.addView(hitLabel)
-        searchBar.addView(iconButton("▲") { moveHit(-1) })
-        searchBar.addView(iconButton("▼") { moveHit(1) })
+        searchBar.addView(iconBtn(R.drawable.ic_chevron_up, t("Earlier", "ముందుది"), size = 22, box = 40) { moveHit(-1) })
+        searchBar.addView(iconBtn(R.drawable.ic_chevron_down, t("Later", "తర్వాతది"), size = 22, box = 40) { moveHit(1) })
         head.visibility = View.GONE; searchBar.visibility = View.VISIBLE
         q.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -1705,19 +1858,20 @@ class ChatActivity : Activity() {
     private fun renderBanner(c: ChatConv) {
         banner.removeAllViews()
         fun box(text: String, vararg buttons: View) {
-            val b = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)); setBackgroundColor(Color.parseColor("#FFF6E0")) }
-            b.addView(ui.text(text, 14.5f, Ui.INK))
-            if (buttons.isNotEmpty()) { val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }; buttons.forEach { row.addView(it, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) }) }; b.addView(row) }
+            val b = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)); setBackgroundColor(ChatTheme.PIN_BG) }
+            b.addView(ui.text(text, 14.5f, ChatTheme.TXT))
+            if (buttons.isNotEmpty()) { val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, 0) }; buttons.forEach { row.addView(it, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) }) }; b.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(row) }) }
             banner.addView(b)
+            banner.addView(View(this).apply { setBackgroundColor(ChatTheme.PIN_LINE) }, LinearLayout.LayoutParams(-1, 1))
         }
         when {
             c.isLocal -> {}
-            !c.member -> box(t("You're no longer in this group.", "మీరు ఇప్పుడు ఈ గ్రూప్‌లో లేరు."), chipButton(t("🧹 Delete chat", "🧹 చాట్ తొలగించు"), Ui.DANGER) { db.clear(cid, true); finish() })
-            c.blocked -> box(t("You blocked this person. They can't message you.", "మీరు ఈ వ్యక్తిని బ్లాక్ చేశారు."), chipButton(t("Unblock", "అన్‌బ్లాక్")) { block(false) })
+            !c.member -> box(t("You're no longer in this group.", "మీరు ఇప్పుడు ఈ గ్రూప్‌లో లేరు."), chipButton(t("Delete chat", "చాట్ తొలగించు"), ChatTheme.DANGER) { db.clear(cid, true); finish() })
+            c.blocked -> box(t("You blocked this person. They can't message you.", "మీరు ఈ వ్యక్తిని బ్లాక్ చేశారు."), chipButton(t("Unblock", "అన్‌బ్లాక్"), primary = true) { block(false) })
             !c.accepted && c.isGroup -> box(t("${c.nameOf(c.data.optString("by"))} added you to this group. Join it?", "${c.nameOf(c.data.optString("by"))} మిమ్మల్ని ఈ గ్రూప్‌లో చేర్చారు. చేరతారా?"),
-                chipButton(t("✅ Join", "✅ చేరండి"), Ui.GOOD) { accept() }, chipButton(t("🚪 Leave", "🚪 వద్దు")) { leave() }, chipButton(t("⚠️ Report", "⚠️ రిపోర్ట్"), Ui.DANGER) { report(db.msgs(cid).filter { it.sender != me }, c.data.optString("by")) })
+                chipButton(t("Join", "చేరండి"), primary = true) { accept() }, chipButton(t("Leave", "వద్దు")) { leave() }, chipButton(t("Report", "రిపోర్ట్"), ChatTheme.DANGER) { report(db.msgs(cid).filter { it.sender != me }, c.data.optString("by")) })
             !c.accepted -> box(t("${c.name} wants to chat with you. Reply or accept to let them write more.", "${c.name} మీతో చాట్ చేయాలనుకుంటున్నారు. జవాబిస్తే లేదా ఒప్పుకుంటే వాళ్ళు ఇంకా రాయగలరు."),
-                chipButton(t("✅ Accept", "✅ ఒప్పుకోండి"), Ui.GOOD) { accept() }, chipButton(t("🚫 Block", "🚫 బ్లాక్"), Ui.DANGER) { block(true) }, chipButton(t("⚠️ Report", "⚠️ రిపోర్ట్"), Ui.DANGER) { report(db.msgs(cid).filter { it.sender != me }, c.otherUid(me)) })
+                chipButton(t("Accept", "ఒప్పుకోండి"), primary = true) { accept() }, chipButton(t("Block", "బ్లాక్"), ChatTheme.DANGER) { block(true) }, chipButton(t("Report", "రిపోర్ట్"), ChatTheme.DANGER) { report(db.msgs(cid).filter { it.sender != me }, c.otherUid(me)) })
         }
     }
 
@@ -1811,7 +1965,7 @@ class ChatActivity : Activity() {
             }.setNegativeButton(t("Close", "మూసివేయి"), null).show()
     }
     private fun newGroupWith(c: ChatConv) {
-        val name = ui.input(t("Group name", "గ్రూప్ పేరు"))
+        val name = ChatTheme.input(this, t("Group name", "గ్రూప్ పేరు"))
         val wrap = FrameLayout(this).apply { setPadding(dp(20), dp(6), dp(20), 0); addView(name) }
         AlertDialog.Builder(this).setTitle(t("👥 New group with ${c.name}", "👥 ${c.name} తో కొత్త గ్రూప్")).setView(wrap).setPositiveButton(t("Next: add more people", "తర్వాత: ఇంకా వ్యక్తులను చేర్చండి")) { _, _ ->
             val n = name.text.toString().trim()
@@ -1961,9 +2115,10 @@ object ChatPeople {
         val ui = Ui(a)
         val te = store.lang == "te"
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(ui.dp(20), ui.dp(6), ui.dp(20), 0) }
-        val q = ui.input(if (te) "పేరు లేదా @పేరు టైప్ చేయండి" else "Type a name or @name")
+        val dl = ChatTheme.dlg(a)
+        val q = ChatTheme.input(a, if (te) "పేరు లేదా @పేరు టైప్ చేయండి" else "Type a name or @name")
         val chosen = LinkedHashMap<String, JSONObject>()
-        val chosenView = ui.text("", 13.5f, Ui.TEAL, bold = true)
+        val chosenView = ui.text("", 13.5f, dl.accent, bold = true)
         val results = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         box.addView(q); if (multi) box.addView(chosenView); box.addView(results)
         var dlg: AlertDialog? = null
@@ -1973,7 +2128,7 @@ object ChatPeople {
             val uid = p.optString("uid")
             if (uid in skip) return
             val label = { "${p.optString("emoji", "🐾")}  ${p.optString("name")}" + (if (p.optString("handle").isNotEmpty()) "  @${p.optString("handle")}" else "") + if (chosen.containsKey(uid)) "  ✓" else "" }
-            val r = ui.text(label(), 15.5f, Ui.INK).apply { setPadding(0, ui.dp(11), 0, ui.dp(11)) }
+            val r = ui.text(label(), 15.5f, dl.txt).apply { setPadding(0, ui.dp(11), 0, ui.dp(11)) }
             r.setOnClickListener {
                 if (!multi) { dlg?.dismiss(); done(listOf(p)); return@setOnClickListener }
                 if (chosen.containsKey(uid)) chosen.remove(uid) else chosen[uid] = p
@@ -1990,7 +2145,7 @@ object ChatPeople {
             ChatDb.get(a).convs().filter { it.isDm && it.accepted && !it.blocked }.forEach { c ->
                 c.members().firstOrNull { it.optString("uid") != me }?.let { p -> if (seen.add(p.optString("uid"))) row(p) }
             }
-            if (results.childCount > 0) results.addView(ui.text(if (te) "ఇంకెవరైనా: పైన పేరు టైప్ చేయండి" else "Anyone else: type their name above", 12.5f, Ui.MUTED).apply { setPadding(0, ui.dp(8), 0, 0) }, 0)
+            if (results.childCount > 0) results.addView(ui.text(if (te) "ఇంకెవరైనా: పైన పేరు టైప్ చేయండి" else "Anyone else: type their name above", 12.5f, dl.sub).apply { setPadding(0, ui.dp(8), 0, 0) }, 0)
         }
         fun search(s: String) {
             val my = ++seq
@@ -2001,7 +2156,7 @@ object ChatPeople {
                     if (my != seq) return@post
                     results.removeAllViews()
                     val ppl = r.json.optJSONArray("people") ?: JSONArray()
-                    if (!r.ok || ppl.length() == 0) results.addView(ui.text(if (!r.ok) r.error("Couldn't search.") else if (te) "ఎవరూ దొరకలేదు. వాళ్ళు Habit చాట్ తెరిచారా? మీ ఆహ్వాన లింక్ పంపండి." else "No one found. Have they opened Habit Chat? Send them your invite link.", 13.5f, Ui.MUTED).apply { setPadding(0, ui.dp(10), 0, 0) })
+                    if (!r.ok || ppl.length() == 0) results.addView(ui.text(if (!r.ok) r.error("Couldn't search.") else if (te) "ఎవరూ దొరకలేదు. వాళ్ళు Habit చాట్ తెరిచారా? మీ ఆహ్వాన లింక్ పంపండి." else "No one found. Have they opened Habit Chat? Send them your invite link.", 13.5f, dl.sub).apply { setPadding(0, ui.dp(10), 0, 0) })
                     for (i in 0 until ppl.length()) row(ppl.getJSONObject(i))
                 }
             }.start()

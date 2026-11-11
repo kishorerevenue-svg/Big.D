@@ -135,7 +135,7 @@ class StoryReader : Activity() {
         topBar.addView(round("✕", "Close") { finish() }, LinearLayout.LayoutParams(dp(42), dp(42)))
         auto = autoplay; autoplay = false
         autoBtn = TextView(this).apply {
-            textSize = 14f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            textSize = 14f; setTextColor(Color.WHITE); typeface = Fonts.bold(context); gravity = Gravity.CENTER
             setPadding(dp(14), dp(8), dp(14), dp(8)); setOnClickListener { setAuto(!auto) }
         }
         topBar.addView(autoBtn, LinearLayout.LayoutParams(-2, dp(42)).apply { marginStart = dp(10) })
@@ -327,7 +327,7 @@ class StoryReader : Activity() {
             }
         }
         if (p.author.official && CAT.containsKey(p.cat) && p.ytId.isBlank()) area.addView(TextView(this).apply {
-            text = CAT[p.cat]; textSize = 12.5f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+            text = CAT[p.cat]; textSize = 12.5f; setTextColor(Color.WHITE); typeface = Fonts.bold(context)
             setPadding(dp(10), dp(4), dp(10), dp(4)); background = ui.round(Color.parseColor(CAT_COLOR[p.cat] ?: "#19A39A"), 10)
         }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(12), 0, 0, dp(12)) })
 
@@ -348,7 +348,7 @@ class StoryReader : Activity() {
         meta.addView(ui.text(p.author.name, 14f, Ui.INK, bold = true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
             LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
         if (p.author.verified) meta.addView(TextView(this).apply {
-            text = "✓"; textSize = 9.5f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; includeFontPadding = false
+            text = "✓"; textSize = 9.5f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Fonts.bold(context); includeFontPadding = false
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(BLUE) }
         }, LinearLayout.LayoutParams(dp(15), dp(15)).apply { marginStart = dp(4) })
         meta.addView(ui.text(" · " + ago(p.at) + (if (p.views > 0) "  ·  👁 ${num(p.views)}" else ""), 13f, Ui.MUTED).apply { maxLines = 1 },
@@ -417,7 +417,7 @@ class StoryReader : Activity() {
             addView(TextView(this@StoryReader).apply { text = if (asking) "⏳" else "🐾"; textSize = 48f; gravity = Gravity.CENTER })
             addView(TextView(this@StoryReader).apply {
                 text = if (asking) "ఇంకా పోస్టులు వస్తున్నాయి… · Loading more…" else "అంతే! · You're all caught up"
-                textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
+                textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Fonts.bold(context)
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
             if (!asking) addView(ui.button("⬅  Back to Media", "sun") { finish() }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(18) })
         }, FrameLayout.LayoutParams(-1, -1))
