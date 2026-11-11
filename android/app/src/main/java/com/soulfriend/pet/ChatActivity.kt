@@ -50,7 +50,8 @@ import java.util.Locale
 
 /**
  * One Habit chat (one-to-one, a group, or my own notes & reminders), like WhatsApp: messages with ✓✓ ticks, photos,
- * voice notes, and tasks pinned at the top until an admin closes them. Also opens Habit chat links (bigd://chat/<name>),
+ * videos, documents, voice notes, replies, forwarding, delete for everyone, voice and video calls (📞 🎥 at the top),
+ * and tasks pinned at the top until an admin closes them. Also opens Habit chat links (bigd://chat/<name>),
  * scans an invite QR code, and calls or invites a phone contact (action "scan", "contact").
  */
 class ChatActivity : Activity() {
@@ -62,6 +63,11 @@ class ChatActivity : Activity() {
         private const val REQ_QR_CAM = 7405
         private const val REQ_CONTACT = 7406
         private const val REQ_CALL = 7407
+        private const val REQ_VIDEO = 7408
+        private const val REQ_DOC = 7409
+        private const val REQ_CALL_PERMS = 7410
+        /** Files bigger than this don't go (the server keeps chat files up to 32 MB). */
+        const val MAX_FILE = 32L * 1024 * 1024
         val MINE = Color.parseColor("#DCF4EC")
         val BLUE = Color.parseColor("#2B8CE0")
         val NAMES = intArrayOf(Color.parseColor("#0E6B6B"), Color.parseColor("#B5532E"), Color.parseColor("#6A4FB3"), Color.parseColor("#1D8A5B"), Color.parseColor("#B23A6B"), Color.parseColor("#2B6CB0"))
@@ -88,7 +94,11 @@ class ChatActivity : Activity() {
     private lateinit var bar: LinearLayout
     private lateinit var input: EditText
     private lateinit var action: TextView
+    private lateinit var callBtns: LinearLayout
     private var pinnedOpen = false
+    // replying to a message (shown above the typing bar)
+    private var replyTo: ChatMsg? = null
+    private lateinit var replyBar: LinearLayout
     private var lastCount = -1
     private var readSent = 0L
     private val refresh: () -> Unit = { if (cid.isNotEmpty()) render() }
@@ -147,6 +157,10 @@ class ChatActivity : Activity() {
         names.addView(title); names.addView(sub)
         names.setOnClickListener { if (conv()?.isGroup == true) groupInfo() }
         head.addView(names, LinearLayout.LayoutParams(0, -2, 1f))
+        callBtns = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        callBtns.addView(iconButton("📞") { startCall(false) }.apply { contentDescription = "Voice call" })
+        callBtns.addView(iconButton("🎥") { startCall(true) }.apply { contentDescription = "Video call" })
+        head.addView(callBtns)
         head.addView(iconButton("⋮") { menu(it) })
         root.addView(head)
         root.addView(View(this).apply { setBackgroundColor(Ui.LINE) }, LinearLayout.LayoutParams(-1, 1))
@@ -158,6 +172,8 @@ class ChatActivity : Activity() {
         scroll = ScrollView(this).apply { addView(list); isFillViewport = true }
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         // the typing bar: 📎 photo, 📌 task, the text, then 🎤 (or ➤ when there is text)
+        replyBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(replyBar)
         bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(dp(6), dp(6), dp(6), dp(8)) }
         root.addView(bar)
         setContentView(root)
@@ -217,7 +233,9 @@ class ChatActivity : Activity() {
         }
         renderBanner(c)
         renderPinned(c)
-        val msgs = db.msgs(cid)
+        renderReplyBar()
+        callBtns.visibility = if (!c.isSelf && !c.isGroup && c.accepted && !c.blocked && c.member) View.VISIBLE else View.GONE
+        val msgs = db.msgs(cid).filter { it.kind != "del" }
         val atBottom = !scroll.canScrollVertically(1) || lastCount < 0
         list.removeAllViews()
         if (msgs.isEmpty()) list.addView(ui.text(if (c.isSelf) t("Write notes to yourself here. Tap 📌 for a reminder: it stays pinned at the top until you tick it.",
@@ -229,7 +247,7 @@ class ChatActivity : Activity() {
         for (m in msgs) {
             val d = Instant.ofEpochMilli(m.at).atZone(ZoneId.systemDefault()).toLocalDate()
             if (d != day) { day = d; list.addView(dayLine(d)) }
-            list.addView(bubble(c, m))
+            list.addView(bubble(c, m).apply { tag = m.id })
         }
         if (atBottom || msgs.size != lastCount) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
         lastCount = msgs.size
@@ -267,14 +285,20 @@ class ChatActivity : Activity() {
         val mine = m.sender == me || c.isSelf
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(11), dp(7), dp(11), dp(6)); background = ui.round(if (mine) MINE else Color.WHITE, 14) }
         if (c.isGroup && !mine) box.addView(ui.text(c.nameOf(m.sender), 13f, nameColor(m.sender), bold = true))
+        if (m.body.optBoolean("fwd")) box.addView(ui.text("↪️ " + t("Forwarded", "ఫార్వర్డ్ చేసినది"), 12f, Ui.MUTED).apply { setTypeface(typeface, Typeface.ITALIC) })
+        m.body.optJSONObject("re")?.let { box.addView(quoteView(c, it, true)) }
         when (m.kind) {
             "text" -> box.addView(ui.text(m.body.optString("text"), 16f, Ui.INK).apply { maxWidth = (resources.displayMetrics.widthPixels * 0.78).toInt() - dp(22); Linkify.addLinks(this, Linkify.WEB_URLS or Linkify.PHONE_NUMBERS) })
             "photo" -> box.addView(photoView(m))
             "voice" -> box.addView(voiceView(m))
+            "video" -> box.addView(videoView(m))
+            "doc" -> box.addView(docView(m))
             "task" -> box.addView(taskInline(c, m))
+            "clog" -> box.addView(callLogView(m))
+            "gone" -> box.addView(ui.text("🚫 " + t("This message was deleted", "ఈ మెసేజ్ తొలగించబడింది"), 14.5f, Ui.MUTED).apply { setTypeface(typeface, Typeface.ITALIC) })
             else -> box.addView(ui.text("🔒 " + t("This message couldn't be opened on this phone (it was locked for an older key).", "ఈ మెసేజ్ ఈ ఫోన్‌లో తెరవలేకపోయాం."), 14f, Ui.MUTED))
         }
-        if (m.kind == "photo" && m.body.optString("text").isNotBlank()) box.addView(ui.text(m.body.optString("text"), 15.5f, Ui.INK).apply { setPadding(0, dp(4), 0, 0) })
+        if ((m.kind == "photo" || m.kind == "video") && m.body.optString("text").isNotBlank()) box.addView(ui.text(m.body.optString("text"), 15.5f, Ui.INK).apply { setPadding(0, dp(4), 0, 0) })
         // the time and the ticks
         val tick = when {
             !mine || c.isSelf -> ""
@@ -296,9 +320,19 @@ class ChatActivity : Activity() {
 
     private fun msgMenu(c: ChatConv, m: ChatMsg) {
         val items = ArrayList<Pair<String, () -> Unit>>()
+        val content = m.kind in setOf("text", "photo", "voice", "video", "doc")
+        if (content && bar.visibility == View.VISIBLE) items.add(t("↩️ Reply", "↩️ జవాబు") to { replyTo = m; renderReplyBar(); input.requestFocus() })
+        if (content) items.add(t("↪️ Forward", "↪️ ఫార్వర్డ్") to { forward(m) })
         if (m.kind == "text" || m.body.optString("text").isNotBlank()) items.add(t("📋 Copy", "📋 కాపీ") to {
             getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("message", m.body.optString("text"))); toast(t("Copied", "కాపీ అయింది")) })
-        items.add(t("🗑️ Delete on this phone", "🗑️ ఈ ఫోన్‌లో తొలగించు") to { db.deleteMsg(cid, m.id); render() })
+        if ((m.kind == "video" || m.kind == "doc") && m.body.optString("local").let { it.isNotEmpty() && File(it).exists() }) items.add(t("📤 Share / save", "📤 షేర్ / సేవ్") to { openFile(m, true) })
+        if (content && m.sender == me && !c.isSelf && m.state == 1 && System.currentTimeMillis() - m.at < 2 * 86_400_000L && c.member)
+            items.add(t("🚫 Delete for everyone", "🚫 అందరికీ తొలగించు") to {
+                AlertDialog.Builder(this).setMessage(t("Delete this message for everyone in the chat?", "ఈ మెసేజ్ చాట్‌లో అందరికీ తొలగించాలా?"))
+                    .setPositiveButton(t("Delete", "తొలగించు")) { _, _ -> ChatSync.deleteForAll(this, store, m) { e -> if (e != null && !e.startsWith("No connection")) toast(e) } }
+                    .setNegativeButton(t("Cancel", "వద్దు"), null).show()
+            })
+        items.add(t("🗑️ Delete on this phone", "🗑️ ఈ ఫోన్‌లో తొలగించు") to { m.body.optString("local").takeIf { it.isNotEmpty() }?.let { try { File(it).delete() } catch (e: Exception) { } }; db.deleteMsg(cid, m.id); render() })
         if (m.sender != me && !c.isSelf) items.add(t("⚠️ Report this message", "⚠️ ఈ మెసేజ్‌ని రిపోర్ట్ చేయండి") to { report(listOf(m), m.sender) })
         AlertDialog.Builder(this).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
     }
@@ -361,6 +395,148 @@ class ChatActivity : Activity() {
         try { player?.release() } catch (e: Exception) { }
         player = null
         if (playingId.isNotEmpty()) { playingId = ""; if (cid.isNotEmpty()) render() }
+    }
+
+    // videos and documents
+    private fun fileReady(m: ChatMsg) = m.body.optString("local").let { it.isNotEmpty() && File(it).exists() }
+    private fun sizeText(n: Long) = when { n >= 1_000_000 -> "%.1f MB".format(Locale.ENGLISH, n / 1_000_000.0); n >= 1000 -> "${n / 1000} KB"; else -> "$n B" }
+    private fun videoView(m: ChatMsg): View {
+        val wPx = dp(220)
+        val ratio = m.body.optInt("h", 9).toFloat() / maxOf(1, m.body.optInt("w", 16))
+        val frame = FrameLayout(this)
+        val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(Color.parseColor("#23302F")) }
+        m.body.optString("thumb").takeIf { it.isNotEmpty() }?.let { try { val b = ChatCrypto.unb64(it); iv.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { } }
+        frame.addView(iv, FrameLayout.LayoutParams(wPx, (wPx * ratio.coerceIn(0.5f, 1.4f)).toInt()))
+        val ready = fileReady(m)
+        val secs = m.body.optInt("dur")
+        frame.addView(TextView(this).apply {
+            text = if (ready) "▶" else if (m.body.optString("file").isNotEmpty() && ChatSync.isFetching(m)) "⏳" else "⬇"
+            textSize = 24f; gravity = Gravity.CENTER; setTextColor(Color.WHITE); background = ui.round(Color.parseColor("#88000000"), 28)
+        }, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER))
+        frame.addView(ui.text("🎬 " + (if (secs > 0) "%d:%02d".format(secs / 60, secs % 60) + " · " else "") + sizeText(m.body.optLong("size")), 12f, Color.WHITE).apply {
+            setPadding(dp(8), dp(2), dp(8), dp(4)); setShadowLayer(4f, 0f, 1f, Color.BLACK) }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
+        frame.clipToOutline = true; frame.background = ui.round(Ui.LINE, 10)
+        frame.setOnClickListener { if (fileReady(m)) openFile(m, false) else { ChatSync.fetchFile(this, store, m); toast(t("Downloading…", "డౌన్‌లోడ్ అవుతోంది…")); render() } }
+        return frame
+    }
+    private fun docView(m: ChatMsg): View {
+        val ready = fileReady(m)
+        val name = m.body.optString("name").ifBlank { t("Document", "ఫైల్") }
+        val ext = name.substringAfterLast('.', "").uppercase().take(5)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(8), dp(10), dp(8))
+            background = ui.round(Color.parseColor("#F3F6F5"), 10); minimumWidth = dp(220)
+            addView(ui.text(if (ext == "PDF") "📕" else "📄", 26f), LinearLayout.LayoutParams(-2, -2))
+            addView(LinearLayout(this@ChatActivity).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(8), 0, dp(8), 0)
+                addView(ui.text(name, 14.5f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
+                addView(ui.text(listOf(ext, sizeText(m.body.optLong("size"))).filter { it.isNotBlank() }.joinToString(" · "), 12f, Ui.MUTED))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(ui.text(if (ready) "↗" else if (ChatSync.isFetching(m)) "⏳" else "⬇", 20f, Ui.TEAL, bold = true))
+            setOnClickListener { if (fileReady(m)) openFile(m, false) else { ChatSync.fetchFile(this@ChatActivity, store, m); toast(t("Downloading…", "డౌన్‌లోడ్ అవుతోంది…")); render() } }
+        }
+    }
+    /** Opens a video or document in an app on the phone ([share]: share or save it instead). */
+    private fun openFile(m: ChatMsg, share: Boolean) {
+        val src = File(m.body.optString("local"))
+        if (!src.exists()) return
+        val name = (if (m.kind == "doc") m.body.optString("name") else "Habit-video-" + m.id + ".mp4").replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80).ifBlank { "file" }
+        val lower = name.lowercase()
+        if (lower.endsWith(".apk") || lower.endsWith(".exe") || lower.endsWith(".bat")) { toast(t("For safety, app files can't be opened from Habit Chat.", "భద్రత కోసం, యాప్ ఫైల్స్ Habit చాట్ నుంచి తెరవలేము.")); return }
+        try { src.copyTo(File(ShareFiles.dir(this), name), overwrite = true) } catch (e: Exception) { toast(t("Couldn't open it.", "తెరవలేకపోయాం.")); return }
+        val uri = ShareFiles.uri(this, name)
+        val mime = contentResolver.getType(uri) ?: "*/*"
+        val i = if (share) Intent.createChooser(Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), t("Share or save", "షేర్ లేదా సేవ్"))
+            else Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try { startActivity(i) } catch (e: Exception) { toast(t("No app on this phone can open this file.", "ఈ ఫైల్ తెరిచే యాప్ ఫోన్‌లో లేదు.")) }
+    }
+    private fun callLogView(m: ChatMsg): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        val missed = m.body.optString("state") == "missed" && m.sender != me
+        addView(ui.text(CallManager.logText(this@ChatActivity, m), 15f, if (missed) Ui.DANGER else Ui.INK, bold = missed), LinearLayout.LayoutParams(-2, -2))
+        if (!conv().let { it == null || it.isGroup || it.isSelf }) addView(ui.text("  " + t("Call back", "మళ్ళీ కాల్"), 13.5f, Ui.TEAL, bold = true).apply {
+            setOnClickListener { startCall(m.body.optBoolean("video")) } })
+    }
+
+    // calls (one-to-one): the microphone (and camera) first, then the call screen
+    private var callVideo = false
+    private fun startCall(video: Boolean) {
+        val c = conv() ?: return
+        if (c.isGroup || c.isSelf) { toast(t("Group calls come later. For now, call one person.", "గ్రూప్ కాల్స్ తర్వాత వస్తాయి. ఇప్పటికి ఒక్కరికి కాల్ చేయండి.")); return }
+        if (!c.accepted || c.blocked || !c.member) return
+        callVideo = video
+        val need = (if (video) arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA) else arrayOf(Manifest.permission.RECORD_AUDIO))
+            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (need.isNotEmpty()) { requestPermissions(need.toTypedArray(), REQ_CALL_PERMS); return }
+        CallManager.startOutgoing(this, cid, video)
+    }
+
+    // replies: the quoted message above the typing bar, and inside the bubble
+    private fun quoteView(c: ChatConv, re: JSONObject, inBubble: Boolean): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        val who = re.optString("who")
+        val col = if (who == me) Ui.TEAL else nameColor(who)
+        addView(View(this@ChatActivity).apply { setBackgroundColor(col) }, LinearLayout.LayoutParams(dp(4), -1))
+        addView(LinearLayout(this@ChatActivity).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(4), dp(8), dp(5))
+            addView(ui.text(if (who == me) t("You", "మీరు") else c.nameOf(who), 12.5f, col, bold = true))
+            addView(ui.text(re.optString("p"), 13.5f, Ui.MUTED).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        }, LinearLayout.LayoutParams(-2, -2))
+        background = ui.round(if (inBubble) Color.parseColor("#14000000") else Color.parseColor("#F1F5F4"), 8)
+        if (inBubble) {
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) }
+            setOnClickListener { goTo(re.optString("id")) }
+        }
+    }
+    private fun goTo(id: String) {
+        for (i in 0 until list.childCount) {
+            val v = list.getChildAt(i)
+            if (v.tag == id) {
+                scroll.post { scroll.smoothScrollTo(0, maxOf(0, v.top - dp(80))) }
+                v.setBackgroundColor(Color.parseColor("#33F6B53D")); v.postDelayed({ v.setBackgroundColor(Color.TRANSPARENT) }, 1200)
+                return
+            }
+        }
+        toast(t("That message isn't on this phone any more.", "ఆ మెసేజ్ ఈ ఫోన్‌లో లేదు."))
+    }
+    private fun renderReplyBar() {
+        replyBar.removeAllViews()
+        val r = replyTo ?: return
+        val c = conv() ?: return
+        replyBar.setPadding(dp(10), dp(6), dp(6), 0)
+        replyBar.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(quoteView(c, reOf(r), false), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(iconButton("✕") { replyTo = null; renderReplyBar() })
+        })
+    }
+    private fun reOf(m: ChatMsg) = JSONObject().put("id", m.id).put("who", m.sender).put("p", ChatSync.preview(this, m).take(90))
+    /** Adds "replying to" to a message body (and forgets it once used). */
+    private fun withReply(body: JSONObject): JSONObject {
+        replyTo?.let { body.put("re", reOf(it)) }
+        if (replyTo != null) { replyTo = null; renderReplyBar() }
+        return body
+    }
+
+    // forwarding: a copy goes to other chats (files are locked again with new keys)
+    private fun forward(m: ChatMsg) {
+        if (m.kind in ChatSync.FILE_KINDS && !fileReady(m)) { ChatSync.fetchFile(this, store, m); toast(t("Getting it first… try again in a moment.", "ముందు డౌన్‌లోడ్ చేస్తున్నాం… కాసేపట్లో మళ్ళీ ప్రయత్నించండి.")); return }
+        val targets = db.convs().filter { (it.accepted || it.isSelf) && it.member && !it.blocked }.sortedByDescending { it.last }
+        if (targets.isEmpty()) return
+        val picked = BooleanArray(targets.size)
+        AlertDialog.Builder(this).setTitle(t("↪️ Forward to…", "↪️ ఎవరికి ఫార్వర్డ్ చేయాలి?"))
+            .setMultiChoiceItems(targets.map { "${it.emoji}  ${it.name}" }.toTypedArray(), picked) { _, i, on -> picked[i] = on }
+            .setPositiveButton(t("Send", "పంపు")) { _, _ ->
+                val chosen = targets.filterIndexed { i, _ -> picked[i] }.take(5)
+                if (chosen.isEmpty()) return@setPositiveButton
+                val bytes = if (m.kind in ChatSync.FILE_KINDS) try { File(m.body.optString("local")).readBytes() } catch (e: Exception) { null } else null
+                for (c in chosen) {
+                    val body = JSONObject(m.body.toString()).apply { for (k in listOf("file", "key", "iv", "local", "re", "server")) remove(k); put("fwd", true) }
+                    if (m.kind in ChatSync.FILE_KINDS) { if (bytes != null) ChatSync.sendFile(this, store, c.cid, m.kind, bytes, body) { e -> if (e != null && !e.startsWith("No connection")) toast(e) } }
+                    else ChatSync.send(this, store, c.cid, body) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
+                }
+                toast(t("Forwarded ✓", "ఫార్వర్డ్ చేశాం ✓"))
+            }.setNegativeButton(t("Cancel", "వద్దు"), null).show()
     }
 
     // =================== tasks and reminders ===================
@@ -497,11 +673,79 @@ class ChatActivity : Activity() {
         val s = input.text.toString().trim()
         if (s.isEmpty()) return
         input.setText(""); db.setKv("draft:$cid", "")
-        ChatSync.send(this, store, cid, JSONObject().put("t", "text").put("text", s.take(4000))) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
+        ChatSync.send(this, store, cid, withReply(JSONObject().put("t", "text").put("text", s.take(4000)))) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
     }
 
     private fun attach() {
-        AlertDialog.Builder(this).setItems(arrayOf(t("🖼️ Photo from gallery", "🖼️ గ్యాలరీ ఫోటో"), t("📷 Take a photo", "📷 ఫోటో తీయండి"))) { _, i -> if (i == 0) pickPhoto() else camera() }.show()
+        AlertDialog.Builder(this).setItems(arrayOf(t("🖼️ Photo from gallery", "🖼️ గ్యాలరీ ఫోటో"), t("📷 Take a photo", "📷 ఫోటో తీయండి"),
+            t("🎬 Video (up to 32 MB)", "🎬 వీడియో (32 MB వరకు)"), t("📄 Document (PDF, Word, Excel…)", "📄 ఫైల్ (PDF, Word, Excel…)"))) { _, i ->
+            when (i) { 0 -> pickPhoto(); 1 -> camera(); 2 -> pickVideo(); else -> pickDoc() }
+        }.show()
+    }
+    private fun pickVideo() {
+        val i = if (Build.VERSION.SDK_INT >= 33) Intent(MediaStore.ACTION_PICK_IMAGES).setType("video/*") else Intent(Intent.ACTION_GET_CONTENT).setType("video/*").addCategory(Intent.CATEGORY_OPENABLE)
+        try { startActivityForResult(i, REQ_VIDEO) } catch (e: Exception) { try { startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("video/*"), REQ_VIDEO) } catch (e2: Exception) { toast("Couldn't open your videos.") } }
+    }
+    private fun pickDoc() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)
+        try { startActivityForResult(i, REQ_DOC) } catch (e: Exception) { try { startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_DOC) } catch (e2: Exception) { toast("Couldn't open your files.") } }
+    }
+    /** The name and size of a picked file. */
+    private fun nameAndSize(u: Uri): Pair<String, Long> = try {
+        contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst()) Pair(c.getString(0) ?: "file", if (c.isNull(1)) -1L else c.getLong(1)) else null
+        } ?: Pair("file", -1L)
+    } catch (e: Exception) { Pair("file", -1L) }
+    private fun tooBig() = toast(t("That file is too big. Habit Chat sends files up to 32 MB.", "ఆ ఫైల్ చాలా పెద్దది. Habit చాట్ 32 MB వరకు పంపుతుంది."))
+    private fun sendVideo(u: Uri) {
+        val caption = input.text.toString().trim()
+        val (name, size) = nameAndSize(u)
+        if (size > MAX_FILE) { tooBig(); return }
+        toast(t("Getting the video ready…", "వీడియో సిద్ధం చేస్తున్నాం…"))
+        Thread {
+            val bytes = try { contentResolver.openInputStream(u)?.use { readLimited(it) } } catch (e: Exception) { null }
+            if (bytes == null) { runOnUiThread { if (size > MAX_FILE || size < 0) tooBig() else toast(t("Couldn't read that video.", "ఆ వీడియో చదవలేకపోయాం.")) }; return@Thread }
+            val body = JSONObject().put("name", name.take(80)).put("text", caption.take(1000))
+            try {
+                val r = android.media.MediaMetadataRetriever(); r.setDataSource(this, u)
+                body.put("dur", ((r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) / 1000).toInt())
+                val rot = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                val w = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 16
+                val h = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 9
+                body.put("w", if (rot == 90 || rot == 270) h else w).put("h", if (rot == 90 || rot == 270) w else h)
+                r.getFrameAtTime(500_000)?.let { f ->
+                    val th = ByteArrayOutputStream(); Bitmap.createScaledBitmap(f, 160, maxOf(1, 160 * f.height / maxOf(1, f.width)), true).compress(Bitmap.CompressFormat.JPEG, 60, th)
+                    body.put("thumb", ChatCrypto.b64(th.toByteArray()))
+                }
+                r.release()
+            } catch (e: Exception) { }
+            runOnUiThread {
+                if (caption.isNotEmpty()) { input.setText(""); db.setKv("draft:$cid", "") }
+                ChatSync.sendFile(this, store, cid, "video", bytes, withReply(body)) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
+            }
+        }.start()
+    }
+    private fun sendDoc(u: Uri) {
+        val (name, size) = nameAndSize(u)
+        val lower = name.lowercase()
+        if (lower.endsWith(".apk") || lower.endsWith(".exe") || lower.endsWith(".bat") || lower.endsWith(".xapk")) {
+            toast(t("For safety, Habit Chat doesn't send app files (.apk). Fraudsters use them to take over phones.", "భద్రత కోసం, Habit చాట్ యాప్ ఫైల్స్ (.apk) పంపదు. మోసగాళ్ళు వాటితో ఫోన్లను ఆక్రమిస్తారు.")); return
+        }
+        if (size > MAX_FILE) { tooBig(); return }
+        Thread {
+            val bytes = try { contentResolver.openInputStream(u)?.use { readLimited(it) } } catch (e: Exception) { null }
+            runOnUiThread {
+                if (bytes == null) { tooBig(); return@runOnUiThread }
+                val body = JSONObject().put("name", name.take(100)).put("mime", contentResolver.getType(u) ?: "")
+                ChatSync.sendFile(this, store, cid, "doc", bytes, withReply(body)) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
+            }
+        }.start()
+    }
+    /** Reads a picked file, at most 32 MB (null when bigger). */
+    private fun readLimited(inp: java.io.InputStream): ByteArray? {
+        val out = ByteArrayOutputStream(); val buf = ByteArray(64 * 1024); var n = 0L
+        while (true) { val r = inp.read(buf); if (r < 0) break; n += r; if (n > MAX_FILE) return null; out.write(buf, 0, r) }
+        return out.toByteArray()
     }
     private fun pickPhoto(req: Int = REQ_PHOTO) {
         val i = if (Build.VERSION.SDK_INT >= 33) Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*") else Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
@@ -528,7 +772,7 @@ class ChatActivity : Activity() {
             val body = JSONObject().put("w", bmp.width).put("h", bmp.height).put("thumb", ChatCrypto.b64(th.toByteArray())).put("text", caption.take(1000))
             runOnUiThread {
                 if (caption.isNotEmpty()) { input.setText(""); db.setKv("draft:$cid", "") }
-                ChatSync.sendFile(this, store, cid, "photo", out.toByteArray(), body) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
+                ChatSync.sendFile(this, store, cid, "photo", out.toByteArray(), withReply(body)) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
             }
         }.start()
     }
@@ -564,7 +808,7 @@ class ChatActivity : Activity() {
         val f = recFile
         buildBar()
         if (!send || f == null || !f.exists() || secs < 1) { if (send) toast(t("Hold on a bit longer to record.", "కొంచెం సేపు మాట్లాడండి.")); return }
-        ChatSync.sendFile(this, store, cid, "voice", f.readBytes(), JSONObject().put("dur", secs)) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
+        ChatSync.sendFile(this, store, cid, "voice", f.readBytes(), withReply(JSONObject().put("dur", secs))) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
     }
     private fun cancelRecording() { stopRecording(false) }
 
@@ -724,6 +968,8 @@ class ChatActivity : Activity() {
         when (requestCode) {
             REQ_PHOTO -> if (ok) data?.data?.let { u -> sendPhoto { contentResolver.openInputStream(u)?.use { it.readBytes() } } }
             REQ_CAMERA -> if (ok) sendPhoto { CameraFiles.file(this).takeIf { it.exists() }?.readBytes() }
+            REQ_VIDEO -> if (ok) data?.data?.let { sendVideo(it) }
+            REQ_DOC -> if (ok) data?.data?.let { sendDoc(it) }
             REQ_QR -> if (ok) onQr { data?.data } else finish()
             REQ_QR_CAM -> if (ok) onQr { CameraFiles.uri(this) } else finish()
             REQ_CONTACT -> if (ok) data?.data?.let { onContact(it) } ?: finish() else finish()
@@ -734,6 +980,8 @@ class ChatActivity : Activity() {
         val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
         when (requestCode) {
             REQ_MIC -> if (granted) startRecording()
+            REQ_CALL_PERMS -> if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) CallManager.startOutgoing(this, cid, callVideo)
+                else toast(t("Habit needs the microphone" + (if (callVideo) " and camera" else "") + " for calls.", "కాల్స్ కోసం Habit కి మైక్" + (if (callVideo) ", కెమెరా" else "") + " అనుమతి కావాలి."))
             REQ_CAMERA, REQ_QR_CAM -> if (granted) camera(requestCode) else if (requestCode == REQ_QR_CAM) finish()
             REQ_CALL -> if (granted) phoneCall(pickedNumber) else { try { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(pickedNumber)))) } catch (e: Exception) { }; finish() }
         }

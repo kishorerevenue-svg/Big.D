@@ -29,6 +29,13 @@
     <!-- the pet's eyes: when you ask it to look ("look at this board", "what colour is my shirt?") it takes ONE photo with the
          back or front camera (only after you say yes the first time; not saved) -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Habit voice and video calls: the sound (earpiece / speaker), the ring on the lock screen, staying on when you
+         leave the call screen, and the screen going dark at the ear -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -204,6 +211,23 @@
         </activity>
         <!-- Habit Chat: a quiet check for new messages every 15 minutes while the app is closed -->
         <receiver android:name=".ChatAlarm" android:exported="false" />
+        <!-- Habit voice and video calls (CallManager): the call screen, "Decline" on the ring, and staying on during a call -->
+        <activity
+            android:name=".CallActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="${applicationId}.call"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <receiver android:name=".CallActionReceiver" android:exported="false" />
+        <service
+            android:name=".CallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera" />
 
         <receiver android:name=".ReminderReceiver" android:exported="false" />
 

@@ -436,6 +436,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     // ---------------- listening ----------------
     private fun startListening() {
+        if (CallManager.active != null) { showBubble(if (store.lang == "en") "📞 You're on a call. I'll listen after it." else "📞 మీరు కాల్‌లో ఉన్నారు. కాల్ తర్వాత వింటాను."); return }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             say("I need the microphone. Open the Habit AI app and tap 'Allow microphone'.", PuppyView.Mood.SAD); openApp(); return
         }

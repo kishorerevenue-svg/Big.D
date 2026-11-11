@@ -25,7 +25,8 @@ import java.util.concurrent.Executors
  * Habit Chat on the phone: sets it up (this phone's key goes to the server), keeps the chats up to date, sends messages,
  * photos, voice notes and tasks, and shows a notification for new ones.
  *  - While the app (or the floating pet) is open, it waits on the server, which answers as soon as something comes.
- *  - When the app is closed, it checks every 15 minutes (kind to the battery). Instant push comes with the calls.
+ *  - When the app is closed, it checks every 15 minutes (kind to the battery). Instant push (Firebase) comes later.
+ *  - Also videos, documents, replies, forwards, "delete for everyone", and the notes of voice and video calls (CallManager).
  * Everything is locked and opened on the phone (ChatCrypto); the server only passes locked messages on.
  */
 object ChatSync {
@@ -120,6 +121,7 @@ object ChatSync {
         val r = api(store, "GET", "/api/chat/sync?c=$cursor" + (if (wait) "&wait=1" else ""), timeoutMs = if (wait) 45_000 else 20_000)
         if (r.code == 409 && r.json.optBoolean("needKey")) { setup(ctx, store); return false }
         if (!r.ok) return false
+        r.json.optLong("now").takeIf { it > 0 }?.let { CallManager.skew = it - System.currentTimeMillis() }
         process(ctx, store, r.json)
         val next = r.json.optLong("cursor", cursor)
         db.setKv("cursor", next.toString())
@@ -142,12 +144,14 @@ object ChatSync {
                 val cid = m.optString("cid"); val id = m.optString("id")
                 if (db.has(cid, id)) { if (m.optString("from") == me) db.setSent(cid, id, m.optLong("seq"), m.optLong("at"), 1); continue }
                 val cm = decode(m, priv)
+                if (cm.kind == "del") { applyDelete(ctx, cm); continue }          // "delete for everyone": nothing new to show
+                if (cm.kind == "call") { CallManager.onSignal(ctx, store, cm); continue }   // ringing, answers, hang-ups (CallManager)
                 db.putMsg(cm)
                 if (cm.kind == "task") applyTask(ctx, cm)
                 val mine = cm.sender == me
                 db.touch(cid, cm.at, preview(ctx, cm), !mine && cid != openCid && cm.kind != "sys")
                 if (!mine && cm.kind != "sys") fresh.add(cm)
-                if (cm.kind == "photo" || cm.kind == "voice") fetchFile(ctx, store, cm)
+                if (autoFetch(cm)) fetchFile(ctx, store, cm)
             }
         }
         if (fresh.isNotEmpty()) notify(ctx, fresh)
@@ -164,7 +168,17 @@ object ChatSync {
         m.optJSONObject("task")?.let { body.put("server", it) }      // who and what state, as the server says
         return ChatMsg(cid, id, seq, from, at, kindOf(body), body, 1)
     }
-    fun kindOf(body: JSONObject) = when (body.optString("t")) { "photo" -> "photo"; "voice" -> "voice"; "task" -> "task"; else -> "text" }
+    fun kindOf(body: JSONObject) = when (body.optString("t")) {
+        "photo" -> "photo"; "voice" -> "voice"; "video" -> "video"; "doc" -> "doc"; "task" -> "task"; "del" -> "del"; "gone" -> "gone"; "call" -> "call"; "clog" -> "clog"; else -> "text" }
+    /** Kinds that carry a locked file on the server. */
+    val FILE_KINDS = setOf("photo", "voice", "video", "doc")
+    /** The file name on the phone for a message's file (documents keep their own ending, like .pdf). */
+    fun fileName(m: ChatMsg): String = m.id + when (m.kind) {
+        "photo" -> ".jpg"; "voice" -> ".m4a"; "video" -> ".mp4"
+        else -> m.body.optString("name").substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(6).let { if (it.isEmpty()) ".bin" else ".$it" }
+    }
+    /** Files that small come by themselves; bigger videos and documents wait for a tap (kind to mobile data). */
+    private fun autoFetch(m: ChatMsg) = m.kind == "photo" || m.kind == "voice" || (m.kind in FILE_KINDS && m.body.optLong("size") in 1..5_000_000L)
 
     /** A task message changes the task pinned at the top of the chat. */
     fun applyTask(ctx: Context, m: ChatMsg) {
@@ -190,6 +204,33 @@ object ChatSync {
         b.optJSONObject("server")?.optString("state")?.takeIf { it.isNotEmpty() }?.let { t.put("state", it) }
         t.put("last", m.at)
         db.putTask(m.cid, t)
+    }
+
+    /** Someone deleted their own message for everyone: it becomes "This message was deleted" here too. */
+    private fun applyDelete(ctx: Context, d: ChatMsg) {
+        val db = ChatDb.get(ctx)
+        val target = db.msg(d.cid, d.body.optString("id")) ?: return
+        if (target.sender != d.sender || target.kind == "task" || target.kind == "sys") return     // only the sender can, and not tasks
+        target.body.optString("local").takeIf { it.isNotEmpty() }?.let { try { File(it).delete() } catch (e: Exception) { } }
+        db.gone(d.cid, target.id)
+        db.lastMsg(d.cid)?.let { if (it.id == target.id) db.touch(d.cid, it.at, preview(ctx, ChatMsg(it.cid, it.id, it.seq, it.sender, it.at, "gone", JSONObject(), 1)), false) }
+    }
+
+    /** A call note (ring, answer, hang-up): locked and sent like a message, but not kept in the chat. */
+    fun signal(ctx: Context, store: Store, cid: String, body: JSONObject): String? =
+        deliver(ctx, store, ChatMsg(cid, newId(), 0, myUid(ctx), System.currentTimeMillis(), "call", body, 0), null)
+
+    /** Deletes my message for everyone in the chat (here at once; on their phones when the note reaches them). */
+    fun deleteForAll(ctx: Context, store: Store, m: ChatMsg, done: (String?) -> Unit = {}) {
+        val db = ChatDb.get(ctx)
+        m.body.optString("local").takeIf { it.isNotEmpty() }?.let { try { File(it).delete() } catch (e: Exception) { } }
+        db.gone(m.cid, m.id)
+        db.lastMsg(m.cid)?.let { if (it.id == m.id) db.touch(m.cid, it.at, preview(ctx, ChatMsg(it.cid, it.id, it.seq, it.sender, it.at, "gone", JSONObject(), 1)), false) }
+        changed()
+        // the note itself is kept (hidden) until it's sent, so it goes later if there's no connection now
+        val note = ChatMsg(m.cid, newId(), 0, myUid(ctx), System.currentTimeMillis(), "del", JSONObject().put("t", "del").put("id", m.id), 0)
+        db.putMsg(note)
+        sendPool.execute { val e = deliver(ctx, store, note, null); changed(); main.post { done(e) } }
     }
 
     // ---------- sending ----------
@@ -221,13 +262,16 @@ object ChatSync {
         }
     }
 
-    /** A photo (JPEG) or a voice note (m4a): locked on the phone, then uploaded, then sent. */
+    /** A photo (JPEG), a voice note (m4a), a video (mp4) or a document: locked on the phone, then uploaded, then sent. */
     fun sendFile(ctx: Context, store: Store, cid: String, kind: String, bytes: ByteArray, body: JSONObject, done: (String?) -> Unit = {}) {
         val db = ChatDb.get(ctx)
         val id = newId()
-        val local = File(dir(ctx), id + if (kind == "photo") ".jpg" else ".m4a").also { it.writeBytes(bytes) }
-        body.put("t", kind).put("local", local.absolutePath)
-        val m = ChatMsg(cid, id, 0, myUid(ctx), System.currentTimeMillis(), kind, body, if (cid == ChatDb.SELF) 1 else 0)
+        body.put("t", kind)
+        val m0 = ChatMsg(cid, id, 0, myUid(ctx), System.currentTimeMillis(), kind, body, 0)
+        val local = File(dir(ctx), fileName(m0)).also { it.writeBytes(bytes) }
+        body.put("local", local.absolutePath)
+        if (kind == "video" || kind == "doc") body.put("size", bytes.size.toLong())
+        val m = ChatMsg(cid, id, 0, myUid(ctx), m0.at, kind, body, if (cid == ChatDb.SELF) 1 else 0)
         db.putMsg(m); db.touch(cid, m.at, preview(ctx, m), false); changed()
         if (cid == ChatDb.SELF) { done(null); return }
         sendPool.execute { val e = uploadAndDeliver(ctx, store, m, bytes); changed(); main.post { done(e) } }
@@ -285,7 +329,7 @@ object ChatSync {
         sendPool.execute {
             for (m in list) {
                 val local = m.body.optString("local")
-                val e = if ((m.kind == "photo" || m.kind == "voice") && m.body.optString("file").isEmpty() && local.isNotEmpty())
+                val e = if (m.kind in FILE_KINDS && m.body.optString("file").isEmpty() && local.isNotEmpty())
                     try { uploadAndDeliver(ctx, store, m, File(local).readBytes()) } catch (x: Exception) { "gone" } else deliver(ctx, store, m, null)
                 if (e != null && e.startsWith("No connection")) break
             }
@@ -296,13 +340,14 @@ object ChatSync {
     // ---------- photos and voice notes that came in ----------
     fun dir(ctx: Context) = File(ctx.filesDir, "chat").also { it.mkdirs() }
     private val fetching: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    fun isFetching(m: ChatMsg) = m.body.optString("file").let { it.isNotEmpty() && it in fetching }
     fun fetchFile(ctx: Context, store: Store, m: ChatMsg) {
         if (m.body.optString("local").let { it.isNotEmpty() && File(it).exists() }) return
         val id = m.body.optString("file"); if (id.isEmpty() || !fetching.add(id)) return
         filePool.execute {
             val locked = try { download(store, id) } finally { fetching.remove(id) } ?: return@execute
             val bytes = ChatCrypto.openFile(locked, m.body.optString("key"), m.body.optString("iv")) ?: return@execute
-            val f = File(dir(ctx), m.id + if (m.kind == "photo") ".jpg" else ".m4a").also { it.writeBytes(bytes) }
+            val f = File(dir(ctx), fileName(m)).also { it.writeBytes(bytes) }
             m.body.put("local", f.absolutePath)
             ChatDb.get(ctx).setBody(m.cid, m.id, m.body)
             changed()
@@ -317,6 +362,10 @@ object ChatSync {
             "text" -> b.optString("text")
             "photo" -> "📷 " + b.optString("text").ifBlank { if (te) "ఫోటో" else "Photo" }
             "voice" -> "🎤 " + (if (te) "వాయిస్ మెసేజ్" else "Voice note")
+            "video" -> "🎬 " + b.optString("text").ifBlank { if (te) "వీడియో" else "Video" }
+            "doc" -> "📄 " + b.optString("name").ifBlank { if (te) "ఫైల్" else "Document" }
+            "gone" -> "🚫 " + (if (te) "ఈ మెసేజ్ తొలగించబడింది" else "This message was deleted")
+            "clog" -> CallManager.logText(ctx, m)
             "task" -> when (b.optString("action")) {
                 "new" -> "📌 " + b.optString("title")
                 "remark" -> "💬 " + b.optString("text")
@@ -345,7 +394,7 @@ object ChatSync {
         }
     }
 
-    private fun notify(ctx: Context, list: List<ChatMsg>) {
+    fun notify(ctx: Context, list: List<ChatMsg>) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         ensureChannel(ctx)
         val db = ChatDb.get(ctx)

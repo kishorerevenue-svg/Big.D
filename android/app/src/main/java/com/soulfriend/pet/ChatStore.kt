@@ -152,6 +152,11 @@ class ChatDb private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "bigd_cha
     }
     fun setBody(cid: String, id: String, body: JSONObject) { writableDatabase.execSQL("UPDATE msgs SET body=? WHERE cid=? AND id=?", arrayOf(body.toString(), cid, id)) }
     fun deleteMsg(cid: String, id: String) { writableDatabase.delete("msgs", "cid=? AND id=?", arrayOf(cid, id)) }
+    fun msg(cid: String, id: String): ChatMsg? = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND id=?", arrayOf(cid, id)).use { c -> if (c.moveToFirst()) msg(c) else null }
+    /** The newest message that shows in the chat (not the hidden "delete for everyone" notes). */
+    fun lastMsg(cid: String): ChatMsg? = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND kind<>'del' ORDER BY at DESC LIMIT 1", arrayOf(cid)).use { c -> if (c.moveToFirst()) msg(c) else null }
+    /** "Delete for everyone": the message stays as "This message was deleted". */
+    fun gone(cid: String, id: String) { writableDatabase.execSQL("UPDATE msgs SET kind='gone', body='{\"t\":\"gone\"}' WHERE cid=? AND id=?", arrayOf(cid, id)) }
     fun pending(): List<ChatMsg> = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE state=0 ORDER BY at ASC", null).use { c ->
         val out = ArrayList<ChatMsg>(); while (c.moveToNext()) out.add(msg(c)); out }
 

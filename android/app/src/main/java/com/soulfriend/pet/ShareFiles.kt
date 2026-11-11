@@ -55,7 +55,8 @@ class ShareFiles : ContentProvider() {
 
     override fun getType(uri: Uri): String {
         val n = uri.lastPathSegment.orEmpty().lowercase()
-        return when { n.endsWith(".mp4") -> "video/mp4"; n.endsWith(".jpg") || n.endsWith(".jpeg") -> "image/jpeg"; n.endsWith(".png") -> "image/png"; else -> "application/octet-stream" }
+        return when { n.endsWith(".mp4") -> "video/mp4"; n.endsWith(".jpg") || n.endsWith(".jpeg") -> "image/jpeg"; n.endsWith(".png") -> "image/png"
+            else -> android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(n.substringAfterLast('.', "")) ?: "application/octet-stream" }
     }
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor {

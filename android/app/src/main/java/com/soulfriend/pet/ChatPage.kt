@@ -48,9 +48,9 @@ class ChatPage(private val m: MainActivity) {
         val unread = if (ChatSync.isSetUp(m)) db.unreadTotal() else 0
         s.addView(ui.text("💬 Habit Chat" + if (unread > 0) "  ·  $unread " + t("new", "కొత్తవి") else "", 18f, Ui.INK, bold = true))
         if (!ChatSync.isSetUp(m)) {
-            s.addView(ui.text(t("Chat with family and friends who use Habit AI, like WhatsApp: messages, groups, photos, voice notes, and reminders and work tasks pinned at the top. " +
+            s.addView(ui.text(t("Chat with family and friends who use Habit AI, like WhatsApp: messages, groups, voice and video calls, photos, videos, documents, voice notes, and reminders and work tasks pinned at the top. " +
                 "🔒 Locked end to end: only the people in a chat can read it, not even Habit's server.",
-                "Habit AI వాడే కుటుంబం, స్నేహితులతో వాట్సాప్ లాగా చాట్ చేయండి: మెసేజ్‌లు, గ్రూప్‌లు, ఫోటోలు, వాయిస్ మెసేజ్‌లు, పైన ఉండే రిమైండర్లు, పనులు. " +
+                "Habit AI వాడే కుటుంబం, స్నేహితులతో వాట్సాప్ లాగా చాట్ చేయండి: మెసేజ్‌లు, గ్రూప్‌లు, వాయిస్, వీడియో కాల్స్, ఫోటోలు, వీడియోలు, ఫైల్స్, వాయిస్ మెసేజ్‌లు, పైన ఉండే రిమైండర్లు, పనులు. " +
                 "🔒 ఎండ్ టు ఎండ్ లాక్: చాట్‌లో ఉన్నవాళ్ళు మాత్రమే చదవగలరు, Habit సర్వర్ కూడా చదవలేదు."), 14f, Ui.MUTED).apply { setPadding(0, dp(6), 0, 0) })
             s.addView(ui.button(if (starting) t("Starting…", "మొదలవుతోంది…") else t("💬 Start Habit Chat", "💬 Habit చాట్ మొదలుపెట్టండి"), "primary") { if (!starting) start() },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })

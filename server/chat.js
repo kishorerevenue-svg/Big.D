@@ -11,6 +11,9 @@
 //    and marks it done. In a one-to-one chat both people can close tasks.
 //  - New messages reach the phone by a long wait: the phone asks, and the server answers as soon as something comes
 //    (within 25 s). Phones confirm what they got with their next ask, and only then is it marked delivered (✓✓).
+//  - Voice and video calls: the ring / answer / hang-up notes travel as locked messages like any other; the sound and
+//    video go straight between the phones (WebRTC). /api/chat/turn gives short-lived passwords for the call relay
+//    (coturn on this server, see turn-setup.sh) for phones that can't reach each other directly.
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -20,7 +23,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   const FDIR = path.join(DATA_DIR, "chat-files");
   fs.mkdirSync(FDIR, { recursive: true });
   const MAX_GROUP = 100, KEEP = 30 * 86400e3, BEFORE_ACCEPT = 5, WAIT_MS = Number(process.env.CHAT_WAIT_MS || 25000);
-  const FILE_MAX = 16 * 1024 * 1024, FILES_MAX_BYTES = Number(process.env.CHAT_FILES_MAX_MB || 5000) * 1024 * 1024;
+  const FILE_MAX = Number(process.env.CHAT_FILE_MAX_MB || 32) * 1024 * 1024 + 64 * 1024, FILES_MAX_BYTES = Number(process.env.CHAT_FILES_MAX_MB || 5000) * 1024 * 1024;
   let db = { keys: {}, convs: {}, msgs: {}, inbox: {}, blocks: {}, tasks: {}, reports: [], files: {}, day: "", sent: {} };
   try { db = Object.assign(db, JSON.parse(fs.readFileSync(FILE, "utf8"))); } catch (e) { }
   let timer = null;
@@ -168,6 +171,21 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
       return send(200, { keys: keysOf(c.members) });
     }
 
+    // calls: where the phones find each other (STUN), and the relay for when they can't (TURN, short-lived password)
+    if (p === "/api/chat/turn" && req.method === "GET") {
+      const ice = [];
+      const secret = process.env.TURN_SECRET || "";
+      let host = process.env.TURN_HOST || "";
+      if (!host) { try { host = new URL(h.baseUrl(req)).hostname; } catch (e) { host = ""; } }
+      if (secret && host && !/^(localhost|127\.|\[::1\])/.test(host)) {
+        const username = Math.floor(Date.now() / 1000 + 8 * 3600) + ":" + me;
+        const credential = crypto.createHmac("sha1", secret).update(username).digest("base64");
+        ice.push({ urls: [`stun:${host}:3478`, `turn:${host}:3478?transport=udp`, `turn:${host}:3478?transport=tcp`], username, credential });
+      }
+      ice.push({ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] });
+      return send(200, { ice, relay: ice.length > 1 });
+    }
+
     // the long wait for new messages
     if (p === "/api/chat/sync" && req.method === "GET") {
       const c0 = Math.max(0, Number(url.searchParams.get("c")) || 0);
@@ -187,7 +205,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         ev = pending();
       }
       ev = ev.slice(0, 300);
-      const out = { cursor: ev.length ? ev[ev.length - 1].n : c0, convs: [], msgs: [], ticks: [], gone: [], more: pending().length > ev.length };
+      const out = { cursor: ev.length ? ev[ev.length - 1].n : c0, convs: [], msgs: [], ticks: [], gone: [], more: pending().length > ev.length, now: Date.now() };
       const seen = new Set();
       for (const e of ev) {
         const c = db.convs[e.cid];
@@ -204,7 +222,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     if (p === "/api/chat/file" && req.method === "POST") {
       if (!rate(me)) return send(429, { error: "Too many. Please wait a little." });
       let buf;
-      try { buf = await readRaw(req, FILE_MAX); } catch (e) { return send(e.status || 400, { error: e.status === 413 ? "That file is too big (16 MB at most)." : "Upload failed." }); }
+      try { buf = await readRaw(req, FILE_MAX); } catch (e) { return send(e.status || 400, { error: e.status === 413 ? "That file is too big (32 MB at most)." : "Upload failed." }); }
       if (buf.length < 16) return send(400, { error: "Empty file." });
       const id = crypto.randomBytes(16).toString("hex");
       fs.writeFileSync(path.join(FDIR, id), buf);
@@ -214,7 +232,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     }
     if (p === "/api/chat/file" && req.method === "GET") {
       const id = str(url.searchParams.get("id"), 40);
-      if (!/^[0-9a-f]{32}$/.test(id) || !db.files[id]) return send(404, { error: "That photo or voice note is no longer on the server." });
+      if (!/^[0-9a-f]{32}$/.test(id) || !db.files[id]) return send(404, { error: "That file is no longer on the server." });
       try { const buf = fs.readFileSync(path.join(FDIR, id)); res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": buf.length, "Cache-Control": "private, max-age=86400" }); res.end(buf); }
       catch (e) { send(404, { error: "Not found" }); }
       return true;
