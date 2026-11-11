@@ -148,7 +148,7 @@ class ChatPage(private val m: MainActivity) {
                         background = C.round(if (on) C.ON_PRIMARY else C.GOLD, dp(8).toFloat())
                     }, FrameLayout.LayoutParams(-2, dp(16), Gravity.TOP or Gravity.END))
                 }, LinearLayout.LayoutParams(dp(46), dp(22)))
-                addView(txt(p.first, 11.5f, if (on) C.ON_PRIMARY else C.SUB).apply { typeface = if (on) Fonts.heavy(m) else Fonts.semi(m); gravity = Gravity.CENTER; maxLines = 1; setPadding(0, dp(2), 0, 0); setLineSpacing(0f, 1f) })
+                addView(txt(p.first, 11.5f, if (on) C.ON_PRIMARY else C.SUB).apply { typeface = if (on) Fonts.heavy(m) else Fonts.semi(m); gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(2), 0, 0); setLineSpacing(0f, 1f) })
                 setOnClickListener {
                     page = k; hiddenOpen = false
                     if (k == "calls") db.setKv("callsSeen", System.currentTimeMillis().toString())
