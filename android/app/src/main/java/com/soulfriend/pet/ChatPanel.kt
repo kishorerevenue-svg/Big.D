@@ -150,7 +150,7 @@ class ChatPanel(
 
     private fun draw() {
         topRow.removeAllViews()
-        topRow.addView(icon("🔍") { searching = !searching; if (!searching) { query = ""; search.setText("") }; search.visibility = if (searching) View.VISIBLE else View.GONE; if (searching) search.requestFocus(); fill() })
+        topRow.addView(iconRes(R.drawable.ic_search, t("Search", "వెతకండి")) { searching = !searching; if (!searching) { query = ""; search.setText("") }; search.visibility = if (searching) View.VISIBLE else View.GONE; if (searching) search.requestFocus(); fill() })
         val seg = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; background = C.round(C.CARD, dp(18).toFloat(), C.EDGE, dp(1)); setPadding(dp(3), dp(3), dp(3), dp(3)) }
         listOf("emoji" to "😊", "gif" to "GIF", "sticker" to "🏷️").forEach { (k, label) ->
             seg.addView(TextView(a).apply {
@@ -160,11 +160,12 @@ class ChatPanel(
             }, LinearLayout.LayoutParams(dp(64), dp(34)))
         }
         topRow.addView(LinearLayout(a).apply { gravity = Gravity.CENTER; addView(seg) }, LinearLayout.LayoutParams(0, -2, 1f))
-        topRow.addView(if (tab == "emoji") icon("⌫") { onBackspace() } else View(a).apply { layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)) })
+        topRow.addView(if (tab == "emoji") iconRes(R.drawable.ic_backspace, t("Delete", "తొలగించు")) { onBackspace() } else View(a).apply { layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)) })
         search.hint = when (tab) { "gif" -> "🔍 " + t("Search GIFs", "GIF వెతకండి"); "sticker" -> "🔍 " + t("Search stickers", "స్టిక్కర్లు వెతకండి"); else -> "🔍 " + t("Search emoji (e.g. love, నవ్వు)", "ఎమోజీ వెతకండి (ఉదా: నవ్వు, love)") }
         bottomBar()
         if (tab == "gif" && gifs.isEmpty()) loadGifs() else fill()
     }
+    private fun iconRes(res: Int, desc: String, onClick: () -> Unit) = Ico.view(a, res, C.SUB, 22, 44, desc) { onClick() }
     private fun icon(label: String, onClick: () -> Unit) = TextView(a).apply {
         text = label; textSize = 19f; gravity = Gravity.CENTER; setTextColor(C.TXT); setOnClickListener { onClick() }
         layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))

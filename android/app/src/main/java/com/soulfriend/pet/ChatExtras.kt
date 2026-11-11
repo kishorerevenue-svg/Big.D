@@ -507,7 +507,7 @@ object ChatLists {
     fun newList(a: Activity, cids: Set<String>, done: () -> Unit = {}) {
         val te = Store(a).lang == "te"
         val ui = Ui(a)
-        val inp = ui.input(if (te) "లిస్ట్ పేరు, ఉదా: కుటుంబం, ఆఫీస్" else "List name, e.g. Family, Office")
+        val inp = ChatTheme.input(a, if (te) "లిస్ట్ పేరు, ఉదా: కుటుంబం, ఆఫీస్" else "List name, e.g. Family, Office")
         val wrap = android.widget.FrameLayout(a).apply { setPadding(ui.dp(20), ui.dp(6), ui.dp(20), 0); addView(inp) }
         AlertDialog.Builder(a).setTitle(if (te) "📋 కొత్త లిస్ట్" else "📋 New list").setView(wrap)
             .setPositiveButton(if (te) "చేయి" else "Create") { _, _ -> val n = inp.text.toString().trim(); if (n.isNotEmpty()) { create(a, n, cids); done() } }
