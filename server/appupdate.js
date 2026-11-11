@@ -17,8 +17,10 @@ module.exports = function makeAppUpdate({ REPO_DIR }) {
   }
 
   let cache = { at: 0, data: null };
-  async function latest() {
-    if (cache.data && Date.now() - cache.at < 15 * 60000) return cache.data;
+  // The newest release is kept for 5 minutes ([fresh]: the user tapped "Check for updates": ask GitHub again if it's
+  // older than 2 minutes, so a new release shows up at once).
+  async function latest(fresh) {
+    if (cache.data && Date.now() - cache.at < (fresh ? 2 : 5) * 60000) return cache.data;
     const r = repo();
     if (!r) return null;
     try {
@@ -40,7 +42,7 @@ module.exports = function makeAppUpdate({ REPO_DIR }) {
       cache = { at: Date.now(), data };
       return data;
     } catch (e) {
-      cache.at = Date.now() - 10 * 60000;     // try GitHub again in 5 minutes; meanwhile use what we had
+      cache.at = Date.now() - 3 * 60000;      // try GitHub again in 2 minutes; meanwhile use what we had
       return cache.data;
     }
   }

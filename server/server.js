@@ -477,7 +477,7 @@ const server = http.createServer(async (req, res) => {
   if (reels.handle(req, res, url)) return;
   // one-tap updates: the newest Habit AI Lite, and a download link anyone can share
   if (req.method === "GET" && url.pathname === "/app/latest") {
-    const l = await appUpdate.latest();
+    const l = await appUpdate.latest(url.searchParams.get("fresh") === "1");
     return send(res, l ? 200 : 404, l || { error: "No download is published yet." }, origin);
   }
   if (req.method === "GET" && (url.pathname === "/download" || url.pathname === "/download/lite" || url.pathname === "/download/brain")) {
