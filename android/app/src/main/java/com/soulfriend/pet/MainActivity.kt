@@ -1,7 +1,6 @@
 package com.soulfriend.pet
 
 import android.Manifest
-import android.animation.LayoutTransition
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.AlertDialog
@@ -29,9 +28,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.text.InputType
 import android.text.TextUtils
-import android.view.DragEvent
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -53,7 +50,8 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 
-/** The Habit AI app: Home, Pet, Tasks, Files, Messages, Vault and Media pages with a bottom menu. */
+/** The Habit AI app: the bottom bar (Home · Chats · the round Talk button · Tasks · Media), and Pet, Files, Vault,
+ *  Translate, Family & SOS and Govt services opened from Home. */
 class MainActivity : Activity() {
 
     internal lateinit var store: Store
@@ -64,13 +62,13 @@ class MainActivity : Activity() {
     private lateinit var nav: LinearLayout
     private lateinit var navLeft: LinearLayout
     private lateinit var navRight: LinearLayout
-    private lateinit var mediaFab: TextView       // the round Media button in the middle of the bottom bar
+    private lateinit var talkFab: ImageView       // the round Talk button in the middle of the bottom bar
     private lateinit var rootFrame: FrameLayout
     /** The page area (above the bottom bar): the page scrolls in it; a bar can stay fixed at its top ([setTopBar]). */
     private lateinit var bodyFrame: FrameLayout
     private var topBar: View? = null
     @Volatile private var resumedNow = false
-    private lateinit var mediaLabel: TextView
+    private lateinit var talkLabel: TextView
     private lateinit var fab: TextView
     internal val fmt: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
     internal val io = Executors.newSingleThreadExecutor()
@@ -115,13 +113,12 @@ class MainActivity : Activity() {
         const val REQ_LOCATION = 21
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
-        /** Pages opened from Home tiles (not bottom tabs). Back and the Home tab return to Home. */
-        val TOOL_PAGES = setOf("translate", "family", "govt")
-        /** key, name, icon. The user can drag them into another order (long-press a tab). */
-        val TABS = listOf(
-            Triple("home", "Home", "🏠"), Triple("pet", "Pet", "🐾"), Triple("tasks", "Tasks", "✅"), Triple("files", "Files", "📄"),
-            Triple("messages", "Messages", "💬"), Triple("vault", "Vault", "🔒"), Triple("feedback", "Media\nమీడియా", "📺")
-        )
+        /** Pages opened from Home (not in the bottom bar). Back and the Home tab return to Home. */
+        val TOOL_PAGES = setOf("translate", "family", "govt", "pet", "files", "vault")
+        /** The bottom bar: two tabs, the round Talk button, two tabs. */
+        class NavTab(val key: String, val en: String, val te: String, val icon: Int)
+        val TABS = listOf(NavTab("home", "Home", "హోమ్", R.drawable.ic_home), NavTab("messages", "Chats", "చాట్‌లు", R.drawable.ic_chat),
+            NavTab("tasks", "Tasks", "పనులు", R.drawable.ic_tasks), NavTab("feedback", "Media", "మీడియా", R.drawable.ic_media))
     }
 
     internal fun dp(v: Int) = ui.dp(v)
@@ -141,31 +138,27 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 23) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(28)) }
         scroll = ScrollView(this).apply { addView(content); isFillViewport = true }
+        // the bottom bar: Home · Chats · (the raised round Talk button) · Tasks · Media
         nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(6), dp(6), dp(6), dp(8))
-            setBackgroundColor(Color.WHITE); elevation = dp(12).toFloat()
-            layoutTransition = LayoutTransition().apply {
-                enableTransitionType(LayoutTransition.CHANGING)
-                disableTransitionType(LayoutTransition.APPEARING); disableTransitionType(LayoutTransition.DISAPPEARING)
-                setDuration(220)
-            }
+            elevation = dp(12).toFloat()
         }
-        // the middle of the bottom bar: a raised round Media button with its name under it
-        navLeft = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutTransition = LayoutTransition().apply { enableTransitionType(LayoutTransition.CHANGING); setDuration(220) } }
-        navRight = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutTransition = LayoutTransition().apply { enableTransitionType(LayoutTransition.CHANGING); setDuration(220) } }
-        mediaLabel = TextView(this).apply { text = "Media"; textSize = 11.5f; gravity = Gravity.CENTER; typeface = Fonts.bold(context) }
+        navLeft = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        navRight = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        talkLabel = TextView(this).apply { textSize = 11.5f; gravity = Gravity.CENTER; typeface = Fonts.heavy(context); includeFontPadding = false }
         val navMid = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; contentDescription = "Media"
-            addView(mediaLabel, LinearLayout.LayoutParams(-1, -2))
-            setOnClickListener { openMedia() }
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; contentDescription = "Talk"
+            addView(talkLabel, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
+            setOnClickListener { talkNow() }
         }
-        nav.addView(navLeft, LinearLayout.LayoutParams(0, dp(48), 1f))
-        nav.addView(navMid, LinearLayout.LayoutParams(dp(76), dp(48)))
-        nav.addView(navRight, LinearLayout.LayoutParams(0, dp(48), 1f))
-        mediaFab = TextView(this).apply {
-            text = "📺"; textSize = 24f; gravity = Gravity.CENTER; includeFontPadding = false; contentDescription = "Media: news, videos and posts"
-            elevation = dp(14).toFloat()
-            setOnClickListener { openMedia() }
+        nav.addView(navLeft, LinearLayout.LayoutParams(0, dp(56), 1f))
+        nav.addView(navMid, LinearLayout.LayoutParams(dp(72), dp(56)))
+        nav.addView(navRight, LinearLayout.LayoutParams(0, dp(56), 1f))
+        talkFab = ImageView(this).apply {
+            setImageDrawable(getDrawable(R.drawable.ic_mic)!!.mutate()); scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(16), dp(16), dp(16), dp(16)); contentDescription = "Talk: ask Habit AI by voice"
+            elevation = dp(10).toFloat()
+            setOnClickListener { talkNow() }
         }
         // the round + button on the Media page (write a post)
         fab = TextView(this).apply {
@@ -190,13 +183,13 @@ class MainActivity : Activity() {
             rootFrame = this
             setBackgroundColor(Ui.BG); fitsSystemWindows = true
             addView(column, FrameLayout.LayoutParams(-1, -1))
-            addView(mediaFab, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+            addView(talkFab, FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
         }
         // half of the round button sits above the bar
         nav.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
-            val lp = mediaFab.layoutParams as FrameLayout.LayoutParams
-            val want = (bottom - top) - dp(30)
-            if (lp.bottomMargin != want) { lp.bottomMargin = want; mediaFab.layoutParams = lp }
+            val lp = talkFab.layoutParams as FrameLayout.LayoutParams
+            val want = (bottom - top) - dp(26)
+            if (lp.bottomMargin != want) { lp.bottomMargin = want; talkFab.layoutParams = lp }
         }
         setContentView(root)
         handleIntent(intent)
@@ -237,6 +230,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume(); resumedNow = true; leavingForSystemScreen = false; render()
+        ChatSync.listeners.add(navRefresh)      // the number of unread chats on the Chats tab
         ChatSync.hold(this, "main")      // Habit Chat: new messages come at once while the app is open
         if (BuildConfig.AUTO_CARDS && store.autoCards && AutoCards.allowed(this)) AutoCards.schedule(this)
         // a new version out? (Habit AI Lite asks the server at most every 6 hours; the card appears on Home)
@@ -254,6 +248,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         resumedNow = false
+        ChatSync.listeners.remove(navRefresh)
         ChatSync.release("main")
         mirrorBanner?.let { hideMirror() }
         socialPage?.flushViews()
@@ -306,8 +301,8 @@ class MainActivity : Activity() {
         if (renderedTab == "messages" && tab != "messages") chatPage.leave()
         setTopBar(null)
         content.removeAllViews()
-        if (!store.onboarded) { nav.visibility = View.GONE; mediaFab.visibility = View.GONE; fab.visibility = View.GONE; secure(false); renderSetup(); renderedTab = ""; updateBack(); return }
-        nav.visibility = View.VISIBLE; mediaFab.visibility = View.VISIBLE
+        if (!store.onboarded) { nav.visibility = View.GONE; talkFab.visibility = View.GONE; fab.visibility = View.GONE; secure(false); renderSetup(); renderedTab = ""; updateBack(); return }
+        nav.visibility = View.VISIBLE; talkFab.visibility = View.VISIBLE
         buildNav()
         secure(tab == "vault")
         when (tab) {
@@ -391,116 +386,81 @@ class MainActivity : Activity() {
         if (on) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
-    // ---------- bottom tabs: the chosen tab grows into a pill with its name; long-press a tab to drag it ----------
-    private var navOrder: List<String> = emptyList()
+    // ---------- the bottom bar: Home · Chats · Talk · Tasks · Media (the chosen one in a soft pill) ----------
     private val navItems = LinkedHashMap<String, LinearLayout>()
-    private var dragKey: String? = null
-
-    private fun tabOrder(): List<String> {
-        val all = TABS.map { it.first }
-        val out = store.tabOrder.filter { it in all }.distinct().toMutableList()
-        for (k in all) if (k !in out) out.add(minOf(all.indexOf(k), out.size), k)   // new tabs go to their usual place
-        return out
-    }
 
     private fun buildNav() {
-        val order = tabOrder()
-        if (order != navOrder || navItems.isEmpty()) {
-            navOrder = order; navItems.clear()
-            order.filter { it != "feedback" }.forEach { key -> navItems[key] = navItem(key) }
-            placeTabs()
+        if (navItems.isEmpty()) {
+            TABS.forEach { navItems[it.key] = navItem(it) }
+            navItems.values.forEachIndexed { i, v -> (if (i < 2) navLeft else navRight).addView(v, LinearLayout.LayoutParams(0, dp(54), 1f).apply { setMargins(dp(3), 0, dp(3), 0) }) }
         }
         updateNav()
     }
 
-    /** Half of the tabs on the left and half on the right of the round Media button. */
-    private fun placeTabs() {
-        navLeft.removeAllViews(); navRight.removeAllViews()
-        val row = navOrder.filter { it != "feedback" }
-        val half = (row.size + 1) / 2
-        row.forEachIndexed { i, key ->
-            val v = navItems[key] ?: return@forEachIndexed
-            (v.parent as? ViewGroup)?.removeView(v)
-            (if (i < half) navLeft else navRight).addView(v, LinearLayout.LayoutParams(0, dp(48), 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
-        }
+    private fun navItem(t: NavTab): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; tag = t.key
+        val box = FrameLayout(this@MainActivity)
+        box.addView(ImageView(this@MainActivity).apply { setImageDrawable(getDrawable(t.icon)!!.mutate()) }, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+        // the number of unread chats (Chats only)
+        box.addView(TextView(this@MainActivity).apply {
+            textSize = 10f; typeface = Fonts.heavy(context); gravity = Gravity.CENTER; includeFontPadding = false; setPadding(dp(4), 0, dp(4), 0); minWidth = dp(16); visibility = View.GONE
+        }, FrameLayout.LayoutParams(-2, dp(16), Gravity.TOP or Gravity.END))
+        addView(box, LinearLayout.LayoutParams(dp(44), dp(26)))
+        addView(TextView(this@MainActivity).apply { textSize = 11.5f; gravity = Gravity.CENTER; maxLines = 1; includeFontPadding = false },
+            LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(3) })
+        setOnClickListener { if (tab != t.key) go(t.key) else if (t.key == "feedback") social.home() else scrollTop() }
     }
 
-    private fun openMedia() { if (tab != "feedback") go("feedback") else social.home() }
-
-    private fun navItem(key: String): LinearLayout {
-        val (_, label, icon) = TABS.first { it.first == key }
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; tag = key
-            addView(TextView(this@MainActivity).apply { text = icon; textSize = 20f; gravity = Gravity.CENTER })
-            val two = label.contains("\n")
-            addView(TextView(this@MainActivity).apply {
-                text = label; textSize = if (two) 11.5f else 13f; setTextColor(Ui.TEAL_DARK); typeface = Fonts.bold(context)
-                maxLines = if (two) 2 else 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, 0, 0)
-                if (two) setLineSpacing(0f, 0.95f)
-            })
-            contentDescription = label.replace("\n", " ")
-            setOnClickListener { if (tab != key) go(key) else if (key == "feedback") social.home() else scrollTop() }
-            setOnLongClickListener { v -> startTabDrag(v, key); true }
-            setOnDragListener { v, e -> onTabDrag(v, e) }
-        }
-    }
+    private val navRefresh: () -> Unit = { if (store.onboarded && navItems.isNotEmpty()) updateNav() }
 
     private fun updateNav() {
-        // on Habit Chat the bar takes the chat's look (navy and gold, or clean light)
+        // on Habit Chat the bar takes the chat's look (navy and gold, or clean light); elsewhere the chosen colour
         val chat = tab == "messages"
-        nav.setBackgroundColor(if (chat) ChatTheme.BAR else Color.WHITE)
-        navItems.forEach { (key, item) ->
-            val on = key == tab || (key == "home" && tab in TOOL_PAGES)
-            item.background = if (!on) null else if (chat) ChatTheme.round(ChatTheme.PILL, dp(24).toFloat()) else ui.round(Ui.TEAL_SOFT, 24, Ui.TEAL)
-            (item.getChildAt(1) as? TextView)?.setTextColor(if (chat) ChatTheme.PILL_TXT else Ui.TEAL_DARK)
-            item.getChildAt(1).visibility = if (on) View.VISIBLE else View.GONE
-            item.alpha = if (key == dragKey) 0.35f else 1f
-            (item.layoutParams as? LinearLayout.LayoutParams)?.let { lp -> val w = if (on) 3.2f else 1f; if (lp.weight != w) { lp.weight = w; item.layoutParams = lp } }
-        }
-        val onMedia = tab == "feedback"
-        mediaFab.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.parseColor("#FF7A45"), Color.parseColor("#E8336D"))).apply {
-            shape = GradientDrawable.OVAL; setStroke(dp(if (onMedia) 4 else 3), if (onMedia) Ui.TEAL_DARK else if (tab == "messages") ChatTheme.BAR else Color.WHITE)
-        }
-        mediaFab.animate().scaleX(if (onMedia) 1.08f else 1f).scaleY(if (onMedia) 1.08f else 1f).setDuration(160).start()
-        mediaLabel.setTextColor(if (onMedia) Color.parseColor("#E8336D") else if (tab == "messages") ChatTheme.SUB else Ui.TEAL_DARK)
-    }
-
-    private fun startTabDrag(v: View, key: String) {
-        v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        dragKey = key
-        toast("Move it left or right, then let go")
-        try { v.startDragAndDrop(ClipData.newPlainText("tab", key), View.DragShadowBuilder(v), key, 0) } catch (e: Exception) { dragKey = null }
-        updateNav()
-    }
-
-    private fun onTabDrag(v: View, e: DragEvent): Boolean {
-        val moving = dragKey ?: return false
-        when (e.action) {
-            DragEvent.ACTION_DRAG_ENTERED -> {
-                val over = v.tag as? String
-                if (over != null && over != moving) nav.post {
-                    // move the dragged tab into the place of the tab under the finger (after the drag event is handled)
-                    val list = navOrder.toMutableList()
-                    val to = list.indexOf(over)
-                    if (to >= 0 && list.remove(moving)) {
-                        list.add(to, moving); navOrder = list
-                        placeTabs()
-                    }
-                }
+        val te = store.lang == "te"
+        val bar = if (chat) ChatTheme.BAR else AppLook.CARD
+        nav.background = android.graphics.drawable.LayerDrawable(arrayOf(android.graphics.drawable.ColorDrawable(if (chat) ChatTheme.DIVIDER else AppLook.LINE),
+            android.graphics.drawable.ColorDrawable(bar))).apply { setLayerInset(1, 0, 1, 0, 0) }
+        val pill = if (chat) ChatTheme.PILL else AppLook.PILL
+        val onInk = if (chat) ChatTheme.PILL_TXT else AppLook.PILL_TXT
+        val offInk = if (chat) ChatTheme.SUB else AppLook.SUB
+        val unread = try { if (ChatSync.isSetUp(this)) ChatDb.get(this).convs().count { it.unread > 0 && !it.muted } else 0 } catch (e: Exception) { 0 }
+        TABS.forEach { t ->
+            val item = navItems[t.key] ?: return@forEach
+            val on = t.key == tab || (t.key == "home" && tab in TOOL_PAGES)
+            item.background = if (on) ui.round(pill, 18) else null
+            val box = item.getChildAt(0) as FrameLayout
+            (box.getChildAt(0) as ImageView).imageTintList = android.content.res.ColorStateList.valueOf(if (on) onInk else offInk)
+            (box.getChildAt(1) as TextView).apply {
+                val n = if (t.key == "messages") unread else 0
+                visibility = if (n > 0) View.VISIBLE else View.GONE
+                text = if (n > 99) "99+" else n.toString()
+                setTextColor(if (chat) ChatTheme.ON_GOLD else Color.WHITE)
+                background = ui.round(if (chat) ChatTheme.GOLD else AppLook.ACCENT, 8, bar)
             }
-            DragEvent.ACTION_DRAG_ENDED -> if (dragKey != null) {
-                dragKey = null; store.tabOrder = navOrder
-                val keep = LinkedHashMap<String, LinearLayout>(); navOrder.forEach { k -> navItems[k]?.let { keep[k] = it } }
-                navItems.clear(); navItems.putAll(keep)
-                updateNav()
+            (item.getChildAt(1) as TextView).apply {
+                text = if (te) t.te else t.en
+                setTextColor(if (on) onInk else offInk); typeface = if (on) Fonts.heavy(context) else Fonts.semi(context)
             }
+            item.contentDescription = t.en + if (t.key == "messages" && unread > 0) ", $unread unread" else ""
         }
-        return true
+        // the round Talk button: the main colour, with a ring of the bar's colour
+        val prim = if (chat) ChatTheme.PRIMARY else AppLook.PRIMARY
+        talkFab.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(prim); setStroke(dp(4), bar) }
+        talkFab.imageTintList = android.content.res.ColorStateList.valueOf(if (chat) ChatTheme.ON_PRIMARY_ICON else AppLook.ON_PRIMARY)
+        talkLabel.text = if (te) "మాట్లాడు" else "Talk"
+        talkLabel.setTextColor(if (chat) ChatTheme.TXT else AppLook.TXT)
     }
 
+    /** A page's title and what it is for; pages opened from Home get a ← back to Home. */
     internal fun pageHeader(title: String, sub: String) {
-        add(ui.title(title), 4)
-        add(ui.text(sub, 14f, Ui.MUTED), 2)
+        if (tab in TOOL_PAGES) add(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(Ico.view(this@MainActivity, R.drawable.ic_back, Ui.INK, 22, 42, if (store.lang == "te") "హోమ్‌కి" else "Back to Home", ui.round(Ui.SURFACE, 21, Ui.LINE)) { go("home") },
+                LinearLayout.LayoutParams(dp(42), dp(42)))
+            addView(ui.title(title).apply { setPadding(dp(12), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+        }, 4)
+        else add(ui.title(title), 4)
+        add(ui.text(sub, 14f, Ui.MUTED), 4)
     }
 
     // =================== 1. HOME ===================
@@ -517,6 +477,10 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun t(en: String, te: String) = if (store.lang == "te") te else en
+    /** A heading between parts of a page. */
+    private fun heading(s: String) = ui.text(s, 17f, Ui.INK).apply { typeface = Fonts.heavy(context); letterSpacing = -0.01f }
+
     private fun homePage() {
         val now = ZonedDateTime.now()
         val (greetTe, greetEn) = when (now.hour) {
@@ -525,97 +489,209 @@ class MainActivity : Activity() {
             in 16..20 -> "శుభ సాయంత్రం" to "Good evening"
             else -> "శుభ రాత్రి" to "Good night"
         }
-        // hero
-        val hero = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(20), dp(20), dp(20))
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.TEAL, Ui.TEAL_DARK)).apply { cornerRadius = ui.dpf(28) }
-        }
-        val words = ui.stack(
-            ui.text(greetTe, 26f, Color.WHITE, bold = true),
-            ui.text(greetEn + " · " + DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.ENGLISH).format(now), 13.5f, Color.parseColor("#CDE8E5")),
-            ui.text("Habit AI · హ్యాబిట్", 13.5f, Color.parseColor("#F6D58C"), bold = true).apply { setPadding(0, dp(10), 0, 0) }
-        )
-        val pet = PuppyView(this).apply { kind = PuppyView.kindOf(store.petKind); mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }
-        hero.addView(LinearLayout(this).apply {
+        val me = try { if (ChatSync.isSetUp(this)) ChatSync.me(this) else JSONObject() } catch (e: Exception) { JSONObject() }
+        val first = me.optString("name").trim().substringBefore(' ')
+        // the top: the logo, "Habit AI", ✨ ask Habit AI, and my picture (the app's colour and language)
+        add(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(pet, LinearLayout.LayoutParams(dp(112), dp(112)))
-        })
-        hero.addView(ui.button(if (PetService.running) "Close my pet" else "🐾  Show my pet on screen", "sun") { togglePet() },
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
-        add(hero, 4)
+            addView(Ico.view(this@MainActivity, R.drawable.ic_pawprint, Ui.ON_TEAL, 22, 40, "", ui.round(Ui.TEAL, 12)), LinearLayout.LayoutParams(dp(40), dp(40)))
+            addView(ui.text("Habit AI", 22f, Ui.INK).apply { typeface = Fonts.heavy(context); letterSpacing = -0.015f; setPadding(dp(11), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(Ico.view(this@MainActivity, R.drawable.ic_sparkle, Ui.INK, 20, 42, t("Ask Habit AI", "Habit AI ని అడగండి"), ui.round(Ui.SURFACE, 21, Ui.LINE)) { askAi() },
+                LinearLayout.LayoutParams(dp(42), dp(42)))
+            addView(myPicture(me, dp(42)).apply { setOnClickListener { lookSheet(me) }; contentDescription = t("You: the app's colour and language", "మీరు: యాప్ రంగు, భాష") },
+                LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(10) })
+        }, 0)
+
+        // the big card: the date, hello in Telugu and English, and the pet
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(20), dp(18), dp(8), dp(18))
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, AppLook.HERO).apply { cornerRadius = ui.dpf(26) }
+        }
+        val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        words.addView(ui.text(DateTimeFormatter.ofPattern("EEEE · d MMMM", Locale.ENGLISH).format(now).uppercase(Locale.ENGLISH), 11f, Color.parseColor("#D9FFFFFF"), bold = true).apply { letterSpacing = 0.09f })
+        words.addView(ui.text(greetTe, 17f, Color.WHITE).apply { typeface = Fonts.semi(context); setPadding(0, dp(6), 0, 0) })
+        words.addView(ui.text(greetEn + if (first.isNotEmpty()) ", $first" else "", 20f, Color.WHITE).apply { typeface = Fonts.heavy(context); setLineSpacing(0f, 1.05f) })
+        words.addView(TextView(this).apply {
+            val label = if (PetService.running) t("Close my pet", "పెట్‌ని మూసేయి") else t("Show my pet", "నా పెట్‌ని చూపించు")
+            text = Ico.withIcon(context, R.drawable.ic_pawprint, Ui.TEAL, dp(16), label)
+            textSize = 13.5f; setTextColor(Ui.TEAL_DARK); typeface = Fonts.bold(context); includeFontPadding = false; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(9), dp(16), dp(9)); background = ui.round(Color.WHITE, 20)
+            setOnClickListener { togglePet() }
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
+        hero.addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+        hero.addView(PuppyView(this).apply { kind = PuppyView.kindOf(store.petKind); mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY },
+            LinearLayout.LayoutParams(dp(112), dp(112)))
+        add(hero, 14)
         updateCard()?.let { add(it, 12) }
 
-        // today
-        add(ui.label("Today"), 20)
+        // today: to-dos, reminders, unread chats, and the next reminder
+        add(heading(t("Today", "ఈరోజు")), 22)
         val zone = ZoneId.systemDefault(); val today = LocalDate.now(zone)
         val rems = store.reminders().sortedBy { it.at }
         val todayCount = rems.count { Instant.ofEpochMilli(it.at).atZone(zone).toLocalDate() == today }
         val pending = store.todos().count { !it.done }
-        fun stat(n: Int, label: String, target: String, sub: String = "todo") = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = ui.round(Color.WHITE, 18, Ui.LINE)
-            addView(ui.text(n.toString(), 26f, Ui.TEAL_DARK, bold = true))
-            addView(ui.text(label, 12.5f, Ui.MUTED))
-            setOnClickListener { tasksTab = sub; go(target) }
+        val unread = try { if (ChatSync.isSetUp(this)) ChatDb.get(this).convs().count { it.unread > 0 } else 0 } catch (e: Exception) { 0 }
+        fun stat(icon: Int, tint: Pair<Int, Int>, n: Int, label: String, onClick: () -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(12), dp(10), dp(11)); background = ui.round(Ui.SURFACE, 18, Ui.LINE)
+            addView(Ico.view(this@MainActivity, icon, tint.second, 18, 34, "", ui.round(tint.first, 11)), LinearLayout.LayoutParams(dp(34), dp(34)))
+            addView(ui.text(n.toString(), 22f, Ui.INK).apply { typeface = Fonts.heavy(context); includeFontPadding = false; setPadding(0, dp(9), 0, 0) })
+            addView(ui.text(label, 12f, Ui.MUTED).apply { typeface = Fonts.semi(context); maxLines = 2; setLineSpacing(0f, 1.05f); setPadding(0, dp(3), 0, 0) })
+            contentDescription = "$n $label"
+            setOnClickListener { onClick() }
         }
         add(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            listOf(stat(todayCount, "Reminders today", "tasks", "rem"), stat(pending, "To-dos pending", "tasks", "todo"), stat(store.files().size, "Files", "files"))
-                .forEachIndexed { i, v -> addView(v, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i > 0) marginStart = dp(8) }) }
-        }, 8)
+            listOf(stat(R.drawable.ic_tasks, Ui.TEAL_SOFT to Ui.TEAL_DARK, pending, t("To-dos open", "చేయాల్సినవి")) { tasksTab = "todo"; go("tasks") },
+                stat(R.drawable.ic_bell, AppLook.TINT2, todayCount, t("Reminders today", "ఈరోజు రిమైండర్లు")) { tasksTab = "rem"; go("tasks") },
+                stat(R.drawable.ic_chat, AppLook.TINT3, unread, t("Unread chats", "చదవని చాట్‌లు")) { go("messages") })
+                .forEachIndexed { i, v -> addView(v, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = dp(9) }) }
+        }, 10)
         rems.firstOrNull { it.at > System.currentTimeMillis() }?.let { r ->
-            add(ui.card(Ui.SUN_SOFT).apply {
-                addView(ui.text("⏰ Next: ${r.text}", 15f, Ui.INK, bold = true))
-                put(ui.text(fmt.format(Instant.ofEpochMilli(r.at).atZone(zone)) + Reminders.repeatLabel(r.repeat).let { if (it.isEmpty()) "" else " · 🔁 $it" }, 13f, Ui.MUTED), 2)
-            }, 8)
+            val z = Instant.ofEpochMilli(r.at).atZone(zone)
+            val whenTxt = (if (z.toLocalDate() == today) t("Today", "ఈరోజు") + ", " + DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH).format(z) else fmt.format(z)) +
+                Reminders.repeatLabel(r.repeat).let { if (it.isEmpty()) "" else " · $it" }
+            add(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(11), dp(8), dp(11)); background = ui.round(Ui.SURFACE, 18, Ui.LINE)
+                addView(Ico.view(this@MainActivity, R.drawable.ic_clock, AppLook.TINT2.second, 20, 38, "", ui.round(AppLook.TINT2.first, 12)), LinearLayout.LayoutParams(dp(38), dp(38)))
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(ui.text(t("NEXT REMINDER", "తదుపరి రిమైండర్") + " · " + whenTxt, 10.5f, Ui.MUTED, bold = true).apply { letterSpacing = 0.05f; maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+                    addView(ui.text(r.text, 14.5f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(2), 0, 0) })
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(12) })
+                addView(Ico.view(this@MainActivity, R.drawable.ic_chevron_right, Ui.MUTED, 18, 28, ""), LinearLayout.LayoutParams(dp(28), dp(28)))
+                setOnClickListener { tasksTab = "rem"; go("tasks") }
+            }, 10)
         }
 
-        // quick actions
-        add(ui.label("Quick actions"), 20)
-        fun tile(icon: String, title: String, sub: String, onClick: () -> Unit) = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = ui.round(Color.WHITE, 20, Ui.LINE)
-            addView(ui.text(icon, 24f)); addView(ui.text(title, 15f, Ui.INK, bold = true).apply { setPadding(0, dp(6), 0, 0) })
-            addView(ui.text(sub, 12.5f, Ui.MUTED))
+        // quick actions, and more for you: 3 tiles in a row
+        fun action(icon: Int, tint: Pair<Int, Int>, label: String, hot: Boolean = false, onClick: () -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(6), dp(13), dp(6), dp(12))
+            background = if (hot) ui.round(Ui.TEAL, 18) else ui.round(Ui.SURFACE, 18, Ui.LINE)
+            addView(Ico.view(this@MainActivity, icon, if (hot) Ui.ON_TEAL else tint.second, 21, 42, "", ui.round(if (hot) Color.parseColor("#33FFFFFF") else tint.first, 14)),
+                LinearLayout.LayoutParams(dp(42), dp(42)))
+            addView(ui.text(label, 12.5f, if (hot) Ui.ON_TEAL else Ui.INK).apply { typeface = Fonts.bold(context); gravity = Gravity.CENTER; maxLines = 2; setLineSpacing(0f, 1.02f); setPadding(0, dp(8), 0, 0) })
+            contentDescription = label
             setOnClickListener { onClick() }
         }
-        fun pair(a: View, b: View) = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(a, LinearLayout.LayoutParams(0, -1, 1f)); addView(b, LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = dp(10) })
+        fun grid(vararg tiles: View) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tiles.toList().chunked(3).forEachIndexed { r, row ->
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    row.forEachIndexed { i, v -> addView(v, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = dp(9) }) }
+                }, LinearLayout.LayoutParams(-1, -2).apply { if (r > 0) topMargin = dp(9) })
+            }
         }
-        add(pair(tile("🎤", "Talk now", "Ask anything by voice") { talkNow() },
-            tile("📄", "Make a file", "Word letter or Excel sheet") { go("files") }), 8)
-        add(pair(tile("⏰", "Add reminder", "Once or repeating") { tasksTab = "rem"; go("tasks") },
-            tile("🛡️", "Check a message", "Safe, or a fraud?") { go("safety") }), 10)
-        add(pair(tile("🔒", "My Vault", "Cards and documents") { go("vault") },
-            tile("📺", "Media · మీడియా", "News, movies, jobs and more") { go("feedback") }), 10)
-
-        add(ui.label("More help"), 20)
-        add(pair(tile("🌐", "Translate · అనువాదం", "Telugu, English, Hindi. Even photos") { go("translate") },
-            tile("🆘", "Family & SOS", "One-touch help in an emergency") { go("family") }), 8)
-        add(pair(tile("🏛️", "Govt services", "Certificates, land, pensions") { go("govt") },
-            tile("💊", "Medicine reminder", "Never miss a dose") { family.focus = "medicine"; go("family") }), 10)
+        val soft = Ui.TEAL_SOFT to Ui.TEAL_DARK
+        add(heading(t("Quick actions", "త్వరగా చేయండి")), 22)
+        add(grid(
+            action(R.drawable.ic_mic, soft, t("Talk now", "మాట్లాడండి"), hot = true) { talkNow() },
+            action(R.drawable.ic_doc, soft, t("Make a file", "ఫైల్ తయారు")) { go("files") },
+            action(R.drawable.ic_bell, AppLook.TINT2, t("Reminder", "రిమైండర్")) { tasksTab = "rem"; go("tasks") },
+            action(R.drawable.ic_shield, AppLook.TINT3, t("Safety check", "మోసం చెక్")) { go("safety") },
+            action(R.drawable.ic_lock, soft, t("My Vault", "నా వాల్ట్")) { go("vault") },
+            action(R.drawable.ic_globe, AppLook.TINT2, t("Translate", "అనువాదం")) { go("translate") }), 10)
+        add(heading(t("More for you", "ఇంకా మీ కోసం")), 22)
+        add(grid(
+            action(R.drawable.ic_pawprint, soft, t("Your pet", "మీ పెట్")) { go("pet") },
+            action(R.drawable.ic_users, AppLook.TINT3, t("Family & SOS", "కుటుంబం & SOS")) { go("family") },
+            action(R.drawable.ic_bank, AppLook.TINT2, t("Govt services", "ప్రభుత్వ సేవలు")) { go("govt") },
+            action(R.drawable.ic_pill, AppLook.TINT3, t("Medicine", "మందులు")) { family.focus = "medicine"; go("family") },
+            action(R.drawable.ic_media, soft, t("News & Media", "వార్తలు & మీడియా")) { go("feedback") },
+            action(R.drawable.ic_chat, AppLook.TINT2, t("Chats", "చాట్‌లు")) { go("messages") }), 10)
 
         val tips = listOfNotNull(
             "Say \"remind me to take medicine every day at 8 am\"",
             "Say \"make a leave letter for 2 days as a Word file\"",
             "Hold the pet for the menu: type, photo, lists",
-            "Long-press a tab at the bottom and drag it to move it",
-            "Got a strange message? Copy it and check it in Tasks › 🛡️ Fake",
+            "Tap the round Talk button at the bottom to ask anything by voice",
+            "Got a strange message? Copy it and tap Safety check",
             if (BuildConfig.MESSAGE_REPLIES) "Turn on WhatsApp replies in the Pet page" else null,
             "Drag the pet down to ✕ to close it",
             "Can't read an English letter or board? Take a photo in Translate",
             "Save your family's numbers in Family & SOS: hold SOS for 3 seconds to call them",
-            "Need a certificate? Govt services shows the official website and writes the application"
+            "Need a certificate? Govt services shows the official website and writes the application",
+            "Tap your picture at the top to change the app's colour"
         )
-        add(ui.card(Ui.TEAL_SOFT).apply {
-            addView(ui.text("💡 Tip", 13f, Ui.TEAL_DARK, bold = true))
-            put(ui.text(tips[(now.dayOfYear + now.hour) % tips.size], 14.5f, Ui.INK), 4)
-        }, 16)
+        add(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(15)); background = ui.round(Ui.TEAL_SOFT, 20)
+            addView(ui.text("", 13f, Ui.TEAL_DARK, bold = true).apply { text = Ico.withIcon(context, R.drawable.ic_sparkle, Ui.TEAL_DARK, dp(16), t("Tip", "చిట్కా")) })
+            addView(ui.text(tips[(now.dayOfYear + now.hour) % tips.size], 14.5f, Ui.INK).apply { setPadding(0, dp(4), 0, 0) })
+        }, 22)
 
         // last on the page: this version, and a check for a newer one (Habit AI Lite; Play Store editions update by themselves)
-        add(versionCard(), 16)
+        add(versionCard(), 14)
+    }
+
+    /** My picture (profile photo, or my initials) with a ring of the second colour. */
+    private fun myPicture(me: JSONObject, size: Int): View = FrameLayout(this).apply {
+        val ini = ChatDraw.initials(me.optString("name"))
+        if (ini.isNotEmpty()) addView(TextView(this@MainActivity).apply {
+            text = ini; textSize = size / resources.displayMetrics.density * 0.34f; gravity = Gravity.CENTER; setTextColor(Ui.TEAL_DARK)
+            typeface = Fonts.heavy(context); includeFontPadding = false; background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.TEAL_SOFT) }
+        }, FrameLayout.LayoutParams(-1, -1))
+        else addView(Ico.view(this@MainActivity, R.drawable.ic_person, Ui.TEAL_DARK, 22, 42, "", GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.TEAL_SOFT) }), FrameLayout.LayoutParams(-1, -1))
+        val photo = me.optString("avatar")
+        if (photo.isNotBlank()) {
+            val iv = ImageView(this@MainActivity).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.TRANSPARENT) }; outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+            }
+            addView(iv, FrameLayout.LayoutParams(-1, -1))
+            Images.load(if (photo.startsWith("http")) photo else store.server.trimEnd('/') + photo, iv, size)
+        }
+        foreground = GradientDrawable().apply { shape = GradientDrawable.OVAL; setStroke(dp(2), AppLook.ACCENT) }
+    }
+
+    /** ✨ on Home: ask Habit AI (its chat), or start Habit Chat first. */
+    private fun askAi() {
+        if (ChatSync.isSetUp(this)) { ChatDb.get(this).ensureAi(); ChatActivity.open(this, ChatDb.AI) } else go("messages")
+    }
+
+    /** My picture on Home: the app's colour (six choices) and the language. */
+    private fun lookSheet(me: JSONObject) {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(14), dp(20), dp(8)) }
+        var dlg: android.app.Dialog? = null
+        box.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(myPicture(me, dp(52)), LinearLayout.LayoutParams(dp(52), dp(52)))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0)
+                addView(ui.text(me.optString("name").ifBlank { "Habit AI" }, 18f, Ui.INK).apply { typeface = Fonts.heavy(context) })
+                me.optString("handle").takeIf { it.isNotBlank() }?.let { addView(ui.text("@$it", 13.5f, Ui.MUTED)) }
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+        })
+        box.addView(ui.text("", 15f, Ui.INK).apply { text = Ico.withIcon(context, R.drawable.ic_palette, Ui.INK, dp(18), t("App colour", "యాప్ రంగు")); typeface = Fonts.heavy(context); setPadding(0, dp(20), 0, 0) })
+        box.addView(ui.text(t("Home, Tasks, Files, Vault and the other pages. Chats keep their navy and gold look.", "హోమ్, పనులు, ఫైల్స్, వాల్ట్, మిగతా పేజీలు. చాట్‌లు నేవీ & గోల్డ్‌లోనే ఉంటాయి."), 12.5f, Ui.MUTED).apply { setPadding(0, dp(2), 0, dp(10)) })
+        val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        AppLook.PALETTES.chunked(3).forEach { row ->
+            grid.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                row.forEach { pal ->
+                    val on = pal.id == AppLook.p.id
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(4), dp(10), dp(4), dp(10))
+                        background = if (on) ui.round(Ui.TEAL_SOFT, 16, Ui.TEAL) else ui.round(Ui.SURFACE, 16, Ui.LINE)
+                        addView(FrameLayout(this@MainActivity).apply {
+                            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(pal.g1, pal.g2)).apply { shape = GradientDrawable.OVAL }
+                            if (on) addView(Ico.view(this@MainActivity, R.drawable.ic_tick, Color.WHITE, 20, 40, ""), FrameLayout.LayoutParams(-1, -1))
+                            // a dot of the second colour
+                            addView(View(this@MainActivity).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(pal.accent); setStroke(dp(2), Color.WHITE) } },
+                                FrameLayout.LayoutParams(dp(14), dp(14), Gravity.BOTTOM or Gravity.END))
+                        }, LinearLayout.LayoutParams(dp(40), dp(40)))
+                        addView(ui.text(if (store.lang == "te") pal.te else pal.en, 12f, Ui.INK, bold = on).apply { gravity = Gravity.CENTER; maxLines = 2; setPadding(0, dp(6), 0, 0); setLineSpacing(0f, 1f) })
+                        contentDescription = pal.en + if (on) ", chosen" else ""
+                        setOnClickListener { AppLook.choose(this@MainActivity, pal.id); dlg?.dismiss(); render() }
+                    }, LinearLayout.LayoutParams(0, -1, 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+                }
+            })
+        }
+        box.addView(grid)
+        box.addView(ui.text(t("Language", "భాష"), 15f, Ui.INK).apply { typeface = Fonts.heavy(context); setPadding(0, dp(18), 0, dp(8)) })
+        box.addView(ui.row(ui.chip("English", store.lang != "te") { store.lang = "en"; dlg?.dismiss(); render() },
+            ui.chip("తెలుగు", store.lang == "te") { store.lang = "te"; dlg?.dismiss(); render() }))
+        box.addView(ui.button(t("Your pet and settings", "మీ పెట్, సెట్టింగ్స్"), "ghost") { dlg?.dismiss(); go("pet") }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        dlg = ChatTheme.sheet(this, ScrollView(this).apply { addView(box); isVerticalScrollBarEnabled = false })
     }
 
     private fun versionCard(): View = ui.card().apply {
@@ -737,7 +813,6 @@ class MainActivity : Activity() {
                 if (!v.startsWith("https://")) toast("The address must start with https://") else { store.server = v; toast("Saved") }
             }), 8)
             put(ui.button("Show the setup guide again", "ghost") { store.onboarded = false; setupStep = 0; render() }, 12)
-            put(ui.button("Put the bottom tabs back in the usual order", "ghost") { store.tabOrder = emptyList(); navOrder = emptyList(); render(); toast("Tabs reset") }, 8)
             put(ui.text("Habit team password (only for the app's team: post as the official accounts and remove posts)", 13f, Ui.MUTED), 14)
             val team = ui.input("Team password", store.teamKey).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
             put(team, 6)

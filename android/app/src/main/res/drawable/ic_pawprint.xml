@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Habit AI icon: pawprint (tinted in code) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M7,6.6a2.1,2.6 0 1,0 4.2,0a2.1,2.6 0 1,0 -4.2,0z" android:fillColor="#FFFFFFFF" />
+    <path android:pathData="M12.8,6.6a2.1,2.6 0 1,0 4.2,0a2.1,2.6 0 1,0 -4.2,0z" android:fillColor="#FFFFFFFF" />
+    <path android:pathData="M3,11a1.9,2.3 0 1,0 3.8,0a1.9,2.3 0 1,0 -3.8,0z" android:fillColor="#FFFFFFFF" />
+    <path android:pathData="M17.2,11a1.9,2.3 0 1,0 3.8,0a1.9,2.3 0 1,0 -3.8,0z" android:fillColor="#FFFFFFFF" />
+    <path android:pathData="M12 10.8c-3.2 0-6 3.8-6 6 0 1.8 1.4 2.7 3 2.7 1.2 0 2-.6 3-.6s1.8.6 3 .6c1.6 0 3-.9 3-2.7 0-2.2-2.8-6-6-6z" android:fillColor="#FFFFFFFF" />
+</vector>
