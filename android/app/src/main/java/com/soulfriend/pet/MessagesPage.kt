@@ -28,7 +28,8 @@ import java.util.Locale
 /**
  * Messages page: is a message safe or a fraud? Paste or share it, or check a screenshot or a QR code.
  * For any message: explain it in simple words, write a reply (and send it by WhatsApp, SMS or any app),
- * and report or block it. This week's new scams, and the messages of the last 7 days with 🟢 🟡 🔴 labels.
+ * and report or block it. This week's new scams, the fake messages list that people add to (FakeList),
+ * and the messages of the last 7 days with 🟢 🟡 🔴 labels.
  * Nothing here runs in the background: everything happens when you tap (kind to the battery).
  */
 class MessagesPage(private val m: MainActivity) {
@@ -64,6 +65,8 @@ class MessagesPage(private val m: MainActivity) {
     private var filter = ""
     private var showAll = false
     private var resultView: View? = null
+    // the fake messages list that people add to (in its own class)
+    private val fakes = FakeList(m)
 
     private val ui get() = m.ui
     private val store get() = m.store
@@ -109,6 +112,7 @@ class MessagesPage(private val m: MainActivity) {
         }
 
         scamsCard()
+        fakes.build()   // the fake messages list people add to (in Lite it took the place of the yellow "Automatic checking" box)
 
         if (BuildConfig.MESSAGE_REPLIES) {
             val access = MessageHub.accessGranted(m)
@@ -122,12 +126,6 @@ class MessagesPage(private val m: MainActivity) {
                     put(ui.check("🛡️ Red warning for dangerous messages", store.scamAlerts) { store.scamAlerts = it }, 6)
                     put(ui.text("Light on the battery: each message is first checked on the phone, and only ones with warning signs go for a full check.", 12f, Ui.MUTED), 6)
                 }
-            }, 12)
-        } else {
-            m.add(ui.card(Ui.SUN_SOFT).apply {
-                addView(ui.text("📲 Automatic checking", 15f, Ui.INK, bold = true))
-                put(ui.text("Checking every new WhatsApp and SMS message by itself comes with the Play Store version of Habit AI " +
-                    "(Android lets only Play Store apps read message notifications). For now, copy or share a message and check it above.", 13.5f, Ui.MUTED), 4)
             }, 12)
         }
 
@@ -270,6 +268,7 @@ class MessagesPage(private val m: MainActivity) {
             ui.button(if (explaining) "…" else "🗣️ Explain") { explain() },
             ui.button("✍️ Reply") { replyOpen = !replyOpen; m.render() },
             ui.button("🚨 Report", if (v.level == "danger") "danger" else "soft") { reportOpen = !reportOpen; m.render() }), 12)
+        if (v.level != "safe" && curText.isNotBlank()) put(ui.button("📋 Add to the fake messages list (warn others)", "ghost") { fakes.addDialog(curText) }, 10)
         if (v.offline) put(ui.text("Checked on your phone only. Connect to the internet for a full check.", 12f, Ui.MUTED), 8)
         else put(ui.text("🚩 Wrong result? Tell the Habit team", 12.5f, Ui.MUTED).apply {
             setPadding(0, m.dp(4), 0, m.dp(4))

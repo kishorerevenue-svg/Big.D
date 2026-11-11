@@ -449,6 +449,9 @@ const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, medi
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Habit Chat: chats and groups between people who use the app, locked end to end on the phones (the server can't read them)
 const chat = require("./chat.js")({ DATA_DIR, social, h: { send, readBody, allowed, clientIp, baseUrl } });
+// The fake messages list (Messages tab): people warn each other about fraud messages they got, with votes and comments
+const fakes = require("./fakes.js")({ DATA_DIR, social, learn, MODEL, API_KEY,
+  adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Translate page, and Govt services (official links + answers from official websites only)
 const tools = require("./tools.js")({ learn, API_KEY, MODEL, DATA_DIR, h: { send, readBody, allowed, clientIp } });
 
@@ -467,6 +470,7 @@ const server = http.createServer(async (req, res) => {
   if (aiVideo.handle(req, res, url)) return;
   if (await cartoon.handle(req, res, url, origin, social)) return;
   if (await chat.handle(req, res, url, origin)) return;
+  if (await fakes.handle(req, res, url, origin)) return;
   if (await social.handle(req, res, url, origin)) return;
   if (await tools(req, res, url, origin)) return;
 
@@ -612,7 +616,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/teach/youtube") return send(res, 200, { sections: youtube.list(), stats: youtube.stats() });
       if (req.method === "GET" && url.pathname === "/api/teach/aivideo") return send(res, 200, aiVideo.status());
       if (req.method === "GET" && url.pathname === "/api/teach/cartoon") return send(res, 200, cartoon.status());
-      if (req.method === "GET" && url.pathname === "/api/teach/chat") return send(res, 200, { stats: chat.stats(), reports: chat.reports() });
+      if (req.method === "GET" && url.pathname === "/api/teach/chat") return send(res, 200, { stats: chat.stats(), reports: chat.reports(), fakes: fakes.stats() });
       if (req.method === "GET" && url.pathname === "/api/teach/feedback") {
         let lines = [];
         try { lines = fs.readFileSync(path.join(DATA_DIR, "feedback.jsonl"), "utf8").trim().split("\n").filter(Boolean).slice(-200).map(l => JSON.parse(l)).reverse(); } catch (e) { }
