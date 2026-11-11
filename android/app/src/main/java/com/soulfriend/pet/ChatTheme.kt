@@ -169,16 +169,16 @@ object ChatTheme {
      * Shows [content] as a sheet that slides up from the bottom (rounded top corners), like WhatsApp's attach menu.
      * Returns the dialog (to close it from a tap inside).
      */
-    fun sheet(act: android.app.Activity, content: android.view.View): android.app.Dialog {
+    fun sheet(act: android.app.Activity, content: android.view.View, bg: Int? = null, handle: Int? = null): android.app.Dialog {
         val d = android.app.Dialog(act)
         d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val dp = act.resources.displayMetrics.density
-        val bg = if (themeDark(act)) c("#151B3D") else Color.WHITE
+        val bg = bg ?: if (themeDark(act)) c("#151B3D") else Color.WHITE
         val wrap = android.widget.LinearLayout(act).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             background = corners(bg, 28 * dp, 28 * dp, 0f, 0f)
             // the little handle on top
-            addView(android.view.View(act).apply { background = round(if (themeDark(act)) c("#3A4170") else c("#D5D9E6"), 3 * dp) },
+            addView(android.view.View(act).apply { background = round(handle ?: if (themeDark(act)) c("#3A4170") else c("#D5D9E6"), 3 * dp) },
                 android.widget.LinearLayout.LayoutParams((36 * dp).toInt(), (5 * dp).toInt()).apply { gravity = android.view.Gravity.CENTER_HORIZONTAL; topMargin = (10 * dp).toInt() })
             addView(content, android.widget.LinearLayout.LayoutParams(-1, -2))
             val base = (12 * dp).toInt()

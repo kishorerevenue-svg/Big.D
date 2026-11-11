@@ -699,7 +699,7 @@ class MainActivity : Activity() {
         box.addView(ui.row(ui.chip("English", store.lang != "te") { store.lang = "en"; dlg?.dismiss(); render() },
             ui.chip("తెలుగు", store.lang == "te") { store.lang = "te"; dlg?.dismiss(); render() }))
         box.addView(ui.button(t("Your pet and settings", "మీ పెట్, సెట్టింగ్స్"), "ghost") { dlg?.dismiss(); go("pet") }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
-        dlg = ChatTheme.sheet(this, ScrollView(this).apply { addView(box); isVerticalScrollBarEnabled = false })
+        dlg = ChatTheme.sheet(this, ScrollView(this).apply { addView(box); isVerticalScrollBarEnabled = false }, AppLook.CARD, AppLook.LINE)
     }
 
     private fun versionCard(): View = ui.card().apply {
