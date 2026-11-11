@@ -569,6 +569,27 @@ class MainActivity : Activity() {
             addView(ui.text("💡 Tip", 13f, Ui.TEAL_DARK, bold = true))
             put(ui.text(tips[(now.dayOfYear + now.hour) % tips.size], 14.5f, Ui.INK), 4)
         }, 16)
+
+        // last on the page: this version, and a check for a newer one (Habit AI Lite; Play Store editions update by themselves)
+        add(versionCard(), 16)
+    }
+
+    private fun versionCard(): View = ui.card().apply {
+        val v = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "" }
+        addView(ui.text("ℹ️ " + getString(R.string.app_name) + " · " + (if (store.lang == "te") "వెర్షన్" else "Version") + " $v", 14.5f, Ui.INK, bold = true))
+        if (BuildConfig.SELF_UPDATE) {
+            val waiting = Updates.waiting(store)
+            if (waiting != null) put(ui.text("🎁 " + (if (store.lang == "te") "కొత్త వెర్షన్ ${waiting.name} సిద్ధంగా ఉంది" else "New version ${waiting.name} is ready"), 13.5f, Ui.GOOD, bold = true), 4)
+            put(ui.row(
+                if (waiting != null) ui.button("⬇ " + (if (store.lang == "te") "అప్‌డేట్ చేయండి" else "Update now"), "primary") { leavingForSystemScreen = true; Updates.open(this@MainActivity, store) }
+                else ui.button("🔄 " + (if (store.lang == "te") "కొత్త వెర్షన్ ఉందేమో చూడండి" else "Check for a new version"), "ghost") {
+                    toast(if (store.lang == "te") "చూస్తున్నాం…" else "Checking…")
+                    Updates.check(store, force = true) { info ->
+                        if (info == null) toast(if (store.lang == "te") "మీ దగ్గర కొత్త వెర్షనే ఉంది ✓" else "You have the newest version ✓")
+                        else { store.updateLaterUntil = 0L; render() }
+                    }
+                }), 10)
+        }
     }
 
     private fun togglePet() {
@@ -1399,14 +1420,7 @@ class MainActivity : Activity() {
                 leavingForSystemScreen = true
                 try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(store.server + "/privacy"))) } catch (e: Exception) { }
             }), 10)
-            val v = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "" }
-            put(ui.text("Version $v", 12.5f, Ui.MUTED), 10)
-            if (BuildConfig.SELF_UPDATE) put(ui.row(ui.button("🔄 Check for a new version", "ghost") {
-                toast("Checking…")
-                Updates.check(store, force = true) { info ->
-                    if (info == null) toast("You have the newest version ✓") else { store.updateLaterUntil = 0L; go("home") }
-                }
-            }), 8)
+            put(ui.text("Version and updates: at the bottom of the Home page.", 12.5f, Ui.MUTED), 10)
         }, 12)
     }
 
