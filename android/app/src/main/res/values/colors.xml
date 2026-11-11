@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Habit Chat: "Navy and gold" and "Clean light" (the rest of the colours are in ChatTheme.kt) -->
+    <color name="habit_navy">#0B1026</color>
+    <color name="habit_light_bg">#F4F5FA</color>
+</resources>

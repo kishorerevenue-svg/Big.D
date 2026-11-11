@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- When the phone is in dark mode, the chat screens open in "Navy and gold" (until ChatTheme.apply picks the setting). -->
+<resources>
+    <style name="Habit.Chat" parent="Habit.Dark" />
+</resources>

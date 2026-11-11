@@ -150,7 +150,7 @@ class MainActivity : Activity() {
         // the middle of the bottom bar: a raised round Media button with its name under it
         navLeft = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutTransition = LayoutTransition().apply { enableTransitionType(LayoutTransition.CHANGING); setDuration(220) } }
         navRight = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutTransition = LayoutTransition().apply { enableTransitionType(LayoutTransition.CHANGING); setDuration(220) } }
-        mediaLabel = TextView(this).apply { text = "Media"; textSize = 11.5f; gravity = Gravity.CENTER; typeface = Typeface.create("sans-serif-medium", Typeface.BOLD) }
+        mediaLabel = TextView(this).apply { text = "Media"; textSize = 11.5f; gravity = Gravity.CENTER; typeface = Fonts.bold(context) }
         val navMid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; contentDescription = "Media"
             addView(mediaLabel, LinearLayout.LayoutParams(-1, -2))
@@ -167,7 +167,7 @@ class MainActivity : Activity() {
         // the round + button on the Media page (write a post)
         fab = TextView(this).apply {
             text = "+"; textSize = 30f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; includeFontPadding = false
-            typeface = Typeface.DEFAULT_BOLD; contentDescription = "New post"; visibility = View.GONE
+            typeface = Fonts.bold(context); contentDescription = "New post"; visibility = View.GONE
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.TEAL) }
             elevation = dp(8).toFloat()
             setOnClickListener { social.startCompose() }
@@ -311,11 +311,23 @@ class MainActivity : Activity() {
         renderedTab = tab
         if (keepY > 0) scroll.post { scroll.scrollTo(0, keepY) }
         val chat = tab == "messages"
-        scroll.setBackgroundColor(if (chat) ChatTheme.NAVY else Color.TRANSPARENT)
-        window.statusBarColor = if (chat) ChatTheme.NAVY else Ui.BG
-        window.decorView.systemUiVisibility = if (chat) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        fab.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (chat) ChatTheme.GOLD else Ui.TEAL) }
-        fab.setTextColor(if (chat) ChatTheme.NAVY else Color.WHITE)
+        if (chat) ChatTheme.refresh(this)
+        // Habit Chat's rows reach closer to the screen's edges (it lines up its own top part)
+        content.setPadding(if (chat) dp(8) else dp(16), dp(12), if (chat) dp(8) else dp(16), dp(28))
+        updateNav()
+        scroll.setBackgroundColor(if (chat) ChatTheme.BG else Color.TRANSPARENT)
+        rootFrame.setBackgroundColor(if (chat) ChatTheme.BG else Ui.BG)
+        window.statusBarColor = if (chat) ChatTheme.BG else Ui.BG
+        window.decorView.systemUiVisibility = if (chat && ChatTheme.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        if (chat) {
+            // Habit Chat's new-chat button: a rounded square with a pen (gold on navy, navy on white)
+            val ld = android.graphics.drawable.LayerDrawable(arrayOf(ChatTheme.round(ChatTheme.PRIMARY, dp(20).toFloat()), Ico.d(this, R.drawable.ic_edit, ChatTheme.ON_PRIMARY_ICON)))
+            ld.setLayerGravity(1, Gravity.CENTER); ld.setLayerSize(1, dp(26), dp(26))
+            fab.text = ""; fab.background = ld
+        } else {
+            fab.text = "+"; fab.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.TEAL) }
+            fab.setTextColor(Color.WHITE)
+        }
         fab.contentDescription = if (chat) "New chat" else "New post"
         fab.setOnClickListener { if (tab == "messages") chatPage.plusMenu() else social.startCompose() }
         fab.visibility = if ((tab == "feedback" && social.showFab) || (chat && ChatSync.isSetUp(this))) View.VISIBLE else View.GONE
@@ -407,7 +419,7 @@ class MainActivity : Activity() {
             addView(TextView(this@MainActivity).apply { text = icon; textSize = 20f; gravity = Gravity.CENTER })
             val two = label.contains("\n")
             addView(TextView(this@MainActivity).apply {
-                text = label; textSize = if (two) 11.5f else 13f; setTextColor(Ui.TEAL_DARK); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                text = label; textSize = if (two) 11.5f else 13f; setTextColor(Ui.TEAL_DARK); typeface = Fonts.bold(context)
                 maxLines = if (two) 2 else 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, 0, 0)
                 if (two) setLineSpacing(0f, 0.95f)
             })
@@ -419,19 +431,23 @@ class MainActivity : Activity() {
     }
 
     private fun updateNav() {
+        // on Habit Chat the bar takes the chat's look (navy and gold, or clean light)
+        val chat = tab == "messages"
+        nav.setBackgroundColor(if (chat) ChatTheme.BAR else Color.WHITE)
         navItems.forEach { (key, item) ->
             val on = key == tab || (key == "home" && tab in TOOL_PAGES)
-            item.background = if (on) ui.round(Ui.TEAL_SOFT, 24, Ui.TEAL) else null
+            item.background = if (!on) null else if (chat) ChatTheme.round(ChatTheme.PILL, dp(24).toFloat()) else ui.round(Ui.TEAL_SOFT, 24, Ui.TEAL)
+            (item.getChildAt(1) as? TextView)?.setTextColor(if (chat) ChatTheme.PILL_TXT else Ui.TEAL_DARK)
             item.getChildAt(1).visibility = if (on) View.VISIBLE else View.GONE
             item.alpha = if (key == dragKey) 0.35f else 1f
             (item.layoutParams as? LinearLayout.LayoutParams)?.let { lp -> val w = if (on) 3.2f else 1f; if (lp.weight != w) { lp.weight = w; item.layoutParams = lp } }
         }
         val onMedia = tab == "feedback"
         mediaFab.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.parseColor("#FF7A45"), Color.parseColor("#E8336D"))).apply {
-            shape = GradientDrawable.OVAL; setStroke(dp(if (onMedia) 4 else 3), if (onMedia) Ui.TEAL_DARK else Color.WHITE)
+            shape = GradientDrawable.OVAL; setStroke(dp(if (onMedia) 4 else 3), if (onMedia) Ui.TEAL_DARK else if (tab == "messages") ChatTheme.BAR else Color.WHITE)
         }
         mediaFab.animate().scaleX(if (onMedia) 1.08f else 1f).scaleY(if (onMedia) 1.08f else 1f).setDuration(160).start()
-        mediaLabel.setTextColor(if (onMedia) Color.parseColor("#E8336D") else Ui.TEAL_DARK)
+        mediaLabel.setTextColor(if (onMedia) Color.parseColor("#E8336D") else if (tab == "messages") ChatTheme.SUB else Ui.TEAL_DARK)
     }
 
     private fun startTabDrag(v: View, key: String) {

@@ -507,7 +507,7 @@ object ChatLists {
     fun newList(a: Activity, cids: Set<String>, done: () -> Unit = {}) {
         val te = Store(a).lang == "te"
         val ui = Ui(a)
-        val inp = ui.input(if (te) "లిస్ట్ పేరు, ఉదా: కుటుంబం, ఆఫీస్" else "List name, e.g. Family, Office")
+        val inp = ChatTheme.input(a, if (te) "లిస్ట్ పేరు, ఉదా: కుటుంబం, ఆఫీస్" else "List name, e.g. Family, Office")
         val wrap = android.widget.FrameLayout(a).apply { setPadding(ui.dp(20), ui.dp(6), ui.dp(20), 0); addView(inp) }
         AlertDialog.Builder(a).setTitle(if (te) "📋 కొత్త లిస్ట్" else "📋 New list").setView(wrap)
             .setPositiveButton(if (te) "చేయి" else "Create") { _, _ -> val n = inp.text.toString().trim(); if (n.isNotEmpty()) { create(a, n, cids); done() } }
@@ -524,9 +524,9 @@ object ChatShortcut {
         val size = 192
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ChatTheme.NAVY }
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ChatTheme.Brand.NAVY }
         c.drawCircle(size / 2f, size / 2f, size / 2f, p)
-        p.color = ChatTheme.GOLD; p.style = Paint.Style.STROKE; p.strokeWidth = 8f; c.drawCircle(size / 2f, size / 2f, size / 2f - 6, p)
+        p.color = ChatTheme.Brand.GOLD; p.style = Paint.Style.STROKE; p.strokeWidth = 8f; c.drawCircle(size / 2f, size / 2f, size / 2f - 6, p)
         val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 96f; textAlign = Paint.Align.CENTER }
         c.drawText(conv.emoji, size / 2f, size / 2f + 34f, tp)
         val intent = Intent(a, ChatActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra("cid", conv.cid).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -621,18 +621,54 @@ object OneLocation {
 
 /** Little drawing helpers for chat screens. */
 object ChatDraw {
-    /** A circle picture of a person or chat: their profile photo if they have one (loaded from the Habit server), else the emoji. */
-    fun avatar(ctx: Context, store: Store, emoji: String, photo: String, sizePx: Int, ring: Int? = null): android.view.View {
+    /**
+     * The picture of a person or chat: their profile photo if they have one (loaded from the Habit server); else their
+     * emoji, or their initials ("RT") when they kept the default 🐾, on a soft colour of their own. Groups are rounded
+     * squares; people are circles. Habit AI is a gold circle with a sparkle.
+     */
+    fun avatar(ctx: Context, store: Store, emoji: String, photo: String, sizePx: Int, ring: Int? = null,
+               name: String = "", group: Boolean = false, key: String = "", ai: Boolean = false): android.view.View {
         val f = android.widget.FrameLayout(ctx)
-        val t = android.widget.TextView(ctx).apply { text = emoji.ifBlank { "🐾" }; textSize = sizePx / ctx.resources.displayMetrics.density * 0.42f; gravity = android.view.Gravity.CENTER; background = ChatTheme.circle(ChatTheme.CARD) }
-        f.addView(t, android.widget.FrameLayout.LayoutParams(-1, -1))
+        val dens = ctx.resources.displayMetrics.density
+        val radius = if (group) sizePx * 0.34f else sizePx / 2f
+        fun shape(color: Int) = if (group) ChatTheme.round(color, radius) else ChatTheme.circle(color)
+        val (bg, fg) = ChatTheme.tint(key.ifEmpty { name.ifEmpty { emoji } })
+        when {
+            ai -> f.addView(android.widget.ImageView(ctx).apply {
+                setImageDrawable(ctx.getDrawable(R.drawable.ic_sparkle)!!.mutate()); imageTintList = android.content.res.ColorStateList.valueOf(ChatTheme.Brand.INK)
+                val pad = (sizePx * 0.25f).toInt(); setPadding(pad, pad, pad, pad); background = ChatTheme.circle(ChatTheme.Brand.GOLD)
+            }, android.widget.FrameLayout.LayoutParams(-1, -1))
+            group && (emoji.isBlank() || emoji == "👥" || emoji == "🐾") -> f.addView(android.widget.ImageView(ctx).apply {
+                setImageDrawable(ctx.getDrawable(R.drawable.ic_users)!!.mutate()); imageTintList = android.content.res.ColorStateList.valueOf(fg)
+                val pad = (sizePx * 0.26f).toInt(); setPadding(pad, pad, pad, pad); background = shape(bg)
+            }, android.widget.FrameLayout.LayoutParams(-1, -1))
+            (emoji.isBlank() || emoji == "🐾") && initials(name).isNotEmpty() -> f.addView(android.widget.TextView(ctx).apply {
+                text = initials(name); textSize = sizePx / dens * 0.34f; gravity = android.view.Gravity.CENTER; setTextColor(fg)
+                typeface = Fonts.heavy(ctx); background = shape(bg); includeFontPadding = false
+            }, android.widget.FrameLayout.LayoutParams(-1, -1))
+            else -> f.addView(android.widget.TextView(ctx).apply {
+                text = emoji.ifBlank { "🐾" }; textSize = sizePx / dens * 0.42f; gravity = android.view.Gravity.CENTER; background = shape(bg); includeFontPadding = false
+            }, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }
         if (photo.isNotBlank()) {
-            val iv = android.widget.ImageView(ctx).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP; clipToOutline = true; background = ChatTheme.circle(Color.TRANSPARENT); outlineProvider = android.view.ViewOutlineProvider.BACKGROUND }
+            val iv = android.widget.ImageView(ctx).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP; clipToOutline = true; background = shape(Color.TRANSPARENT); outlineProvider = android.view.ViewOutlineProvider.BACKGROUND }
             f.addView(iv, android.widget.FrameLayout.LayoutParams(-1, -1))
             Images.load(if (photo.startsWith("http")) photo else store.server.trimEnd('/') + photo, iv, sizePx)
         }
         if (ring != null) f.foreground = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setStroke(maxOf(3, sizePx / 22), ring) }
         return f
+    }
+    /** "Ravi Teja" → "RT", "Amma" → "A", "రవి" → "ర" (the first letter, with its marks). */
+    fun initials(name: String): String {
+        val words = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() && it[0].isLetterOrDigit() }
+        if (words.isEmpty()) return ""
+        fun first(w: String): String {
+            val bi = java.text.BreakIterator.getCharacterInstance(); bi.setText(w)
+            val end = bi.next(); return if (end > 0) w.substring(0, end) else w.take(1)
+        }
+        val a = first(words[0])
+        val latin = a[0].code < 0x250
+        return (if (latin && words.size > 1 && words[1][0].code < 0x250) a + first(words[1]) else a).uppercase()
     }
     /** Angles for little rays (used by the status ring). */
     fun ray(i: Int, n: Int) = Pair(cos(Math.PI * 2 * i / n).toFloat(), sin(Math.PI * 2 * i / n).toFloat())

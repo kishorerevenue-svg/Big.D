@@ -372,7 +372,7 @@ class StatusActivity : Activity() {
         top.addView(row)
         top.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(8), 0, 0)
-            addView(ui.text(ownerEmoji, 22f).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(ChatTheme.CARD) }, LinearLayout.LayoutParams(dp(40), dp(40)))
+            addView(ui.text(ownerEmoji, 22f).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(Color.parseColor("#33FFFFFF")) }, LinearLayout.LayoutParams(dp(40), dp(40)))
             addView(LinearLayout(this@StatusActivity).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0)
                 addView(ui.text(ownerName, 15.5f, Color.WHITE, bold = true))
@@ -398,7 +398,7 @@ class StatusActivity : Activity() {
                 setOnFocusChangeListener { _, f -> paused = f; if (f) video?.pause() else video?.start() }
             }
             bar.addView(inp, LinearLayout.LayoutParams(0, -2, 1f))
-            bar.addView(ui.text("➤", 20f, ChatTheme.NAVY).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(ChatTheme.GOLD); setOnClickListener { reply(it0, inp.text.toString().trim()) } },
+            bar.addView(ui.text("➤", 20f, ChatTheme.Brand.INK).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(ChatTheme.Brand.GOLD); setOnClickListener { reply(it0, inp.text.toString().trim()) } },
                 LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginStart = dp(8) })
             root.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         }
@@ -457,8 +457,8 @@ class StatusActivity : Activity() {
         tools.addView(ui.text("🎨", 22f).apply { gravity = Gravity.CENTER; contentDescription = t("Colour", "రంగు"); setOnClickListener { bg = (bg + 1) % ChatStatus.BGS.size; page.setBackgroundColor(ChatStatus.BGS[bg]) } }, LinearLayout.LayoutParams(dp(48), dp(48)))
         tools.addView(ui.text("Aa", 20f, Color.WHITE, bold = true).apply { gravity = Gravity.CENTER; setOnClickListener { fontIdx = (fontIdx + 1) % 4; inp.typeface = ChatStatus.font(fontIdx) } }, LinearLayout.LayoutParams(dp(48), dp(48)))
         page.addView(tools, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
-        val send = ui.text("➤  " + t("Share", "పంచుకో"), 16f, ChatTheme.NAVY, bold = true).apply {
-            gravity = Gravity.CENTER; setPadding(dp(22), dp(13), dp(22), dp(13)); background = ui.round(ChatTheme.GOLD, 26)
+        val send = ui.text("➤  " + t("Share", "పంచుకో"), 16f, ChatTheme.Brand.INK, bold = true).apply {
+            gravity = Gravity.CENTER; setPadding(dp(22), dp(13), dp(22), dp(13)); background = ui.round(ChatTheme.Brand.GOLD, 26)
             setOnClickListener {
                 val s = inp.text.toString().trim()
                 if (s.isEmpty()) { toast(t("Type something first.", "ముందు ఏదైనా రాయండి.")); return@setOnClickListener }
@@ -537,7 +537,7 @@ class StatusActivity : Activity() {
             setPadding(dp(16), dp(10), dp(16), dp(10)); background = ui.round(Color.parseColor("#66000000"), 24, Color.parseColor("#88FFFFFF"))
         }
         row.addView(cap, LinearLayout.LayoutParams(0, -2, 1f))
-        row.addView(ui.text("➤", 20f, ChatTheme.NAVY).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(ChatTheme.GOLD)
+        row.addView(ui.text("➤", 20f, ChatTheme.Brand.INK).apply { gravity = Gravity.CENTER; background = ChatTheme.circle(ChatTheme.Brand.GOLD)
             setOnClickListener { share(JSONObject(pickedMeta.toString()).put("t", pickedKind).put("text", cap.text.toString().trim().take(700)), picked) } },
             LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(8) })
         bar.addView(row)

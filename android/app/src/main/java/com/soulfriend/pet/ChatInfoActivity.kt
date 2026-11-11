@@ -57,22 +57,24 @@ class ChatInfoActivity : Activity() {
     private val refresh: () -> Unit = { if (!isFinishing) draw() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ChatTheme.apply(this)
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this)
         cid = intent.getStringExtra("cid") ?: ""
         mode = intent.getStringExtra("mode") ?: "info"
         me = ChatSync.myUid(this)
-        window.statusBarColor = C.NAVY
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(C.NAVY); fitsSystemWindows = true }
-        titleView = ui.text("", 19f, C.TXT, bold = true)
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; fitsSystemWindows = true }
+        root.background = ChatTheme.Backdrop(root, C.BG, C.BG)
+        titleView = ui.text("", 20f, C.TXT).apply { typeface = Fonts.heavy(context); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         root.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(8), dp(12), dp(8)); setBackgroundColor(C.BAR)
-            addView(TextView(this@ChatInfoActivity).apply { text = "←"; textSize = 22f; setTextColor(C.TXT); gravity = Gravity.CENTER; setOnClickListener { finish() } }, LinearLayout.LayoutParams(dp(48), dp(48)))
-            addView(titleView)
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(6), dp(12), dp(6)); minimumHeight = dp(60)
+            addView(Ico.view(this@ChatInfoActivity, R.drawable.ic_back, C.TXT, 22, 48, t("Back", "వెనక్కి")) { finish() })
+            addView(titleView, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(4) })
         })
         box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(32)) }
         root.addView(ScrollView(this).apply { addView(box) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        ChatTheme.bars(this, C.BG, C.BG)
         loadBio()
     }
     override fun onResume() { super.onResume(); ChatSync.listeners.add(refresh); ChatSync.hold(this, "info"); draw() }
@@ -92,18 +94,18 @@ class ChatInfoActivity : Activity() {
     }
 
     // ---------- little pieces ----------
-    private fun head(s: String) = box.addView(ui.text(s, 13.5f, C.GOLD, bold = true).apply { setPadding(dp(4), dp(18), dp(4), dp(4)) })
+    private fun head(s: String) = box.addView(ui.text(s.uppercase(Locale.getDefault()), 12f, C.GOLD_TXT).apply { typeface = Fonts.heavy(context); letterSpacing = 0.07f; setPadding(dp(4), dp(20), dp(4), dp(6)) })
     private fun line() = box.addView(View(this).apply { setBackgroundColor(C.LINE) }, LinearLayout.LayoutParams(-1, 1).apply { topMargin = dp(8) })
     private fun item(icon: String, title: String, sub: String = "", color: Int = C.TXT, onClick: (() -> Unit)?) {
         box.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(12), dp(4), dp(12))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(12), dp(4), dp(12)); if (onClick != null) background = Ico.rowRipple(context)
             addView(ui.text(icon, 19f, color).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(40), -2))
             addView(LinearLayout(this@ChatInfoActivity).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0)
                 addView(ui.text(title, 16f, color))
                 if (sub.isNotBlank()) addView(ui.text(sub, 13f, C.SUB).apply { maxLines = 3; ellipsize = TextUtils.TruncateAt.END })
             }, LinearLayout.LayoutParams(0, -2, 1f))
-            if (onClick != null) { addView(ui.text("›", 20f, C.SUB)); setOnClickListener { onClick() } }
+            if (onClick != null) { addView(Ico.view(this@ChatInfoActivity, R.drawable.ic_chevron_right, C.SUB, 18, 24, ""), LinearLayout.LayoutParams(dp(24), dp(24))); setOnClickListener { onClick() } }
         })
     }
     private fun toggle(icon: String, title: String, sub: String, on: Boolean, change: (Boolean) -> Unit) {
@@ -116,17 +118,17 @@ class ChatInfoActivity : Activity() {
             }, LinearLayout.LayoutParams(0, -2, 1f))
             val sw = Switch(this@ChatInfoActivity).apply {
                 isChecked = on
-                thumbTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(C.GOLD, Color.parseColor("#C9CEE6")))
-                trackTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(C.GOLD_DARK, Color.parseColor("#4A5288")))
+                thumbTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(C.PRIMARY, if (C.dark) Color.parseColor("#C9CEE6") else Color.WHITE))
+                trackTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf((C.PRIMARY and 0x00FFFFFF) or (0x80 shl 24), if (C.dark) Color.parseColor("#4A5288") else Color.parseColor("#C9CEE0")))
                 setOnCheckedChangeListener { _, c -> change(c) }
             }
             addView(sw); setOnClickListener { sw.isChecked = !sw.isChecked }
         })
     }
     private fun bigButton(icon: String, label: String, onClick: () -> Unit) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(6), dp(10), dp(6), dp(10)); background = C.round(C.CARD, dp(14).toFloat(), C.LINE)
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(6), dp(12), dp(6), dp(10)); background = C.press(context, dp(20).toFloat(), C.round(C.CARD, dp(20).toFloat(), C.EDGE, dp(1)))
         addView(ui.text(icon, 20f).apply { gravity = Gravity.CENTER })
-        addView(ui.text(label, 13f, C.GOLD, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
+        addView(ui.text(label, 13f, C.GOLD_TXT, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
         setOnClickListener { onClick() }
     }
     private fun buttons(vararg b: View) = box.addView(LinearLayout(this).apply {
@@ -150,8 +152,8 @@ class ChatInfoActivity : Activity() {
     private fun top(c: ChatConv, line2: String, line3: String) {
         box.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(14), 0, dp(4))
-            addView(ChatDraw.avatar(this@ChatInfoActivity, store, c.emoji, if (c.isDm) c.avatar else "", dp(110)), LinearLayout.LayoutParams(dp(110), dp(110)))
-            addView(ui.text(c.name, 22f, C.TXT, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) })
+            addView(ChatDraw.avatar(this@ChatInfoActivity, store, c.emoji, if (c.isDm) c.avatar else "", dp(110), null, c.name, c.isGroup || c.isBcast, c.cid, c.isAi), LinearLayout.LayoutParams(dp(110), dp(110)))
+            addView(ui.text(c.name, 23f, C.TXT).apply { typeface = Fonts.heavy(context); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) })
             if (line2.isNotBlank()) addView(ui.text(line2, 14f, C.SUB).apply { gravity = Gravity.CENTER })
             if (line3.isNotBlank()) addView(ui.text(line3, 13.5f, C.SUB).apply { gravity = Gravity.CENTER; setPadding(dp(10), dp(4), dp(10), 0) })
         }, LinearLayout.LayoutParams(-1, -2))
@@ -263,9 +265,9 @@ class ChatInfoActivity : Activity() {
             val code = SafetyCode.of(ChatKeys.mine(this).second, theirs)
             val v = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(20), dp(10), dp(20), dp(4))
-                addView(ui.text(code, 19f, Ui.INK).apply { typeface = Typeface.MONOSPACE; gravity = Gravity.CENTER; letterSpacing = 0.05f })
+                addView(ui.text(code, 19f, ChatTheme.dlg(this@ChatInfoActivity).txt).apply { typeface = Typeface.MONOSPACE; gravity = Gravity.CENTER; letterSpacing = 0.05f })
                 addView(ui.text(t("Compare these numbers with ${c.name}'s phone (their Contact info › Encryption). If they are the same, your chat is locked for the right person, and nobody in between can read it.",
-                    "ఈ నంబర్లను ${c.name} ఫోన్‌లో (కాంటాక్ట్ వివరాలు › ఎన్‌క్రిప్షన్) ఉన్నవాటితో పోల్చండి. ఒకటే అయితే, మీ చాట్ సరైన వ్యక్తికే లాక్ అయింది, మధ్యలో ఎవరూ చదవలేరు."), 13.5f, Ui.MUTED).apply { setPadding(0, dp(14), 0, 0) })
+                    "ఈ నంబర్లను ${c.name} ఫోన్‌లో (కాంటాక్ట్ వివరాలు › ఎన్‌క్రిప్షన్) ఉన్నవాటితో పోల్చండి. ఒకటే అయితే, మీ చాట్ సరైన వ్యక్తికే లాక్ అయింది, మధ్యలో ఎవరూ చదవలేరు."), 13.5f, ChatTheme.dlg(this@ChatInfoActivity).sub).apply { setPadding(0, dp(14), 0, 0) })
             }
             AlertDialog.Builder(this).setTitle(t("🛡️ Safety number", "🛡️ సేఫ్టీ నంబర్")).setView(v)
                 .setNeutralButton(t("📋 Copy", "📋 కాపీ")) { _, _ -> getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Habit safety number", code.replace("\n", " "))) }
@@ -295,10 +297,10 @@ class ChatInfoActivity : Activity() {
         top(c, t("Group · ${c.members().size} members", "గ్రూప్ · ${c.members().size} మంది"), "")
         if (canEdit) box.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            addView(ui.text("✏️ " + t("Name", "పేరు"), 13.5f, C.GOLD, bold = true).apply { setPadding(dp(10), dp(4), dp(10), dp(4)); setOnClickListener { rename(c) } })
-            addView(ui.text("🖼️ " + t("Picture", "చిత్రం"), 13.5f, C.GOLD, bold = true).apply { setPadding(dp(10), dp(4), dp(10), dp(4)); setOnClickListener { pickEmoji(c) } })
+            addView(ui.text("✏️ " + t("Name", "పేరు"), 13.5f, C.GOLD_TXT, bold = true).apply { setPadding(dp(10), dp(4), dp(10), dp(4)); setOnClickListener { rename(c) } })
+            addView(ui.text("🖼️ " + t("Picture", "చిత్రం"), 13.5f, C.GOLD_TXT, bold = true).apply { setPadding(dp(10), dp(4), dp(10), dp(4)); setOnClickListener { pickEmoji(c) } })
         })
-        c.comm?.let { k -> box.addView(ui.text("🏘️ " + t("Part of the community ", "కమ్యూనిటీ: ") + k.optString("name") + " ›", 14f, C.GOLD, bold = true).apply {
+        c.comm?.let { k -> box.addView(ui.text("🏘️ " + t("Part of the community ", "కమ్యూనిటీ: ") + k.optString("name") + " ›", 14f, C.GOLD_TXT, bold = true).apply {
             gravity = Gravity.CENTER; setPadding(0, dp(8), 0, 0); setOnClickListener { Communities.show(this@ChatInfoActivity, store, k.optString("id")) } }) }
         buttons(
             bigButton("🔍", t("Search", "వెతకండి")) { startActivity(Intent(this, ChatActivity::class.java).putExtra("cid", cid).putExtra("search", true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)) },
@@ -331,13 +333,13 @@ class ChatInfoActivity : Activity() {
             val uid = p.optString("uid"); val isA = p.optBoolean("admin")
             box.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(9), dp(4), dp(9))
-                addView(ChatDraw.avatar(this@ChatInfoActivity, store, p.optString("emoji", "🐾"), p.optString("avatar"), dp(42)), LinearLayout.LayoutParams(dp(42), dp(42)))
+                addView(ChatDraw.avatar(this@ChatInfoActivity, store, p.optString("emoji", "🐾"), p.optString("avatar"), dp(42), null, p.optString("name"), key = uid), LinearLayout.LayoutParams(dp(42), dp(42)))
                 addView(LinearLayout(this@ChatInfoActivity).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0)
                     addView(ui.text(if (uid == me) t("You", "మీరు") else p.optString("name"), 15.5f, C.TXT, bold = true))
                     if (p.optString("handle").isNotEmpty()) addView(ui.text("@" + p.optString("handle"), 12.5f, C.SUB))
                 }, LinearLayout.LayoutParams(0, -2, 1f))
-                if (isA) addView(ui.text(t("Group admin", "అడ్మిన్"), 11.5f, C.GOLD, bold = true).apply { setPadding(dp(8), dp(2), dp(8), dp(2)); background = C.round(C.CARD, dp(8).toFloat(), C.GOLD) })
+                if (isA) addView(ui.text(t("Group admin", "అడ్మిన్"), 11.5f, C.GOLD_TXT).apply { typeface = Fonts.heavy(context); setPadding(dp(8), dp(2), dp(8), dp(3)); background = C.round(C.GOLD_SOFT, dp(10).toFloat()) })
                 if (uid != me) setOnClickListener { memberMenu(c, p, admin && c.member) }
             })
         }
@@ -380,13 +382,13 @@ class ChatInfoActivity : Activity() {
         }
     }
     private fun rename(c: ChatConv) {
-        val inp = ui.input(t("Group name", "గ్రూప్ పేరు"), c.name)
+        val inp = ChatTheme.input(this, t("Group name", "గ్రూప్ పేరు"), c.name)
         AlertDialog.Builder(this).setTitle(t("✏️ Group name", "✏️ గ్రూప్ పేరు")).setView(FrameLayout(this).apply { setPadding(dp(20), dp(6), dp(20), 0); addView(inp) })
             .setPositiveButton(t("Save", "సేవ్")) { _, _ -> val n = inp.text.toString().trim(); if (n.length >= 2) post("/api/chat/group/edit", JSONObject().put("name", n)) }
             .setNegativeButton(t("Cancel", "వద్దు"), null).show()
     }
     private fun editDesc(c: ChatConv) {
-        val inp = ui.input(t("What is this group for?", "ఈ గ్రూప్ దేనికి?"), c.desc, multi = true)
+        val inp = ChatTheme.input(this, t("What is this group for?", "ఈ గ్రూప్ దేనికి?"), c.desc, multi = true)
         AlertDialog.Builder(this).setTitle(t("📝 Group description", "📝 గ్రూప్ వివరణ")).setView(FrameLayout(this).apply { setPadding(dp(20), dp(6), dp(20), 0); addView(inp) })
             .setPositiveButton(t("Save", "సేవ్")) { _, _ -> post("/api/chat/group/edit", JSONObject().put("desc", inp.text.toString().trim().take(500))) }
             .setNegativeButton(t("Cancel", "వద్దు"), null).show()
@@ -425,7 +427,7 @@ class ChatInfoActivity : Activity() {
     private fun bcastInfo(c: ChatConv) {
         top(c, t("${c.members().size} recipients", "${c.members().size} మంది"), t("Only people who have chatted with you get your broadcasts, each in their own chat.", "మీతో చాట్ చేసినవాళ్ళకు మాత్రమే, వాళ్ళ సొంత చాట్‌లో వెళ్తాయి."))
         item("✏️", t("List name", "లిస్ట్ పేరు"), c.name) {
-            val inp = ui.input(t("List name", "లిస్ట్ పేరు"), c.name)
+            val inp = ChatTheme.input(this, t("List name", "లిస్ట్ పేరు"), c.name)
             AlertDialog.Builder(this).setView(FrameLayout(this).apply { setPadding(dp(20), dp(10), dp(20), 0); addView(inp) })
                 .setPositiveButton(t("Save", "సేవ్")) { _, _ -> val n = inp.text.toString().trim(); if (n.isNotEmpty()) { db.patchConv(cid) { it.put("name", n.take(40)) }; ChatSync.changed() } }
                 .setNegativeButton(t("Cancel", "వద్దు"), null).show()
@@ -447,8 +449,8 @@ class ChatInfoActivity : Activity() {
     private fun media(c: ChatConv) {
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, dp(10)) }
         listOf("media" to t("Media", "మీడియా"), "docs" to t("Docs", "ఫైల్స్"), "links" to t("Links", "లింక్స్")).forEach { (k, l) ->
-            tabs.addView(ui.text(l, 14.5f, if (mediaTab == k) C.NAVY else C.TXT, bold = mediaTab == k).apply {
-                gravity = Gravity.CENTER; setPadding(dp(16), dp(8), dp(16), dp(8)); background = C.round(if (mediaTab == k) C.GOLD else C.CARD, dp(18).toFloat())
+            tabs.addView(ui.text(l, 14f, if (mediaTab == k) C.ON_PRIMARY else C.TXT, bold = mediaTab == k).apply {
+                gravity = Gravity.CENTER; setPadding(dp(16), dp(8), dp(16), dp(8)); background = if (mediaTab == k) C.round(C.PRIMARY, dp(18).toFloat()) else C.round(C.CARD, dp(18).toFloat(), C.EDGE, dp(1))
                 setOnClickListener { mediaTab = k; draw() }
             }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(6) })
         }
@@ -493,8 +495,8 @@ class ChatInfoActivity : Activity() {
             val c = db.conv(m.cid) ?: continue
             val who = if (m.sender == me) t("You", "మీరు") else c.nameOf(m.sender)
             box.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(10), dp(12), dp(10)); background = C.round(C.CARD, dp(12).toFloat())
-                addView(ui.text("$who  ›  ${c.name}", 12.5f, C.GOLD, bold = true))
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(10)); background = C.round(C.CARD, dp(18).toFloat(), C.EDGE, dp(1))
+                addView(ui.text("$who  ›  ${c.name}", 12.5f, C.GOLD_TXT, bold = true))
                 addView(ui.text(ChatSync.preview(this@ChatInfoActivity, m), 15f, C.TXT).apply { maxLines = 4; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(3), 0, dp(3)) })
                 addView(ui.text("⭐ " + date(m.at), 12f, C.SUB))
                 setOnClickListener { ChatActivity.openAt(this@ChatInfoActivity, m.cid, m.id) }

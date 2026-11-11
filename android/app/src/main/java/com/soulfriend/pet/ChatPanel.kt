@@ -120,7 +120,7 @@ class ChatPanel(
     private val topRow = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(6), dp(4), dp(6), dp(2)) }
     private val search = EditText(a).apply {
         textSize = 15f; setTextColor(C.TXT); setHintTextColor(C.SUB); setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT
-        setPadding(dp(14), dp(8), dp(14), dp(8)); background = C.round(C.CARD, dp(20).toFloat()); visibility = View.GONE
+        setPadding(dp(14), dp(8), dp(14), dp(8)); background = C.round(C.CARD, dp(20).toFloat(), C.EDGE, dp(1)); visibility = View.GONE
     }
     private val main = Handler(Looper.getMainLooper())
     private var gifs: List<Gifs.Gif> = emptyList()
@@ -150,28 +150,29 @@ class ChatPanel(
 
     private fun draw() {
         topRow.removeAllViews()
-        topRow.addView(icon("🔍") { searching = !searching; if (!searching) { query = ""; search.setText("") }; search.visibility = if (searching) View.VISIBLE else View.GONE; if (searching) search.requestFocus(); fill() })
-        val seg = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; background = C.round(C.CARD, dp(18).toFloat()); setPadding(dp(3), dp(3), dp(3), dp(3)) }
+        topRow.addView(iconRes(R.drawable.ic_search, t("Search", "వెతకండి")) { searching = !searching; if (!searching) { query = ""; search.setText("") }; search.visibility = if (searching) View.VISIBLE else View.GONE; if (searching) search.requestFocus(); fill() })
+        val seg = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; background = C.round(C.CARD, dp(18).toFloat(), C.EDGE, dp(1)); setPadding(dp(3), dp(3), dp(3), dp(3)) }
         listOf("emoji" to "😊", "gif" to "GIF", "sticker" to "🏷️").forEach { (k, label) ->
             seg.addView(TextView(a).apply {
-                text = label; textSize = if (k == "gif") 13f else 17f; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
-                setTextColor(if (tab == k) C.NAVY else C.TXT); background = if (tab == k) C.round(C.GOLD, dp(15).toFloat()) else null
+                text = label; textSize = if (k == "gif") 13f else 17f; gravity = Gravity.CENTER; typeface = Fonts.bold(context)
+                setTextColor(if (tab == k) C.ON_PRIMARY else C.TXT); background = if (tab == k) C.round(C.PRIMARY, dp(15).toFloat()) else null
                 setOnClickListener { tab = k; query = ""; search.setText(""); draw() }
             }, LinearLayout.LayoutParams(dp(64), dp(34)))
         }
         topRow.addView(LinearLayout(a).apply { gravity = Gravity.CENTER; addView(seg) }, LinearLayout.LayoutParams(0, -2, 1f))
-        topRow.addView(if (tab == "emoji") icon("⌫") { onBackspace() } else View(a).apply { layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)) })
+        topRow.addView(if (tab == "emoji") iconRes(R.drawable.ic_backspace, t("Delete", "తొలగించు")) { onBackspace() } else View(a).apply { layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)) })
         search.hint = when (tab) { "gif" -> "🔍 " + t("Search GIFs", "GIF వెతకండి"); "sticker" -> "🔍 " + t("Search stickers", "స్టిక్కర్లు వెతకండి"); else -> "🔍 " + t("Search emoji (e.g. love, నవ్వు)", "ఎమోజీ వెతకండి (ఉదా: నవ్వు, love)") }
         bottomBar()
         if (tab == "gif" && gifs.isEmpty()) loadGifs() else fill()
     }
+    private fun iconRes(res: Int, desc: String, onClick: () -> Unit) = Ico.view(a, res, C.SUB, 22, 44, desc) { onClick() }
     private fun icon(label: String, onClick: () -> Unit) = TextView(a).apply {
         text = label; textSize = 19f; gravity = Gravity.CENTER; setTextColor(C.TXT); setOnClickListener { onClick() }
         layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
     }
     private fun tabIcon(label: String, on: Boolean, desc: String, onClick: () -> Unit) = TextView(a).apply {
         text = label; textSize = 19f; gravity = Gravity.CENTER; contentDescription = desc
-        background = if (on) C.round(C.CARD, dp(10).toFloat(), C.GOLD) else null; setOnClickListener { onClick() }
+        background = if (on) C.round(C.PILL, dp(10).toFloat()) else null; setOnClickListener { onClick() }
         layoutParams = LinearLayout.LayoutParams(dp(46), dp(40)).apply { marginStart = dp(2) }
     }
 
@@ -235,9 +236,9 @@ class ChatPanel(
                     override fun getItemId(p: Int) = p.toLong()
                     override fun getView(p: Int, old: View?, parent: ViewGroup?): View {
                         if (create && p == 0) return LinearLayout(a).apply {
-                            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; layoutParams = AbsListView.LayoutParams(-1, dp(84)); background = C.round(C.CARD, dp(14).toFloat(), C.GOLD)
+                            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; layoutParams = AbsListView.LayoutParams(-1, dp(84)); background = C.round(C.GOLD_SOFT, dp(14).toFloat())
                             addView(ui.text("✏️", 24f).apply { gravity = Gravity.CENTER })
-                            addView(ui.text(t("Create sticker", "స్టిక్కర్ చేయండి"), 11.5f, C.GOLD, bold = true).apply { gravity = Gravity.CENTER })
+                            addView(ui.text(t("Create sticker", "స్టిక్కర్ చేయండి"), 11.5f, C.GOLD_TXT, bold = true).apply { gravity = Gravity.CENTER })
                         }
                         val ref = refs[p - if (create) 1 else 0]
                         val iv = (old as? ImageView) ?: ImageView(a).apply { scaleType = ImageView.ScaleType.FIT_CENTER; layoutParams = AbsListView.LayoutParams(-1, dp(84)); setPadding(dp(4), dp(4), dp(4), dp(4)) }

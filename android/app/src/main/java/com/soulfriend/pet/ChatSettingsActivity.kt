@@ -29,108 +29,120 @@ class ChatSettingsActivity : Activity() {
     private fun dp(v: Int) = ui.dp(v)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ChatTheme.apply(this)
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this)
-        window.statusBarColor = C.NAVY
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(C.NAVY); fitsSystemWindows = true }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; fitsSystemWindows = true }
+        root.background = ChatTheme.Backdrop(root, C.BG, C.BG)
         root.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(8), dp(12), dp(8)); setBackgroundColor(C.BAR)
-            addView(TextView(this@ChatSettingsActivity).apply { text = "←"; textSize = 22f; setTextColor(C.TXT); gravity = Gravity.CENTER; setOnClickListener { finish() } }, LinearLayout.LayoutParams(dp(48), dp(48)))
-            addView(ui.text(t("Chat settings", "చాట్ సెట్టింగ్స్"), 19f, C.TXT, bold = true))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(6), dp(12), dp(6)); minimumHeight = dp(60)
+            addView(Ico.view(this@ChatSettingsActivity, R.drawable.ic_back, C.TXT, 22, 48, t("Back", "వెనక్కి")) { finish() })
+            addView(ui.text(t("Chat settings", "చాట్ సెట్టింగ్స్"), 22f, C.TXT).apply { typeface = Fonts.heavy(context); setPadding(dp(4), 0, 0, 0) })
         })
-        box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(32)) }
+        box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(4), dp(16), dp(32)) }
         root.addView(ScrollView(this).apply { addView(box) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        ChatTheme.bars(this, C.BG, C.BG)
         draw()
     }
 
     private fun draw() {
-        box.removeAllViews()
+        box.removeAllViews(); card = null
         val me = ChatSync.me(this)
         // who I am
         box.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(14), dp(4), dp(14))
-            addView(TextView(this@ChatSettingsActivity).apply { text = me.optString("emoji", "🐾"); textSize = 26f; gravity = Gravity.CENTER; background = ChatTheme.circle(C.CARD) }, LinearLayout.LayoutParams(dp(58), dp(58)))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = C.round(C.CARD, dp(24).toFloat(), C.EDGE, dp(1))
+            addView(ChatDraw.avatar(this@ChatSettingsActivity, store, me.optString("emoji", "🐾"), me.optString("avatar"), dp(58), null, me.optString("name"), key = me.optString("uid")), LinearLayout.LayoutParams(dp(58), dp(58)))
             addView(LinearLayout(this@ChatSettingsActivity).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0)
-                addView(ui.text(me.optString("name", "Habit friend"), 18f, C.TXT, bold = true))
-                if (me.optString("handle").isNotEmpty()) addView(ui.text("@" + me.optString("handle") + " · " + t("change in Media › 👤", "మీడియా › 👤 లో మార్చండి"), 13f, C.SUB))
+                addView(ui.text(me.optString("name", "Habit friend"), 18f, C.TXT).apply { typeface = Fonts.heavy(context) })
+                if (me.optString("handle").isNotEmpty()) addView(ui.text("@" + me.optString("handle") + " · " + t("change it in Media › your profile", "మీడియా › మీ ప్రొఫైల్‌లో మార్చండి"), 13f, C.SUB))
             })
-        })
-        line()
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        head(t("Look", "రూపం"))
+        item(R.drawable.ic_sparkle, 0, t("Theme", "థీమ్"), themeName(ChatTheme.mode(this))) { pickTheme() }
+        val wall = ChatTheme.wall(db.kv("set:wall").toIntOrNull() ?: ChatTheme.DEFAULT_WALL)
+        item(R.drawable.ic_image, 4, t("Chat wallpaper", "చాట్ వాల్‌పేపర్"), if (te) wall.te else wall.en) { pickWall() }
+        item(R.drawable.ic_edit, 2, t("Font size", "అక్షరాల సైజు"), when (db.kv("set:font")) { "s" -> t("Small", "చిన్నది"); "l" -> t("Large", "పెద్దది"); else -> t("Medium", "మధ్యస్థం") }) { pickFont() }
         head(t("Chats", "చాట్‌లు"))
-        val wall = ChatTheme.wall(db.kv("set:wall").toIntOrNull() ?: 0)
-        item("🎨", t("Chat theme (wallpaper)", "చాట్ థీమ్ (వాల్‌పేపర్)"), if (te) wall.te else wall.en) { pickWall() }
-        item("🔤", t("Font size", "అక్షరాల సైజు"), when (db.kv("set:font")) { "s" -> t("Small", "చిన్నది"); "l" -> t("Large", "పెద్దది"); else -> t("Medium", "మధ్యస్థం") }) { pickFont() }
-        toggle("⏎", t("Enter is send", "ఎంటర్ నొక్కితే పంపు"), t("The keyboard's Enter key sends the message", "కీబోర్డ్ ఎంటర్ నొక్కితే మెసేజ్ వెళ్తుంది"), ChatTheme.enterSends(this)) { db.setKv("set:enter", if (it) "1" else "0") }
-        toggle("🔗", t("Link previews", "లింక్ ప్రివ్యూలు"), t("A link you send shows its title and picture (made on your phone)", "మీరు పంపే లింక్‌కి టైటిల్, బొమ్మ (మీ ఫోన్‌లోనే తయారవుతుంది)"), ChatTheme.linkPreviews(this)) { db.setKv("set:previews", if (it) "1" else "0") }
-        toggle("📋", t("Show open tasks as a bar at the top", "తెరిచిన పనులు పైన బార్‌గా చూపించు"),
-            t("Off: a small 📋 next to the chat's name shows them", "ఆఫ్: చాట్ పేరు పక్కన చిన్న 📋 చూపిస్తుంది"), ChatTheme.tasksBar(this)) { db.setKv("set:tasksbar", if (it) "1" else "0") }
-        item("⭐", t("Starred messages", "స్టార్ చేసిన మెసేజ్‌లు"), t("Messages you starred, in all chats", "అన్ని చాట్‌లలో మీరు స్టార్ చేసినవి")) { ChatInfoActivity.open(this, "", "starred") }
-        item("💻", t("Linked devices", "లింక్ చేసిన పరికరాలు"), t("Habit Chat on your computer: bigdai.tech/web", "మీ కంప్యూటర్‌లో Habit చాట్: bigdai.tech/web")) { LinkedDevicesActivity.open(this) }
-        line()
+        toggle(R.drawable.ic_send, 1, t("Enter is send", "ఎంటర్ నొక్కితే పంపు"), t("The keyboard's Enter key sends the message", "కీబోర్డ్ ఎంటర్ నొక్కితే మెసేజ్ వెళ్తుంది"), ChatTheme.enterSends(this)) { db.setKv("set:enter", if (it) "1" else "0") }
+        toggle(R.drawable.ic_link, 4, t("Link previews", "లింక్ ప్రివ్యూలు"), t("A link you send shows its title and picture (made on your phone)", "మీరు పంపే లింక్‌కి టైటిల్, బొమ్మ (మీ ఫోన్‌లోనే తయారవుతుంది)"), ChatTheme.linkPreviews(this)) { db.setKv("set:previews", if (it) "1" else "0") }
+        toggle(R.drawable.ic_tasks, 0, t("Show open tasks as a bar at the top", "తెరిచిన పనులు పైన బార్‌గా చూపించు"),
+            t("Off: a small \"tasks\" pill next to the chat's name shows them", "ఆఫ్: చాట్ పేరు పక్కన చిన్న \"పనులు\" గుర్తు చూపిస్తుంది"), ChatTheme.tasksBar(this)) { db.setKv("set:tasksbar", if (it) "1" else "0") }
+        item(R.drawable.ic_star, 0, t("Starred messages", "స్టార్ చేసిన మెసేజ్‌లు"), t("Messages you starred, in all chats", "అన్ని చాట్‌లలో మీరు స్టార్ చేసినవి")) { ChatInfoActivity.open(this, "", "starred") }
+        item(R.drawable.ic_media, 2, t("Linked devices", "లింక్ చేసిన పరికరాలు"), t("Habit Chat on your computer: bigdai.tech/web", "మీ కంప్యూటర్‌లో Habit చాట్: bigdai.tech/web")) { LinkedDevicesActivity.open(this) }
         head(t("Notifications", "నోటిఫికేషన్లు"))
-        toggle("🔔", t("Message notifications", "మెసేజ్ నోటిఫికేషన్లు"), t("New messages show a notification", "కొత్త మెసేజ్‌లకు నోటిఫికేషన్"), ChatTheme.notifyOn(this)) { db.setKv("set:notify", if (it) "1" else "0") }
-        toggle("👁", t("Show the message in the notification", "నోటిఫికేషన్‌లో మెసేజ్ చూపించు"), t("Off: only \"New message\"", "ఆఫ్: \"కొత్త మెసేజ్\" మాత్రమే"), ChatTheme.previewOn(this)) { db.setKv("set:preview", if (it) "1" else "0") }
-        toggle("❤️", t("Reaction notifications", "స్పందనల నోటిఫికేషన్లు"), t("When someone reacts to your message", "మీ మెసేజ్‌కి ఎవరైనా స్పందిస్తే"), ChatTheme.reactNotify(this)) { db.setKv("set:reactnotify", if (it) "1" else "0") }
-        item("🎵", t("Ringtone for calls", "కాల్స్ రింగ్‌టోన్"), t("Phone settings › Habit calls (ringing)", "ఫోన్ సెట్టింగ్స్ › Habit calls (ringing)")) {
+        toggle(R.drawable.ic_bell, 0, t("Message notifications", "మెసేజ్ నోటిఫికేషన్లు"), t("New messages show a notification", "కొత్త మెసేజ్‌లకు నోటిఫికేషన్"), ChatTheme.notifyOn(this)) { db.setKv("set:notify", if (it) "1" else "0") }
+        toggle(R.drawable.ic_eye, 4, t("Show the message in the notification", "నోటిఫికేషన్‌లో మెసేజ్ చూపించు"), t("Off: only \"New message\"", "ఆఫ్: \"కొత్త మెసేజ్\" మాత్రమే"), ChatTheme.previewOn(this)) { db.setKv("set:preview", if (it) "1" else "0") }
+        toggle(R.drawable.ic_heart, 3, t("Reaction notifications", "స్పందనల నోటిఫికేషన్లు"), t("When someone reacts to your message", "మీ మెసేజ్‌కి ఎవరైనా స్పందిస్తే"), ChatTheme.reactNotify(this)) { db.setKv("set:reactnotify", if (it) "1" else "0") }
+        item(R.drawable.ic_phone, 5, t("Ringtone for calls", "కాల్స్ రింగ్‌టోన్"), t("Phone settings › Habit calls (ringing)", "ఫోన్ సెట్టింగ్స్ › Habit calls (ringing)")) {
             CallManager.channels(this)
             try { startActivity(android.content.Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, CallManager.RING)) } catch (e: Exception) { }
         }
-        line()
         head(t("Privacy", "గోప్యత"))
-        toggle("🟢", t("Last seen and online", "చివరిగా చూసింది, ఆన్‌లైన్"), t("Off: nobody sees when you were online, and you don't see theirs", "ఆఫ్: మీరు ఎప్పుడు ఆన్‌లైన్‌లో ఉన్నారో ఎవరికీ తెలియదు, మీకూ వాళ్ళది కనిపించదు"), db.kv("set:seen") != "0") { on ->
+        toggle(R.drawable.ic_clock, 5, t("Last seen and online", "చివరిగా చూసింది, ఆన్‌లైన్"), t("Off: nobody sees when you were online, and you don't see theirs", "ఆఫ్: మీరు ఎప్పుడు ఆన్‌లైన్‌లో ఉన్నారో ఎవరికీ తెలియదు, మీకూ వాళ్ళది కనిపించదు"), db.kv("set:seen") != "0") { on ->
             db.setKv("set:seen", if (on) "1" else "0")
             Thread { ChatSync.api(store, "POST", "/api/chat/privacy", JSONObject().put("seen", on).toString()) }.start()
         }
-        toggle("✓✓", t("Read receipts (blue ticks)", "చదివిన గుర్తు (నీలి టిక్కులు)"), t("Off: people don't see when you read their messages", "ఆఫ్: మీరు చదివారని ఇతరులకు తెలియదు"), ChatTheme.receiptsOn(this)) { db.setKv("set:receipts", if (it) "1" else "0") }
-        item("⭕", t("Status privacy", "స్టేటస్ గోప్యత"), when (ChatStatus.privacy(this).first) { "except" -> t("Everyone I chat with, except some", "అందరూ, కొందరు తప్ప"); "only" -> t("Only the people I chose", "నేను ఎంచుకున్నవాళ్ళు మాత్రమే"); else -> t("Everyone I chat with", "నేను చాట్ చేసే అందరూ") }) { ChatStatus.privacyDialog(this, store) }
-        item("⏱", t("Default message timer", "కొత్త చాట్‌లకు టైమర్"), t("New chats you start: ", "మీరు మొదలుపెట్టే కొత్త చాట్‌లు: ") + ChatTheme.timerText(ChatTheme.defaultTimer(this), te)) { pickTimer() }
-        toggle("🔒", t("Lock the locked chats", "లాక్ చేసిన చాట్‌లకు లాక్"), t("Open 🔒 Locked chats with your fingerprint or phone lock", "🔒 లాక్ చేసిన చాట్‌లను వేలిముద్ర లేదా ఫోన్ లాక్‌తో తెరవండి"), ChatTheme.lockHidden(this)) { db.setKv("set:lock", if (it) "1" else "0") }
+        toggle(R.drawable.ic_ticks, 4, t("Read receipts (blue ticks)", "చదివిన గుర్తు (నీలి టిక్కులు)"), t("Off: people don't see when you read their messages", "ఆఫ్: మీరు చదివారని ఇతరులకు తెలియదు"), ChatTheme.receiptsOn(this)) { db.setKv("set:receipts", if (it) "1" else "0") }
+        item(R.drawable.ic_status, 1, t("Status privacy", "స్టేటస్ గోప్యత"), when (ChatStatus.privacy(this).first) { "except" -> t("Everyone I chat with, except some", "అందరూ, కొందరు తప్ప"); "only" -> t("Only the people I chose", "నేను ఎంచుకున్నవాళ్ళు మాత్రమే"); else -> t("Everyone I chat with", "నేను చాట్ చేసే అందరూ") }) { ChatStatus.privacyDialog(this, store) }
+        item(R.drawable.ic_timer, 2, t("Default message timer", "కొత్త చాట్‌లకు టైమర్"), t("New chats you start: ", "మీరు మొదలుపెట్టే కొత్త చాట్‌లు: ") + ChatTheme.timerText(ChatTheme.defaultTimer(this), te)) { pickTimer() }
+        toggle(R.drawable.ic_lock, 0, t("Lock the locked chats", "లాక్ చేసిన చాట్‌లకు లాక్"), t("Open Locked chats with your fingerprint or phone lock", "లాక్ చేసిన చాట్‌లను వేలిముద్ర లేదా ఫోన్ లాక్‌తో తెరవండి"), ChatTheme.lockHidden(this)) { db.setKv("set:lock", if (it) "1" else "0") }
         val blocked = db.convs().filter { it.blocked && !it.isGroup }
-        item("🚫", t("Blocked people", "బ్లాక్ చేసినవాళ్ళు"), if (blocked.isEmpty()) t("None", "ఎవరూ లేరు") else blocked.joinToString(", ") { it.name }) { blockedList() }
-        line()
+        item(R.drawable.ic_close, 3, t("Blocked people", "బ్లాక్ చేసినవాళ్ళు"), if (blocked.isEmpty()) t("None", "ఎవరూ లేరు") else blocked.joinToString(", ") { it.name }) { blockedList() }
         head(t("Storage and data", "స్టోరేజ్, డేటా"))
         val dl = ChatTheme.autoDl(this)
-        item("⬇", t("Download videos and documents", "వీడియోలు, ఫైల్స్ డౌన్‌లోడ్"), when (dl) { "always" -> t("Always (also on mobile data)", "ఎప్పుడూ (మొబైల్ డేటాలో కూడా)"); "never" -> t("Only when I tap", "నేను నొక్కినప్పుడు మాత్రమే"); else -> t("On Wi-Fi (small ones always)", "Wi-Fi లో (చిన్నవి ఎప్పుడూ)") }) { pickDl() }
+        item(R.drawable.ic_download, 4, t("Download videos and documents", "వీడియోలు, ఫైల్స్ డౌన్‌లోడ్"), when (dl) { "always" -> t("Always (also on mobile data)", "ఎప్పుడూ (మొబైల్ డేటాలో కూడా)"); "never" -> t("Only when I tap", "నేను నొక్కినప్పుడు మాత్రమే"); else -> t("On Wi-Fi (small ones always)", "Wi-Fi లో (చిన్నవి ఎప్పుడూ)") }) { pickDl() }
         val used = try { ChatSync.dir(this).listFiles()?.sumOf { it.length() } ?: 0L } catch (e: Exception) { 0L }
-        item("💾", t("Manage storage", "స్టోరేజ్ నిర్వహణ"), t("Photos, videos and files take %.1f MB. Tap to free up space (the messages stay).", "ఫోటోలు, వీడియోలు, ఫైల్స్ %.1f MB వాడుతున్నాయి. ఖాళీ చేయడానికి నొక్కండి (మెసేజ్‌లు ఉంటాయి).").format(java.util.Locale.ENGLISH, used / 1_000_000.0)) { freeSpace() }
-        item("🧹", t("Clear all chats on this phone", "ఈ ఫోన్‌లో అన్ని చాట్‌లు క్లియర్"), t("Messages, photos and files here; chats stay in the list", "ఇక్కడి మెసేజ్‌లు, ఫోటోలు, ఫైల్స్")) { clearAll() }
-        line()
+        item(R.drawable.ic_archive, 7, t("Manage storage", "స్టోరేజ్ నిర్వహణ"), t("Photos, videos and files take %.1f MB. Tap to free up space (the messages stay).", "ఫోటోలు, వీడియోలు, ఫైల్స్ %.1f MB వాడుతున్నాయి. ఖాళీ చేయడానికి నొక్కండి (మెసేజ్‌లు ఉంటాయి).").format(java.util.Locale.ENGLISH, used / 1_000_000.0)) { freeSpace() }
+        item(R.drawable.ic_trash, 3, t("Clear all chats on this phone", "ఈ ఫోన్‌లో అన్ని చాట్‌లు క్లియర్"), t("Messages, photos and files here; chats stay in the list", "ఇక్కడి మెసేజ్‌లు, ఫోటోలు, ఫైల్స్")) { clearAll() }
         head(t("About", "గురించి"))
-        box.addView(ui.text(t("🔒 Habit Chat is locked end to end: messages, photos, files and calls are locked on your phone and opened only on the phones of the people in the chat. Habit's server only passes them on and deletes them once delivered. Calls go straight between the phones (or through Habit's relay, still locked).",
-            "🔒 Habit చాట్ ఎండ్ టు ఎండ్ లాక్: మెసేజ్‌లు, ఫోటోలు, ఫైల్స్, కాల్స్ మీ ఫోన్‌లోనే లాక్ అవుతాయి, చాట్‌లో ఉన్నవాళ్ళ ఫోన్‌లలో మాత్రమే తెరుచుకుంటాయి. Habit సర్వర్ వాటిని అందించి, అందాక తొలగిస్తుంది."), 13.5f, C.SUB).apply { setPadding(dp(4), dp(6), dp(4), dp(6)) })
+        rows().addView(ui.text(t("🔒 Habit Chat is locked end to end: messages, photos, files and calls are locked on your phone and opened only on the phones of the people in the chat. Habit's server only passes them on and deletes them once delivered. Calls go straight between the phones (or through Habit's relay, still locked).",
+            "🔒 Habit చాట్ ఎండ్ టు ఎండ్ లాక్: మెసేజ్‌లు, ఫోటోలు, ఫైల్స్, కాల్స్ మీ ఫోన్‌లోనే లాక్ అవుతాయి, చాట్‌లో ఉన్నవాళ్ళ ఫోన్‌లలో మాత్రమే తెరుచుకుంటాయి. Habit సర్వర్ వాటిని అందించి, అందాక తొలగిస్తుంది."), 13.5f, C.SUB).apply { setPadding(dp(16), dp(12), dp(16), dp(12)) })
     }
 
-    private fun head(s: String) = box.addView(ui.text(s, 13.5f, C.GOLD, bold = true).apply { setPadding(dp(4), dp(16), dp(4), dp(4)) })
-    private fun line() = box.addView(View(this).apply { setBackgroundColor(C.LINE) }, LinearLayout.LayoutParams(-1, 1).apply { topMargin = dp(6) })
+    /** The card the next rows go into (each heading starts a new one). */
+    private var card: LinearLayout? = null
+    private fun head(s: String) {
+        box.addView(ui.text(s.uppercase(java.util.Locale.getDefault()), 12f, C.GOLD_TXT).apply { typeface = Fonts.heavy(context); letterSpacing = 0.07f; setPadding(dp(6), dp(22), dp(6), dp(8)) })
+        card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = C.round(C.CARD, dp(22).toFloat(), C.EDGE, dp(1)); setPadding(0, dp(4), 0, dp(4)); clipToOutline = true }
+        box.addView(card, LinearLayout.LayoutParams(-1, -2))
+    }
+    private fun rows() = card ?: box
+    /** A small rounded tile with a coloured icon (tint: 0 gold · 1 teal · 2 lilac · 3 coral · 4 sky · 5 green · 6 pink · 7 orange). */
+    private fun tile(res: Int, tint: Int): View {
+        val (bg, fg) = C.TINTS[tint]
+        return Ico.view(this, res, fg, 19, 38, "", C.round(bg, dp(12).toFloat()))
+    }
 
-    private fun item(icon: String, title: String, sub: String, onClick: () -> Unit) {
-        box.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(12), dp(4), dp(12))
-            addView(ui.text(icon, 19f, C.TXT).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(40), -2))
+    private fun item(res: Int, tint: Int, title: String, sub: String, onClick: () -> Unit) {
+        rows().addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(11), dp(12), dp(11)); background = Ico.rowRipple(context)
+            addView(tile(res, tint), LinearLayout.LayoutParams(dp(38), dp(38)))
             addView(LinearLayout(this@ChatSettingsActivity).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0)
-                addView(ui.text(title, 16f, C.TXT))
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(6), 0)
+                addView(ui.text(title, 15.5f, C.TXT).apply { typeface = Fonts.semi(context) })
                 addView(ui.text(sub, 13f, C.SUB).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END })
             }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(Ico.view(this@ChatSettingsActivity, R.drawable.ic_chevron_right, C.SUB, 18, 24, ""), LinearLayout.LayoutParams(dp(24), dp(24)))
             setOnClickListener { onClick() }
         })
     }
 
-    private fun toggle(icon: String, title: String, sub: String, on: Boolean, change: (Boolean) -> Unit) {
-        box.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(10), dp(4), dp(10))
-            addView(ui.text(icon, 17f, C.TXT).apply { gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD }, LinearLayout.LayoutParams(dp(40), -2))
+    private fun toggle(res: Int, tint: Int, title: String, sub: String, on: Boolean, change: (Boolean) -> Unit) {
+        rows().addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(10), dp(10), dp(10)); background = Ico.rowRipple(context)
+            addView(tile(res, tint), LinearLayout.LayoutParams(dp(38), dp(38)))
             addView(LinearLayout(this@ChatSettingsActivity).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, dp(8), 0)
-                addView(ui.text(title, 16f, C.TXT))
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(8), 0)
+                addView(ui.text(title, 15.5f, C.TXT).apply { typeface = Fonts.semi(context) })
                 addView(ui.text(sub, 13f, C.SUB))
             }, LinearLayout.LayoutParams(0, -2, 1f))
             val sw = Switch(this@ChatSettingsActivity).apply {
                 isChecked = on
-                thumbTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(C.GOLD, Color.parseColor("#C9CEE6")))
-                trackTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(C.GOLD_DARK, Color.parseColor("#4A5288")))
+                thumbTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(C.PRIMARY, if (C.dark) Color.parseColor("#C9CEE6") else Color.WHITE))
+                trackTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf((C.PRIMARY and 0x00FFFFFF) or (0x80 shl 24), if (C.dark) Color.parseColor("#4A5288") else Color.parseColor("#C9CEE0")))
                 setOnCheckedChangeListener { _, c -> change(c) }
             }
             addView(sw)
@@ -138,9 +150,20 @@ class ChatSettingsActivity : Activity() {
         })
     }
 
+    private fun themeName(k: String) = when (k) { "dark" -> t("Navy and gold (dark)", "నేవీ, బంగారు (డార్క్)"); "light" -> t("Clean light", "తెలుపు (లైట్)"); else -> t("Automatic: follows the phone's dark mode", "ఆటోమేటిక్: ఫోన్ డార్క్ మోడ్‌ని బట్టి") }
+    /** Theme: automatic (the phone's dark mode), navy and gold, or clean light. The open screens change at once. */
+    private fun pickTheme() {
+        val keys = listOf("auto", "dark", "light")
+        AlertDialog.Builder(this).setTitle(t("Theme", "థీమ్"))
+            .setSingleChoiceItems(keys.map { themeName(it) }.toTypedArray(), keys.indexOf(ChatTheme.mode(this)).coerceAtLeast(0)) { d, i ->
+                d.dismiss()
+                if (keys[i] != ChatTheme.mode(this)) { db.setKv("set:theme", keys[i]); ChatSync.changed(); recreate() }
+            }.setNegativeButton(t("Close", "మూసివేయి"), null).show()
+    }
+
     private fun pickWall() {
         val walls = ChatTheme.WALLS
-        val cur = db.kv("set:wall").toIntOrNull() ?: 0
+        val cur = db.kv("set:wall").toIntOrNull() ?: ChatTheme.DEFAULT_WALL
         AlertDialog.Builder(this).setTitle(t("🎨 Wallpaper for all chats", "🎨 అన్ని చాట్‌లకు వాల్‌పేపర్"))
             .setSingleChoiceItems(walls.map { if (te) it.te else it.en }.toTypedArray(), walls.indexOfFirst { it.id == cur }) { d, i ->
                 db.setKv("set:wall", walls[i].id.toString()); d.dismiss(); draw()

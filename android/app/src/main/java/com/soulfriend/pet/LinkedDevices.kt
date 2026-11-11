@@ -196,18 +196,20 @@ class LinkedDevicesActivity : Activity() {
     private var busy: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ChatTheme.apply(this)
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this)
-        window.statusBarColor = C.NAVY
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(C.NAVY); fitsSystemWindows = true }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; fitsSystemWindows = true }
+        root.background = ChatTheme.Backdrop(root, C.BG, C.BG)
         root.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(8), dp(12), dp(8)); setBackgroundColor(C.BAR)
-            addView(TextView(this@LinkedDevicesActivity).apply { text = "←"; textSize = 22f; setTextColor(C.TXT); gravity = Gravity.CENTER; contentDescription = t("Back", "వెనక్కి"); setOnClickListener { finish() } }, LinearLayout.LayoutParams(dp(48), dp(48)))
-            addView(ui.text("💻 " + t("Linked devices", "లింక్ చేసిన పరికరాలు"), 19f, C.TXT, bold = true))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(6), dp(12), dp(6)); minimumHeight = dp(60)
+            addView(Ico.view(this@LinkedDevicesActivity, R.drawable.ic_back, C.TXT, 22, 48, t("Back", "వెనక్కి")) { finish() })
+            addView(ui.text(t("Linked devices", "లింక్ చేసిన పరికరాలు"), 22f, C.TXT).apply { typeface = Fonts.heavy(context); setPadding(dp(4), 0, 0, 0) })
         })
         box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(10), dp(16), dp(32)) }
         root.addView(ScrollView(this).apply { addView(box) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        ChatTheme.bars(this, C.BG, C.BG)
         draw(); refresh()
         intent.getStringExtra("qr")?.let { if (it.isNotBlank()) onQrText(it) }
     }
@@ -221,26 +223,28 @@ class LinkedDevicesActivity : Activity() {
         box.removeAllViews()
         // the picture and the button
         box.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(18), dp(22), dp(18), dp(20)); background = C.round(C.CARD, dp(20).toFloat())
-            addView(ui.text("💻 📱", 44f, C.TXT).apply { gravity = Gravity.CENTER })
-            addView(ui.text(t("Use Habit Chat on your computer", "మీ కంప్యూటర్‌లో Habit చాట్ వాడండి"), 18f, C.GOLD, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(6)) })
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(18), dp(22), dp(18), dp(20)); background = C.round(C.CARD, dp(24).toFloat(), C.EDGE, dp(1))
+            addView(Ico.view(this@LinkedDevicesActivity, R.drawable.ic_media, C.TINTS[0].second, 34, 72, "", C.round(C.TINTS[0].first, dp(24).toFloat())), LinearLayout.LayoutParams(dp(72), dp(72)))
+            addView(ui.text(t("Use Habit Chat on your computer", "మీ కంప్యూటర్‌లో Habit చాట్ వాడండి"), 18f, C.TXT).apply { typeface = Fonts.heavy(context) }.apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(6)) })
             addView(ui.text(t("1. On the computer, open  bigdai.tech/web\n2. Tap \"Link a computer\" below and take a photo of the QR code on its screen.",
                 "1. కంప్యూటర్‌లో  bigdai.tech/web  తెరవండి\n2. కింద \"కంప్యూటర్ లింక్ చేయండి\" నొక్కి, స్క్రీన్ మీది QR కోడ్ ఫోటో తీయండి."), 15f, C.TXT))
             addView(TextView(this@LinkedDevicesActivity).apply {
-                text = "🔗  " + t("Link a computer", "కంప్యూటర్ లింక్ చేయండి"); textSize = 16f; setTextColor(C.NAVY); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(16), dp(13), dp(16), dp(13)); background = C.round(C.GOLD, dp(26).toFloat()); setOnClickListener { scan() }
+                text = t("Link a computer", "కంప్యూటర్ లింక్ చేయండి"); textSize = 16f; setTextColor(C.ON_PRIMARY); typeface = Fonts.heavy(context); gravity = Gravity.CENTER
+                setCompoundDrawablesRelative(Ico.d(context, R.drawable.ic_scan, C.ON_PRIMARY, dp(20)), null, null, null); compoundDrawablePadding = dp(8)
+                setPadding(dp(18), dp(14), dp(18), dp(14)); background = C.round(C.PRIMARY, dp(26).toFloat()); setOnClickListener { scan() }
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         // the computers
-        box.addView(ui.text(t("LINKED COMPUTERS", "లింక్ అయిన కంప్యూటర్లు"), 12.5f, C.GOLD, bold = true).apply { letterSpacing = 0.06f; setPadding(dp(4), dp(22), dp(4), dp(6)) })
+        box.addView(ui.text(t("LINKED COMPUTERS", "లింక్ అయిన కంప్యూటర్లు"), 12f, C.GOLD_TXT).apply { typeface = Fonts.heavy(context); letterSpacing = 0.07f; setPadding(dp(4), dp(22), dp(4), dp(6)) })
         val list = devices
         when {
             loading && list == null -> box.addView(ui.text(t("Loading…", "చూస్తున్నాం…"), 14.5f, C.SUB).apply { setPadding(dp(4), dp(6), dp(4), dp(6)) })
             list == null -> box.addView(ui.text(t("No connection. Check your internet.", "కనెక్షన్ లేదు. ఇంటర్నెట్ చూడండి.") + "  ↻", 14.5f, C.DANGER).apply { setPadding(dp(4), dp(6), dp(4), dp(6)); setOnClickListener { refresh() } })
             list.isEmpty() -> box.addView(ui.text(t("No computers yet.", "ఇంకా కంప్యూటర్లు లేవు."), 14.5f, C.SUB).apply { setPadding(dp(4), dp(6), dp(4), dp(6)) })
             else -> for (d in list) box.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(12), dp(10), dp(12)); background = C.round(C.BAR, dp(14).toFloat())
-                addView(ui.text(if (d.name.contains("Android") || d.name.contains("iOS")) "📱" else "💻", 24f, C.TXT).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(44), -2))
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(12), dp(10), dp(12)); background = C.round(C.CARD, dp(20).toFloat(), C.EDGE, dp(1))
+                addView(if (d.name.contains("Android") || d.name.contains("iOS")) ui.text("📱", 22f, C.TXT).apply { gravity = Gravity.CENTER; background = C.round(C.CARD2, dp(14).toFloat()) }
+                    else Ico.view(this@LinkedDevicesActivity, R.drawable.ic_media, C.TXT, 22, 44, "", C.round(C.CARD2, dp(14).toFloat())), LinearLayout.LayoutParams(dp(44), dp(44)))
                 addView(LinearLayout(this@LinkedDevicesActivity).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(dp(8), 0, dp(8), 0)
                     addView(ui.text(d.name, 16f, C.TXT, bold = true))
@@ -248,8 +252,8 @@ class LinkedDevicesActivity : Activity() {
                     addView(ui.text(if (System.currentTimeMillis() - seen < 90_000) t("Active now", "ఇప్పుడు వాడుతున్నారు") else t("Last active ", "చివరిగా ") + LinkedDevices.whenText(seen, te), 13f, C.SUB))
                 }, LinearLayout.LayoutParams(0, -2, 1f))
                 addView(TextView(this@LinkedDevicesActivity).apply {
-                    text = t("Log out", "లాగ్ అవుట్"); textSize = 13.5f; setTextColor(C.DANGER); typeface = Typeface.DEFAULT_BOLD
-                    setPadding(dp(12), dp(8), dp(12), dp(8)); background = C.round(C.CARD, dp(16).toFloat(), C.DANGER)
+                    text = t("Log out", "లాగ్ అవుట్"); textSize = 13.5f; setTextColor(C.DANGER); typeface = Fonts.bold(context)
+                    setPadding(dp(14), dp(9), dp(14), dp(9)); background = C.round(android.graphics.Color.TRANSPARENT, dp(18).toFloat(), C.DANGER, dp(1))
                     setOnClickListener { askLogout(d) }
                 })
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })

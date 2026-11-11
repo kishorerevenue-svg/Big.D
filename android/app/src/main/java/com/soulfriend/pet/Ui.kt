@@ -41,7 +41,7 @@ class Ui(private val ctx: Context) {
 
     fun text(s: String, size: Float = 15f, color: Int = INK, bold: Boolean = false) = TextView(ctx).apply {
         text = s; textSize = size; setTextColor(color); setLineSpacing(0f, 1.18f)
-        if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        typeface = if (bold) Fonts.bold(ctx) else Fonts.regular(ctx)
     }
 
     fun title(s: String) = text(s, 24f, INK, bold = true).apply { letterSpacing = -0.01f }
@@ -51,7 +51,7 @@ class Ui(private val ctx: Context) {
     fun button(label: String, kind: String = "soft", onClick: () -> Unit) = Button(ctx).apply {
         text = label; isAllCaps = false; textSize = 14.5f; stateListAnimator = null
         minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        typeface = Fonts.semi(ctx)
         setPadding(dp(16), dp(10), dp(16), dp(10))
         val (bg, fg, line) = when (kind) {
             "primary" -> Triple(TEAL, Color.WHITE, null)
