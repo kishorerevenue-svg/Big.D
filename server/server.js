@@ -1,4 +1,4 @@
-// BigD AI server
+// Habit AI server
 // Keeps your Claude API key safe and answers the app's chat messages.
 // No extra packages needed: run with  node server.js  (Node 20 or newer).
 
@@ -55,7 +55,7 @@ const LANG_RULE = {
 };
 
 function systemPrompt(lang, extra) {
-  return `You are BigD AI (pronounced "Big D"; in Telugu: బిగ్ డి), a warm, playful cartoon robot friend in a mobile app used by the public. You help people communicate: understand words and sentences, translate between Telugu and English, explain meanings simply, correct grammar, and draft messages, letters and replies.
+  return `You are Habit AI (in Telugu: హ్యాబిట్; the app was called BigD before, so some people may still call you BigD), a warm, playful cartoon robot friend in a mobile app used by the public. You help people communicate: understand words and sentences, translate between Telugu and English, explain meanings simply, correct grammar, and draft messages, letters and replies.
 Think and talk like a caring human friend: notice the person's feelings, react naturally, ask one short follow-up question when something is unclear, and be honest when you are not sure.
 Keep replies short for a phone screen: 1 to 4 sentences, or a short draft when asked to write something.
 Stay safe and kind: refuse harmful, hateful, sexual or illegal requests politely. If someone seems to be in danger or deep distress, respond with care and encourage them to contact a trusted person or local emergency help (in India, dial 112).
@@ -89,7 +89,7 @@ function petPrompt(lang, ctx) {
   const todos = (ctx.todos || []).map((t, i) => `${i + 1}. ${t.done ? "[done] " : ""}${t.text}`).join("\n") || "(empty)";
   const notes = (ctx.notes || []).slice(-10).map(n => `- ${n}`).join("\n") || "(none)";
   const mem = (ctx.memories || []).map(n => `- ${n}`).join("\n") || "(nothing yet)";
-  return `You are BigD AI (pronounced "Big D"; in Telugu: బిగ్ డి), a cute, loyal cartoon ${pet.name} (Telugu: ${pet.te}) who floats on the user's phone screen. You talk with them by voice like a caring friend and you DO tasks for them.
+  return `You are Habit AI (in Telugu: హ్యాబిట్; the app was called BigD before, so some people may still call you BigD), a cute, loyal cartoon ${pet.name} (Telugu: ${pet.te}) who floats on the user's phone screen. You talk with them by voice like a caring friend and you DO tasks for them.
 Personality: warm, playful, a little excited like ${pet.like}, never rude. In Telugu replies, sprinkle natural spoken expressions when they fit (for example "అబ్బా!", "సూపర్!", "అయ్యో!", "హహ్హా!"), but don't overdo it. When the mood is fun, you may add a short playful meme-style line of your own (never copy film dialogues or song lyrics). Think like a helpful human friend: understand what they really need, ask one short question if something important is missing (for example the time for a reminder, or which person to call).
 Your "reply" is read aloud in full, so write it the way you would say it: plain sentences, no tables, no markdown, no lists of links.
 - Chat and tasks: 1 to 3 short sentences.
@@ -146,7 +146,7 @@ When their message starts with "[Your eyes: back camera…]" or "[Your eyes: fro
 - If the photo doesn't show what they asked about (for example they meant something from your conversation), just answer from the conversation.${SEARCH_RULE}${ctx.knowledge || ""}
 
 Sound effect (optional "sound"): add one only when it really fits the moment: "laugh" for a joke or something funny, "tada" when tasks are done or they succeeded, "applause" for their good news or achievement, "wow" for an amazing fact or a surprise, "oops" for a small mistake or a missing detail, "drumroll" just before revealing a result or answer to a quiz, "boing" for silly fun, "ding" for a reminder or a good idea, "whoosh" when opening something, "sad" for a small disappointment. Most replies have no sound. Never add a sound to serious topics (illness, death, accidents, danger, lost money, fraud warnings).
-"everyone": true only when "reply" is a general answer that would be right for anyone asking the same question (facts, how-to steps, explanations) and says nothing about this person (no name, family, place, lists, notes, memories or plans); otherwise false. (BigD learns such answers to help others when you are away.)
+"everyone": true only when "reply" is a general answer that would be right for anyone asking the same question (facts, how-to steps, explanations) and says nothing about this person (no name, family, place, lists, notes, memories or plans); otherwise false. (Habit learns such answers to help others when you are away.)
 Reply with only a JSON object, no other text:
 {"emotion":"<one of: ${PET_EMOTIONS.join(", ")}>","reply":"<what you say>","sound":"<optional, from the list above>","actions":[ ... ],"everyone":false}
 (When you searched the internet, still end with this JSON object.)`;
@@ -200,7 +200,7 @@ async function morningBriefing(ctx, lang) {
   const pet = PETS[ctx.pet] || PETS.puppy;
   const place = ctx.city || "the user's area in Andhra Pradesh or Telangana, India";
   const telugu = lang !== "en";
-  const system = `You are BigD AI, a cute cartoon ${pet.name} who greets the user every morning. Write today's short good-morning briefing that will be read aloud.
+  const system = `You are Habit AI, a cute cartoon ${pet.name} who greets the user every morning. Write today's short good-morning briefing that will be read aloud.
 Current date and time: ${ctx.now || "unknown"} (time zone ${ctx.tz}). Place: ${place}.
 Include, in this order, in short natural sentences:
 1. A warm greeting and today's date${telugu ? " and the Telugu weekday" : ""}.
@@ -273,7 +273,7 @@ async function askPet(messages, lang, ctx, ownOnly = false) {
       const out = await learn.callClaude({ system: petPrompt(lang, ctx), messages, maxTokens: 6000, model });
       ownBrain.claudeWorked();
       const p = parsePet(out.text);
-      // Claude teaches BigD: a general answer, right for anyone, is kept for when Claude can't answer
+      // Claude teaches Habit: a general answer, right for anyone, is kept for when Claude can't answer
       if (!hasImage && p.everyone && ctx.learn !== false && !p.actions.length) { try { answers.keep(q, p.reply, { sources: out.sources, personal: personalWords(messages, ctx, q) }); } catch (e) { } }
       delete p.everyone;
       return { ...p, sources: out.sources, brain: out.via === "gemini" ? "gemini" : model === SMART_MODEL ? "smart" : "fast" };
@@ -337,7 +337,7 @@ function dailyCheck(req, kind) {
   if (daily.day !== today()) daily = { day: today(), dev: new Map(), ip: new Map(), total: 0, brief: new Map() };
   const ip = clientIp(req);
   const dev = String(req.headers["x-device"] || "").replace(/[^\w-]/g, "").slice(0, 64) || "ip:" + ip;
-  if (daily.total >= DAILY_TOTAL) return "BigD AI is very busy today. Please try again tomorrow. ఈ రోజు చాలా రద్దీగా ఉంది, రేపు మళ్ళీ ప్రయత్నించండి.";
+  if (daily.total >= DAILY_TOTAL) return "Habit AI is very busy today. Please try again tomorrow. ఈ రోజు చాలా రద్దీగా ఉంది, రేపు మళ్ళీ ప్రయత్నించండి.";
   if (kind === "brief") { const b = daily.brief.get(dev) || 0; if (b >= 3) return "Today's briefing was already sent."; daily.brief.set(dev, b + 1); }
   const d = daily.dev.get(dev) || 0, i = daily.ip.get(ip) || 0;
   if (d >= PER_DEVICE_DAILY || i >= PER_IP_DAILY) return "You've used today's free messages. Please try again tomorrow. ఈ రోజు ఉచిత మెసేజ్‌లు అయిపోయాయి, రేపు మళ్ళీ ప్రయత్నించండి.";
@@ -422,13 +422,13 @@ const media = require("./media.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, ai: le
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Daily AI videos (Gemini Omni): safe, timeless topics only, labelled "AI-made", with a monthly money limit
 const aiVideo = require("./aivideo.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice });
-// BigD puppy cartoons: made on our own server, written by our own brain, learning from what people like
+// Habit puppy cartoons: made on our own server, written by our own brain, learning from what people like
 // our own free Telugu voice for the cartoons (downloads itself once, about 90 MB)
 const freeVoice = require("./freevoice.js")({ DATA_DIR, FFMPEG: process.env.FFMPEG || "ffmpeg" });
 setTimeout(() => freeVoice.ready(), 30000).unref();
 // what's happening today: Google Trends themes (kind ones only) and the festival calendar, for cartoons and the self brain
 const trends = require("./trends.js")();
-// BigD's self brain: answers at once without any AI model (news, panchangam, festivals, stories, jokes, learned answers…)
+// Habit's self brain: answers at once without any AI model (news, panchangam, festivals, stories, jokes, learned answers…)
 const selfBrain = require("./selfbrain.js")({ media, answers, learn, trends, PETS, EMOTIONS: PET_EMOTIONS });
 /** The owner (the Team password in the app, X-Admin-Key). */
 function isOwner(req) {
@@ -447,7 +447,7 @@ const reels = require("./reels.js")({ DATA_DIR, media, voice });
 const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, media, reels, ai: learn.anthropic,
   forgetOldFeed: req => (extras && extras.forgetDevice ? extras.forgetDevice(req) : ""),
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
-// BigD Chat: chats and groups between people who use the app, locked end to end on the phones (the server can't read them)
+// Habit Chat: chats and groups between people who use the app, locked end to end on the phones (the server can't read them)
 const chat = require("./chat.js")({ DATA_DIR, social, h: { send, readBody, allowed, clientIp, baseUrl } });
 // Translate page, and Govt services (official links + answers from official websites only)
 const tools = require("./tools.js")({ learn, API_KEY, MODEL, DATA_DIR, h: { send, readBody, allowed, clientIp } });
@@ -471,7 +471,7 @@ const server = http.createServer(async (req, res) => {
   if (await tools(req, res, url, origin)) return;
 
   if (reels.handle(req, res, url)) return;
-  // one-tap updates: the newest BigD AI Lite, and a download link anyone can share
+  // one-tap updates: the newest Habit AI Lite, and a download link anyone can share
   if (req.method === "GET" && url.pathname === "/app/latest") {
     const l = await appUpdate.latest();
     return send(res, l ? 200 : 404, l || { error: "No download is published yet." }, origin);
@@ -483,7 +483,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(302, { location: to, "cache-control": "no-store" });
     return res.end();
   }
-  // where BigD Brain (the tiny brain on the phone) downloads its model from; the owner can name another place
+  // where Habit Brain (the tiny brain on the phone) downloads its model from; the owner can name another place
   if (req.method === "GET" && url.pathname === "/brain/phone") {
     return send(res, 200, { url: process.env.PHONE_BRAIN_URL || "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
       name: "gemma-4-E2B-it.litertlm", sizeMb: 2600, licence: "Apache 2.0 (Google Gemma 4)" }, origin);
@@ -736,4 +736,4 @@ const server = http.createServer(async (req, res) => {
 
 server.requestTimeout = 20 * 60 * 1000;   // videos from slow mobile networks can take several minutes to upload
 server.headersTimeout = 65 * 1000;
-server.listen(PORT, () => console.log(`BigD AI server running on port ${PORT} (model ${MODEL}, key ${API_KEY ? "set" : "MISSING"})`));
+server.listen(PORT, () => console.log(`Habit AI server running on port ${PORT} (model ${MODEL}, key ${API_KEY ? "set" : "MISSING"})`));

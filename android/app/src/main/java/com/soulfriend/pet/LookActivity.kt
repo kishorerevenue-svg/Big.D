@@ -136,8 +136,8 @@ class LookActivity : Activity() {
         if (requestCode != REQ_CAMERA) return
         asking = false
         if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) open()
-        else done(null, if (te) "చూడటానికి కెమెరా అనుమతి కావాలి. Settings › Apps › BigD AI › Permissions లో Camera ఆన్ చేయండి."
-                        else "I need the camera permission to look. Turn on Camera in Settings › Apps › BigD AI › Permissions.")
+        else done(null, if (te) "చూడటానికి కెమెరా అనుమతి కావాలి. Settings › Apps › Habit AI › Permissions లో Camera ఆన్ చేయండి."
+                        else "I need the camera permission to look. Turn on Camera in Settings › Apps › Habit AI › Permissions.")
     }
 
     private fun open() {

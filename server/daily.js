@@ -5,7 +5,7 @@
 const panchang = require("./panchang.js");
 
 module.exports = function makeDaily({ getJson }) {
-  const get = getJson || (async (u, ms = 12000) => { const r = await fetch(u, { headers: { "user-agent": "BigD-AI/1.0" }, signal: AbortSignal.timeout(ms) }); if (!r.ok) throw new Error(u.split("?")[0] + " said " + r.status); return r.json(); });
+  const get = getJson || (async (u, ms = 12000) => { const r = await fetch(u, { headers: { "user-agent": "Habit-AI/1.0" }, signal: AbortSignal.timeout(ms) }); if (!r.ok) throw new Error(u.split("?")[0] + " said " + r.status); return r.json(); });
   const istDate = (plusDays = 0) => new Date(Date.now() + 5.5 * 3600e3 + plusDays * 86400e3).toISOString().slice(0, 10);
   const MONTH = ["జనవరి", "ఫిబ్రవరి", "మార్చి", "ఏప్రిల్", "మే", "జూన్", "జూలై", "ఆగస్టు", "సెప్టెంబర్", "అక్టోబర్", "నవంబర్", "డిసెంబర్"];
   const nice = d => { const [, m, dd] = d.split("-").map(Number); return `${dd} ${MONTH[m - 1]}`; };

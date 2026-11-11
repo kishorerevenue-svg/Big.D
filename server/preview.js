@@ -47,7 +47,7 @@ async function preview(u, opts = {}) {
     let at = url, r = null;
     for (let hop = 0; hop < 5; hop++) {
       if (!(await publicHost(at))) return out;
-      r = await fetch(at, { redirect: "manual", signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 (compatible; BigDAI-preview/1.0; +https://bigdai.tech)", "Accept": "text/html" } });
+      r = await fetch(at, { redirect: "manual", signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 (compatible; HabitAI-preview/1.0; +https://bigdai.tech)", "Accept": "text/html" } });
       const loc = r.status >= 300 && r.status < 400 && r.headers.get("location");
       if (!loc) break;
       try { await r.body?.cancel(); } catch (e) { }

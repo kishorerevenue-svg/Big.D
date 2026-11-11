@@ -190,7 +190,7 @@ class LetterHelper(private val m: MainActivity) {
             put(ui.button("➜ Next: ask me the details", "primary") { plan() }, 14)
         }, 12)
         officeCard()
-        m.add(ui.text("Papers you add are read by Claude AI only to write this document, and kept on the BigD server only until it is made (at most 6 hours). " +
+        m.add(ui.text("Papers you add are read by Claude AI only to write this document, and kept on the Habit server only until it is made (at most 6 hours). " +
             "\"Hide personal details\" doesn't cover photos and PDFs. Don't add secret or classified papers, and follow your office's rules on using AI tools.", 12f, Ui.MUTED), 10)
     }
 
@@ -245,7 +245,7 @@ class LetterHelper(private val m: MainActivity) {
         papers.forEachIndexed { i, p -> sec.put(paperRow(p, i), 8) }
         if (addingPaper) sec.put(ui.text("⏳ Getting the paper ready…", 13f, Ui.MUTED), 6)
         if (papers.isNotEmpty()) sec.put(ui.text("${papers.size} of $MAX_PAPERS papers · ${kb(papers.sumOf { it.data.size })} · read by Claude AI only for this letter, " +
-            "and deleted from the BigD server after it is made (at most 6 hours)", 12f, Ui.MUTED), 4)
+            "and deleted from the Habit server after it is made (at most 6 hours)", 12f, Ui.MUTED), 4)
     }
 
     private fun kb(n: Int) = if (n >= 1024 * 1024) String.format(java.util.Locale.ENGLISH, "%.1f MB", n / 1048576f) else "${maxOf(1, n / 1024)} KB"
@@ -575,7 +575,7 @@ class LetterHelper(private val m: MainActivity) {
         val xl = r.optString("format") == "xlsx"
         m.add(ui.card(Ui.TEAL_SOFT).apply {
             addView(ui.text("✅ Your ${if (xl) "Excel file" else "letter"} is ready!", 19f, Ui.TEAL_DARK, bold = true))
-            put(ui.text("$name · saved in Downloads › BigD AI", 13f, Ui.MUTED), 4)
+            put(ui.text("$name · saved in Downloads › Habit AI", 13f, Ui.MUTED), 4)
             put(ui.row(ui.button("Open", "primary") { open(xl) }, ui.button("Share") { share(xl) }), 12)
         }, 12)
         val preview = r.optString("preview")

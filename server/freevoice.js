@@ -43,7 +43,7 @@ module.exports = function makeFreeVoice({ DATA_DIR, FFMPEG = "ffmpeg" }) {
   async function speak(text, who, out) {
     if (!ok) throw new Error("the free voice isn't ready");
     const t = String(text || "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}"“”*_#{}<>[\]\\]/gu, " ")
-      .replace(/BigD/gi, "బిగ్‌డీ").replace(/\s+/g, " ").trim().slice(0, 300);
+      .replace(/\bhabit\b|BigD/gi, "హ్యాబిట్").replace(/\s+/g, " ").trim().slice(0, 300);
     if (!t) throw new Error("nothing to say");
     const [speed, pitch] = STYLE[who] || [1, 1];
     const raw = out + ".raw.wav";

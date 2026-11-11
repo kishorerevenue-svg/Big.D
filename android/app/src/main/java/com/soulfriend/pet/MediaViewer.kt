@@ -424,7 +424,7 @@ class MediaViewer : Activity() {
     private fun share() {
         val cur = items.getOrNull(at) ?: return
         val link = when (cur.kind) { "video" -> "https://youtu.be/${cur.src}"; "short" -> "https://youtube.com/shorts/${cur.src}"; else -> cur.src }
-        val t = listOf(cur.words.take(1200), link, "— ${cur.who.substringBefore("  @")} · BigD AI 🐾 $server").filter { it.isNotBlank() }.joinToString("\n\n")
+        val t = listOf(cur.words.take(1200), link, "— ${cur.who.substringBefore("  @")} · Habit AI 🐾 $server").filter { it.isNotBlank() }.joinToString("\n\n")
         try { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share")) } catch (e: Exception) { }
     }
 

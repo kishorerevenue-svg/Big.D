@@ -4,7 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
 
-/** The pet's little cartoon sounds (tada, laugh, wow…), made for BigD AI from scratch: in assets/sfx. */
+/** The pet's little cartoon sounds (tada, laugh, wow…), made for Habit AI from scratch: in assets/sfx. */
 object SoundFx {
     /** name -> how long it plays (ms), so the voice can start right after it. */
     val LENGTH = mapOf("tada" to 1000, "laugh" to 750, "wow" to 800, "oops" to 550, "sad" to 1700, "applause" to 1300,

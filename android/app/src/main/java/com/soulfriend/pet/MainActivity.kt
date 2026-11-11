@@ -53,7 +53,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 
-/** The BigD AI app: Home, Pet, Tasks, Files, Messages, Vault and Media pages with a bottom menu. */
+/** The Habit AI app: Home, Pet, Tasks, Files, Messages, Vault and Media pages with a bottom menu. */
 class MainActivity : Activity() {
 
     internal lateinit var store: Store
@@ -199,7 +199,7 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent?) { super.onNewIntent(intent); setIntent(intent); handleIntent(intent) }
 
-    /** Opens a page, a letter request from the pet, or something shared to BigD AI from another app. */
+    /** Opens a page, a letter request from the pet, or something shared to Habit AI from another app. */
     private fun handleIntent(i: Intent?) {
         if (i == null) return
         i.getStringExtra("tab")?.let { tab = it }
@@ -207,7 +207,7 @@ class MainActivity : Activity() {
         i.getStringExtra("letter")?.let { tab = "files"; pendingLetter = it; i.removeExtra("letter") }
         val toMedia = i.component?.className?.endsWith(".PostToMedia") == true
         if (toMedia && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
-            // Share › "Post on BigD Media": text, a link (YouTube, Instagram…) or photos
+            // Share › "Post on Habit Media": text, a link (YouTube, Instagram…) or photos
             val t = i.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
             val pics = if (i.type?.startsWith("image/") == true || i.type?.startsWith("video/") == true) sharedImages(i) else emptyList()
             if (t.isNotBlank() || pics.isNotEmpty()) { tab = "feedback"; pendingPost = t to pics }
@@ -232,9 +232,9 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume(); resumedNow = true; leavingForSystemScreen = false; render()
-        ChatSync.hold(this, "main")      // BigD Chat: new messages come at once while the app is open
+        ChatSync.hold(this, "main")      // Habit Chat: new messages come at once while the app is open
         if (BuildConfig.AUTO_CARDS && store.autoCards && AutoCards.allowed(this)) AutoCards.schedule(this)
-        // a new version out? (BigD AI Lite asks the server at most every 6 hours; the card appears on Home)
+        // a new version out? (Habit AI Lite asks the server at most every 6 hours; the card appears on Home)
         if (BuildConfig.SELF_UPDATE) { val had = Updates.waiting(store)?.code; Updates.check(store) { info -> if (info != null && info.code != had && tab == "home" && !isFinishing) render() } }
         if (store.onboarded) {
             if (pendingMirror) { pendingMirror = false; content.postDelayed({ lookAtMe(false) }, 500) }
@@ -460,7 +460,7 @@ class MainActivity : Activity() {
     }
 
     // =================== 1. HOME ===================
-    /** "A new version is ready" on Home (BigD AI Lite only), unless they said "Later" in the last 2 days. */
+    /** "A new version is ready" on Home (Habit AI Lite only), unless they said "Later" in the last 2 days. */
     private fun updateCard(): View? {
         val info = Updates.waiting(store) ?: return null
         if (System.currentTimeMillis() < store.updateLaterUntil) return null
@@ -489,7 +489,7 @@ class MainActivity : Activity() {
         val words = ui.stack(
             ui.text(greetTe, 26f, Color.WHITE, bold = true),
             ui.text(greetEn + " · " + DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.ENGLISH).format(now), 13.5f, Color.parseColor("#CDE8E5")),
-            ui.text("BigD AI · బిగ్ డి", 13.5f, Color.parseColor("#F6D58C"), bold = true).apply { setPadding(0, dp(10), 0, 0) }
+            ui.text("Habit AI · హ్యాబిట్", 13.5f, Color.parseColor("#F6D58C"), bold = true).apply { setPadding(0, dp(10), 0, 0) }
         )
         val pet = PuppyView(this).apply { kind = PuppyView.kindOf(store.petKind); mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }
         hero.addView(LinearLayout(this).apply {
@@ -635,13 +635,13 @@ class MainActivity : Activity() {
         if (BuildConfig.HANDS_FREE) add(handsFreeCard(), 12)
         add(briefingCard(), 12)
 
-        // the tiny brain for no internet (BigD AI Lite: a separate, optional app)
+        // the tiny brain for no internet (Habit AI Lite: a separate, optional app)
         if (BuildConfig.SELF_UPDATE) add(ui.section("📴 Tiny brain for no internet", "An optional small AI that runs on this phone, so your pet can still talk when there is no internet at all. " +
-            "It is a separate app, BigD Brain. It needs a 64-bit phone with about 6 GB memory, and the brain is about 2.6 GB (downloaded once, over Wi-Fi). Nothing you ask it leaves the phone.").apply {
+            "It is a separate app, Habit Brain. It needs a 64-bit phone with about 6 GB memory, and the brain is about 2.6 GB (downloaded once, over Wi-Fi). Nothing you ask it leaves the phone.").apply {
             if (TinyBrain.installed(this@MainActivity)) {
-                put(ui.text("✓ BigD Brain is installed. Open it to download the brain or try it.", 13.5f, Ui.TEAL_DARK), 6)
-                put(ui.row(ui.button("🧠 Open BigD Brain", "primary") { leavingForSystemScreen = true; TinyBrain.open(this@MainActivity, store) }), 10)
-            } else put(ui.row(ui.button("⬇ Get BigD Brain", "primary") {
+                put(ui.text("✓ Habit Brain is installed. Open it to download the brain or try it.", 13.5f, Ui.TEAL_DARK), 6)
+                put(ui.row(ui.button("🧠 Open Habit Brain", "primary") { leavingForSystemScreen = true; TinyBrain.open(this@MainActivity, store) }), 10)
+            } else put(ui.row(ui.button("⬇ Get Habit Brain", "primary") {
                 leavingForSystemScreen = true
                 try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(store.server + "/download/brain"))) } catch (e: Exception) { }
             }), 10)
@@ -649,7 +649,7 @@ class MainActivity : Activity() {
 
         add(ui.section("Privacy", "Useful for office files. Photos are sent as they are.").apply {
             put(ui.check("Hide personal details before sending (Aadhaar, phone and PAN numbers become XXXX…1234)", store.hidePersonal) { store.hidePersonal = it }, 8)
-            put(ui.check("Help BigD learn common questions: general questions like \"What is PM Kisan?\" are counted, never who asked, and never questions about you", store.learnShare) { store.learnShare = it }, 8)
+            put(ui.check("Help Habit learn common questions: general questions like \"What is PM Kisan?\" are counted, never who asked, and never questions about you", store.learnShare) { store.learnShare = it }, 8)
         }, 12)
 
         add(ui.section("Your Media profile", "Your public profile, posts, photos and comments in the Media tab.").apply {
@@ -673,7 +673,7 @@ class MainActivity : Activity() {
             }), 8)
             put(ui.button("Show the setup guide again", "ghost") { store.onboarded = false; setupStep = 0; render() }, 12)
             put(ui.button("Put the bottom tabs back in the usual order", "ghost") { store.tabOrder = emptyList(); navOrder = emptyList(); render(); toast("Tabs reset") }, 8)
-            put(ui.text("BigD team password (only for the app's team: post as the official accounts and remove posts)", 13f, Ui.MUTED), 14)
+            put(ui.text("Habit team password (only for the app's team: post as the official accounts and remove posts)", 13f, Ui.MUTED), 14)
             val team = ui.input("Team password", store.teamKey).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
             put(team, 6)
             put(ui.row(ui.button("Save password") { store.teamKey = team.text.toString(); socialPage?.refresh(); toast(if (store.teamKey.isBlank()) "Removed" else "Saved") }), 8)
@@ -779,7 +779,7 @@ class MainActivity : Activity() {
         put(ui.line(ui.stack(ui.text((if (access) "✅  " else "◻️  ") + "Notification access", 15f, Ui.INK, bold = true),
             ui.text("Lets your pet read new message notifications from the apps you tick.", 12.5f, Ui.MUTED)),
             if (access) null else ui.button("Allow") { showMessageDisclosure() }), 12)
-        if (!access) put(ui.text("If Android says \"Restricted setting\": open Settings › Apps › BigD AI › ⋮ › Allow restricted settings, then tap Allow again.", 12f, Ui.MUTED), 6)
+        if (!access) put(ui.text("If Android says \"Restricted setting\": open Settings › Apps › Habit AI › ⋮ › Allow restricted settings, then tap Allow again.", 12f, Ui.MUTED), 6)
         put(ui.check("Watch new messages", store.msgWatch) { store.msgWatch = it; render() }, 10)
         if (store.msgWatch) {
             put(ui.text("Apps to watch", 14f, Ui.INK, bold = true), 8)
@@ -828,10 +828,10 @@ class MainActivity : Activity() {
     private fun showHandsFreeDisclosure() {
         AlertDialog.Builder(this)
             .setTitle("Allow Hands-free control?")
-            .setMessage("BigD AI uses Android's Accessibility service to control your phone hands-free.\n\n" +
-                "What it does: when you say a command (for example \"next reel\", \"pause\", \"go back\") or tap a BigD remote button, it performs exactly that one swipe, tap or button press.\n\n" +
+            .setMessage("Habit AI uses Android's Accessibility service to control your phone hands-free.\n\n" +
+                "What it does: when you say a command (for example \"next reel\", \"pause\", \"go back\") or tap a Habit remote button, it performs exactly that one swipe, tap or button press.\n\n" +
                 "What it does not do: it does not read, collect, store or send what is on your screen, and the AI never decides to act on its own.\n\n" +
-                "Next, Android opens Accessibility settings. Tap \"BigD AI Hands-free control\" and switch it on. You can switch it off there at any time.")
+                "Next, Android opens Accessibility settings. Tap \"Habit AI Hands-free control\" and switch it on. You can switch it off there at any time.")
             .setPositiveButton("Agree and continue") { _, _ -> leavingForSystemScreen = true; HandsFreeService.openSettings(this) }
             .setNegativeButton("No thanks", null)
             .show()
@@ -1003,7 +1003,7 @@ class MainActivity : Activity() {
             }, 14)
             add(ui.card(Ui.TEAL_SOFT).apply {
                 addView(ui.text("How your Vault is protected", 14.5f, Ui.TEAL_DARK, bold = true))
-                put(ui.text("• Encrypted with a key kept in your phone's secure chip\n• Never sent to the BigD server or to the AI\n• Not included in phone backups\n• No CVV or PIN boxes: banks say never to store those anywhere", 13.5f, Ui.INK), 6)
+                put(ui.text("• Encrypted with a key kept in your phone's secure chip\n• Never sent to the Habit server or to the AI\n• Not included in phone backups\n• No CVV or PIN boxes: banks say never to store those anywhere", 13.5f, Ui.INK), 6)
             }, 12)
             return
         }
@@ -1057,7 +1057,7 @@ class MainActivity : Activity() {
             // the first time: ask before ever using the camera
             store.mirrorAsked = true
             AlertDialog.Builder(this).setTitle("👀 Can I look at you?")
-                .setMessage("When you open BigD AI, I can take a quick look at you with the front camera and say something kind (and a tip if you look tired). No camera window opens; Android shows its small green camera dot.\n\n" +
+                .setMessage("When you open Habit AI, I can take a quick look at you with the front camera and say something kind (and a tip if you look tired). No camera window opens; Android shows its small green camera dot.\n\n" +
                     "The photo goes to Claude AI only for this and is not saved. At most once every 3 hours. You can turn it off on the Pet page.")
                 .setPositiveButton("Yes, look at me") { _, _ -> store.mirrorOn = true; if (granted(Manifest.permission.CAMERA)) lookAtMe(false) else requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }
                 .setNegativeButton("No, thanks") { _, _ -> store.mirrorOn = false }
@@ -1178,7 +1178,7 @@ class MainActivity : Activity() {
         }, 12)
     }
 
-    /** BigD AI Lite: allow Photos once, then the phone finds the cards by itself. */
+    /** Habit AI Lite: allow Photos once, then the phone finds the cards by itself. */
     private fun turnOnAutoCards() {
         if (AutoCards.allowed(this)) { store.autoCards = true; AutoCards.schedule(this); startAutoScan(); return }
         val perms = if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED")
@@ -1356,11 +1356,11 @@ class MainActivity : Activity() {
         }
     }
 
-    /** "Report" for an AI answer (letter helper, message check): sends the AI's answer to the BigD team after asking. */
+    /** "Report" for an AI answer (letter helper, message check): sends the AI's answer to the Habit team after asking. */
     internal fun reportAi(where: String, answer: String, question: String) {
         AlertDialog.Builder(this).setTitle("Report this AI answer?")
-            .setMessage(if (question.isBlank()) "The AI's answer is sent to the BigD team so they can check it and make BigD AI better."
-                else "The AI's answer and your request are sent to the BigD team so they can check it and make BigD AI better.")
+            .setMessage(if (question.isBlank()) "The AI's answer is sent to the Habit team so they can check it and make Habit AI better."
+                else "The AI's answer and your request are sent to the Habit team so they can check it and make Habit AI better.")
             .setPositiveButton("Report") { _, _ ->
                 val body = JSONObject().put("reason", "Reported from $where").put("reply", answer.take(4000)).put("question", question.take(2000))
                 io.execute { Net.post(store, "/api/report", body, emptyMap(), 20_000) }
@@ -1381,20 +1381,20 @@ class MainActivity : Activity() {
         }
     }
 
-    /** "Share BigD AI" and "About", at the end of the Media page. */
+    /** "Share Habit AI" and "About", at the end of the Media page. */
     internal fun shareAndAbout() {
-        add(ui.section("Share BigD AI", "Know someone who would like a pet friend on their phone?").apply {
+        add(ui.section("Share Habit AI", "Know someone who would like a pet friend on their phone?").apply {
             put(ui.row(ui.button("Share with friends", "sun") {
                 leavingForSystemScreen = true
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_TEXT, "Try BigD AI 🐾 – a cute pet on your phone screen that talks in Telugu and English, " +
+                    .putExtra(Intent.EXTRA_TEXT, "Try Habit AI 🐾 – a cute pet on your phone screen that talks in Telugu and English, " +
                         (if (BuildConfig.MESSAGE_REPLIES) "sets reminders, writes letters, warns you about fraud messages and replies to WhatsApp." else "sets reminders, writes letters and warns you about fraud messages.") +
-                        " " + (if (BuildConfig.SELF_UPDATE) "Download: " + Updates.link(store) else store.server)), "Share BigD AI"))
+                        " " + (if (BuildConfig.SELF_UPDATE) "Download: " + Updates.link(store) else store.server)), "Share Habit AI"))
             }), 10)
         }, 18)
 
         add(ui.section("About").apply {
-            put(ui.text("BigD AI is an AI and can make mistakes. Check important things before you rely on them.", 13.5f, Ui.MUTED), 6)
+            put(ui.text("Habit AI is an AI and can make mistakes. Check important things before you rely on them.", 13.5f, Ui.MUTED), 6)
             put(ui.row(ui.button("Privacy policy", "ghost") {
                 leavingForSystemScreen = true
                 try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(store.server + "/privacy"))) } catch (e: Exception) { }
@@ -1478,7 +1478,7 @@ class MainActivity : Activity() {
                         if (s.continuous && ++s.quiet < 4) againVoice(s, 120) else finishVoice(s)
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER ->
                         if (++s.errors <= 2) againVoice(s, 700) else { toast("Voice typing needs internet. Check your connection and tap 🎤 again."); finishVoice(s) }
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> { toast("Allow the microphone for BigD AI, then tap 🎤 again."); finishVoice(s) }
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> { toast("Allow the microphone for Habit AI, then tap 🎤 again."); finishVoice(s) }
                     // the voice service was busy or disconnected: start it again
                     else -> if (++s.errors <= 3) againVoice(s, 450) else { toast("Voice typing stopped. Tap 🎤 to go on."); finishVoice(s) }
                 }
@@ -1577,7 +1577,7 @@ class MainActivity : Activity() {
         when (setupStep) {
             0 -> {
                 add(bigPet(PuppyView.Mood.EXCITED), 16)
-                add(ui.text("నమస్తే! I'm BigD AI", 27f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER }, 8)
+                add(ui.text("నమస్తే! I'm Habit AI", 27f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER }, 8)
                 add(ui.text("Your pet friend on your phone. I talk in Telugu and English, set reminders, make Word and Excel files, " +
                     (if (BuildConfig.MESSAGE_REPLIES) "reply to WhatsApp and keep your cards safe." else "and keep your cards safe."), 15f, Ui.MUTED).apply { gravity = Gravity.CENTER }, 8)
                 add(ui.section("Choose your language · మీ భాష").apply {
@@ -1624,8 +1624,8 @@ class MainActivity : Activity() {
     internal fun showMessageDisclosure() {
         AlertDialog.Builder(this)
             .setTitle("Read message notifications?")
-            .setMessage("To warn you about fraud and to suggest replies, BigD AI reads new message notifications from the chat apps you choose (for example WhatsApp or SMS).\n\n" +
-                "Every new message is first checked on your phone. Messages with warning signs (links, OTP or money requests…) are sent to the BigD AI server and to Anthropic's Claude AI for a safety check. " +
+            .setMessage("To warn you about fraud and to suggest replies, Habit AI reads new message notifications from the chat apps you choose (for example WhatsApp or SMS).\n\n" +
+                "Every new message is first checked on your phone. Messages with warning signs (links, OTP or money requests…) are sent to the Habit AI server and to Anthropic's Claude AI for a safety check. " +
                 "To write a reply, the sender's name and message text are sent the same way. They are not stored on the server. The list of checked messages stays only on your phone.\n\n" +
                 "Nothing is sent to the other person unless you tap Send or switch on Auto-reply. You can turn this off at any time.")
             .setPositiveButton("Agree and continue") { _, _ -> store.msgWatch = true; leavingForSystemScreen = true; MessageHub.openAccessSettings(this) }

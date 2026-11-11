@@ -1,4 +1,4 @@
-# Draws BigD's own cartoon puppy (an original character) and the cartoon backgrounds, as PNG files.
+# Draws Habit's own cartoon puppy (an original character) and the cartoon backgrounds, as PNG files.
 #   python3 draw.py            (needs Pillow; the PNGs are already in this folder)
 # Puppy: 6 pictures = mouth (closed, half, open) x eyes (open, blink). Backgrounds: 720x1280.
 from PIL import Image, ImageDraw, ImageFilter

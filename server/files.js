@@ -1,4 +1,4 @@
-// BigD AI files: turns the AI's "make_file" content into real Word (.docx) and Excel (.xlsx) files.
+// Habit AI files: turns the AI's "make_file" content into real Word (.docx) and Excel (.xlsx) files.
 // Files are kept for 24 hours under data/files and then deleted.
 const fs = require("fs");
 const path = require("path");
@@ -16,7 +16,7 @@ module.exports = function makeFiles({ DATA_DIR }) {
   const str = (v, n = 4000) => String(v == null ? "" : v).slice(0, n);
 
   function safeName(title, ext) {
-    const base = str(title, 60).replace(/[^\p{L}\p{M}\p{N} _-]/gu, "").trim().replace(/\s+/g, "-") || "BigD-file";
+    const base = str(title, 60).replace(/[^\p{L}\p{M}\p{N} _-]/gu, "").trim().replace(/\s+/g, "-") || "Habit-file";
     return `${base}.${ext}`;
   }
 
@@ -68,7 +68,7 @@ module.exports = function makeFiles({ DATA_DIR }) {
     }
     if (!children.length) children.push(new Paragraph({ children: runs("(empty)") }));
     const d = new docx.Document({
-      creator: "BigD AI", title: str(doc.title, 200),
+      creator: "Habit AI", title: str(doc.title, 200),
       styles: { default: { document: { run: { font: FONT, size: 24 } } } },
       sections: [{ properties: { page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children }]
     });
@@ -77,7 +77,7 @@ module.exports = function makeFiles({ DATA_DIR }) {
 
   async function buildXlsx(book) {
     const wb = new ExcelJS.Workbook();
-    wb.creator = "BigD AI";
+    wb.creator = "Habit AI";
     const sheets = Array.isArray(book.sheets) && book.sheets.length ? book.sheets.slice(0, 10) : [{ name: book.title || "Sheet1", rows: book.rows || [] }];
     const used = new Set();
     for (const sh of sheets) {
@@ -131,7 +131,7 @@ module.exports = function makeFiles({ DATA_DIR }) {
     const m = url.pathname.match(/^\/files\/([a-f0-9]{24})\/([^/]+)$/);
     if (!m) return false;
     const file = path.join(DIR, m[1], path.basename(decodeURIComponent(m[2])));
-    if (!file.startsWith(DIR) || !fs.existsSync(file)) { res.writeHead(404, { "Content-Type": "text/plain" }); res.end("This file has expired. Ask BigD to make it again."); return true; }
+    if (!file.startsWith(DIR) || !fs.existsSync(file)) { res.writeHead(404, { "Content-Type": "text/plain" }); res.end("This file has expired. Ask Habit to make it again."); return true; }
     const type = file.endsWith(".xlsx") ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     res.writeHead(200, { "Content-Type": type, "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`, "Cache-Control": "private, max-age=3600" });
     fs.createReadStream(file).pipe(res);

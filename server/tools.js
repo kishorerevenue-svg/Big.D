@@ -1,8 +1,8 @@
-// BigD AI tool pages:
+// Habit AI tool pages:
 //  1. Translate: Telugu, English and Hindi, from typed or spoken text or from a photo (signboards, letters, notices).
 //  2. Govt services: a list of official websites for common services (AP, Telangana, all India),
 //     and answers to questions using ONLY official government websites (gov.in, nic.in), with links.
-// BigD AI is not a government app; every answer says to check the official site.
+// Habit AI is not a government app; every answer says to check the official site.
 module.exports = function makeTools({ learn, API_KEY, MODEL, DATA_DIR, h }) {
   const fs = require("fs");
   const path = require("path");
@@ -60,7 +60,7 @@ Reply with only a JSON object: {"from":"<the original language in English, e.g. 
   }
 
   // ============ 2. govt services ============
-  // Official websites only (checked November 2026). "letter" = a request for the BigD letter helper.
+  // Official websites only (checked November 2026). "letter" = a request for the Habit letter helper.
   const SERVICES = [
     // Andhra Pradesh
     { st: "ap", cat: "cert", te: "ఆదాయ, కుల, నివాస సర్టిఫికెట్లు", en: "Income, caste and residence certificates", where: "Your Grama / Ward Sachivalayam, or online on AP Seva", url: "https://vswsonline.ap.gov.in", letter: "Application to the Tahsildar for an income certificate" },
@@ -106,7 +106,7 @@ Reply with only a JSON object: {"from":"<the original language in English, e.g. 
 Search ONLY official government websites and answer from what you find there.
 Answer in ${lang === "te" ? "simple Telugu script" : lang === "en" ? "simple English" : "the language the person used (Telugu script if they wrote Telugu, otherwise simple English)"}, short and practical:
 1. What it is, in one line. 2. Who can apply. 3. Where to apply (the official website, or the office: Grama/Ward Sachivalayam, MeeSeva, Tahsildar office, etc.). 4. Documents usually asked for. 5. Fee and time, ONLY if the official site says so. 6. The official link.
-Rules: never make up fees, dates, document lists or links; if the official sites don't say, tell them to ask at the office or the helpline. Never ask for Aadhaar numbers, OTPs or bank details. Warn them not to pay middlemen. End with one short line saying BigD AI is not a government service and they should check the official website.`;
+Rules: never make up fees, dates, document lists or links; if the official sites don't say, tell them to ask at the office or the helpline. Never ask for Aadhaar numbers, OTPs or bank details. Warn them not to pay middlemen. End with one short line saying Habit AI is not a government service and they should check the official website.`;
 
   async function ask(body) {
     const q = str(body.question, 600);

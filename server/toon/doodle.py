@@ -1,6 +1,6 @@
-"""BigD cartoons in the cute "doodle" style (the default look).
+"""Habit cartoons in the cute "doodle" style (the default look).
 
-BigD's own characters (all original): Chai (a glass of tea for a head), Idli, Mango, the BigD puppy, Ammamma,
+Habit's own characters (all original): Chai (a glass of tea for a head), Idli, Mango, the Habit puppy, Ammamma,
 Tatayya, the teacher, Pilli the cat and Chilaka the parrot, on soft pastel backgrounds. Their elbows and knees bend;
 hands go on hips, point, clap, wave and cover the face; heads nod, tilt and turn; faces wink, side-eye, laugh and
 cry; lips follow the voice. The camera cuts between wide shots and close-ups.
@@ -22,7 +22,7 @@ CAST = {
     "chai": dict(name="చాయ్", head="glass", h=1.0, top=(128, 110, 236), legs=(186, 176, 246), skin=(246, 214, 190), sleeve=0.45, glove=True, sole=(150, 130, 240)),
     "idli": dict(name="ఇడ్లీ", head="idli", h=0.8, top=(255, 206, 60), legs=(246, 214, 190), shorts=(70, 120, 210), skin=(246, 214, 190), sleeve=0.4, glove=True, sole=(70, 120, 210)),
     "mango": dict(name="మామిడి", head="mango", h=0.8, top=(255, 143, 184), legs=(246, 214, 190), dress=(255, 143, 184), skin=(246, 214, 190), sleeve=0.22, puff=True, glove=True, sole=(255, 100, 150)),
-    "bigd": dict(name="బిగ్‌డీ", head="puppy", h=0.92, top=(143, 227, 176), legs=(143, 227, 176), stripe=True, skin=(255, 255, 255), sleeve=1.0, glove=True, sole=(90, 190, 130)),
+    "bigd": dict(name="హ్యాబిట్", head="puppy", h=0.92, top=(143, 227, 176), legs=(143, 227, 176), stripe=True, skin=(255, 255, 255), sleeve=1.0, glove=True, sole=(90, 190, 130)),
     "ammamma": dict(name="అమ్మమ్మ", head="ammamma", h=0.92, belly=1.15, top=(160, 40, 86), legs=(240, 196, 160), saree=(196, 56, 108), border=(242, 179, 61), skin=(240, 196, 160), sleeve=0.32, shoe=(150, 96, 60), sole=(110, 70, 45)),
     "tatayya": dict(name="తాతయ్య", head="tatayya", h=0.98, top=(255, 255, 255), legs=(214, 160, 112), dhoti=(255, 252, 240), towel=(46, 158, 91), skin=(214, 160, 112), sleeve=0.0, shoe=(150, 96, 60), sole=(110, 70, 45)),
     "teacher": dict(name="టీచర్", head="teacher", h=0.96, top=(60, 123, 214), legs=(244, 238, 228), kurta=(60, 123, 214), dupatta=(242, 179, 61), skin=(240, 196, 160), sleeve=0.6, shoe=(90, 60, 45), sole=(60, 40, 30)),
@@ -1313,7 +1313,7 @@ def clampf(v, a, b):
 # ================================================================ words, sound and the video
 def make_ass(story, title, path):
     total, end0 = story.total, story.end0
-    ev = ["Dialogue: 4,%s,%s,Label,,0,0,0,,BigD cartoon" % (T.ts(0), T.ts(end0)),
+    ev = ["Dialogue: 4,%s,%s,Label,,0,0,0,,Habit cartoon" % (T.ts(0), T.ts(end0)),
           "Dialogue: 4,%s,%s,Title,,0,0,0,,{\\fad(200,300)}%s" % (T.ts(0.15), T.ts(2.9), T.ass_text(title))]
     for b in story.beats:
         if not b["say"]:
@@ -1330,7 +1330,7 @@ def make_ass(story, title, path):
         t0, t1 = T.ts(b["tl"] - 0.05), T.ts(b["tt"] + 0.25)
         ev.append("Dialogue: 1,%s,%s,BubbleEdge,,0,0,0,,{\\an2\\pos(%d,%d)}%s" % (t0, t1, bx, by, txt))
         ev.append("Dialogue: 2,%s,%s,Bubble,,0,0,0,,{\\an2\\pos(%d,%d)}%s" % (t0, t1, bx, by, txt))
-    ev.append("Dialogue: 5,%s,%s,End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}BigD AI" % (T.ts(end0), T.ts(total)))
+    ev.append("Dialogue: 5,%s,%s,End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}Habit AI" % (T.ts(end0), T.ts(total)))
     ev.append("Dialogue: 5,%s,%s,EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}కార్టూన్లు · వార్తలు · సహాయం · bigdai.tech" % (T.ts(end0), T.ts(total)))
     T.write_ass(path, ev)
 

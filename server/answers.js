@@ -1,11 +1,11 @@
-// Learning from common questions. When many different people ask BigD the same general question
+// Learning from common questions. When many different people ask Habit the same general question
 // ("what is PM Kisan?", "how do I link Aadhaar with PAN?"), the server prepares a short, checked answer at night
 // (with Claude and the internet) and keeps it. Then:
 //  - our own brains (selfbrain.js, ownbrain.js) use it when Claude can't answer, and
 //  - the same question asked again as a first message is answered at once from it (fast, and no AI bill).
-// BigD also learns from Claude as it talks: when Claude answers a general question and says the answer is right for
+// Habit also learns from Claude as it talks: when Claude answers a general question and says the answer is right for
 // anyone (nothing about the person: Claude marks it, and the server checks it has none of the person's words), the
-// answer is kept here too, so BigD can answer it by itself while Claude can't (its monthly limit is used up…).
+// answer is kept here too, so Habit can answer it by itself while Claude can't (its monthly limit is used up…).
 // Those are kept 90 days. LEARN_FROM_CLAUDE=false turns this off.
 // Only general questions are counted: nothing about the person (I, my, నా, నేను…), no long numbers, no links,
 // no greetings or commands, nothing about today/news/prices. Who asked is never kept: only a salted, one-way
@@ -90,7 +90,7 @@ module.exports = function makeAnswers({ DATA_DIR, learn }) {
     let best = null, score = 0;
     for (const a of learned) { if (te(a.key) !== te(k)) continue; const s = a.key === k ? 1 : alike(k, a.key); if (s > score) { score = s; best = a; } }
     if (!best || score < min) return null;
-    return { answer: best.answer, score, id: best.id, sources: best.sources || [], from: best.from || "night", at: best.at };
+    return { answer: String(best.answer).replace(/\bBigD AI\b/g, "Habit AI").replace(/\bBigD\b/g, "Habit").replace(/బిగ్‌డీ/g, "హ్యాబిట్"), score, id: best.id, sources: best.sources || [], from: best.from || "night", at: best.at };
   }
   /** Counts one more use of a learned answer. */
   function used(id) { const a = learned.find(x => x.id === id); if (a) { a.uses = (a.uses || 0) + 1; dirty = true; } }
@@ -142,7 +142,7 @@ module.exports = function makeAnswers({ DATA_DIR, learn }) {
   }
 
   // ---------- preparing answers (once a night, with Claude and the internet) ----------
-  const PREP = lang => `You prepare short, correct answers to common questions that many people ask BigD AI, a friendly phone helper used by the public in Andhra Pradesh and Telangana, India.
+  const PREP = lang => `You prepare short, correct answers to common questions that many people ask Habit AI, a friendly phone helper used by the public in Andhra Pradesh and Telangana, India.
 Search the internet when the facts can change (schemes, rules, fees, steps, official websites).
 Answer in ${lang === "te" ? "simple spoken Telugu, in Telugu script" : "simple, clear English"}, in 3 to 6 short sentences that will be read aloud, general for everyone. Give the official website or helpline when it helps.
 If the question depends on the person's own details, on today's date, news or prices, needs a doctor or lawyer for that person, or is unsafe, reply with skip true.

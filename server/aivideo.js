@@ -79,13 +79,13 @@ module.exports = function makeAiVideo({ DATA_DIR, media, ai, MODEL, API_KEY, own
   }
 
   // ---------- the script: what the video shows, and the Telugu words on it ----------
-  const SYSTEM = (cat, person) => cat === "cartoon" ? CARTOON_SYSTEM(person) : `You plan one short video for the "Media" page of BigD AI, a Telugu app for families in Andhra Pradesh and Telangana. An AI video model makes it: ${SECONDS()} seconds, vertical (9:16). It is clearly labelled "AI-made".
+  const SYSTEM = (cat, person) => cat === "cartoon" ? CARTOON_SYSTEM(person) : `You plan one short video for the "Media" page of Habit AI, a Telugu app for families in Andhra Pradesh and Telangana. An AI video model makes it: ${SECONDS()} seconds, vertical (9:16). It is clearly labelled "AI-made".
 Section: ${media.CATS[cat].en}.
 Rules: no real people, no famous people, no politicians; no faces of gods or goddesses and no idols up close (show temples, lamps, flowers, bells, or devotees from behind or far away); no text, letters or logos in the video; nothing scary or sad for children. For health and farming, show only simple, safe, well-known good habits (no medicines, no chemicals, no doses, no cures).
 "prompt": an English description for the video model: one continuous shot, what we see, slow camera movement, light and colours, the style (realistic; for kids: a cute, colourful 3D animation), and the sound: gentle music and natural sounds only, no speech, no singing.
 "title": a Telugu title, at most 10 words. "lines": 2 or 3 short Telugu lines, at most 12 words each, shown on the video: for kids, the story in short and its moral; for health or farming, the simple tip; for devotional, a gentle morning blessing.
 Reply only with JSON: {"prompt": "...", "title": "...", "lines": ["...", "..."], "mood": one of ${media.MOODS.join(", ")}, "issue": one of ${media.ISSUES.join(", ")}}`;
-  const CARTOON_SYSTEM = (person) => `You plan one funny cartoon short for the "Media" page of BigD AI, a Telugu app for families in Andhra Pradesh and Telangana (children watch too). An AI video model makes it: ${CSECONDS()} seconds, vertical (9:16), clearly labelled "AI-made".
+  const CARTOON_SYSTEM = (person) => `You plan one funny cartoon short for the "Media" page of Habit AI, a Telugu app for families in Andhra Pradesh and Telangana (children watch too). An AI video model makes it: ${CSECONDS()} seconds, vertical (9:16), clearly labelled "AI-made".
 Style: a bright, colourful 2D cartoon like the popular funny cartoon shorts: expressive faces, simple backgrounds from Telugu everyday life (village, town, home, school), 3 to 5 quick shots that tell a tiny story with a funny, kind ending. Sound: cartoon sound effects and light music, no speech, no singing. No text, letters or logos in the video.
 Be kind: never make fun of women or men, any caste, religion, region, colour, body or disability, or any real or famous person; no politics, no violence, nothing scary or adult.${person ? `
 The idea comes from a person using the app. Follow it closely: their characters, place, actions, the funny moment and the style they ask for (for example a 3D animated film look instead of 2D). Describe the look in your own words: never name real studios, brands, films or known cartoon characters in the prompt. Keep slapstick gentle (nobody gets hurt). If the idea is unkind, unsafe, about real or famous people, or not for children, set "skip" to true.` : ""}
@@ -191,7 +191,7 @@ Style: Label,Hind Guntur,26,&H00FFFFFF,&H00FFFFFF,&H50000000,&H70000000,1,0,0,0,
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 2,${ts(0)},${ts(total)},Label,,0,0,0,,AI-made · BigD AI
+Dialogue: 2,${ts(0)},${ts(total)},Label,,0,0,0,,AI-made · Habit AI
 Dialogue: 1,${ts(0.3)},${ts(total)},Title,,0,0,0,,{\\fad(400,300)}${esc(s.title)}
 ${s.lines.map((l, i) => `Dialogue: 1,${ts(i * per + 0.4)},${ts(Math.min(total, (i + 1) * per))},Line,,0,0,0,,{\\fad(300,200)}${esc(l)}`).join("\n")}
 `);

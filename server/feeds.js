@@ -20,7 +20,7 @@ module.exports = function makeFeeds({ DATA_DIR, ownBrain, ai, MODEL, API_KEY, me
   const ist = () => new Date(Date.now() + 5.5 * 3600e3);
   const today = () => ist().toISOString().slice(0, 10);
   const CLAUDE_DAILY = () => Number(process.env.FEED_CLAUDE_DAILY || 40);
-  const UA = "Mozilla/5.0 (compatible; BigDAI-reader/1.0; +https://bigdai.tech)";
+  const UA = "Mozilla/5.0 (compatible; HabitAI-reader/1.0; +https://bigdai.tech)";
   const count = (what) => { if (db.today.day !== today()) db.today = { day: today() }; db.today[what] = (db.today[what] || 0) + 1; };
 
   // ---------- sources ----------
@@ -167,7 +167,7 @@ module.exports = function makeFeeds({ DATA_DIR, ownBrain, ai, MODEL, API_KEY, me
   const SCHEMA = () => ({ type: "object", required: ["title", "body", "emoji", "mood", "issue", "skip"], properties: {
     title: { type: "string" }, body: { type: "string" }, emoji: { type: "string" }, mood: { type: "string", enum: media.MOODS }, issue: { type: "string", enum: media.ISSUES },
     scene: { type: "string" }, skip: { type: "boolean" } } });
-  const SYSTEM = (cat) => `You write short posts for the "Media" page of BigD AI, a Telugu app used by ordinary people in Andhra Pradesh and Telangana, including elders.
+  const SYSTEM = (cat) => `You write short posts for the "Media" page of Habit AI, a Telugu app used by ordinary people in Andhra Pradesh and Telangana, including elders.
 Section: ${media.CATS[cat].en} (${media.CATS[cat].te}). ${media.CATS[cat].brief}
 Write in simple, everyday Telugu (Telugu script; English only for names, numbers and words people normally say in English).
 Use ONLY the facts you are given (headline, summary and the start of the story). Never add facts, numbers, names, dates or quotes that are not there. If there are few facts, write less. Write it fully in your own words; do not copy sentences.

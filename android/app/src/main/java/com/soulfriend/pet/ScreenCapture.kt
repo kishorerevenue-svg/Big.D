@@ -136,7 +136,7 @@ class ScreenCaptureService : Service() {
         if (nm.getNotificationChannel("screen") == null)
             nm.createNotificationChannel(NotificationChannel("screen", "Reading your screen", NotificationManager.IMPORTANCE_LOW))
         val n = Notification.Builder(this, "screen").setSmallIcon(R.drawable.ic_paw)
-            .setContentTitle("BigD AI is reading your screen once").setOngoing(true).build()
+            .setContentTitle("Habit AI is reading your screen once").setOngoing(true).build()
         if (Build.VERSION.SDK_INT >= 29) startForeground(9, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         else startForeground(9, n)
     }

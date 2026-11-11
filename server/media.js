@@ -1,11 +1,11 @@
-// BigD AI "Media" page: short Telugu posts in 9 sections (news, movies, kids, crypto, real estate, jobs,
+// Habit AI "Media" page: short Telugu posts in 9 sections (news, movies, kids, crypto, real estate, jobs,
 // devotional, farming, health), from three places:
 //  1. All day: new stories from trusted news feeds, written up by OUR OWN BRAIN (feeds.js), many times a day.
 //  2. Every morning: Claude searches the internet and writes a few posts per section in its own words with a
 //     link to the real source, and adds official YouTube videos when it finds them (each link is checked).
 //  3. Daily useful posts made by the server itself (daily.js): panchangam, weather warnings for farmers, mandi prices.
 // Every post has a mood (happy, devotional, inspiring…) and an issue (farming, jobs, prices, water…) for the app's filters.
-// The BigD team (team password) can also write, remove and refresh posts.
+// The Habit team (team password) can also write, remove and refresh posts.
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -135,7 +135,7 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
   /** Step 1 (sections that use the internet): search and write research notes. */
   function researchPrompt(key, n, recent) {
     const c = CATS[key];
-    return `You are a careful researcher for BigD AI, a Telugu app for ordinary people in Andhra Pradesh and Telangana.
+    return `You are a careful researcher for Habit AI, a Telugu app for ordinary people in Andhra Pradesh and Telangana.
 Section: ${c.en}. ${c.brief}
 Today's date: ${istNow().toISOString().slice(0, 10)}.
 Search the internet and find ${n + 2} different, real, recent stories or facts for this section.${key === "movies" ? " Also search YouTube for the official trailers of these films." : ""}
@@ -146,7 +146,7 @@ Skip stories already covered: ${recent.length ? recent.join(" | ") : "(none yet)
   /** Step 2 (or the only step for kids and health): write the Telugu posts as JSON. */
   function writePrompt(key, n, recent, research) {
     const c = CATS[key];
-    return `You write posts for the "Media" page of BigD AI, a Telugu app used by ordinary people in Andhra Pradesh and Telangana, including elders.
+    return `You write posts for the "Media" page of Habit AI, a Telugu app used by ordinary people in Andhra Pradesh and Telangana, including elders.
 Section: ${c.en} (${c.te}). ${c.brief}
 Today's date: ${istNow().toISOString().slice(0, 10)}.
 Write ${n} different posts in ${TELUGU}.
@@ -410,7 +410,7 @@ Reply with only a JSON object, no other text:
       const k = item.likes.indexOf(d); if (k >= 0) item.likes.splice(k, 1); else item.likes.push(d);
       save(); send(res, 200, { likes: item.likes.length, liked: k < 0 }, origin); return true;
     }
-    if (!isAdmin(req)) { send(res, 401, { error: "Only the BigD team can do this (team password)." }, origin); return true; }
+    if (!isAdmin(req)) { send(res, 401, { error: "Only the Habit team can do this (team password)." }, origin); return true; }
     if (p === "/api/media/post") {
       const cat = CATS[body.cat] ? body.cat : "news";
       const title = str(body.title, 140), text = str(body.body, 3000);

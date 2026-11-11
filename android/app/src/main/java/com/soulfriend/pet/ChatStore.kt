@@ -59,7 +59,7 @@ object ChatKeys {
 /** One chat as the phone keeps it. [data] is the server's view (members, admins, ticks…) plus our own fields. */
 class ChatConv(val cid: String, val data: JSONObject, val last: Long, val unread: Int, val preview: String, val muted: Boolean) {
     val kind get() = data.optString("kind", "dm")
-    val name get() = data.optString("name", "BigD friend")
+    val name get() = data.optString("name", "Habit friend")
     val emoji get() = data.optString("emoji", "🐾")
     val accepted get() = data.optBoolean("accepted", true)
     val blocked get() = data.optBoolean("blocked", false)

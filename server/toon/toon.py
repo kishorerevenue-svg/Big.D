@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""BigD cartoons: our own cartoon maker (no paid video AI, no GPU needed).
+"""Habit cartoons: our own cartoon maker (no paid video AI, no GPU needed).
 
-Draws BigD's own characters (all original) in a place, acts out a short screenplay (walk in, talk, slip, jump,
+Draws Habit's own characters (all original) in a place, acts out a short screenplay (walk in, talk, slip, jump,
 laugh, dance, sleep, give, eat, balance ...), adds speech bubbles (the Telugu words are drawn by the video's
 subtitle engine), sound effects, talk sounds (or the natural voice, when the server has it) and music.
 
@@ -2250,7 +2250,7 @@ def ts(sec):
 
 def make_ass(story, title, path):
     total, end0 = story.total, story.end0
-    ev = ["Dialogue: 4,%s,%s,Label,,0,0,0,,BigD cartoon" % (ts(0), ts(end0)),
+    ev = ["Dialogue: 4,%s,%s,Label,,0,0,0,,Habit cartoon" % (ts(0), ts(end0)),
           "Dialogue: 4,%s,%s,Title,,0,0,0,,{\\fad(200,300)}%s" % (ts(0.15), ts(2.9), ass_text(title))]
     for b in story.beats:
         if not b["say"]:
@@ -2265,7 +2265,7 @@ def make_ass(story, title, path):
         t0, t1 = ts(b["tl"] - 0.05), ts(b["tt"] + 0.25)
         ev.append("Dialogue: 1,%s,%s,BubbleEdge,,0,0,0,,{\\an2\\pos(%d,%d)}%s" % (t0, t1, bx, by, txt))
         ev.append("Dialogue: 2,%s,%s,Bubble,,0,0,0,,{\\an2\\pos(%d,%d)}%s" % (t0, t1, bx, by, txt))
-    ev.append("Dialogue: 5,%s,%s,End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}BigD AI" % (ts(end0), ts(total)))
+    ev.append("Dialogue: 5,%s,%s,End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}Habit AI" % (ts(end0), ts(total)))
     ev.append("Dialogue: 5,%s,%s,EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}కార్టూన్లు · వార్తలు · సహాయం · bigdai.tech" % (ts(end0), ts(total)))
     write_ass(path, ev)
 

@@ -21,7 +21,7 @@
     <!-- Vault: open with fingerprint / face / phone lock -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- Family & SOS: where you are, only when you press SOS or "Share my location".
-         It goes only into the SMS / WhatsApp message you send; never to the BigD server. -->
+         It goes only into the SMS / WhatsApp message you send; never to the Habit server. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Family & SOS: call your first family member after the SOS countdown (only when you press SOS or 📞) -->
@@ -87,20 +87,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Share › BigD AI: check a message for fraud -->
-            <intent-filter android:label="Check with BigD AI">
+            <!-- Share › Habit AI: check a message for fraud -->
+            <intent-filter android:label="Check with Habit AI">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
 
-        <!-- Share › "Post on BigD Media": text, a link (YouTube, Instagram, Facebook, X…) or photos -->
+        <!-- Share › "Post on Habit Media": text, a link (YouTube, Instagram, Facebook, X…) or photos -->
         <activity-alias
             android:name=".PostToMedia"
             android:targetActivity=".MainActivity"
             android:exported="true"
-            android:label="Post on BigD Media">
+            android:label="Post on Habit Media">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -188,7 +188,7 @@
             android:windowSoftInputMode="adjustResize"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 
-        <!-- BigD Chat: one chat (one-to-one, a group, or my notes); also opens bigd://chat/<name> invite links -->
+        <!-- Habit Chat: one chat (one-to-one, a group, or my notes); also opens bigd://chat/<name> invite links -->
         <activity
             android:name=".ChatActivity"
             android:exported="true"
@@ -202,7 +202,7 @@
                 <data android:scheme="bigd" android:host="chat" />
             </intent-filter>
         </activity>
-        <!-- BigD Chat: a quiet check for new messages every 15 minutes while the app is closed -->
+        <!-- Habit Chat: a quiet check for new messages every 15 minutes while the app is closed -->
         <receiver android:name=".ChatAlarm" android:exported="false" />
 
         <receiver android:name=".ReminderReceiver" android:exported="false" />

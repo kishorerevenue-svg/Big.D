@@ -76,7 +76,7 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
     return out;
   }
   async function feed(q) {
-    const r = await get(`${YT}/feeds/videos.xml?${q}`, { headers: { "user-agent": "Mozilla/5.0 (compatible; BigDAI-reader/1.0; +https://bigdai.tech)" }, signal: AbortSignal.timeout(12000) });
+    const r = await get(`${YT}/feeds/videos.xml?${q}`, { headers: { "user-agent": "Mozilla/5.0 (compatible; HabitAI-reader/1.0; +https://bigdai.tech)" }, signal: AbortSignal.timeout(12000) });
     if (!r.ok) throw new Error("YouTube said " + r.status);
     return parseFeed(await r.text());
   }
@@ -209,7 +209,7 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
   const DEFAULT_MOOD = { news: "serious", movies: "happy", devotional: "devotional", kids: "happy", farming: "useful", health: "useful", jobs: "useful", realestate: "useful", crypto: "useful" };
   const SCHEMA = () => ({ type: "object", required: ["skip", "title", "mood", "issue"], properties: { skip: { type: "boolean" }, title: { type: "string" },
     mood: { type: "string", enum: media.MOODS }, issue: { type: "string", enum: media.ISSUES } } });
-  const SYSTEM = cat => `You choose YouTube videos for the "Media" page of BigD AI, a Telugu app for families in Andhra Pradesh and Telangana (elders and children use it too). Section: ${media.CATS[cat].en}.
+  const SYSTEM = cat => `You choose YouTube videos for the "Media" page of Habit AI, a Telugu app for families in Andhra Pradesh and Telangana (elders and children use it too). Section: ${media.CATS[cat].en}.
 You get one video's title and description from a known channel. Set "skip" to true if it is clickbait, gossip about someone's private life, crime or violence details, vulgar or adult, fear-mongering, a political attack, or not useful for this section; also if it is clearly not for Telugu people (a Tamil, Malayalam, Kannada or Hindi film or song that is not released in Telugu).
 "title": a clean Telugu title for it, at most 12 words, only from the given title (no hashtags, no channel name, no "LIVE", no made-up facts).
 Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOODS.join(", ")}, "issue": one of ${media.ISSUES.join(", ")}}`;

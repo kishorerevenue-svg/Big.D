@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nightly job: get the latest BigD AI code from GitHub, restart if it changed,
+# Nightly job: get the latest Habit AI code from GitHub, restart if it changed,
 # and keep a backup of settings and learned knowledge (last 7 nights).
 # Installed by the one-line command in the guide; runs at 3:30 AM server time.
 export PATH=/usr/local/bin:/usr/bin:/bin:$PATH

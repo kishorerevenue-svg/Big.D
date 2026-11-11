@@ -9,7 +9,7 @@
         <service
             android:name="com.soulfriend.pet.MessageListener"
             android:exported="true"
-            android:label="BigD AI message replies"
+            android:label="Habit AI message replies"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

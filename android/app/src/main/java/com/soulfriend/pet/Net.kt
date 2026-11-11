@@ -4,7 +4,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Small helpers to talk to the BigD server. Blocking: call them off the main thread. */
+/** Small helpers to talk to the Habit server. Blocking: call them off the main thread. */
 object Net {
     class Reply(val code: Int, val json: JSONObject) {
         val ok get() = code in 200..299
@@ -19,7 +19,7 @@ object Net {
 
     private fun call(store: Store, method: String, path: String, body: String?, headers: Map<String, String>, timeoutMs: Int): Reply {
         val server = store.server
-        if (!server.startsWith("https://")) return Reply(0, JSONObject().put("error", "Set your server address in the BigD AI app first."))
+        if (!server.startsWith("https://")) return Reply(0, JSONObject().put("error", "Set your server address in the Habit AI app first."))
         return try {
             val c = URL(server + path).openConnection() as HttpURLConnection
             c.requestMethod = method; c.connectTimeout = 15_000; c.readTimeout = timeoutMs

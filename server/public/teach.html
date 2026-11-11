@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Teach BigD AI</title>
+<title>Teach Habit AI</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
 :root{--bg:#EEF1FA;--card:#fff;--ink:#1C2140;--muted:#5F6688;--line:#D8DDF0;--mari:#F5A524;--ok:#1D9E75;--bad:#C0392B}
 @media (prefers-color-scheme:dark){:root{--bg:#0F1226;--card:#1A1F3D;--ink:#ECEEFB;--muted:#A3A9CC;--line:#2C3360}}
@@ -44,7 +45,7 @@ summary{cursor:pointer;font-weight:600}
 </head>
 <body>
 <main>
-  <h1>Teach BigD AI</h1>
+  <h1>Teach Habit AI</h1>
   <p class="sub">Only you, the owner, can add knowledge here. The puppy uses it to answer everyone. ఇక్కడ మీరు నేర్పించినది పప్పీ అందరికీ చెబుతుంది.</p>
 
   <section class="card" id="login">
@@ -101,7 +102,7 @@ summary{cursor:pointer;font-weight:600}
 
     <section class="card">
       <h2>📚 Learned answers · నేర్చుకున్న జవాబులు</h2>
-      <p class="hint">BigD learns from Claude as it talks: when Claude answers a general question that is right for anyone (never anything about a person), the answer is kept here for 90 days, so BigD can answer it by itself when Claude can't (for example when this month's limit is used up). Delete any answer you don't want. </p>
+      <p class="hint">Habit learns from Claude as it talks: when Claude answers a general question that is right for anyone (never anything about a person), the answer is kept here for 90 days, so Habit can answer it by itself when Claude can't (for example when this month's limit is used up). Delete any answer you don't want. </p>
       <p class="hint">When <span id="minPeople">3</span> or more different people ask the same general question, an answer is prepared at night (with Claude and the internet) and kept here. The same question is then answered at once, and our own brain uses it when Claude can't answer. Only the question is counted, never who asked; questions about a person, about today, or with long numbers are never kept. Delete any answer you don't like.</p>
       <ul id="learned"></ul>
       <p class="hint" id="learnedEmpty">No learned answers yet.</p>
@@ -145,15 +146,15 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
-      <h2>💬 BigD Chat · బిగ్‌డీ చాట్</h2>
+      <h2>💬 Habit Chat · హ్యాబిట్ చాట్</h2>
       <p class="hint">Chats and groups between people who use the app, locked end to end on their phones: this server only passes on locked messages it can't read, and deletes each one once everyone has it (photos and voice notes after 30 days). When someone reports a chat, the messages they reported show here.</p>
       <p id="chatState" class="msg"></p>
       <ul id="chatReports"></ul>
     </section>
 
     <section class="card">
-      <h2>🎬 BigD cartoons (our own maker) · బిగ్‌డీ కార్టూన్లు</h2>
-      <p class="hint">Our own cartoons, made fully on our server for free (no paid AI, no GPU): our own brain writes a tiny screenplay (a joke, riddle, fact, kids story or good thought) and BigD's cute characters act it out (elbows, knees, faces and the camera all move): Chai, Idli, Mango, the BigD puppy, Ammamma, Tatayya, the teacher, a cat and a parrot, in a tea shop, market, village, farm, school, on stage and more, with bubbles, voices, sounds and music. It also reads today's Media posts for fresh ideas. It learns by itself: the kinds people like (likes, comments, views) are made more often. People can also make their own in the app (Media › 🎬 Make a cartoon).</p>
+      <h2>🎬 Habit cartoons (our own maker) · హ్యాబిట్ కార్టూన్లు</h2>
+      <p class="hint">Our own cartoons, made fully on our server for free (no paid AI, no GPU): our own brain writes a tiny screenplay (a joke, riddle, fact, kids story or good thought) and Habit's cute characters act it out (elbows, knees, faces and the camera all move): Chai, Idli, Mango, the Habit puppy, Ammamma, Tatayya, the teacher, a cat and a parrot, in a tea shop, market, village, farm, school, on stage and more, with bubbles, voices, sounds and music. It also reads today's Media posts for fresh ideas. It learns by itself: the kinds people like (likes, comments, views) are made more often. People can also make their own in the app (Media › 🎬 Make a cartoon).</p>
       <p id="ctState" class="msg"></p>
       <p id="ctTrends" class="hint"></p>
       <label for="ctDaily">Cartoons made by itself each day for Media (0 = none; people can still make their own in the app)</label>
@@ -260,7 +261,7 @@ async function loadBrain() {
   const { brain, learning, claude, self } = await api("brain");
   if (claude) {
     const why = claude.why === "limit" ? "this month's usage limit is used up" : claude.why === "credit" ? "the credit is used up" : claude.why === "key" ? "the API key is wrong or expired" : "an account problem";
-    say($("claudeState"), `⏸ Claude is resting: ${why}${claude.until ? " (back on " + new Date(claude.until).toLocaleDateString() + ")" : ""}. Meanwhile BigD's self brain and our own brain answer everyone, and Claude is checked again every 30 minutes. To bring Claude back now, raise the monthly limit or add credit at console.anthropic.com.`, false);
+    say($("claudeState"), `⏸ Claude is resting: ${why}${claude.until ? " (back on " + new Date(claude.until).toLocaleDateString() + ")" : ""}. Meanwhile Habit's self brain and our own brain answer everyone, and Claude is checked again every 30 minutes. To bring Claude back now, raise the monthly limit or add credit at console.anthropic.com.`, false);
   } else say($("claudeState"), "✓ Claude is answering.", true);
   if (self) {
     const top = Object.entries(self.skills || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `${SKILL[k] || k} ${n}`).join(", ");
@@ -439,7 +440,7 @@ $("ctMake").onclick = async () => {
 
 async function loadChat() {
   const { stats: st, reports } = await api("chat");
-  say($("chatState"), `${st.people} people use BigD Chat · ${st.chats} one-to-one chats · ${st.groups} groups · ${st.waiting} messages waiting to be delivered · ${st.files} photos/voice notes · ${st.reports} reports`, true);
+  say($("chatState"), `${st.people} people use Habit Chat · ${st.chats} one-to-one chats · ${st.groups} groups · ${st.waiting} messages waiting to be delivered · ${st.files} photos/voice notes · ${st.reports} reports`, true);
   const ul = $("chatReports"); ul.textContent = "";
   for (const r of reports.slice(0, 30)) ul.append(row(`⚠️ ${r.byName} reported ${r.whoName || (r.name ? "the group " + r.name : "a chat")}${r.whoHandle ? " (@" + r.whoHandle + ")" : ""}: ${r.reason || ""}`,
     (r.msgs || []).map(m => "• " + m.text).join("\n"), new Date(r.at).toLocaleString(), "", null));

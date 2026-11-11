@@ -73,15 +73,15 @@ class MessagesPage(private val m: MainActivity) {
         views.forEachIndexed { i, v -> addView(v, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = m.dp(6) }) }
     }
 
-    /** Text shared to BigD AI from another app: check it right away. */
+    /** Text shared to Habit AI from another app: check it right away. */
     fun checkShared(text: String) { input = text.take(3000); pic = null; qr = ""; verdict = null; check() }
 
     fun build() {
         resultView = null
-        m.pageHeader("Messages · మెసేజ్‌లు", "Chat with your people on BigD, and check whether a message is safe or a fraud.")
+        m.pageHeader("Messages · మెసేజ్‌లు", "Chat with your people on Habit, and check whether a message is safe or a fraud.")
         m.chatPage.build()
 
-        m.add(ui.section("🛡️ Is this message safe?", "Paste a message you got, share it to BigD AI, or check a picture of it.").apply {
+        m.add(ui.section("🛡️ Is this message safe?", "Paste a message you got, share it to Habit AI, or check a picture of it.").apply {
             val box = ui.input("Paste or type the message here…", input, multi = true)
             box.onText { input = it }
             put(box, 10)
@@ -92,12 +92,12 @@ class MessagesPage(private val m: MainActivity) {
             val p = pic
             if (p != null || preparing) {
                 put(pictureRow(), 8)
-                put(ui.text("The picture goes to the BigD server and Claude AI only for this check, and is not kept. " +
+                put(ui.text("The picture goes to the Habit server and Claude AI only for this check, and is not kept. " +
                     "\"Hide personal details\" can't cover pictures, so crop out anything private first.", 12f, Ui.MUTED), 6)
             }
             if (qr.isNotBlank()) put(qrWarning(), 8)
             put(ui.button(if (checking) "Checking…" else "🛡️ Check it", "primary") { if (!checking) check() }, 10)
-            put(ui.text("Tip: in WhatsApp or SMS, long-press the message › Copy, then tap 📋 Paste. Or tap Share › BigD AI. " +
+            put(ui.text("Tip: in WhatsApp or SMS, long-press the message › Copy, then tap 📋 Paste. Or tap Share › Habit AI. " +
                 "For a fake payment screenshot or a QR code, tap 🖼️ Screenshot.", 12.5f, Ui.MUTED), 8)
         }, 12)
 
@@ -116,7 +116,7 @@ class MessagesPage(private val m: MainActivity) {
                 if (!access || !store.msgWatch) {
                     put(ui.text("○ Off. Turn it on to check every new WhatsApp and SMS message.", 14f, Ui.INK), 10)
                     put(ui.button("Turn on", "primary") { m.showMessageDisclosure() }, 8)
-                    if (!access) put(ui.text("If Android says \"Restricted setting\": open Settings › Apps › BigD AI › ⋮ › Allow restricted settings, then tap Turn on again.", 12f, Ui.MUTED), 6)
+                    if (!access) put(ui.text("If Android says \"Restricted setting\": open Settings › Apps › Habit AI › ⋮ › Allow restricted settings, then tap Turn on again.", 12f, Ui.MUTED), 6)
                 } else {
                     put(ui.text("✅ On for " + MessageHub.APPS.filter { it.first in store.msgApps }.joinToString(", ") { it.second }, 14f, Ui.GOOD, bold = true), 10)
                     put(ui.check("🛡️ Red warning for dangerous messages", store.scamAlerts) { store.scamAlerts = it }, 6)
@@ -126,7 +126,7 @@ class MessagesPage(private val m: MainActivity) {
         } else {
             m.add(ui.card(Ui.SUN_SOFT).apply {
                 addView(ui.text("📲 Automatic checking", 15f, Ui.INK, bold = true))
-                put(ui.text("Checking every new WhatsApp and SMS message by itself comes with the Play Store version of BigD AI " +
+                put(ui.text("Checking every new WhatsApp and SMS message by itself comes with the Play Store version of Habit AI " +
                     "(Android lets only Play Store apps read message notifications). For now, copy or share a message and check it above.", 13.5f, Ui.MUTED), 4)
             }, 12)
         }
@@ -271,7 +271,7 @@ class MessagesPage(private val m: MainActivity) {
             ui.button("✍️ Reply") { replyOpen = !replyOpen; m.render() },
             ui.button("🚨 Report", if (v.level == "danger") "danger" else "soft") { reportOpen = !reportOpen; m.render() }), 12)
         if (v.offline) put(ui.text("Checked on your phone only. Connect to the internet for a full check.", 12f, Ui.MUTED), 8)
-        else put(ui.text("🚩 Wrong result? Tell the BigD team", 12.5f, Ui.MUTED).apply {
+        else put(ui.text("🚩 Wrong result? Tell the Habit team", 12.5f, Ui.MUTED).apply {
             setPadding(0, m.dp(4), 0, m.dp(4))
             setOnClickListener { m.reportAi("message check", listOf(ScamCheck.label(v.level), v.title, v.reasons.joinToString("; "), v.advice.joinToString("; ")).filter { it.isNotBlank() }.joinToString("\n"), "") }
         }, 10)
@@ -371,14 +371,14 @@ class MessagesPage(private val m: MainActivity) {
         val when_ = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH).format(java.time.LocalDate.now())
         val from = listOf(curSender, curApp).filter { it.isNotBlank() && it != "Checked by you" && it != "You" }.joinToString(" on ")
         val req = "Complaint to the Cyber Crime Police about a fraud message I received" + (if (from.isNotBlank()) " from $from" else "") +
-            " (around $when_). The message: \"${curText.take(900)}\"." + (verdict?.title?.takeIf { it.isNotBlank() }?.let { " BigD AI says: $it." } ?: "")
+            " (around $when_). The message: \"${curText.take(900)}\"." + (verdict?.title?.takeIf { it.isNotBlank() }?.let { " Habit AI says: $it." } ?: "")
         m.openLetter(req, "public")
     }
 
     private fun askFamily() {
         val v = verdict
         val msg = "Please check this message I got. Is it safe?\n\n“" + curText.take(800) + "”" +
-            (if (v != null) "\n\nBigD AI says: " + ScamCheck.label(v.level) + (if (v.title.isNotBlank()) " · " + v.title else "") else "")
+            (if (v != null) "\n\nHabit AI says: " + ScamCheck.label(v.level) + (if (v.title.isNotBlank()) " · " + v.title else "") else "")
         val fam = store.family()
         if (fam.isEmpty()) { shareText(msg, "Send to your family"); return }
         val names = fam.map { it.name + if (it.relation.isNotBlank()) " (${it.relation})" else "" } + "Someone else…"
@@ -438,7 +438,7 @@ class MessagesPage(private val m: MainActivity) {
                 lines.append("${i + 1}. ").append(o.optString("title")).append(": ").append(o.optString("how")).append(" ").append(o.optString("do")).append("\n")
             }
             put(equal(ui.button("🔊 Listen") { m.speakOut(lines.toString()) },
-                ui.button("📤 Share with family") { shareText("⚠️ New scams this week (from BigD AI):\n\n" + lines.toString().trim(), "Share") }), 10)
+                ui.button("📤 Share with family") { shareText("⚠️ New scams this week (from Habit AI):\n\n" + lines.toString().trim(), "Share") }), 10)
             val at = cache.optLong("at")
             val src = cache.optJSONArray("sources")
             val names = if (src == null) "" else (0 until src.length()).mapNotNull { src.optJSONObject(it)?.optString("url")?.let { u -> Uri.parse(u).host?.removePrefix("www.") } }.distinct().take(4).joinToString(", ")
@@ -531,7 +531,7 @@ class MessagesPage(private val m: MainActivity) {
 
     // =================== sending and small helpers ===================
     private fun copy(t: String) {
-        try { m.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("BigD AI", t)); m.toast("Copied") } catch (e: Exception) { }
+        try { m.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Habit AI", t)); m.toast("Copied") } catch (e: Exception) { }
     }
 
     private fun shareText(t: String, title: String) {

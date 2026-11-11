@@ -18,7 +18,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * BigD Chat's lock, end to end. Every phone has its own key pair (P-256); only the public half goes to the server.
+ * Habit Chat's lock, end to end. Every phone has its own key pair (P-256); only the public half goes to the server.
  * A message is locked with a fresh random key (AES-256-GCM), and that key is locked once for each person in the chat
  * (including the sender) with a key both sides can work out (ECDH with a one-time key pair, then HKDF-SHA256). So the
  * server, which only passes messages on, can't read them. Photos and voice notes are locked with their own random key,

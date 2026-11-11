@@ -12,7 +12,7 @@ object Config {
 }
 
 data class Todo(val text: String, val done: Boolean)
-/** A Word/Excel file BigD made; [id] is the phone's download id. */
+/** A Word/Excel file Habit made; [id] is the phone's download id. */
 data class SavedFile(val id: Long, val name: String, val format: String, val at: Long)
 /** A family member for SOS. [relation] is optional, e.g. "Son". */
 data class FamilyContact(val name: String, val phone: String, val relation: String = "")
@@ -59,7 +59,7 @@ class Store(context: Context) {
         get() = p.getBoolean("cuteVoice", false)
         set(v) { p.edit().putBoolean("cuteVoice", v).apply() }
 
-    /** BigD AI Lite: find cards in new screenshots by itself (checked while charging). */
+    /** Habit AI Lite: find cards in new screenshots by itself (checked while charging). */
     var autoCards: Boolean
         get() = p.getBoolean("autoCards", false)
         set(v) { p.edit().putBoolean("autoCards", v).apply() }
@@ -208,7 +208,7 @@ class Store(context: Context) {
     var feedAgreed: Boolean
         get() = p.getBoolean("feedAgreed", false)
         set(v) { p.edit().putBoolean("feedAgreed", v).apply() }
-    /** BigD team password (only for the app's owner), to reply to and remove posts. */
+    /** Habit team password (only for the app's owner), to reply to and remove posts. */
     var teamKey: String
         get() = p.getString("teamKey", "") ?: ""
         set(v) { p.edit().putString("teamKey", v.trim()).apply() }
@@ -318,7 +318,7 @@ class Store(context: Context) {
     }
     fun removeMemory(index: Int) { val l = memories().toMutableList(); if (index in l.indices) { l.removeAt(index); saveMemories(l) } }
 
-    // ---- files BigD made ----
+    // ---- files Habit made ----
     fun files(): List<SavedFile> {
         val a = JSONArray(p.getString("files", "[]"))
         return (0 until a.length()).map { val o = a.getJSONObject(it); SavedFile(o.getLong("id"), o.optString("name"), o.optString("format"), o.optLong("at")) }

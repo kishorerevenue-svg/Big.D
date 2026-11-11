@@ -49,8 +49,8 @@ import java.util.Calendar
 import java.util.Locale
 
 /**
- * One BigD chat (one-to-one, a group, or my own notes & reminders), like WhatsApp: messages with ✓✓ ticks, photos,
- * voice notes, and tasks pinned at the top until an admin closes them. Also opens BigD chat links (bigd://chat/<name>),
+ * One Habit chat (one-to-one, a group, or my own notes & reminders), like WhatsApp: messages with ✓✓ ticks, photos,
+ * voice notes, and tasks pinned at the top until an admin closes them. Also opens Habit chat links (bigd://chat/<name>),
  * scans an invite QR code, and calls or invites a phone contact (action "scan", "contact").
  */
 class ChatActivity : Activity() {
@@ -222,8 +222,8 @@ class ChatActivity : Activity() {
         list.removeAllViews()
         if (msgs.isEmpty()) list.addView(ui.text(if (c.isSelf) t("Write notes to yourself here. Tap 📌 for a reminder: it stays pinned at the top until you tick it.",
             "ఇక్కడ మీ కోసం నోట్స్ రాసుకోండి. రిమైండర్ కోసం 📌 నొక్కండి: మీరు టిక్ చేసేవరకు అది పైన ఉంటుంది.")
-            else t("🔒 Messages here are locked end to end: only the people in this chat can read them, not even BigD's server. Say hi! 👋",
-            "🔒 ఇక్కడి మెసేజ్‌లు ఎండ్ టు ఎండ్ లాక్: ఈ చాట్‌లో ఉన్నవాళ్ళు మాత్రమే చదవగలరు, BigD సర్వర్ కూడా చదవలేదు. హాయ్ చెప్పండి! 👋"), 13.5f, Ui.MUTED).apply {
+            else t("🔒 Messages here are locked end to end: only the people in this chat can read them, not even Habit's server. Say hi! 👋",
+            "🔒 ఇక్కడి మెసేజ్‌లు ఎండ్ టు ఎండ్ లాక్: ఈ చాట్‌లో ఉన్నవాళ్ళు మాత్రమే చదవగలరు, Habit సర్వర్ కూడా చదవలేదు. హాయ్ చెప్పండి! 👋"), 13.5f, Ui.MUTED).apply {
             gravity = Gravity.CENTER; setPadding(dp(16), dp(24), dp(16), dp(24)) })
         var day: LocalDate? = null
         for (m in msgs) {
@@ -601,14 +601,14 @@ class ChatActivity : Activity() {
             call("/api/chat/leave", JSONObject()) { db.patchConv(cid) { it.put("member", false) }; db.clear(cid, true); finish() }
         }.setNegativeButton(t("Cancel", "వద్దు"), null).show()
     }
-    /** Report: the messages (opened on this phone) go to the BigD team, so they can see what happened. */
+    /** Report: the messages (opened on this phone) go to the Habit team, so they can see what happened. */
     private fun report(msgs: List<ChatMsg>, who: String) {
         val reasons = arrayOf(t("Spam or fraud", "స్పామ్ / మోసం"), t("Bad or abusive words", "చెడ్డ మాటలు"), t("Troubling a child", "పిల్లలను ఇబ్బంది పెట్టడం"), t("Something else", "ఇంకేదైనా"))
         AlertDialog.Builder(this).setTitle(t("⚠️ Report: why?", "⚠️ రిపోర్ట్: ఎందుకు?")).setItems(reasons) { _, i ->
             val arr = JSONArray()
             for (m in msgs.takeLast(10)) arr.put(JSONObject().put("from", m.sender).put("text", ChatSync.preview(this, m)).put("at", m.at))
             call("/api/chat/report", JSONObject().put("uid", who).put("reason", reasons[i]).put("msgs", arr)) {
-                toast(t("Reported. Thank you: the BigD team will look at it.", "రిపోర్ట్ చేశాం. ధన్యవాదాలు."))
+                toast(t("Reported. Thank you: the Habit team will look at it.", "రిపోర్ట్ చేశాం. ధన్యవాదాలు."))
                 val c = conv()
                 if (c != null && !c.isGroup && !c.blocked) AlertDialog.Builder(this).setMessage(t("Block them too?", "వాళ్ళని బ్లాక్ కూడా చేయాలా?"))
                     .setPositiveButton(t("Block", "బ్లాక్")) { _, _ -> block(true) }.setNegativeButton(t("No", "వద్దు"), null).show()
@@ -663,7 +663,7 @@ class ChatActivity : Activity() {
     // =================== links, QR codes and phone contacts ===================
     /** Opens (or starts) a chat with the person who has this @name. */
     private fun openHandle(handle: String) {
-        if (!ChatSync.isSetUp(this)) { toast(t("Open Messages › 💬 BigD Chat first.", "ముందు మెసేజ్‌లు › 💬 BigD చాట్ తెరవండి.")); startActivity(Intent(this, MainActivity::class.java)); finish(); return }
+        if (!ChatSync.isSetUp(this)) { toast(t("Open Messages › 💬 Habit Chat first.", "ముందు మెసేజ్‌లు › 💬 Habit చాట్ తెరవండి.")); startActivity(Intent(this, MainActivity::class.java)); finish(); return }
         val h = handle.trim().removePrefix("@")
         if (h.isEmpty()) { finish(); return }
         title.text = "@$h"; sub.text = t("Opening…", "తెరుస్తున్నాం…")
@@ -677,14 +677,14 @@ class ChatActivity : Activity() {
         }.start()
     }
     private fun scanQr() {
-        title.text = t("Scan a BigD QR code", "BigD QR కోడ్ స్కాన్"); sub.text = ""
+        title.text = t("Scan a Habit QR code", "Habit QR కోడ్ స్కాన్"); sub.text = ""
         AlertDialog.Builder(this).setItems(arrayOf(t("📷 Take a photo of the QR code", "📷 QR కోడ్ ఫోటో తీయండి"), t("🖼️ From a photo or screenshot", "🖼️ ఫోటో లేదా స్క్రీన్‌షాట్ నుంచి"))) { _, i -> if (i == 0) camera(REQ_QR_CAM) else pickPhoto(REQ_QR) }
             .setOnCancelListener { finish() }.show()
     }
     private fun onQr(read: () -> Uri?) {
         val text = try { read()?.let { QrRead.decode(this, it) } ?: "" } catch (e: Exception) { "" }
         val h = Regex("/c/([A-Za-z0-9_]{3,20})").find(text)?.groupValues?.get(1) ?: Regex("bigd://chat/([A-Za-z0-9_]{3,20})").find(text)?.groupValues?.get(1)
-        if (h == null) { toast(if (text.isEmpty()) t("No QR code found in that picture.", "ఆ ఫోటోలో QR కోడ్ కనిపించలేదు.") else t("That isn't a BigD chat QR code.", "అది BigD చాట్ QR కోడ్ కాదు.")); finish(); return }
+        if (h == null) { toast(if (text.isEmpty()) t("No QR code found in that picture.", "ఆ ఫోటోలో QR కోడ్ కనిపించలేదు.") else t("That isn't a Habit chat QR code.", "అది Habit చాట్ QR కోడ్ కాదు.")); finish(); return }
         openHandle(h)
     }
     private fun pickContact() {
@@ -700,7 +700,7 @@ class ChatActivity : Activity() {
         pickedNumber = number
         val handle = ChatSync.me(this).optString("handle")
         val link = store.server.trimEnd('/') + "/c/" + handle
-        val msg = t("Hi! Let's chat on BigD AI (free, locked end to end, Telugu and English): $link", "హాయ్! BigD AI లో చాట్ చేద్దాం (ఉచితం, సురక్షితం): $link")
+        val msg = t("Hi! Let's chat on Habit AI (free, locked end to end, Telugu and English): $link", "హాయ్! Habit AI లో చాట్ చేద్దాం (ఉచితం, సురక్షితం): $link")
         val digits = number.filter { it.isDigit() }.let { if (it.length == 10) "91$it" else it }
         AlertDialog.Builder(this).setTitle(name.ifBlank { number }).setItems(arrayOf(t("📞 Phone call", "📞 ఫోన్ కాల్"), t("💬 Invite on WhatsApp", "💬 వాట్సాప్‌లో ఆహ్వానించండి"), t("✉️ Invite by SMS", "✉️ SMS తో ఆహ్వానించండి"))) { _, i ->
             when (i) {
@@ -710,7 +710,7 @@ class ChatActivity : Activity() {
             }
         }.setOnCancelListener { finish() }.show()
     }
-    /** A normal phone call (to anyone, with BigD or not). */
+    /** A normal phone call (to anyone, with Habit or not). */
     private fun phoneCall(number: String) {
         if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) { requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL); return }
         try { startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(number)))) } catch (e: Exception) { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)))) }
@@ -741,7 +741,7 @@ class ChatActivity : Activity() {
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
 }
 
-/** Finding BigD people by name or @name (for a new chat, a new group, or adding to a group). */
+/** Finding Habit people by name or @name (for a new chat, a new group, or adding to a group). */
 object ChatPeople {
     /** Shows a search box; [done] gets the people picked. [multi]: tick several (groups); otherwise one tap picks. */
     fun pick(a: Activity, store: Store, title: String, skip: Set<String> = emptySet(), multi: Boolean = true, done: (List<JSONObject>) -> Unit) {
@@ -765,7 +765,7 @@ object ChatPeople {
                     if (my != seq) return@post
                     results.removeAllViews()
                     val ppl = r.json.optJSONArray("people") ?: JSONArray()
-                    if (!r.ok || ppl.length() == 0) results.addView(ui.text(if (!r.ok) r.error("Couldn't search.") else if (te) "ఎవరూ దొరకలేదు. వాళ్ళు BigD చాట్ తెరిచారా? మీ ఆహ్వాన లింక్ పంపండి." else "No one found. Have they opened BigD Chat? Send them your invite link.", 13.5f, Ui.MUTED).apply { setPadding(0, ui.dp(10), 0, 0) })
+                    if (!r.ok || ppl.length() == 0) results.addView(ui.text(if (!r.ok) r.error("Couldn't search.") else if (te) "ఎవరూ దొరకలేదు. వాళ్ళు Habit చాట్ తెరిచారా? మీ ఆహ్వాన లింక్ పంపండి." else "No one found. Have they opened Habit Chat? Send them your invite link.", 13.5f, Ui.MUTED).apply { setPadding(0, ui.dp(10), 0, 0) })
                     for (i in 0 until ppl.length()) {
                         val p = ppl.getJSONObject(i); val uid = p.optString("uid")
                         if (uid in skip) continue

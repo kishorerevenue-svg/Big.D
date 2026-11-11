@@ -108,7 +108,7 @@ object HandsFree {
     /** Only short, exact commands count, so normal chat ("what's next today?") is never taken as a command. */
     fun match(text: String): Cmd? {
         var t = text.lowercase().replace(Regex("[.,!?।]"), " ").replace(Regex("\\s+"), " ").trim()
-        t = t.removePrefix("please ").removePrefix("bigd ").removePrefix("big d ").removeSuffix(" please").trim()
+        t = t.removePrefix("please ").removePrefix("habit ").removePrefix("bigd ").removePrefix("big d ").removeSuffix(" please").trim()
         if (t.isEmpty() || t.split(" ").size > 4) return null
         return WORDS.firstOrNull { (_, words) -> t in words }?.first
     }

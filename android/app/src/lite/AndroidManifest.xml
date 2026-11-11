@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Added only to BigD AI Lite (not from the Play Store): it finds ID cards in the phone's screenshots by itself.
+<!-- Added only to Habit AI Lite (not from the Play Store): it finds ID cards in the phone's screenshots by itself.
      Google Play lets only gallery apps read all photos, so the Play Store edition uses the photo picker instead. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
-    <!-- The tiny brain for no internet (the separate BigD Brain app). Only apps with BigD's stamp may use it;
+    <!-- The tiny brain for no internet (the separate Habit Brain app). Only apps with Habit's stamp may use it;
          both apps define the permission, so the order they are installed in doesn't matter. -->
     <permission
         android:name="com.kishore.bigd.permission.TINY_BRAIN"
-        android:label="Ask BigD's tiny brain"
+        android:label="Ask Habit's tiny brain"
         android:protectionLevel="signature" />
     <uses-permission android:name="com.kishore.bigd.permission.TINY_BRAIN" />
     <queries>

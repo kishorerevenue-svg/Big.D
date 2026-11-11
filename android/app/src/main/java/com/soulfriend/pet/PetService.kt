@@ -110,10 +110,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         addPet()
         if (BuildConfig.HANDS_FREE && store.remoteOn) showRemote()
         MessageHub.listener = { m, autoSent -> onMessage(m, autoSent) }
-        ChatSync.hold(this, "pet")       // while the pet floats, BigD Chat messages come at once
+        ChatSync.hold(this, "pet")       // while the pet floats, Habit Chat messages come at once
         tts = TextToSpeech(this, this)
         SoundFx.load(this)
-        say("Hi! I'm BigD AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
+        say("Hi! I'm Habit AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -169,7 +169,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val stop = PendingIntent.getService(this, 2, Intent(this, PetService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_paw)
-            .setContentTitle("BigD AI is on your screen")
+            .setContentTitle("Habit AI is on your screen")
             .setContentText("Tap the puppy to talk. Hold it for the menu.")
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Hide puppy", stop).build())
@@ -198,7 +198,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun addPet() {
         pet = PuppyView(this)
         pet.kind = PuppyView.kindOf(store.petKind)
-        pet.contentDescription = "BigD AI pet. Tap to talk, hold for menu, drag to the X at the bottom to close."
+        pet.contentDescription = "Habit AI pet. Tap to talk, hold for menu, drag to the X at the bottom to close."
         val size = dp(112)
         petParams = overlayParams(size, size).apply {
             x = if (store.petX >= 0) store.petX else screenW - size - dp(8)
@@ -407,7 +407,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
             if (te && !teluguVoiceMissingShown) {
                 teluguVoiceMissingShown = true
-                main.postDelayed({ showBubble("To hear me in Telugu, open the BigD AI app and tap 'Install Telugu voice'.", 8000) }, 7000)
+                main.postDelayed({ showBubble("To hear me in Telugu, open the Habit AI app and tap 'Install Telugu voice'.", 8000) }, 7000)
             }
             fakeTalk(text); return
         }
@@ -437,7 +437,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     // ---------------- listening ----------------
     private fun startListening() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            say("I need the microphone. Open the BigD AI app and tap 'Allow microphone'.", PuppyView.Mood.SAD); openApp(); return
+            say("I need the microphone. Open the Habit AI app and tap 'Allow microphone'.", PuppyView.Mood.SAD); openApp(); return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             say("Voice typing isn't available on this phone. Hold me to type instead.", PuppyView.Mood.CONFUSED); return
@@ -459,7 +459,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap me and speak again."
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "No internet for voice. Check your connection."
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Please allow the microphone in the BigD AI app."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Please allow the microphone in the Habit AI app."
                     else -> "Voice didn't work. Tap me to try again, or hold me to type."
                 }
                 pet.mood = PuppyView.Mood.CONFUSED; showBubble(msg, 5000)
@@ -562,8 +562,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         main.postDelayed({
             if (lookingSince == asked && LookActivity.openedAt < asked) {
                 lookingSince = 0; pet.mood = PuppyView.Mood.CONFUSED
-                showBubble(if (te) "నా కళ్ళు తెరుచుకోలేదు. ఫోన్ Settings › Apps › BigD AI లో \"Display pop-up windows while running in the background\" (లేదా \"Open in background\") అనుమతి ఇచ్చి మళ్ళీ అడగండి."
-                           else "My eyes didn't open. In the phone's Settings › Apps › BigD AI, allow \"Display pop-up windows while running in the background\" (or \"Open in background\"), then ask me again.", 12_000)
+                showBubble(if (te) "నా కళ్ళు తెరుచుకోలేదు. ఫోన్ Settings › Apps › Habit AI లో \"Display pop-up windows while running in the background\" (లేదా \"Open in background\") అనుమతి ఇచ్చి మళ్ళీ అడగండి."
+                           else "My eyes didn't open. In the phone's Settings › Apps › Habit AI, allow \"Display pop-up windows while running in the background\" (or \"Open in background\"), then ask me again.", 12_000)
             }
         }, 6000)
     }
@@ -629,8 +629,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (src != null && src.length() > 0)
             extra += "\n\nSources:\n" + (0 until src.length()).joinToString("\n") { i -> src.optJSONObject(i)?.let { "• " + it.optString("title") + "\n  " + it.optString("url") } ?: "" }
         // which brain answered, when it wasn't the big AI (shown, not spoken)
-        if (json.optBoolean("self")) extra += "\n\n🧠 " + (if (store.lang == "te") "BigD సొంత మెదడు, తను నేర్చుకున్న దాని నుంచి జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "BigD's own brain answered from what it has learned (the big AI is away right now)")
-        else if (json.optBoolean("own")) extra += "\n\n🧠 " + (if (store.lang == "te") "BigD సొంత మెదడు జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "BigD's own brain answered (the big AI is away right now)")
+        if (json.optBoolean("self")) extra += "\n\n🧠 " + (if (store.lang == "te") "హ్యాబిట్ సొంత మెదడు, తను నేర్చుకున్న దాని నుంచి జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "Habit's own brain answered from what it has learned (the big AI is away right now)")
+        else if (json.optBoolean("own")) extra += "\n\n🧠 " + (if (store.lang == "te") "హ్యాబిట్ సొంత మెదడు జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "Habit's own brain answered (the big AI is away right now)")
         else if (json.optBoolean("learned")) extra += "\n\n📚 " + (if (store.lang == "te") "ముందే సిద్ధం చేసిన జవాబు" else "A prepared answer to a common question")
         else if (json.optBoolean("tiny")) extra += "\n\n📴 " + (if (store.lang == "te") "ఇంటర్నెట్ లేదు, ఫోన్‌లోని చిన్న మెదడు జవాబిచ్చింది" else "No internet: the tiny brain on this phone answered")
         val snd = json.optString("sound")
@@ -682,7 +682,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             background = GradientDrawable().apply { setColor(Color.parseColor("#FFFFFF")); cornerRadius = dp(20).toFloat(); setStroke(dp(1), Color.parseColor("#D8DDF0")) }
             elevation = dp(8).toFloat()
         }
-        val title = TextView(this).apply { text = "BigD AI"; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1C2140")) }
+        val title = TextView(this).apply { text = "Habit AI"; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1C2140")) }
         langBtn = pill(langLabel()) {
             store.lang = when (store.lang) { "auto" -> "te"; "te" -> "en"; else -> "auto" }; langBtn?.text = langLabel()
         }
@@ -798,11 +798,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun handsFree(cmd: HandsFree.Cmd): Boolean {
         if (!BuildConfig.HANDS_FREE) {
             if (cmd !in reelCmds) return false
-            say("Scrolling Reels comes in BigD AI Plus, after the Play Store approval. For now, Google's Voice Access can do it: say \"scroll down\".", PuppyView.Mood.CONFUSED)
+            say("Scrolling Reels comes in Habit AI Plus, after the Play Store approval. For now, Google's Voice Access can do it: say \"scroll down\".", PuppyView.Mood.CONFUSED)
             return true
         }
         if (!HandsFreeService.isOn(this) || HandsFreeService.instance == null) {
-            say("To do that, turn on Hands-free control in the BigD AI app: Pet › Hands-free control.", PuppyView.Mood.CONFUSED)
+            say("To do that, turn on Hands-free control in the Habit AI app: Pet › Hands-free control.", PuppyView.Mood.CONFUSED)
             main.postDelayed({ openApp("pet") }, 1800)
             return true
         }

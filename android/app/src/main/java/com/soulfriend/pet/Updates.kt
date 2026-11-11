@@ -11,7 +11,7 @@ import java.net.URL
 import java.util.concurrent.Executors
 
 /**
- * One-tap updates for BigD AI Lite (the edition shared on WhatsApp; Play Store editions are updated by the Play Store).
+ * One-tap updates for Habit AI Lite (the edition shared on WhatsApp; Play Store editions are updated by the Play Store).
  * Once in a while it asks the server whether a newer version is out; the Home page then shows a card, and
  * "Update" opens the download in the browser. Android always asks before installing, and the new version
  * installs over the old one, so everything on the phone stays.

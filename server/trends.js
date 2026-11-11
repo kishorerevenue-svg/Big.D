@@ -1,4 +1,4 @@
-// What's happening today, for BigD's cartoons and its self brain. It learns from the internet every day:
+// What's happening today, for Habit's cartoons and its self brain. It learns from the internet every day:
 //  - Google Trends: what people in India are searching for right now (a free RSS feed, no key). Only kind, everyday
 //    THEMES are taken from it (a big cricket match day, exam results, a rainy day, a holiday, a festival…), never the
 //    searches themselves: no names of real people, politics, crimes, films or brands reach a cartoon. TRENDS=false turns
@@ -191,7 +191,7 @@ module.exports = function makeTrends({ fetchImpl } = {}) {
   async function refresh() {
     if (!ON()) return state;
     try {
-      const r = await get(URL_(), { headers: { "user-agent": "Mozilla/5.0 (compatible; BigDAI/1.0; +https://bigdai.tech)" }, signal: AbortSignal.timeout(12000) });
+      const r = await get(URL_(), { headers: { "user-agent": "Mozilla/5.0 (compatible; HabitAI/1.0; +https://bigdai.tech)" }, signal: AbortSignal.timeout(12000) });
       if (!r.ok) throw new Error("Google Trends answered " + r.status);
       const items = parse(await r.text());
       if (!items.length) throw new Error("no searches in the feed");

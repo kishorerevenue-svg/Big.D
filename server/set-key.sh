@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Saves one setting in .env and restarts the BigD AI server. Examples:
+# Saves one setting in .env and restarts the Habit AI server. Examples:
 #   bash /root/Big.D/server/set-key.sh GOOGLE_TTS_KEY AIzaSy...
 #   bash /root/Big.D/server/set-key.sh ANTHROPIC_API_KEY sk-ant-...   (a new Claude key)
 #   bash /root/Big.D/server/set-key.sh GEMINI_API_KEY AIza...         (the backup AI, optional)

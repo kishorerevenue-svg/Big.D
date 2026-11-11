@@ -24,8 +24,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * BigD Brain: download the tiny brain, see whether it is ready, and try it.
- * BigD AI then uses it by itself when the phone has no internet. Nothing asked here leaves the phone.
+ * Habit Brain: download the tiny brain, see whether it is ready, and try it.
+ * Habit AI then uses it by itself when the phone has no internet. Nothing asked here leaves the phone.
  */
 class BrainActivity : Activity() {
     private val h = Handler(Looper.getMainLooper())
@@ -63,9 +63,9 @@ class BrainActivity : Activity() {
     private fun show() {
         h.removeCallbacksAndMessages(null)
         col.removeAllViews()
-        add(text("🧠 BigD Brain", 26f, bold = true), 0)
-        add(text(if (te) "ఇంటర్నెట్ అస్సలు లేనప్పుడు కూడా మీ BigD పెట్ మాట్లాడేలా, ఈ ఫోన్‌లోనే పనిచేసే చిన్న మెదడు. మీరు అడిగేది ఫోన్ దాటి బయటికి వెళ్ళదు."
-                  else "A tiny brain that works on this phone, so your BigD pet can still talk when there is no internet at all. Nothing you ask it leaves the phone.", 15f, muted), 6)
+        add(text("🧠 Habit Brain", 26f, bold = true), 0)
+        add(text(if (te) "ఇంటర్నెట్ అస్సలు లేనప్పుడు కూడా మీ Habit పెట్ మాట్లాడేలా, ఈ ఫోన్‌లోనే పనిచేసే చిన్న మెదడు. మీరు అడిగేది ఫోన్ దాటి బయటికి వెళ్ళదు."
+                  else "A tiny brain that works on this phone, so your Habit pet can still talk when there is no internet at all. Nothing you ask it leaves the phone.", 15f, muted), 6)
 
         val ram = Model.ramGb(this)
         add(text(if (ram >= 6) "📱 This phone: $ram GB memory ✓" else "⚠️ This phone has $ram GB memory. The tiny brain needs about 6 GB; it may be slow or stop.", 14f, if (ram >= 6) teal else Color.parseColor("#B45309")), 14)
@@ -73,7 +73,7 @@ class BrainActivity : Activity() {
         val box = card()
         when {
             Model.ready(this) -> {
-                box.addView(text(if (te) "✓ చిన్న మెదడు సిద్ధంగా ఉంది. ఇంటర్నెట్ లేనప్పుడు BigD AI దీన్ని తానే వాడుతుంది." else "✓ The tiny brain is ready. BigD AI uses it by itself when there is no internet.", 16f, teal, bold = true))
+                box.addView(text(if (te) "✓ చిన్న మెదడు సిద్ధంగా ఉంది. ఇంటర్నెట్ లేనప్పుడు Habit AI దీన్ని తానే వాడుతుంది." else "✓ The tiny brain is ready. Habit AI uses it by itself when there is no internet.", 16f, teal, bold = true))
                 val q = EditText(this).apply { hint = if (te) "ఏదైనా అడగండి…" else "Ask it something…"; textSize = 15f }
                 box.addView(q, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
                 val answer = text("", 15f)
@@ -109,10 +109,10 @@ class BrainActivity : Activity() {
         }
         add(box, 16)
         add(text("Google's Gemma 4 (E2B) model, Apache 2.0 licence, running with Google's LiteRT-LM. " +
-            "Answers from a small brain are simpler than BigD's big AI; check important things.", 12.5f, muted), 18)
+            "Answers from a small brain are simpler than Habit's big AI; check important things.", 12.5f, muted), 18)
     }
 
-    /** Tries the brain through BigD's own door (the same way BigD AI asks it). */
+    /** Tries the brain through Habit's own door (the same way Habit AI asks it). */
     private fun test(q: String, done: (String) -> Unit) {
         val reply = Messenger(Handler(Looper.getMainLooper()) { m ->
             if (m.what == 2) done(m.data.getString("text") ?: ("😕 " + (m.data.getString("error") ?: "No answer.")))
@@ -122,7 +122,7 @@ class BrainActivity : Activity() {
             override fun onServiceConnected(n: ComponentName, b: IBinder) {
                 try {
                     Messenger(b).send(Message.obtain(null, 1).apply {
-                        data = Bundle().apply { putString("system", "You are BigD, a kind cartoon pet friend. Answer in the language of the question, in 1 to 4 short sentences."); putString("prompt", q) }
+                        data = Bundle().apply { putString("system", "You are Habit, a kind cartoon pet friend. Answer in the language of the question, in 1 to 4 short sentences."); putString("prompt", q) }
                         replyTo = reply
                     })
                 } catch (e: Exception) { done("😕 " + e.message) }

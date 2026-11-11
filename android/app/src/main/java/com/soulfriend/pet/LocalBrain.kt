@@ -246,7 +246,7 @@ object LocalBrain {
         val wake = re("wake|లేపు|\\blepu\\b").containsMatchIn(t)          // "wake me at 6": the morning
         val w = parseWhen(t, now, loose = true, usualPart = if (wake) "am" else "")
             ?: return reply(say(te, "⏰ What time? Say for example \"alarm at 5:30 am\".", "⏰ ఎన్ని గంటలకు? ఉదాహరణకి \"ఉదయం 5:30 కి అలారం\" అని చెప్పండి."), "thinking")
-        return reply(say(te, "⏰ Okay!", "⏰ సరే!"), "happy", act("alarm", "hour" to w.at.hour, "minute" to w.at.minute, "label" to "BigD AI")).put("sound", "ding")
+        return reply(say(te, "⏰ Okay!", "⏰ సరే!"), "happy", act("alarm", "hour" to w.at.hour, "minute" to w.at.minute, "label" to "Habit AI")).put("sound", "ding")
     }
 
     private fun reminder(t: String, te: Boolean, now: LocalDateTime): JSONObject? {
@@ -429,7 +429,7 @@ object LocalBrain {
                 "🐾 నమస్తే! నేను ఇక్కడే ఉన్నాను. రిమైండర్, కాల్, యాప్ ఓపెన్, సమయం — ఏదైనా అడగండి."), "excited")
         re("thank|thanks|^tq$|^ty$|ధన్యవాదాలు|థాంక్స్|థ్యాంక్స్|థాంక్యూ").containsMatchIn(t) -> reply(say(te, "😊 You're welcome!", "😊 పర్వాలేదు!"), "love")
         re("how are (you|u)|ela unnav|bagunnava|ఎలా ఉన్నావ|బాగున్నావా").containsMatchIn(t) -> reply(say(te, "🐾 I'm fine, thank you! How are you?", "🐾 నేను బాగున్నాను! మీరు ఎలా ఉన్నారు?"), "happy")
-        re("who are you|what('?s| is) your name|నువ్వు ఎవరు|నీ పేరు").containsMatchIn(t) -> reply(say(te, "🐾 I'm your BigD AI pet, your helper on this phone.", "🐾 నేను మీ BigD AI పెట్‌ని, ఈ ఫోన్‌లో మీ సహాయకుడిని."), "proud")
+        re("who are you|what('?s| is) your name|నువ్వు ఎవరు|నీ పేరు").containsMatchIn(t) -> reply(say(te, "🐾 I'm your Habit AI pet, your helper on this phone.", "🐾 నేను మీ హ్యాబిట్ AI పెట్‌ని, ఈ ఫోన్‌లో మీ సహాయకుడిని."), "proud")
         re("i love you|love you|ఐ లవ్ యూ|నువ్వంటే ఇష్టం").containsMatchIn(t) -> reply("❤️ " + say(te, "Love you too!", "నాకూ మీరంటే చాలా ఇష్టం!"), "love")
         re("^(help|what can you do|what all can you do)$|ఏం చేయగలవు|ఏమి చేయగలవు|^సహాయం$").containsMatchIn(t) ->
             reply(say(te, "🐾 Right now I can: set reminders, alarms and timers, call your family, open apps, add to and read your list, tell the time and date, do sums, check a message for fraud and show emergency numbers.",

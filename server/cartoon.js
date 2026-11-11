@@ -1,7 +1,7 @@
-// BigD cartoons: our own cartoon videos, made fully on our server (no paid video AI, no GPU).
+// Habit cartoons: our own cartoon videos, made fully on our server (no paid video AI, no GPU).
 //  - OUR OWN BRAIN writes each one as a tiny screenplay (a joke, riddle, fact, kids story or good thought) in simple
-//    Telugu; Claude only when our own brain can't. BigD's own characters act it out: Ramu the tea seller, Ammamma,
-//    Chinnu, Chitti, Ramayya the farmer, the teacher, the BigD puppy, a cat and a parrot, in a market, village, farm,
+//    Telugu; Claude only when our own brain can't. Habit's own characters act it out: Ramu the tea seller, Ammamma,
+//    Chinnu, Chitti, Ramayya the farmer, the teacher, the Habit puppy, a cat and a parrot, in a market, village, farm,
 //    tea shop, beach, park, home, school or on stage. They walk, talk, slip, jump, laugh, dance... (toon/toon.py).
 //  - Speech bubbles, sound effects, talk sounds (or the natural voice, GOOGLE_TTS_KEY) and music by mood.
 //  - It LEARNS BY ITSELF: after each cartoon has been out a while, its likes, comments and views are counted; the
@@ -61,7 +61,7 @@ module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, own
   // the characters of the cute (doodle) look; the first look's names still work (chaiwala = chai, chinnu = idli, ...)
   const CHARS = ["chai", "idli", "mango", "bigd", "ammamma", "tatayya", "teacher", "pilli", "chilaka"];
   const ALIAS = { chaiwala: "chai", chinnu: "idli", chitti: "mango", raithu: "tatayya" };
-  const NAMES = { chai: "చాయ్", idli: "ఇడ్లీ", mango: "మామిడి", bigd: "బిగ్‌డీ", ammamma: "అమ్మమ్మ", tatayya: "తాతయ్య", teacher: "టీచర్", pilli: "పిల్లి", chilaka: "చిలుక" };
+  const NAMES = { chai: "చాయ్", idli: "ఇడ్లీ", mango: "మామిడి", bigd: "హ్యాబిట్", ammamma: "అమ్మమ్మ", tatayya: "తాతయ్య", teacher: "టీచర్", pilli: "పిల్లి", chilaka: "చిలుక" };
   const VOICE_OF = { bigd: "puppy", chai: "bear", tatayya: "robot", ammamma: "panda", teacher: "kitten", idli: "chameleon", mango: "bunny", pilli: "kitty", chilaka: "parrot" };
   const STYLE = process.env.TOON_STYLE || "doodle";
   const PLACES = ["market", "village", "farm", "teashop", "beach", "park", "home", "school", "stage", "night"];
@@ -103,13 +103,13 @@ module.exports = function makeCartoon({ DATA_DIR, media, ai, MODEL, API_KEY, own
     .map(m => [m, score(m)]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([m]) => m.title);
 
   // ---------- the screenplay, by our own brain ----------
-  const SYSTEM = (type) => `You write a very short cartoon for BigD AI, a Telugu app used by families in Andhra Pradesh and Telangana, with children watching too.
+  const SYSTEM = (type) => `You write a very short cartoon for Habit AI, a Telugu app used by families in Andhra Pradesh and Telangana, with children watching too.
 Kind: ${TYPES[type].en} (${TYPES[type].te}).${type === "riddle" ? ' A riddle: one character asks it, another thinks, and the last line gives the answer, starting with "జవాబు:".' : ""}${type === "fact" ? " Only true, well-known facts; nothing doubtful. The teacher or Ammamma tells it to a child." : ""}${type === "story" ? " A tiny story with a happy ending and a clear moral in the last line." : ""}${type === "joke" ? " A clean, gentle joke from everyday Telugu life, with a funny action (a slip, a surprise, a dance...) when it fits." : ""}${type === "thought" ? " A good thought for the day, said kindly." : ""}
 The characters (use 1 to 3; write their key). They are cute cartoon characters:
 - chai: Chai (చాయ్), a jolly fellow with a glass of tea for a head
 - idli: Idli (ఇడ్లీ), a naughty little boy with an idli for a head
 - mango: Mango (మామిడి), a clever little girl with a mango for a head
-- bigd: BigD the puppy (బిగ్‌డీ), the app's cute, kind puppy
+- bigd: Habit the puppy (హ్యాబిట్), the app's cute, kind puppy
 - ammamma: Ammamma (అమ్మమ్మ), a wise, funny grandma
 - tatayya: Tatayya (తాతయ్య), a sweet old grandpa, a farmer
 - teacher: the teacher (టీచర్)
@@ -312,10 +312,10 @@ Style: EndSub,Hind Guntur,34,&H00FFFFFF,&H00FFFFFF,&H00402010,&H90000000,1,0,0,0
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 2,${ts(0)},${ts(end)},Label,,0,0,0,,BigD cartoon
+Dialogue: 2,${ts(0)},${ts(end)},Label,,0,0,0,,Habit cartoon
 Dialogue: 1,${ts(0.2)},${ts(end)},Title,,0,0,0,,{\\fad(400,200)}${esc(s.title)}
 ${parts.map((p, i) => `Dialogue: 1,${ts(p.at - 0.1)},${ts(Math.min(end, p.at + p.dur + 0.35))},Bubble,,0,0,0,,{\\fad(150,100)}${esc(said[i])}`).join("\n")}
-Dialogue: 3,${ts(end)},${ts(total)},End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}BigD AI
+Dialogue: 3,${ts(end)},${ts(total)},End,,0,0,0,,{\\fad(300,0)\\pos(360,560)}Habit AI
 Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}కార్టూన్లు · వార్తలు · సహాయం · bigdai.tech
 `;
       fs.writeFileSync(path.join(tmp, "words.ass"), ass);
@@ -338,7 +338,7 @@ Dialogue: 3,${ts(end)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(360,640)}�
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
 
-  /** Our own cartoon maker: BigD's characters act out the screenplay (toon/toon.py). Returns the length in seconds. */
+  /** Our own cartoon maker: Habit's characters act out the screenplay (toon/toon.py). Returns the length in seconds. */
   async function renderToon(id, s, type) {
     const tmp = path.join(DIR, id + "-tmp");
     fs.mkdirSync(tmp, { recursive: true });

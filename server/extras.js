@@ -1,4 +1,4 @@
-// BigD AI extras:
+// Habit AI extras:
 //  1. Letter helper: asks what a letter needs, then writes the full, filled-in Word/Excel file.
 //  2. Message safety check: is a message safe, worth care, or dangerous (fraud, cybercrime)?
 //  3. Community: public posts from all users (like a small Twitter), with likes, reports and team replies.
@@ -296,7 +296,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
   async function feedPost(body, req) {
     const me = hashDev(device(req));
     const text = str(body.text, 600).replace(/\n{3,}/g, "\n\n");
-    const name = str(body.name, 30).replace(/[\r\n]/g, " ") || "BigD friend";
+    const name = str(body.name, 30).replace(/[\r\n]/g, " ") || "Habit friend";
     if (text.length < 3) return { status: 400, error: "Write a little more." };
     const c = postCount.get(me);
     const now = Date.now();

@@ -72,7 +72,7 @@ object Briefing {
         val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_paw)
-            .setContentTitle("☀️ Good morning from BigD AI")
+            .setContentTitle("☀️ Good morning from Habit AI")
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
             .setContentIntent(open)

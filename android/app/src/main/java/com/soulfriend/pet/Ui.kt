@@ -14,7 +14,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
-/** BigD AI look: peacock teal + sunflower, soft mint-grey background, white cards. */
+/** Habit AI look: peacock teal + sunflower, soft mint-grey background, white cards. */
 class Ui(private val ctx: Context) {
     companion object {
         val BG = Color.parseColor("#EEF3F2")

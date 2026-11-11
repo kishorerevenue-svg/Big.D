@@ -40,7 +40,7 @@ import java.util.TreeSet
  * Family & SOS page.
  *  - SOS: hold the red button for 3 seconds → after a 5-second countdown (you can cancel) it calls your first family member,
  *    and you can send where you are (a Google Maps link) by SMS or WhatsApp to the family.
- *    Your location is used only at that moment, stays on the phone and is never sent to the BigD server or the AI.
+ *    Your location is used only at that moment, stays on the phone and is never sent to the Habit server or the AI.
  *  - Family members (up to 5), emergency numbers, and daily medicine reminders.
  */
 class FamilyPage(private val m: MainActivity) {
@@ -90,7 +90,7 @@ class FamilyPage(private val m: MainActivity) {
         val med = medicineSection()
         numbersSection()
         m.add(ui.text("Your family's numbers and your medicines stay only on this phone. Your location is used only when you press SOS or Share my location, " +
-            "and goes only into the message you send. It is never sent to the BigD server or the AI.", 12.5f, Ui.MUTED), 16)
+            "and goes only into the message you send. It is never sent to the Habit server or the AI.", 12.5f, Ui.MUTED), 16)
         if (focus == "medicine") { focus = ""; m.scrollToView(med) }
     }
 
@@ -242,16 +242,16 @@ class FamilyPage(private val m: MainActivity) {
     private fun sosMessage(): String {
         val l = loc
         return "🆘 నాకు సహాయం కావాలి! I need help. Please call me now." +
-            (if (l != null) "\n" + whereLine(l) else "") + "\n(sent from BigD AI)"
+            (if (l != null) "\n" + whereLine(l) else "") + "\n(sent from Habit AI)"
     }
 
     // =================== location (only on the phone) ===================
     private fun askLocation(then: () -> Unit) {
         if (hasLocation()) { then(); return }
         AlertDialog.Builder(m).setTitle("Use your location for SOS?")
-            .setMessage("When you press SOS or \"Share my location\", BigD AI adds a Google Maps link to where you are in the message " +
+            .setMessage("When you press SOS or \"Share my location\", Habit AI adds a Google Maps link to where you are in the message " +
                 "that you send to your family by SMS or WhatsApp.\n\nYour location is used only at that moment. It stays on your phone: " +
-                "it is never sent to the BigD server or to the AI, and it isn't saved.")
+                "it is never sent to the Habit server or to the AI, and it isn't saved.")
             .setPositiveButton("Allow") { _, _ ->
                 afterLocation = then
                 m.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), MainActivity.REQ_LOCATION)
@@ -331,7 +331,7 @@ class FamilyPage(private val m: MainActivity) {
 
     private fun shareNow() {
         val l = loc ?: return
-        val text = whereLine(l) + "\n(sent from BigD AI)"
+        val text = whereLine(l) + "\n(sent from Habit AI)"
         AlertDialog.Builder(m).setTitle("Send your location")
             .setItems(arrayOf("💬 SMS to family", "🟢 WhatsApp", "↗ Other apps")) { _, w ->
                 when (w) { 0 -> smsFamily(text); 1 -> whatsapp(text); else -> share(text) }
@@ -423,8 +423,8 @@ class FamilyPage(private val m: MainActivity) {
 
     private fun askCall() {
         AlertDialog.Builder(m).setTitle("Let SOS call by itself?")
-            .setMessage("After you hold SOS for 3 seconds, BigD AI waits 5 more seconds (you can cancel), then calls your first family member directly.\n\n" +
-                "BigD AI only calls when you press SOS or a 📞 button. Without this, the phone app opens with the number ready and you tap Call.")
+            .setMessage("After you hold SOS for 3 seconds, Habit AI waits 5 more seconds (you can cancel), then calls your first family member directly.\n\n" +
+                "Habit AI only calls when you press SOS or a 📞 button. Without this, the phone app opens with the number ready and you tap Call.")
             .setPositiveButton("Allow") { _, _ -> m.requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), MainActivity.REQ_CALL) }
             .setNegativeButton("Not now", null).show()
     }

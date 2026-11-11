@@ -27,7 +27,7 @@ object Model {
         return Math.round(mi.totalMem / 1_073_741_824.0).toInt()
     }
 
-    /** Where to download it from: the BigD server can name another place (owner's choice), else Hugging Face. Blocking. */
+    /** Where to download it from: the Habit server can name another place (owner's choice), else Hugging Face. Blocking. */
     fun url(ctx: Context): String = try {
         val c = URL(server(ctx) + "/brain/phone").openConnection() as HttpURLConnection
         c.connectTimeout = 8000; c.readTimeout = 8000
@@ -42,7 +42,7 @@ object Model {
     fun start(ctx: Context, url: String, mobileData: Boolean) {
         part(ctx).delete()
         val req = DownloadManager.Request(Uri.parse(url))
-            .setTitle("BigD Brain")
+            .setTitle("Habit Brain")
             .setDescription("Downloading the tiny brain (about 2.6 GB)")
             .setDestinationInExternalFilesDir(ctx, null, "$NAME.part")
             .setAllowedOverMetered(mobileData)

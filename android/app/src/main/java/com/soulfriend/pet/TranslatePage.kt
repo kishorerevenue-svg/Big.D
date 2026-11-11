@@ -100,7 +100,7 @@ class TranslatePage(private val m: MainActivity) {
         if (error.isNotEmpty()) m.add(ui.card(Ui.DANGER_SOFT).apply { addView(ui.text(error, 14.5f, Ui.DANGER)) }, 10)
         if (resText.isNotEmpty() && !busy) m.add(result(), 10)
 
-        m.add(ui.text("What you translate (text or photo) is sent to the BigD server and Claude AI only to translate it. It isn't saved. " +
+        m.add(ui.text("What you translate (text or photo) is sent to the Habit server and Claude AI only to translate it. It isn't saved. " +
             "Translations are made by AI and can have mistakes: check important things with someone you trust.", 12.5f, Ui.MUTED), 16)
     }
 

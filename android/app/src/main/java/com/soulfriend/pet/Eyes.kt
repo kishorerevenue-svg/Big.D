@@ -81,7 +81,7 @@ object Eyes {
         "\\bwhich (plant|flower|tree|bird|animal|insect|snake|fruit|brand|company|model|medicine|tablet|car|bike) is (this|that)\\b",
         "\\b(is|are) (this|these)( one| thing| item)? (available|sold)\\b", "\\bhow much (is|does|for) (this|these)\\b", "\\bwhere (can|do) i (buy|get) (this|these)\\b",
         "\\b(price|cost|rate) of (this|these)\\b",
-        "^(hey |bigd |big d )?(what('?s| is| are) (this|these)( thing| one)?|identify this)[?.!\\s]*$",
+        "^(hey |habit |bigd |big d )?(what('?s| is| are) (this|these)( thing| one)?|identify this)[?.!\\s]*$",
         "^(look|see)[.!?\\s]*$",
         // Telugu
         "(ఇది|ఇవి|అది|అవి|ఇక్కడ|అక్కడ|ఇటు|దీన్ని|దీనిని|దాన్ని|వీటిని) ?(చూడు|చూడండి|చూసి|చూశావా|చూస్తావా|చూడగలవా|కనిపిస్తుందా|కనిపిస్తోందా)",

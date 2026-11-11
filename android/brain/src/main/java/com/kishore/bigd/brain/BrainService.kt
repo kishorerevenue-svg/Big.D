@@ -17,9 +17,9 @@ import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.SamplerConfig
 
 /**
- * BigD AI asks the tiny brain here (only apps with BigD's stamp can, see the manifest).
+ * Habit AI asks the tiny brain here (only apps with Habit's stamp can, see the manifest).
  * Message 1 = {system, prompt}  ->  reply 2 = {text} or {error}. One question at a time; the model stays loaded
- * while BigD AI is connected (it disconnects a few minutes after the last question, which frees the memory).
+ * while Habit AI is connected (it disconnects a few minutes after the last question, which frees the memory).
  */
 class BrainService : Service() {
     private val worker = HandlerThread("tiny-brain").apply { start() }

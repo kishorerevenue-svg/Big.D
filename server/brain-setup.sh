@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs BigD AI's own brain on this server: Ollama + a free, open AI model (Google Gemma) that fits this server's
+# Installs Habit AI's own brain on this server: Ollama + a free, open AI model (Google Gemma) that fits this server's
 # memory. The app then keeps answering even when Claude, Gemini or any other company can't.
 # Safe to run again: it only adds what is missing. Run:  true; /root/Big.D/server/brain-setup.sh
 # (or press "Install our own brain" on the Teach page).  To choose a model yourself: OWN_BRAIN_MODEL=gemma3:4b in .env

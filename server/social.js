@@ -1,4 +1,4 @@
-// BigD AI social ("Media" tab, like a small X/Twitter):
+// Habit AI social ("Media" tab, like a small X/Twitter):
 //  - official accounts for each Media section (✓), and a profile for every user (photo, name, @handle, tagline)
 //  - posts with text, up to 4 photos (each checked by AI before anyone sees it) and a link from
 //    YouTube / Instagram / Facebook / X / any site (shown as a preview)
@@ -93,7 +93,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
   const ICON = { news: "📰", movies: "🎬", kids: "🧒", crypto: "🪙", realestate: "🏠", jobs: "💼", devotional: "🛕", farming: "🌾", health: "🩺", facts: "💡", fun: "😄" };
   const BIO = {
     facts: "మీకు తెలుసా? ఆసక్తికరమైన నిజాలు · Interesting true facts",
-    fun: "నవ్వులు, పొడుపు కథలు, మంచి మాటలు, బిగ్‌డీ కార్టూన్లు · Jokes, riddles and puppy cartoons",
+    fun: "నవ్వులు, పొడుపు కథలు, మంచి మాటలు, హ్యాబిట్ కార్టూన్లు · Jokes, riddles and puppy cartoons",
     news: "రోజూ ముఖ్యమైన వార్తలు · Daily news for Telugu people", movies: "కొత్త సినిమాలు, విమర్శకుల అభిప్రాయాలు, ట్రైలర్లు · Movies, reviews, trailers",
     kids: "పిల్లలకు కథలు, పాటలు, పొడుపు కథలు · Stories and rhymes for kids", crypto: "క్రిప్టో వార్తలు, జాగ్రత్తలు · Crypto news (not financial advice)",
     realestate: "AP, తెలంగాణ రియల్ ఎస్టేట్ వార్తలు · Real estate news (not advice)", jobs: "కొత్త ఉద్యోగ నోటిఫికేషన్లు · New job notifications",
@@ -101,7 +101,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
     health: "ఆరోగ్య చిట్కాలు · Simple health tips (not medical advice)"
   };
   const OFFICIAL = {};
-  for (const [k, c] of Object.entries(media.CATS)) OFFICIAL["s_" + k] = { uid: "s_" + k, name: "BigD " + c.te, handle: "bigd_" + k, bio: BIO[k] || c.en, emoji: ICON[k] || "📺", verified: true, official: true, cat: k };
+  for (const [k, c] of Object.entries(media.CATS)) OFFICIAL["s_" + k] = { uid: "s_" + k, name: "Habit " + c.te, handle: "habit_" + k, bio: BIO[k] || c.en, emoji: ICON[k] || "📺", verified: true, official: true, cat: k };
   const userOf = uid => OFFICIAL[uid] || db.users[uid] || null;
 
   function followerCounts() {
@@ -115,11 +115,16 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
   }
   const fileUrl = id => id ? `/u/${id}.jpg` : "";
   const videoView = id => { const u = db.uploads[id]; return u && u.kind === "video" ? { url: `/u/${id}.mp4`, poster: `/u/${id}-p.jpg`, dur: Math.round(u.dur || 0), w: u.w || 0, h: u.h || 0 } : null; };
+  // The app was called BigD before: profiles made then with the default name show the new one.
+  const newName = n => n === "BigD friend" ? "Habit friend" : n;
+  // @names that look like the app's own accounts (habit_news, habitai, habit_team…) are kept for the team.
+  const reservedHandle = hd => /^(habit|bigd)(ai)?(_.*|app|team|official|support|admin)?$/.test(String(hd || ""));
+
   function userView(uid, me, counts) {
     const u = userOf(uid);
-    if (!u) return { uid, name: "BigD friend", handle: "", bio: "", avatar: "", emoji: "🐾", verified: false };
+    if (!u) return { uid, name: "Habit friend", handle: "", bio: "", avatar: "", emoji: "🐾", verified: false };
     counts = counts || followerCounts();
-    return { uid, name: u.name || "BigD friend", handle: u.handle || "", bio: u.bio || "", avatar: fileUrl(u.avatar), emoji: u.emoji || "🐾",
+    return { uid, name: newName(u.name) || "Habit friend", handle: u.handle || "", bio: u.bio || "", avatar: fileUrl(u.avatar), emoji: u.emoji || "🐾",
       verified: !!u.verified, official: !!u.official, followers: counts[uid] || 0, following: (db.follows[uid] || []).length,
       posts: postCount(uid), followed: !!me && (db.follows[me] || []).includes(uid), me: uid === me, banned: !!u.banned };
   }
@@ -187,7 +192,7 @@ module.exports = function makeSocial({ DATA_DIR, API_BASE, API_KEY, MODEL, admin
     try { return JSON.parse(text); } catch (e) { const a = text.indexOf("{"), b = text.lastIndexOf("}"); if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch (e2) { } } }
     return {};
   }
-  const TEXT_RULES = `You moderate the public pages of BigD AI, a family-friendly app used by people of all ages in India (Telugu and English). Decide if this text can be shown to everyone.
+  const TEXT_RULES = `You moderate the public pages of Habit AI, a family-friendly app used by people of all ages in India (Telugu and English). Decide if this text can be shown to everyone.
 Reject: insults, abuse, bad words, hate against any group, sexual content, violence or threats, harassment or bullying of a person, personal details (phone numbers, addresses, ID numbers), spam or advertising, scams, fake news, political or religious attacks.
 Allow: everyday thoughts, news, wishes, feedback, ideas, problems, thanks, polite criticism, and links to normal videos.
 If the writer may be in danger or thinking of self-harm, reject it and in "reason" kindly ask them to talk to someone they trust or call Tele-MANAS 14416.
@@ -198,7 +203,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     try { const o = await claude(TEXT_RULES, `<<<\n${text}\n>>>`); return { ok: o.ok !== false, reason: str(o.reason, 200) }; }
     catch (e) { return { ok: true }; } // if the AI is busy, reports from users still protect the pages
   }
-  const PHOTO_RULES = `You check photos before they are shown publicly in BigD AI, a family-friendly app used by people of all ages in India.
+  const PHOTO_RULES = `You check photos before they are shown publicly in Habit AI, a family-friendly app used by people of all ages in India.
 Reject the photo if it has: nudity or sexual content; anyone who may be under 18 shown in a revealing, sexual or unsafe way; graphic violence, blood or dead bodies; hate symbols; weapons used to threaten; drugs; ID cards, bank cards, cheques or documents with personal numbers; screenshots that show phone numbers or private chats; ads, QR codes for payments or spam.
 Allow ordinary photos: people, family, festivals, food, places, nature, animals, events, memes that are not hateful.
 Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one short, kind sentence>"}`;
@@ -259,7 +264,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
       const old = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "feed.json"), "utf8"));
       for (const p of (old.posts || []).filter(p => !p.removed && !p.hidden)) {
         const uid = "l_" + crypto.createHash("sha256").update("old|" + p.dev).digest("hex").slice(0, 10);
-        if (!db.users[uid]) db.users[uid] = { uid, name: p.name || "BigD friend", handle: "", bio: "", avatar: "", emoji: "🐾", at: p.at };
+        if (!db.users[uid]) db.users[uid] = { uid, name: p.name || "Habit friend", handle: "", bio: "", avatar: "", emoji: "🐾", at: p.at };
         db.posts.push({ id: db.nextPost++, uid, at: p.at, text: p.text, photos: [], link: null, likes: [], views: 0, comments: 0, reports: [] });
       }
     } catch (e) { }
@@ -283,9 +288,9 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
 
   function handleFree(name) {
     let base = String(name || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 14);
-    if (base.length < 3) base = "friend";
+    if (base.length < 3 || reservedHandle(base)) base = "friend";
     let h2 = base, n = 0;
-    const taken = hd => Object.values(db.users).some(u => u.handle === hd) || Object.values(OFFICIAL).some(u => u.handle === hd);
+    const taken = hd => reservedHandle(hd) || Object.values(db.users).some(u => u.handle === hd) || Object.values(OFFICIAL).some(u => u.handle === hd);
     while (taken(h2)) h2 = base + (++n > 5 ? Math.floor(Math.random() * 9000 + 1000) : n);
     return h2;
   }
@@ -521,6 +526,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         let hd = str(body.handle, 40).toLowerCase().replace(/^@/, "").replace(/[\s.\-]+/g, "_").replace(/[^a-z0-9_]/g, "")
           .replace(/_+/g, "_").replace(/^_+|_+$/g, "").slice(0, 20);
         if (hd && !/^[a-z0-9_]{3,20}$/.test(hd)) { send(res, 400, { error: "@name: use 3 to 20 small English letters, numbers or _." }, origin); return true; }
+        if (hd && hd !== u.handle && reservedHandle(hd)) { send(res, 400, { error: "That @name is kept for the Habit AI team. Try another." }, origin); return true; }
         if (hd && hd !== u.handle && (Object.values(db.users).some(x => x.handle === hd) || Object.values(OFFICIAL).some(x => x.handle === hd))) { send(res, 400, { error: "That @name is taken. Try another." }, origin); return true; }
         u.handle = hd || u.handle || handleFree(name);
         if (body.avatar !== undefined) {
@@ -532,7 +538,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
       }
 
       if (p === "/api/social/account") {
-        // the app's first screen: is there a BigD account with this mobile number (or email)?
+        // the app's first screen: is there a Habit account with this mobile number (or email)?
         const lim = limit(req, "account", 60, 400); if (lim) { send(res, 429, { error: lim }, origin); return true; }
         const L = loginId(body.id);
         if (!L) { send(res, 400, { error: "Type your 10-digit mobile number." }, origin); return true; }
@@ -540,7 +546,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         send(res, 200, { kind: L.kind, exists: !!other, mine: !!other && other.uid === uid, name: user && user.name ? user.name : "", hasLogin: !!(user && user.login) }, origin); return true;
       }
       if (p === "/api/social/signup") {
-        // a new BigD account: mobile number (or email), password and name. A profile already on this phone keeps
+        // a new Habit account: mobile number (or email), password and name. A profile already on this phone keeps
         // everything it has (posts, chats): the login is added to it.
         if (banned) { send(res, 403, { error: "You can't make an account." }, origin); return true; }
         const lim = limit(req, "signup", 10, 800); if (lim) { send(res, 429, { error: lim }, origin); return true; }
@@ -550,7 +556,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         if (pw.length < 6 || pw.length > 64) { send(res, 400, { error: "The password needs 6 or more letters or numbers." }, origin); return true; }
         if (EASY.has(pw.toLowerCase())) { send(res, 400, { error: "That password is too easy to guess. Please choose another one." }, origin); return true; }
         const other = userByLogin(L.id);
-        if (other && other.uid !== uid) { send(res, 409, { error: L.kind === "email" ? "This email already has a BigD account. Enter its password." : "This number already has a BigD account. Enter its password.", exists: true }, origin); return true; }
+        if (other && other.uid !== uid) { send(res, 409, { error: L.kind === "email" ? "This email already has a Habit account. Enter its password." : "This number already has a Habit account. Enter its password.", exists: true }, origin); return true; }
         const name = str(body.name, 30).replace(/[\r\n]/g, " ").trim() || (user && user.name) || "";
         if (name.length < 2) { send(res, 400, { error: "Write your name (at least 2 letters)." }, origin); return true; }
         if (!(user && user.name === name)) { const chk = await checkText(name); if (!chk.ok) { send(res, 400, { error: chk.reason || "Please change your name." }, origin); return true; } }
@@ -715,7 +721,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         }
         const found = findPost(key);
         if (!found) { send(res, 404, { error: "Not found" }, origin); return true; }
-        if (found.media) { if (!admin) { send(res, 403, { error: "Only the BigD team can remove this." }, origin); return true; } media.removeItem(found.media.id); send(res, 200, { ok: true }, origin); return true; }
+        if (found.media) { if (!admin) { send(res, 403, { error: "Only the Habit team can remove this." }, origin); return true; } media.removeItem(found.media.id); send(res, 200, { ok: true }, origin); return true; }
         if (found.user.uid !== uid && !admin && !(OFFICIAL[found.user.uid] && admin)) { send(res, 403, { error: "You can delete only your own posts." }, origin); return true; }
         found.user.removed = true;
         for (const ph of found.user.photos || []) unlinkUpload(ph);
@@ -762,14 +768,14 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     save();
     return { ok: true };
   }
-  // ---------- for BigD Chat (chat.js): who is this phone, and finding people by name or @name ----------
+  // ---------- for Habit Chat (chat.js): who is this phone, and finding people by name or @name ----------
   /** This phone's profile id, or "" (no profile yet). */
   const who = req => uidOf(req, false);
   /** A person as chat shows them, or null (no profile, or banned). */
   function person(uid) {
     const u = db.users[uid];
     if (!u || !u.name || u.banned) return null;
-    return { uid, name: u.name, handle: u.handle || "", emoji: u.emoji || "🐾", avatar: fileUrl(u.avatar) };
+    return { uid, name: newName(u.name), handle: u.handle || "", emoji: u.emoji || "🐾", avatar: fileUrl(u.avatar) };
   }
   const byHandle = h => { const x = String(h || "").toLowerCase().replace(/^@/, ""); const u = x && Object.values(db.users).find(v => v.handle === x); return u ? person(u.uid) : null; };
   /** People whose @name or name starts with / contains [q] (at most [n]); exact @name first. */

@@ -38,7 +38,7 @@ class Brain(private val store: Store) {
         val server = store.server
         if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) {
             history.removeAt(history.lastIndex)
-            main.post { onError("I don't have a brain yet! Set up your server, then type its address in the BigD AI app (Server address).") }
+            main.post { onError("I don't have a brain yet! Set up your server, then type its address in the Habit AI app (Server address).") }
             return
         }
         pool.execute {
@@ -47,7 +47,7 @@ class Brain(private val store: Store) {
                 val json = try { JSONObject(out) } catch (e: Exception) { JSONObject() }
                 if (code in 200..299 && !json.has("reply")) main.post {
                     history.removeAt(history.lastIndex)
-                    onError("That server address is not a BigD AI server. Check the address in the BigD AI app.")
+                    onError("That server address is not a Habit AI server. Check the address in the Habit AI app.")
                 } else if (code in 200..299) {
                     main.post {
                         // the server's own brain answered (the big AI is away): reminders, alarms, calls and apps are still
@@ -55,7 +55,7 @@ class Brain(private val store: Store) {
                         val dev = if (json.optBoolean("own") && photo == null) (try { LocalBrain.device(store.ctx, store, text) } catch (e: Exception) { null }) else null
                         if (dev == null && json.optBoolean("weak") && photo == null && local) {
                             // the server had no real answer this time: the phone tries too (the weather here, news,
-                            // Wikipedia, BigD Brain), and only then the server's kind "here's what I can do"
+                            // Wikipedia, Habit Brain), and only then the server's kind "here's what I can do"
                             history.removeAt(history.lastIndex)
                             offline(text, onReply) { keep(text, json); onReply(json) }
                             return@post
@@ -94,7 +94,7 @@ class Brain(private val store: Store) {
                 val small = { (try { LocalBrain.answer(store.ctx, store, text) } catch (e: Exception) { null })?.let(give) ?: fail() }
                 when {
                     w != null -> give(w)
-                    // no internet at all: the tiny brain on the phone talks (BigD Brain app, if it's there)
+                    // no internet at all: the tiny brain on the phone talks (Habit Brain app, if it's there)
                     TinyBrain.installed(store.ctx) -> TinyBrain.ask(store.ctx, TinyBrain.system(store), text) { t ->
                         if (t == null) small() else give(JSONObject().put("reply", t).put("emotion", "happy").put("actions", JSONArray()).put("tiny", true))
                     }
@@ -120,7 +120,7 @@ class Brain(private val store: Store) {
     /** Asks the server to write a reply to a chat message. [onDraft] gets (reply, warning). */
     fun draftReply(m: Incoming, instruction: String, auto: Boolean, onDraft: (String, String) -> Unit, onError: (String) -> Unit) {
         val server = store.server
-        if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) { main.post { onError("Set your server address in the BigD AI app first.") }; return }
+        if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) { main.post { onError("Set your server address in the Habit AI app first.") }; return }
         val body = JSONObject()
             .put("app", m.app).put("chat", m.chat).put("sender", m.sender).put("group", m.group)
             .put("text", Privacy.maybe(store, m.text)).put("instruction", Privacy.maybe(store, instruction)).put("auto", auto)

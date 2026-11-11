@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Only apps with the same stamp (BigD AI) may ask this brain. BigD AI defines it too, so the order you install them doesn't matter. -->
+    <!-- Only apps with the same stamp (Habit AI) may ask this brain. Habit AI defines it too, so the order you install them doesn't matter. -->
     <permission
         android:name="com.kishore.bigd.permission.TINY_BRAIN"
-        android:label="Ask BigD's tiny brain"
+        android:label="Ask Habit's tiny brain"
         android:protectionLevel="signature" />
 
     <uses-permission android:name="com.kishore.bigd.permission.TINY_BRAIN" />

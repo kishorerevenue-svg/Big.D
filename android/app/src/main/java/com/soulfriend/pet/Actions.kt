@@ -31,7 +31,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
         when (a.optString("type")) {
             "reminder" -> reminder(a.optString("at"), a.optString("text", "Reminder"), a.optString("repeat", ""))
             "timer" -> timer(a.optLong("seconds", 0), a.optString("label", "Timer"))
-            "alarm" -> alarm(a.optInt("hour", -1), a.optInt("minute", 0), a.optString("label", "BigD AI"))
+            "alarm" -> alarm(a.optInt("hour", -1), a.optInt("minute", 0), a.optString("label", "Habit AI"))
             "todo_add" -> { store.addTodo(a.optString("text")); "Added to your list: ${a.optString("text")}" }
             "todo_done" -> store.findTodo(a.optString("text")).let { if (it < 0) "Couldn't find that item in your list" else { store.setTodoDone(it, true); "Marked done: ${store.todos()[it].text}" } }
             "todo_remove" -> store.findTodo(a.optString("text")).let { if (it < 0) "Couldn't find that item in your list" else { val t = store.todos()[it].text; store.removeTodo(it); "Removed: $t" } }
@@ -39,33 +39,33 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
             "call" -> call(a.optString("number"), a.optString("contact"))
             "whatsapp" -> whatsapp(a.optString("number"), a.optString("contact"), a.optString("message"))
             "open_app" -> openApp(a.optString("name"))
-            "show_text" -> { showText(a.optString("title", "BigD AI"), a.optString("text")); null }
+            "show_text" -> { showText(a.optString("title", "Habit AI"), a.optString("text")); null }
             "copy_text" -> { copy(a.optString("text")); "Copied" }
             "remember" -> { store.remember(a.optString("text")); "I'll remember that" }
             "forget" -> if (store.forget(a.optString("text"))) "Forgotten" else "I didn't have that saved"
-            "download" -> download(a.optString("url"), a.optString("name", "BigD-file"))
+            "download" -> download(a.optString("url"), a.optString("name", "Habit-file"))
             "letter" -> openLetterHelper(a.optString("request"))
             "open_page" -> openPage(a.optString("page"))
             else -> null
         }
     } catch (e: Exception) { "Sorry, I couldn't do that on this phone" }
 
-    /** Saves a Word/Excel file the server made into Downloads › BigD AI. */
+    /** Saves a Word/Excel file the server made into Downloads › Habit AI. */
     private fun download(url: String, name: String): String {
-        if (!url.startsWith(store.server + "/files/")) return "That file link didn't come from your BigD server"
+        if (!url.startsWith(store.server + "/files/")) return "That file link didn't come from your Habit server"
         downloadFile(url, name) ?: return "Couldn't save the file on this phone"
-        val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "BigD-file" }
-        return "📄 $safe is ready. Open it from the download notification or the Files page in the BigD AI app."
+        val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Habit-file" }
+        return "📄 $safe is ready. Open it from the download notification or the Files page in the Habit AI app."
     }
 
     /** Starts the download and remembers the file. Returns the phone's download id. */
     fun downloadFile(url: String, name: String): Long? {
         if (!url.startsWith(store.server + "/files/")) return null
-        val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "BigD-file" }
+        val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Habit-file" }
         val req = DownloadManager.Request(Uri.parse(url))
-            .setTitle(safe).setDescription("From BigD AI")
+            .setTitle(safe).setDescription("From Habit AI")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        if (Build.VERSION.SDK_INT >= 29) req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "BigD AI/$safe")
+        if (Build.VERSION.SDK_INT >= 29) req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Habit AI/$safe")
         else req.setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, safe)
         val id = try { ctx.getSystemService(DownloadManager::class.java).enqueue(req) } catch (e: Exception) { return null }
         store.addFile(SavedFile(id, safe, if (safe.endsWith(".xlsx")) "xlsx" else "docx", System.currentTimeMillis()))
@@ -75,13 +75,13 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
     /** "Make a letter" without the details: open the letter helper, which asks for each detail. */
     private fun openLetterHelper(request: String): String {
         val i = Intent(ctx, MainActivity::class.java).putExtra("tab", "files").putExtra("letter", request.ifBlank { "letter" })
-        return if (start(i)) "📝 Opening the letter helper. Answer a few questions and I'll write it." else "Open the BigD AI app › Files to make the letter"
+        return if (start(i)) "📝 Opening the letter helper. Answer a few questions and I'll write it." else "Open the Habit AI app › Files to make the letter"
     }
 
-    /** Opens a page of the BigD AI app (tasks, family, translate, files, vault, feedback, govt, messages). */
+    /** Opens a page of the Habit AI app (tasks, family, translate, files, vault, feedback, govt, messages). */
     private fun openPage(page: String): String? {
         val p = page.takeIf { it in setOf("tasks", "family", "translate", "files", "vault", "feedback", "govt", "messages", "home") } ?: "home"
-        return if (start(Intent(ctx, MainActivity::class.java).putExtra("tab", p))) null else "Open the BigD AI app"
+        return if (start(Intent(ctx, MainActivity::class.java).putExtra("tab", p))) null else "Open the Habit AI app"
     }
 
     private fun parseTime(s: String): Long? {
@@ -137,7 +137,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
         val n = digits(number).ifBlank { lookup(contact)?.let { digits(it) } ?: "" }
         if (n.isBlank()) {
             return if (contact.isNotBlank() && ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
-                "Allow Contacts in the BigD AI app so I can find $contact"
+                "Allow Contacts in the Habit AI app so I can find $contact"
             else if (contact.isNotBlank()) "I couldn't find $contact in your contacts" else "Which number should I call?"
         }
         return if (start(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$n")))) "Opening the dialer for ${contact.ifBlank { n }}. Tap Call." else "No phone app found"
@@ -158,7 +158,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
             val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message)
             if (installed("com.whatsapp")) share.setPackage("com.whatsapp")
             val why = if (ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
-                "Allow Contacts in the BigD AI app so I can find people. " else "I couldn't find $contact in your contacts. "
+                "Allow Contacts in the Habit AI app so I can find people. " else "I couldn't find $contact in your contacts. "
             return if (start(share)) why + "In WhatsApp, choose $contact, then tap ➤ Send." else "WhatsApp is not installed"
         }
         val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message)
@@ -181,7 +181,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
     }
 
     fun copy(text: String) {
-        ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("BigD AI", text))
+        ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Habit AI", text))
     }
 
     fun share(text: String) {

@@ -65,7 +65,7 @@ object Images {
     private fun fetch(url: String, maxPx: Int): Bitmap? {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000; c.readTimeout = 20_000; c.instanceFollowRedirects = true
-        c.setRequestProperty("User-Agent", "BigDAI/1.0 (Android)")
+        c.setRequestProperty("User-Agent", "HabitAI/1.0 (Android)")
         val bytes = try {
             if (c.responseCode !in 200..299) return null
             c.inputStream.use { inp ->
@@ -111,8 +111,8 @@ object Images {
 class SUser(val uid: String, val name: String, val handle: String, val bio: String, val avatar: String, val emoji: String, val verified: Boolean,
             val official: Boolean, var followers: Int, val following: Int, val posts: Int, var followed: Boolean, val me: Boolean) {
     companion object {
-        fun from(o: JSONObject?) = if (o == null) SUser("", "BigD friend", "", "", "", "🐾", false, false, 0, 0, 0, false, false)
-            else SUser(o.optString("uid"), o.optString("name", "BigD friend"), o.optString("handle"), o.optString("bio"), o.optString("avatar"), o.optString("emoji", "🐾"),
+        fun from(o: JSONObject?) = if (o == null) SUser("", "Habit friend", "", "", "", "🐾", false, false, 0, 0, 0, false, false)
+            else SUser(o.optString("uid"), o.optString("name", "Habit friend"), o.optString("handle"), o.optString("bio"), o.optString("avatar"), o.optString("emoji", "🐾"),
                 o.optBoolean("verified"), o.optBoolean("official"), o.optInt("followers"), o.optInt("following"), o.optInt("posts"), o.optBoolean("followed"), o.optBoolean("me"))
     }
 }
@@ -396,7 +396,7 @@ class SocialPage(private val m: MainActivity) {
         "crypto", "realestate" -> "ℹ️ ఇది సమాచారం మాత్రమే, ఆర్థిక సలహా కాదు · Information only, not financial advice."
         "health" -> "ℹ️ ఆరోగ్య సమస్యలకు డాక్టర్‌ను సంప్రదించండి · Simple tips, not medical advice."
         "kids" -> "👨‍👩‍👧 Stories and rhymes for parents to read to children."
-        "people" -> "👥 Posts from people using BigD AI."
+        "people" -> "👥 Posts from people using Habit AI."
         "popular" -> "🔥 What people liked, commented on and read most in the last 3 days."
         "fun" -> "😄 Clean jokes, riddles, good thoughts and funny cartoons."
         "facts" -> "💡 మీకు తెలుసా? True, interesting facts, written by our own brain from Wikipedia and trusted sources."
@@ -492,7 +492,7 @@ class SocialPage(private val m: MainActivity) {
             })
         }
         m.add(box, 10)
-        m.add(ui.text("Kind, happy ideas only. If you leave it empty, BigD picks a funny one itself.", 12f, Ui.MUTED), 4)
+        m.add(ui.text("Kind, happy ideas only. If you leave it empty, Habit picks a funny one itself.", 12f, Ui.MUTED), 4)
         val job = ctJob
         val st = job?.optString("status") ?: ""
         val working = ctBusy || st == "waiting" || st == "making"
@@ -505,7 +505,7 @@ class SocialPage(private val m: MainActivity) {
             }
             else -> {
                 // no AI cartoon now: our own free cartoon maker
-                m.add(ui.text("🎨 Our own cartoon maker (free): BigD's cute characters act out your idea: Chai, Idli, Mango, the BigD puppy, Ammamma, Tatayya, the teacher, a cat and a parrot, in a tea shop, market, village, school, on stage and more.${if (owner) "" else " ${info.optInt("leftForYou")} left today."}", 13f, Ui.MUTED), 12)
+                m.add(ui.text("🎨 Our own cartoon maker (free): Habit's cute characters act out your idea: Chai, Idli, Mango, the Habit puppy, Ammamma, Tatayya, the teacher, a cat and a parrot, in a tea shop, market, village, school, on stage and more.${if (owner) "" else " ${info.optInt("leftForYou")} left today."}", 13f, Ui.MUTED), 12)
                 m.add(ui.button("🎬 Make my cartoon (free)", "primary") { makeCartoon("free") }, 6)
             }
         }
@@ -524,7 +524,7 @@ class SocialPage(private val m: MainActivity) {
                     addView(TextView(m).apply { text = "▶"; textSize = 26f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
                         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#99000000")) } }, FrameLayout.LayoutParams(dp(64), dp(64), Gravity.CENTER))
                     setOnClickListener {
-                        MediaViewer.items = listOf(MediaViewer.Item("file", abs(v.optString("url")), "", if (job.optBoolean("ai")) "🤖 AI cartoon · AI-made" else "🎬 BigD cartoon", job.optString("title"), 0, false, abs(v.optString("poster"))))
+                        MediaViewer.items = listOf(MediaViewer.Item("file", abs(v.optString("url")), "", if (job.optBoolean("ai")) "🤖 AI cartoon · AI-made" else "🎬 Habit cartoon", job.optString("title"), 0, false, abs(v.optString("poster"))))
                         MediaViewer.start = 0; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
                         m.leavingForSystemScreen = true; m.startActivity(Intent(m, MediaViewer::class.java))
                     }
@@ -579,7 +579,7 @@ class SocialPage(private val m: MainActivity) {
     /** Downloads the cartoon, then shares the video file (WhatsApp, status, anywhere). */
     private fun shareCartoon(job: JSONObject) {
         val url = abs(job.optJSONObject("video")?.optString("url") ?: return)
-        val name = "BigD-cartoon-" + job.optString("id").filter { it.isLetterOrDigit() } + ".mp4"
+        val name = "Habit-cartoon-" + job.optString("id").filter { it.isLetterOrDigit() } + ".mp4"
         Toast.makeText(m, "🎬 Getting the video ready…", Toast.LENGTH_SHORT).show()
         Thread {
             val f = ShareFiles.download(m, url, name)
@@ -587,7 +587,7 @@ class SocialPage(private val m: MainActivity) {
                 if (f == null) { Toast.makeText(m, "Couldn't get the video. Please try again.", Toast.LENGTH_LONG).show(); return@runOnUiThread }
                 val uri = ShareFiles.uri(m, name)
                 val send = Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri)
-                    .putExtra(Intent.EXTRA_TEXT, (if (job.optBoolean("ai")) "🤖 " else "🎬 ") + job.optString("title") + (if (job.optBoolean("ai")) " (AI-made)" else "") + "\n📲 BigD AI · bigdai.tech").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    .putExtra(Intent.EXTRA_TEXT, (if (job.optBoolean("ai")) "🤖 " else "🎬 ") + job.optString("title") + (if (job.optBoolean("ai")) " (AI-made)" else "") + "\n📲 Habit AI · bigdai.tech").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 send.clipData = android.content.ClipData.newRawUri("video", uri)
                 try { m.leavingForSystemScreen = true; m.startActivity(Intent.createChooser(send, "Share the cartoon").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch (e: Exception) { }
             }
@@ -917,7 +917,7 @@ class SocialPage(private val m: MainActivity) {
             })
             if (u.handle.isNotBlank()) addView(ui.text("@${u.handle}", 14f, Ui.MUTED))
             if (u.bio.isNotBlank()) addView(ui.text(u.bio, 15f, Ui.INK).apply { setTextIsSelectable(true) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-            if (u.official) addView(ui.text("BigD official account · posts written by AI from real websites", 12.5f, Ui.MUTED), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            if (u.official) addView(ui.text("Habit official account · posts written by AI from real websites", 12.5f, Ui.MUTED), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
             addView(ui.text("${num(u.following)} Following  ·  ${num(u.followers)} Followers  ·  ${num(u.posts)} Posts", 13.5f, Ui.MUTED),
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }, FrameLayout.LayoutParams(-1, -2).apply { topMargin = dp(148) })
@@ -972,7 +972,7 @@ class SocialPage(private val m: MainActivity) {
         AlertDialog.Builder(m).setTitle("🔑 Your backup code")
             .setMessage((if (first) "Your profile is ready! " else "") + "Your backup code is:\n\n$meCode\n\nKeep it private, like a password. If you get a new phone, open Media › Make your profile › Move from another phone, and type this code to get your profile back.")
             .setPositiveButton("Copy") { _, _ ->
-                try { m.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("BigD backup code", meCode)); m.toast("Copied") } catch (e: Exception) { }
+                try { m.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Habit backup code", meCode)); m.toast("Copied") } catch (e: Exception) { }
             }
             .setNegativeButton("Close", null).show()
     }
@@ -1043,7 +1043,7 @@ class SocialPage(private val m: MainActivity) {
             m.add(ui.section("🔐 ప్రొఫైల్ ఉందా? · Already have a profile?", "Log in with the phone number or email and password you added to it.").apply {
                 loginForm(this, "Log in") { doLogin() }
             }, 12)
-            m.add(ui.section("Or use your backup code", "Had a BigD profile on another phone? Type its backup code.").apply {
+            m.add(ui.section("Or use your backup code", "Had a Habit profile on another phone? Type its backup code.").apply {
                 val code = ui.input("Backup code, e.g. 7F3A9C21B4", "").apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }
                 put(code, 10)
                 put(ui.row(ui.button("Use this code") { restore(code.text.toString()) }), 8)
@@ -1165,7 +1165,7 @@ class SocialPage(private val m: MainActivity) {
         go("compose") { cAs = asUid }
     }
 
-    /** Something shared to "Post on BigD Media" from another app: text, a link, or photos. */
+    /** Something shared to "Post on Habit Media" from another app: text, a link, or photos. */
     fun fromShare(text: String, uris: List<Uri>) {
         if (listening.isNotEmpty()) m.stopListening()
         history.clear(); history.add(Step("feed", null, null, 0)); screen = "compose"; cAs = ""
@@ -1399,7 +1399,7 @@ class SocialPage(private val m: MainActivity) {
     /** Deletes this phone's Media profile and everything linked to it, after asking. Works from any page. */
     fun deleteProfile() {
         AlertDialog.Builder(m).setTitle("Delete your profile? · ప్రొఫైల్ తొలగించాలా?")
-            .setMessage("This deletes for ever:\n\n• your profile (name, photo, @name, tagline) and backup code\n• all your posts and their photos\n• your comments, likes and follows\n\nThis can't be undone. The rest of BigD AI keeps working as before.")
+            .setMessage("This deletes for ever:\n\n• your profile (name, photo, @name, tagline) and backup code\n• all your posts and their photos\n• your comments, likes and follows\n\nThis can't be undone. The rest of Habit AI keeps working as before.")
             .setPositiveButton("Delete") { _, _ ->
                 io.execute {
                     val r = Net.post(store, "/api/social/delete-me", JSONObject().put("confirm", "DELETE"), headers(), 30_000)
@@ -1487,7 +1487,7 @@ class SocialPage(private val m: MainActivity) {
     private fun rulesOk(then: () -> Unit): Boolean {
         if (store.feedAgreed) return true
         AlertDialog.Builder(m).setTitle("Community rules · నియమాలు")
-            .setMessage("Posts, comments and profiles are public: everyone using BigD AI can see them.\n\n• Be kind and respectful.\n• No bad words, hate, adult or violent content.\n• No phone numbers, addresses or ID numbers.\n• No ads, scams or fake news.\n• Share only photos you are allowed to share.\n• Nothing that harms children, ever.\n\nPosts that break the rules are removed and the person can be blocked. You can delete your posts at any time.\n\nFull rules: ${store.server}/rules")
+            .setMessage("Posts, comments and profiles are public: everyone using Habit AI can see them.\n\n• Be kind and respectful.\n• No bad words, hate, adult or violent content.\n• No phone numbers, addresses or ID numbers.\n• No ads, scams or fake news.\n• Share only photos you are allowed to share.\n• Nothing that harms children, ever.\n\nPosts that break the rules are removed and the person can be blocked. You can delete your posts at any time.\n\nFull rules: ${store.server}/rules")
             .setPositiveButton("I agree") { _, _ -> store.feedAgreed = true; then() }.setNegativeButton("Cancel", null).show()
         return false
     }
@@ -1564,7 +1564,7 @@ class SocialPage(private val m: MainActivity) {
             }
         })
         if (!c.mine) {
-            items.add("🚩 Report comment" to { call("/api/social/report", JSONObject().put("comment", c.id), "Thank you. The BigD team will check it.") { comments.remove(c) } })
+            items.add("🚩 Report comment" to { call("/api/social/report", JSONObject().put("comment", c.id), "Thank you. The Habit team will check it.") { comments.remove(c) } })
             items.add("🚫 Hide posts from ${c.author.name}" to { block(c.author) })
         }
         AlertDialog.Builder(m).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
@@ -1644,7 +1644,7 @@ class SocialPage(private val m: MainActivity) {
             (if (p.photos.isNotEmpty()) "\n\n" + p.photos.joinToString("\n") { abs(it) } else "") +
             (if (p.ytId.isNotBlank()) "\n\n▶ https://youtu.be/${p.ytId}" else if (p.linkUrl.isNotBlank()) "\n\n${p.linkUrl}" else "") +
             (if (p.sourceUrl.isNotBlank() && p.sourceUrl != p.linkUrl) "\n\n${p.sourceUrl}" else "") +
-            "\n\n— ${p.author.name} · BigD AI 🐾 ${store.server}"
+            "\n\n— ${p.author.name} · Habit AI 🐾 ${store.server}"
         return t.trim()
     }
 
@@ -1666,7 +1666,7 @@ class SocialPage(private val m: MainActivity) {
     private fun report(p: SPost) {
         val reasons = arrayOf("Bad words or insults", "Adult or violent content", "Harm to a child", "Spam, ads or a scam", "Fake news", "Personal details of someone", "Something else")
         AlertDialog.Builder(m).setTitle("Why are you reporting it?").setItems(reasons) { _, i ->
-            call("/api/social/report", JSONObject().put("key", p.key).put("reason", reasons[i]), "Thank you. The BigD team will check it.") { }
+            call("/api/social/report", JSONObject().put("key", p.key).put("reason", reasons[i]), "Thank you. The Habit team will check it.") { }
         }.show()
     }
 
@@ -1750,7 +1750,7 @@ class SocialPage(private val m: MainActivity) {
             override fun comments(p: SPost) = openComments(p)
             override fun profile(p: SPost) = openProfile(p.author.uid)
             override fun report(p: SPost, reason: String) =
-                call("/api/social/report", JSONObject().put("key", p.key).put("reason", reason), "Thank you. The BigD team will check it.") { }
+                call("/api/social/report", JSONObject().put("key", p.key).put("reason", reason), "Thank you. The Habit team will check it.") { }
             override fun shareText(p: SPost) = this@SocialPage.shareText(p)
             override fun seen(key: String) {
                 if (!viewed.add(key)) return

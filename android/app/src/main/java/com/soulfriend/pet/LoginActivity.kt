@@ -18,9 +18,9 @@ import org.json.JSONObject
 import java.util.Locale
 
 /**
- * The first screen, like WhatsApp: everyone logs in with their mobile number (or email) and a password, so their BigD
+ * The first screen, like WhatsApp: everyone logs in with their mobile number (or email) and a password, so their Habit
  * account (profile, posts, chats) stays theirs on a new phone too.
- *  - A number already on BigD: enter its password (forgot it? the backup code from Media › 👤 works too).
+ *  - A number already on Habit: enter its password (forgot it? the backup code from Media › 👤 works too).
  *  - A new number: your name and a new password. A profile already on this phone keeps everything; the login is added.
  *  - Someone who already set a login (Media › 👤) goes straight in.
  * The number is never shown to anyone, and the password is kept only scrambled (scrypt) on the server.
@@ -56,7 +56,7 @@ class LoginActivity : Activity() {
                 if (r.ok && r.json.optJSONObject("login") != null) { done(r.json); return@runOnUiThread }
                 deviceName = r.json.optJSONObject("profile")?.optString("name") ?: ""
                 step = "phone"; render()
-                if (!r.ok && r.code == 0) say(t("No internet. Connect to the internet to start BigD.", "ఇంటర్నెట్ లేదు. BigD మొదలుపెట్టడానికి ఇంటర్నెట్ ఆన్ చేయండి."), false)
+                if (!r.ok && r.code == 0) say(t("No internet. Connect to the internet to start Habit.", "ఇంటర్నెట్ లేదు. Habit మొదలుపెట్టడానికి ఇంటర్నెట్ ఆన్ చేయండి."), false)
             }
         }.start()
     }
@@ -66,8 +66,9 @@ class LoginActivity : Activity() {
 
     private fun render() {
         box.removeAllViews()
-        box.addView(ui.text("🐾", 64f, Ui.INK).apply { gravity = Gravity.CENTER })
-        box.addView(ui.text("BigD AI", 30f, Ui.TEAL_DARK, bold = true).apply { gravity = Gravity.CENTER })
+        box.addView(android.widget.ImageView(this).apply { setImageResource(R.drawable.habit_logo); contentDescription = "Habit AI" },
+            LinearLayout.LayoutParams(dp(96), dp(96)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(8) })
+        box.addView(ui.text("Habit AI", 30f, Ui.TEAL_DARK, bold = true).apply { gravity = Gravity.CENTER })
         box.addView(ui.text(t("Your friend in Telugu and English", "తెలుగు, ఇంగ్లీష్‌లో మీ స్నేహితుడు"), 15f, Ui.MUTED).apply { gravity = Gravity.CENTER; setPadding(0, dp(2), 0, dp(14)) })
         // the language
         val langs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
@@ -88,8 +89,8 @@ class LoginActivity : Activity() {
             else -> createStep(card)
         }
         card.addView(msg)
-        box.addView(ui.text(t("🔒 Your number is never shown to anyone. Your password is kept scrambled; BigD can't read it.",
-            "🔒 మీ నంబర్ ఎవరికీ కనిపించదు. మీ పాస్‌వర్డ్ గుప్తంగా ఉంటుంది; BigD కూడా చదవలేదు."), 12.5f, Ui.MUTED).apply { gravity = Gravity.CENTER; setPadding(dp(8), dp(16), dp(8), 0) })
+        box.addView(ui.text(t("🔒 Your number is never shown to anyone. Your password is kept scrambled; Habit can't read it.",
+            "🔒 మీ నంబర్ ఎవరికీ కనిపించదు. మీ పాస్‌వర్డ్ గుప్తంగా ఉంటుంది; Habit కూడా చదవలేదు."), 12.5f, Ui.MUTED).apply { gravity = Gravity.CENTER; setPadding(dp(8), dp(16), dp(8), 0) })
     }
 
     private fun field(hint: String, type: Int): EditText = EditText(this).apply {
@@ -101,7 +102,7 @@ class LoginActivity : Activity() {
     // ---------- 1. the mobile number ----------
     private fun phoneStep(card: LinearLayout) {
         card.addView(ui.text(if (email) t("Your email", "మీ ఈమెయిల్") else t("📱 Your mobile number", "📱 మీ మొబైల్ నంబర్"), 18f, Ui.INK, bold = true))
-        card.addView(ui.text(t("To keep your BigD account yours, on any phone.", "మీ BigD ఖాతా ఏ ఫోన్‌లోనైనా మీదే ఉండాలని."), 13.5f, Ui.MUTED).apply { setPadding(0, dp(2), 0, dp(10)) })
+        card.addView(ui.text(t("To keep your Habit account yours, on any phone.", "మీ Habit ఖాతా ఏ ఫోన్‌లోనైనా మీదే ఉండాలని."), 13.5f, Ui.MUTED).apply { setPadding(0, dp(2), 0, dp(10)) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         if (!email) row.addView(ui.text("🇮🇳 +91", 18f, Ui.INK, bold = true).apply { setPadding(dp(4), 0, dp(10), 0) })
         val input = field(if (email) "name@gmail.com" else "98480 12345", if (email) InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS or InputType.TYPE_CLASS_TEXT else InputType.TYPE_CLASS_PHONE)
@@ -130,10 +131,10 @@ class LoginActivity : Activity() {
         }.start()
     }
 
-    // ---------- 2a. a number already on BigD: its password ----------
+    // ---------- 2a. a number already on Habit: its password ----------
     private fun passwordStep(card: LinearLayout) {
         card.addView(ui.text(t("Welcome back! 👋", "మళ్ళీ స్వాగతం! 👋"), 20f, Ui.INK, bold = true))
-        card.addView(ui.text(t("$account already has a BigD account. Enter its password.", "$account కి ఇప్పటికే BigD ఖాతా ఉంది. దాని పాస్‌వర్డ్ ఇవ్వండి."), 14f, Ui.MUTED).apply { setPadding(0, dp(2), 0, dp(10)) })
+        card.addView(ui.text(t("$account already has a Habit account. Enter its password.", "$account కి ఇప్పటికే Habit ఖాతా ఉంది. దాని పాస్‌వర్డ్ ఇవ్వండి."), 14f, Ui.MUTED).apply { setPadding(0, dp(2), 0, dp(10)) })
         val pw = field(t("Password", "పాస్‌వర్డ్"), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
         card.addView(pw)
         card.addView(showToggle(pw))
@@ -151,8 +152,8 @@ class LoginActivity : Activity() {
     private fun forgot() {
         val code = field(t("Backup code, e.g. 3F9A1C27B0", "బ్యాకప్ కోడ్, ఉదా: 3F9A1C27B0"), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS)
         val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(6), dp(20), 0) }
-        wrap.addView(ui.text(t("Your backup code is in BigD on your old phone: Media › 👤 your profile. (Getting a code by SMS is coming soon.)",
-            "మీ బ్యాకప్ కోడ్ పాత ఫోన్‌లోని BigD లో ఉంటుంది: మీడియా › 👤 మీ ప్రొఫైల్. (SMS కోడ్ త్వరలో వస్తుంది.)"), 13.5f, Ui.MUTED))
+        wrap.addView(ui.text(t("Your backup code is in Habit on your old phone: Media › 👤 your profile. (Getting a code by SMS is coming soon.)",
+            "మీ బ్యాకప్ కోడ్ పాత ఫోన్‌లోని Habit లో ఉంటుంది: మీడియా › 👤 మీ ప్రొఫైల్. (SMS కోడ్ త్వరలో వస్తుంది.)"), 13.5f, Ui.MUTED))
         wrap.addView(code, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         AlertDialog.Builder(this).setTitle(t("Use your backup code", "మీ బ్యాకప్ కోడ్ వాడండి")).setView(wrap).setPositiveButton(t("Continue", "కొనసాగించు")) { _, _ ->
             busy = true; say(t("Checking…", "చూస్తున్నాం…"), true)
@@ -180,7 +181,7 @@ class LoginActivity : Activity() {
 
     // ---------- 2b. a new number: name and password ----------
     private fun createStep(card: LinearLayout) {
-        card.addView(ui.text(t("Make your BigD account", "మీ BigD ఖాతా తయారుచేయండి"), 20f, Ui.INK, bold = true))
+        card.addView(ui.text(t("Make your Habit account", "మీ Habit ఖాతా తయారుచేయండి"), 20f, Ui.INK, bold = true))
         card.addView(ui.text(account, 14f, Ui.MUTED).apply { setPadding(0, dp(2), 0, dp(10)) })
         val name = field(t("Your name", "మీ పేరు"), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS).apply { setText(deviceName) }
         val pw = field(t("Make a password (6 or more)", "పాస్‌వర్డ్ పెట్టండి (6 లేదా ఎక్కువ)"), InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)

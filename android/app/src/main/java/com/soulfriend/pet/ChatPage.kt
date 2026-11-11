@@ -20,7 +20,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * BigD Chat in the Messages tab: the list of chats and requests, a new chat or group, my QR code and invite link,
+ * Habit Chat in the Messages tab: the list of chats and requests, a new chat or group, my QR code and invite link,
  * scanning a friend's QR code, and a normal phone call (or an invite) to anyone in the phone's contacts.
  */
 class ChatPage(private val m: MainActivity) {
@@ -46,13 +46,13 @@ class ChatPage(private val m: MainActivity) {
         s.removeAllViews()
         val db = ChatDb.get(m)
         val unread = if (ChatSync.isSetUp(m)) db.unreadTotal() else 0
-        s.addView(ui.text("💬 BigD Chat" + if (unread > 0) "  ·  $unread " + t("new", "కొత్తవి") else "", 18f, Ui.INK, bold = true))
+        s.addView(ui.text("💬 Habit Chat" + if (unread > 0) "  ·  $unread " + t("new", "కొత్తవి") else "", 18f, Ui.INK, bold = true))
         if (!ChatSync.isSetUp(m)) {
-            s.addView(ui.text(t("Chat with family and friends who use BigD AI, like WhatsApp: messages, groups, photos, voice notes, and reminders and work tasks pinned at the top. " +
-                "🔒 Locked end to end: only the people in a chat can read it, not even BigD's server.",
-                "BigD AI వాడే కుటుంబం, స్నేహితులతో వాట్సాప్ లాగా చాట్ చేయండి: మెసేజ్‌లు, గ్రూప్‌లు, ఫోటోలు, వాయిస్ మెసేజ్‌లు, పైన ఉండే రిమైండర్లు, పనులు. " +
-                "🔒 ఎండ్ టు ఎండ్ లాక్: చాట్‌లో ఉన్నవాళ్ళు మాత్రమే చదవగలరు, BigD సర్వర్ కూడా చదవలేదు."), 14f, Ui.MUTED).apply { setPadding(0, dp(6), 0, 0) })
-            s.addView(ui.button(if (starting) t("Starting…", "మొదలవుతోంది…") else t("💬 Start BigD Chat", "💬 BigD చాట్ మొదలుపెట్టండి"), "primary") { if (!starting) start() },
+            s.addView(ui.text(t("Chat with family and friends who use Habit AI, like WhatsApp: messages, groups, photos, voice notes, and reminders and work tasks pinned at the top. " +
+                "🔒 Locked end to end: only the people in a chat can read it, not even Habit's server.",
+                "Habit AI వాడే కుటుంబం, స్నేహితులతో వాట్సాప్ లాగా చాట్ చేయండి: మెసేజ్‌లు, గ్రూప్‌లు, ఫోటోలు, వాయిస్ మెసేజ్‌లు, పైన ఉండే రిమైండర్లు, పనులు. " +
+                "🔒 ఎండ్ టు ఎండ్ లాక్: చాట్‌లో ఉన్నవాళ్ళు మాత్రమే చదవగలరు, Habit సర్వర్ కూడా చదవలేదు."), 14f, Ui.MUTED).apply { setPadding(0, dp(6), 0, 0) })
+            s.addView(ui.button(if (starting) t("Starting…", "మొదలవుతోంది…") else t("💬 Start Habit Chat", "💬 Habit చాట్ మొదలుపెట్టండి"), "primary") { if (!starting) start() },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
             return
         }
@@ -117,7 +117,7 @@ class ChatPage(private val m: MainActivity) {
         }
     }
 
-    // ---------- starting: a name (the BigD profile) and this phone's key ----------
+    // ---------- starting: a name (the Habit profile) and this phone's key ----------
     private fun start() {
         starting = true; section?.let { fill(it) }
         Thread {
@@ -192,14 +192,14 @@ class ChatPage(private val m: MainActivity) {
         val box = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(20), dp(8), dp(20), 0) }
         qr(link, 720)?.let { b -> box.addView(ImageView(m).apply { setImageBitmap(b) }, LinearLayout.LayoutParams(dp(240), dp(240))) }
         box.addView(ui.text(me.optString("name") + "  @" + handle, 16f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, 0) })
-        box.addView(ui.text(t("Friends scan this in BigD (Messages › 📷 Scan QR), or open your link:", "స్నేహితులు BigD లో ఇది స్కాన్ చేయవచ్చు (మెసేజ్‌లు › 📷 QR స్కాన్), లేదా మీ లింక్ తెరవవచ్చు:"), 13f, Ui.MUTED).apply { gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0) })
+        box.addView(ui.text(t("Friends scan this in Habit (Messages › 📷 Scan QR), or open your link:", "స్నేహితులు Habit లో ఇది స్కాన్ చేయవచ్చు (మెసేజ్‌లు › 📷 QR స్కాన్), లేదా మీ లింక్ తెరవవచ్చు:"), 13f, Ui.MUTED).apply { gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0) })
         box.addView(ui.text(link, 13.5f, Ui.TEAL).apply { gravity = Gravity.CENTER })
-        AlertDialog.Builder(m).setTitle(t("🔳 My BigD QR code", "🔳 నా BigD QR కోడ్")).setView(box)
+        AlertDialog.Builder(m).setTitle(t("🔳 My Habit QR code", "🔳 నా Habit QR కోడ్")).setView(box)
             .setPositiveButton(t("📤 Share invite", "📤 ఆహ్వానం పంపండి")) { _, _ ->
-                val msg = t("Hi! Let's chat on BigD AI (free, locked end to end, Telugu and English): $link", "హాయ్! BigD AI లో చాట్ చేద్దాం (ఉచితం, సురక్షితం): $link")
+                val msg = t("Hi! Let's chat on Habit AI (free, locked end to end, Telugu and English): $link", "హాయ్! Habit AI లో చాట్ చేద్దాం (ఉచితం, సురక్షితం): $link")
                 m.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, msg), t("Share invite", "ఆహ్వానం పంపండి")))
             }
-            .setNeutralButton(t("📋 Copy link", "📋 లింక్ కాపీ")) { _, _ -> m.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("BigD", link)); m.toast(t("Copied", "కాపీ అయింది")) }
+            .setNeutralButton(t("📋 Copy link", "📋 లింక్ కాపీ")) { _, _ -> m.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Habit", link)); m.toast(t("Copied", "కాపీ అయింది")) }
             .setNegativeButton(t("Close", "మూసివేయి"), null).show()
     }
     private fun qr(text: String, size: Int): Bitmap? = try {

@@ -19,7 +19,7 @@ import android.os.Build
 import android.provider.MediaStore
 
 /**
- * BigD AI Lite: finds ID cards in the phone's screenshots (and WhatsApp pictures) by itself and files them in the Vault,
+ * Habit AI Lite: finds ID cards in the phone's screenshots (and WhatsApp pictures) by itself and files them in the Vault,
  * a folder for each person. Everything happens on the phone. After the first look, new pictures are checked
  * only while the phone is charging (kind to the battery). Google Play allows reading all photos only for gallery apps,
  * so the Play Store edition lets you choose the pictures instead (BuildConfig.AUTO_CARDS = false).

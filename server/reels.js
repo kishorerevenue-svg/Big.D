@@ -2,7 +2,7 @@
 // Scenes: the post's own picture slowly zooming, then (with PEXELS_API_KEY, free) 2 or 3 moving video clips that fit
 // the story from Pexels, softly fading into each other, with credit to the people who filmed them; without the key,
 // the picture alone (or a moving colour background). The headline and the news come as text (drawn with the
-// subtitles engine and "complex shaping", so Telugu letters join correctly), music made for BigD AI that fits the
+// subtitles engine and "complex shaping", so Telugu letters join correctly), music made for Habit AI that fits the
 // post's mood (serious, happy, inspiring, devotional, kids), and the news read aloud when the natural voice
 // (GOOGLE_TTS_KEY) is set up. One video at a time in the background, at most REELS_DAILY a day; videos are deleted
 // after 10 days.
@@ -151,7 +151,7 @@ module.exports = function makeReels({ DATA_DIR, media, voice }) {
     for (let hop = 0; hop < 4 && url; hop++) {
       if (!(await publicUrl(url))) return false;
       let r;
-      try { r = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Mozilla/5.0 (compatible; BigD-AI/1.0; +https://bigdai.tech)" } }); }
+      try { r = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Mozilla/5.0 (compatible; Habit-AI/1.0; +https://bigdai.tech)" } }); }
       catch (e) { return false; }
       if (r.status >= 300 && r.status < 400 && r.headers.get("location")) { url = new URL(r.headers.get("location"), url).toString(); continue; }
       if (!r.ok || !/^image\//i.test(r.headers.get("content-type") || "")) return false;
@@ -183,7 +183,7 @@ module.exports = function makeReels({ DATA_DIR, media, voice }) {
   function writeAss(item, assFile, hasPic, voiceSec, credits = []) {
     const te = /[ఀ-౿]/.test(item.title + item.body);
     const cat = (media.CATS[item.cat] || {});
-    const label = "BigD AI · " + (te ? (cat.te || "వార్తలు") : (cat.en || "News"));
+    const label = "Habit AI · " + (te ? (cat.te || "వార్తలు") : (cat.en || "News"));
     const t0 = esc(item.title);
     const title = t0.length > 110 ? t0.slice(0, 108).replace(/\s+\S*$/, "") + "…" : t0;
     const segs = pieces(esc(item.body).slice(0, 900), 90).slice(0, 8);
@@ -232,9 +232,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     // who filmed each scene (bottom right of the picture band)
     const seg = total / Math.max(1, credits.length);
     credits.forEach((c, i) => { if (c) ev.push(`Dialogue: 1,${ts(i * seg + 0.3)},${ts(Math.min(endAt, (i + 1) * seg))},Credit,,0,0,0,,{\\pos(${W - 20},${150 + 404 - 10})}${esc(c).slice(0, 60)}`); });
-    ev.push(`Dialogue: 1,${ts(0.2)},${ts(endAt)},Foot,,0,0,0,,${te ? "BigD AI యాప్‌లో మరిన్ని · bigdai.tech" : "More on the BigD AI app · bigdai.tech"}`);
+    ev.push(`Dialogue: 1,${ts(0.2)},${ts(endAt)},Foot,,0,0,0,,${te ? "Habit AI యాప్‌లో మరిన్ని · bigdai.tech" : "More on the Habit AI app · bigdai.tech"}`);
     ev.push(`Dialogue: 1,${ts(endAt)},${ts(total)},Body,,0,0,0,,{\\fad(300,0)\\an7\\pos(0,0)\\bord0\\shad0\\1c&H2A1F0A&\\1a&H30&\\p1}m 0 0 l ${W} 0 ${W} ${H} 0 ${H}{\\p0}`);
-    ev.push(`Dialogue: 2,${ts(endAt)},${ts(total)},End,,0,0,0,,{\\fad(300,0)\\pos(${W / 2},${H / 2 - 60})}BigD AI`);
+    ev.push(`Dialogue: 2,${ts(endAt)},${ts(total)},End,,0,0,0,,{\\fad(300,0)\\pos(${W / 2},${H / 2 - 60})}Habit AI`);
     ev.push(`Dialogue: 2,${ts(endAt + 0.2)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(${W / 2},${H / 2 + 50})}${te ? "వార్తలు · వీడియోలు · సహాయం" : "News · videos · help"}`);
     ev.push(`Dialogue: 2,${ts(endAt + 0.2)},${ts(total)},EndSub,,0,0,0,,{\\fad(300,0)\\pos(${W / 2},${H / 2 + 120})}bigdai.tech`);
     fs.writeFileSync(assFile, head + ev.join("\n") + "\n");
@@ -354,7 +354,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     const f = file(m[1]);
     let s; try { s = fs.statSync(f); } catch (e) { res.writeHead(404); res.end(); return true; }
     const size = s.size, head = { "Content-Type": "video/mp4", "Cache-Control": "public, max-age=86400", "Accept-Ranges": "bytes",
-      "Content-Disposition": `inline; filename="BigD-news-${m[1]}.mp4"` };
+      "Content-Disposition": `inline; filename="Habit-news-${m[1]}.mp4"` };
     const r = String(req.headers.range || "").match(/^bytes=(\d*)-(\d*)$/);
     if (r && (r[1] || r[2])) {
       const start = r[1] ? Number(r[1]) : Math.max(0, size - Number(r[2]));

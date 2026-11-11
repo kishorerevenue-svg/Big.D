@@ -1,4 +1,4 @@
-// BigD AI natural voice: turns the pet's reply text into an MP3 with Google Cloud Text-to-Speech
+// Habit AI natural voice: turns the pet's reply text into an MP3 with Google Cloud Text-to-Speech
 // (Chirp 3 HD voices, Telugu and English). Off until GOOGLE_TTS_KEY is set in .env.
 // The phone then raises the pitch a little for each pet, so the voice stays clear but cute.
 const fs = require("fs");

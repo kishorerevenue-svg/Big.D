@@ -1,4 +1,4 @@
-# Original background music for BigD AI's videos, one short loop per mood. Made only from sine waves and a little
+# Original background music for Habit AI's videos, one short loop per mood. Made only from sine waves and a little
 # noise (no recording or existing song is used), so it is free to use anywhere.
 #   python3 make-music.py <mood> out.wav      moods: serious, happy, inspiring, devotional, kids
 import math, random, struct, wave, sys

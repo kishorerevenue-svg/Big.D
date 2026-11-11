@@ -13,7 +13,7 @@ import org.json.JSONObject
 /**
  * Govt services page: official website links for common services (Andhra Pradesh, Telangana and all India),
  * and simple answers to questions, found only on official government websites (gov.in, nic.in).
- * BigD AI is not a government app: the page says so clearly, and every answer links to the official source.
+ * Habit AI is not a government app: the page says so clearly, and every answer links to the official source.
  */
 class GovtPage(private val m: MainActivity) {
     private var cat = ""
@@ -42,7 +42,7 @@ class GovtPage(private val m: MainActivity) {
 
         m.pageHeader("Govt services · ప్రభుత్వ సేవలు", "Official websites and simple steps for certificates, land, pensions and more")
         m.add(ui.card(Ui.SUN_SOFT).apply {
-            addView(ui.text("ℹ️ BigD AI is not a government app", 15f, Ui.INK, bold = true))
+            addView(ui.text("ℹ️ Habit AI is not a government app", 15f, Ui.INK, bold = true))
             put(ui.text("We are not part of, or linked to, any government department. The links open official government websites. " +
                 "Always check the details there, or at your Sachivalayam, MeeSeva or Tahsildar office. Never pay middlemen, and never share an OTP.", 13.5f, Ui.MUTED), 4)
         }, 12)

@@ -1,9 +1,9 @@
-// BigD Chat: chats between people who use BigD AI, like WhatsApp: one-to-one and groups, photos, voice notes, ✓✓
+// Habit Chat: chats between people who use Habit AI, like WhatsApp: one-to-one and groups, photos, voice notes, ✓✓
 // ticks, reminders and group tasks.
 //  - Locked end to end: every message is locked on the phone with the keys of the people in the chat (P-256 ECDH +
 //    AES-256-GCM, see ChatCrypto.kt), so this server only passes on locked messages it can't read. A message is
 //    deleted here as soon as everyone in the chat has it (or after 30 days); photos and voice notes after 30 days.
-//  - People find each other by their BigD @name, a QR code or an invite link (/c/<name>).
+//  - People find each other by their Habit @name, a QR code or an invite link (/c/<name>).
 //  - A first message from someone new waits in Requests until it is accepted (at most 5 messages until then);
 //    being added to a group by someone new is a request too. Block and report are always there.
 //  - Groups have admins: they add and remove people, rename the group, make other admins, and close tasks. A task (a
@@ -28,7 +28,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   const str = (v, n) => String(v === undefined || v === null ? "" : v).slice(0, n);
   const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
   const blocked = (a, b) => (db.blocks[a] || []).includes(b);        // a blocked b
-  const person = uid => social.person(uid) || { uid, name: "BigD friend", handle: "", emoji: "🐾", avatar: "", gone: true };
+  const person = uid => social.person(uid) || { uid, name: "Habit friend", handle: "", emoji: "🐾", avatar: "", gone: true };
 
   // ---------- each person's events (what their phone hasn't confirmed yet) ----------
   const waiters = new Map();   // uid -> Set of functions that wake a waiting sync
@@ -131,7 +131,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     // (by person, not by internet address: many phones share one address on mobile data)
     if (!h.allowed(me ? "chat:" + me : "chatip:" + h.clientIp(req), undefined, me ? 900 : 300)) return send(429, { error: "Too many requests. Please wait a few minutes." });
     const mine = me && social.person(me);
-    if (!mine) return send(403, { error: "Make your BigD profile first: write your name.", needProfile: true });
+    if (!mine) return send(403, { error: "Make your Habit profile first: write your name.", needProfile: true });
     let body = {};
     if (req.method === "POST" && p !== "/api/chat/file") { try { body = await h.readBody(req, 1024 * 1024); } catch (e) { return send(400, { error: "Bad request." }); } }
 
@@ -148,7 +148,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
       }
       return send(200, { me: Object.assign({}, mine, { kid }), cursor: box(me).n });
     }
-    if (!db.keys[me]) return send(409, { error: "Open BigD Chat in the app first.", needKey: true });
+    if (!db.keys[me]) return send(409, { error: "Open Habit Chat in the app first.", needKey: true });
 
     if (p === "/api/chat/convs" && req.method === "GET") {
       const list = Object.values(db.convs).filter(c => c.members.includes(me)).map(c => view(c, me));
@@ -159,7 +159,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     }
     if (p === "/api/chat/user" && req.method === "GET") {
       const u = social.byHandle(url.searchParams.get("h"));
-      if (!u || !db.keys[u.uid]) return send(404, { error: u ? "This person hasn't opened BigD Chat yet." : "No one has that @name." });
+      if (!u || !db.keys[u.uid]) return send(404, { error: u ? "This person hasn't opened Habit Chat yet." : "No one has that @name." });
       return send(200, { person: u });
     }
     if (p === "/api/chat/keys" && req.method === "GET") {
@@ -224,7 +224,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
       if (p === "/api/chat/open") {
         const other = str(body.uid, 40) || ((social.byHandle(body.handle) || {}).uid || "");
         if (!other || other === me || !social.person(other)) return send(404, { error: "No one has that @name." });
-        if (!db.keys[other]) return send(409, { error: "This person hasn't opened BigD Chat yet. Send them your invite link." });
+        if (!db.keys[other]) return send(409, { error: "This person hasn't opened Habit Chat yet. Send them your invite link." });
         const cid = dmId(me, other);
         let c = db.convs[cid];
         if (!c) {
@@ -379,15 +379,15 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     const name = p ? p.name : "A friend", hd = p ? p.handle : "";
     const app = `intent://chat/${encodeURIComponent(hd)}#Intent;scheme=bigd;S.browser_fallback_url=${encodeURIComponent(h.baseUrl(req) + "/download")};end`;
     const html = `<!doctype html><html lang="te"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chat with ${esc(name)} on BigD AI</title><meta property="og:title" content="${esc(name)} invites you to BigD Chat">
+<title>Chat with ${esc(name)} on Habit AI</title><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta property="og:image" content="${esc(h.baseUrl(req))}/icon-512.png"><meta property="og:title" content="${esc(name)} invites you to Habit Chat">
 <meta property="og:description" content="Free chat, locked end to end, in Telugu and English.">
 <style>body{margin:0;font-family:system-ui,sans-serif;background:#EEF3F2;color:#132A2C;display:flex;min-height:100vh;align-items:center;justify-content:center}
 main{background:#fff;border-radius:20px;padding:28px 22px;max-width:360px;margin:16px;text-align:center;box-shadow:0 2px 12px #0001}
 .e{font-size:56px}h1{font-size:22px;margin:8px 0}p{color:#5B7073;line-height:1.5}a{display:block;margin-top:12px;padding:14px;border-radius:14px;text-decoration:none;font-weight:700}
 .a{background:#0E6B6B;color:#fff}.b{background:#D7EDEA;color:#0A4F50}</style></head><body><main>
-<div class="e">${esc(p ? p.emoji : "🐾")}</div><h1>${esc(name)}</h1><p>${hd ? "@" + esc(hd) + " · " : ""}wants to chat with you on BigD AI.<br>BigD తో చాట్ చేయడానికి మిమ్మల్ని పిలుస్తున్నారు.</p>
-${hd ? `<a class="a" href="${esc(app)}">💬 Open in BigD AI</a>` : ""}<a class="b" href="/download">⬇ Get BigD AI (free)</a>
-<p style="font-size:13px">Then open Messages › 💬 BigD Chat and search ${hd ? "@" + esc(hd) : "their @name"}.</p></main></body></html>`;
+<div class="e">${esc(p ? p.emoji : "🐾")}</div><h1>${esc(name)}</h1><p>${hd ? "@" + esc(hd) + " · " : ""}wants to chat with you on Habit AI.<br>Habit తో చాట్ చేయడానికి మిమ్మల్ని పిలుస్తున్నారు.</p>
+${hd ? `<a class="a" href="${esc(app)}">💬 Open in Habit AI</a>` : ""}<a class="b" href="/download"><img src="/icon-192.png" alt="" style="width:24px;height:24px;vertical-align:-6px;margin-right:8px;border-radius:6px">Get Habit AI (free)</a>
+<p style="font-size:13px">Then open Messages › 💬 Habit Chat and search ${hd ? "@" + esc(hd) : "their @name"}.</p></main></body></html>`;
     res.writeHead(p ? 200 : 404, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
     res.end(html);
     return true;

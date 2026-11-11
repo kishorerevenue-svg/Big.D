@@ -22,7 +22,7 @@ import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.Executors
 
 /**
- * BigD Chat on the phone: sets it up (this phone's key goes to the server), keeps the chats up to date, sends messages,
+ * Habit Chat on the phone: sets it up (this phone's key goes to the server), keeps the chats up to date, sends messages,
  * photos, voice notes and tasks, and shows a notification for new ones.
  *  - While the app (or the floating pet) is open, it waits on the server, which answers as soon as something comes.
  *  - When the app is closed, it checks every 15 minutes (kind to the battery). Instant push comes with the calls.
@@ -51,7 +51,7 @@ object ChatSync {
     }
     fun api(store: Store, method: String, path: String, body: String? = null, timeoutMs: Int = 30_000, raw: ByteArray? = null): Reply {
         val server = store.server
-        if (!server.startsWith("https://")) return Reply(0, JSONObject().put("error", "Set your server address in the BigD AI app first."))
+        if (!server.startsWith("https://")) return Reply(0, JSONObject().put("error", "Set your server address in the Habit AI app first."))
         return try {
             val c = URL(server + path).openConnection() as HttpURLConnection
             c.requestMethod = method; c.connectTimeout = 15_000; c.readTimeout = timeoutMs
@@ -82,7 +82,7 @@ object ChatSync {
         val (_, pub) = ChatKeys.mine(ctx)
         val r = api(store, "POST", "/api/chat/hello", JSONObject().put("pub", pub).toString())
         if (r.json.optBoolean("needProfile")) return "profile"
-        if (!r.ok) return r.error("Couldn't start BigD Chat.")
+        if (!r.ok) return r.error("Couldn't start Habit Chat.")
         val db = ChatDb.get(ctx)
         db.setKv("me", r.json.getJSONObject("me").toString())
         if (db.kv("cursor").isEmpty()) db.setKv("cursor", r.json.optLong("cursor").toString())
@@ -374,7 +374,7 @@ object ChatSync {
         if (Build.VERSION.SDK_INT < 26) return
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "BigD Chat", NotificationManager.IMPORTANCE_HIGH).apply { description = "New messages from your BigD chats" })
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Habit Chat", NotificationManager.IMPORTANCE_HIGH).apply { description = "New messages from your Habit chats" })
     }
     fun clearNotification(ctx: Context, cid: String) { try { ctx.getSystemService(NotificationManager::class.java)?.cancel("chat", cid.hashCode()) } catch (e: Exception) { } }
 }

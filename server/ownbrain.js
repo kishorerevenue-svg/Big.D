@@ -1,4 +1,4 @@
-// BigD AI's own brain: a free, open AI model (Google's Gemma, Apache 2.0) that runs on THIS server with Ollama.
+// Habit AI's own brain: a free, open AI model (Google's Gemma, Apache 2.0) that runs on THIS server with Ollama.
 // It answers when Claude (and Gemini) can't: Claude is down, there is no Claude key, or today's budget is used up.
 // So the app never depends on one company. Before answering it reads the internet (news, Wikipedia, weather),
 // the owner's knowledge library and the answers learned from common questions. Nothing leaves this server
@@ -62,7 +62,7 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
   }
 
   // ---------- reading the internet (free, no keys) ----------
-  const get = (u, ms = 6000) => fetch(u, { headers: { "user-agent": "BigD-AI/1.0 (own brain)" }, signal: AbortSignal.timeout(ms) });
+  const get = (u, ms = 6000) => fetch(u, { headers: { "user-agent": "Habit-AI/1.0 (own brain)" }, signal: AbortSignal.timeout(ms) });
   const isTe = s => /[ఀ-౿]/.test(s);
   const decode = s => String(s).replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, "\"").replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
 
@@ -143,7 +143,7 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
 
   function prompt(lang, ctx, pet, found, photo) {
     const memories = (ctx.memories || []).slice(-8).filter(Boolean).map(m => String(m).slice(0, 160));
-    return `You are ${pet.name}, ${pet.like}, a kind friend who lives on the person's phone in the BigD AI app. Right now you are BigD's own brain on BigD's own server (the big AI is not reachable), so answer by yourself.
+    return `You are ${pet.name}, ${pet.like}, a kind friend who lives on the person's phone in the Habit AI app. Right now you are Habit's own brain on Habit's own server (the big AI is not reachable), so answer by yourself.
 ${LANG[lang] || LANG.auto}
 Your reply is read aloud: talk like a warm human friend. Chat: 1 to 3 short sentences. Questions: a clear answer in up to 6 short sentences.
 Use the FACTS when they help and say where they came from ("the news says…", "Wikipedia says…"). If the facts don't cover it and you are not sure, say honestly that you are not sure and they can ask again in a little while. Never make up names, numbers, prices, dates or news.

@@ -3,8 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// BigD Brain: the optional tiny brain that answers when the phone has no internet at all.
-// It is a separate small app, so BigD AI itself stays small and still installs on every phone
+// Habit Brain: the optional tiny brain that answers when the phone has no internet at all.
+// It is a separate small app, so Habit AI itself stays small and still installs on every phone
 // (the on-phone AI needs a 64-bit phone). It runs Google's Gemma (Apache 2.0) on the phone with LiteRT-LM;
 // the model (about 2.6 GB) is downloaded inside it, over Wi-Fi, only when you ask.
 android {
@@ -20,7 +20,7 @@ android {
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
-    // the same stamp as BigD AI, so the two apps trust each other (and only each other)
+    // the same stamp as Habit AI, so the two apps trust each other (and only each other)
     val keystoreFile = System.getenv("KEYSTORE_FILE")
     signingConfigs {
         create("release") {

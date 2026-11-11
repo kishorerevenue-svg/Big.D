@@ -12,8 +12,8 @@ import android.os.Message
 import android.os.Messenger
 
 /**
- * The tiny brain on the phone (the separate BigD Brain app, BigD AI Lite): it answers when there is no internet at all.
- * Only apps with BigD's stamp can ask it. The connection stays open a few minutes after the last question,
+ * The tiny brain on the phone (the separate Habit Brain app, Habit AI Lite): it answers when there is no internet at all.
+ * Only apps with Habit's stamp can ask it. The connection stays open a few minutes after the last question,
  * so the model stays loaded; then it closes, which frees the phone's memory.
  */
 object TinyBrain {
@@ -27,7 +27,7 @@ object TinyBrain {
 
     fun installed(ctx: Context) = try { ctx.packageManager.getPackageInfo(PKG, 0); true } catch (e: Exception) { false }
 
-    /** Opens BigD Brain (to download the brain or try it). */
+    /** Opens Habit Brain (to download the brain or try it). */
     fun open(ctx: Context, store: Store) {
         try {
             ctx.startActivity(Intent().setClassName(PKG, "$PKG.BrainActivity").putExtra("server", store.server).putExtra("lang", store.lang)
@@ -36,7 +36,7 @@ object TinyBrain {
     }
 
     /** What the tiny brain is told about itself. */
-    fun system(store: Store) = "You are BigD, a kind cartoon pet friend who lives on the person's phone. The phone has no internet right now, " +
+    fun system(store: Store) = "You are Habit, a kind cartoon pet friend who lives on the person's phone. The phone has no internet right now, " +
         "so you are answering with your small offline brain. " +
         (when (store.lang) { "te" -> "Always reply in simple spoken Telugu, in Telugu script. "; "en" -> "Reply in simple English. "
             else -> "Reply in the language the person uses (Telugu script for Telugu). " }) +

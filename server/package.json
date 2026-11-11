@@ -2,7 +2,7 @@
   "name": "bigd-ai-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Server for the BigD AI app. Keeps the Claude API key safe.",
+  "description": "Server for the Habit AI app. Keeps the Claude API key safe.",
   "main": "server.js",
   "engines": {
     "node": ">=20"

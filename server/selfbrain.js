@@ -1,9 +1,9 @@
-// BigD's self brain: it answers by itself, at once, without any AI model, from what BigD already knows and learns
+// Habit's self brain: it answers by itself, at once, without any AI model, from what Habit already knows and learns
 // every day. It answers (in Telugu or English) when Claude can't: this month's limit is used up, there's no credit,
 // Claude is down, or the person's free messages for today are used up.
 //  - a little kind chat (hello, how are you, thanks, who are you, what can you do…), and care for someone who is sad
 //  - today's panchangam and the festivals (panchang.js, trends.js)
-//  - BigD's Media posts, which come from the internet every day: news, movies, jobs, farming and mandi prices,
+//  - Habit's Media posts, which come from the internet every day: news, movies, jobs, farming and mandi prices,
 //    devotional, health tips, kids stories, facts, jokes and riddles
 //  - the answers it learned from Claude (answers.js) and the owner's knowledge library (the Teach page)
 //  - the weather (Open-Meteo) and Wikipedia
@@ -12,7 +12,7 @@
 const P = require("./panchang.js");
 
 module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = {}, EMOTIONS = [], fetchImpl }) {
-  const get = (u, ms = 6000) => (fetchImpl || fetch)(u, { headers: { "user-agent": "BigD-AI/1.0 (self brain; https://bigdai.tech)" }, signal: AbortSignal.timeout(ms) });
+  const get = (u, ms = 6000) => (fetchImpl || fetch)(u, { headers: { "user-agent": "Habit-AI/1.0 (self brain; https://bigdai.tech)" }, signal: AbortSignal.timeout(ms) });
   const json = async (u, ms) => { const r = await get(u, ms); if (!r.ok) throw new Error("http " + r.status); return r.json(); };
   const stats = { answered: 0, weak: 0, skills: {} };
   const istDate = (ms = Date.now()) => new Date(ms + 5.5 * 3600e3).toISOString().slice(0, 10);
@@ -51,7 +51,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     return (at > n * 0.5 ? cut.slice(0, at + 1) : cut.replace(/\s+\S*$/, "") + "…").trim();
   }
 
-  // ---------- BigD's Media posts ----------
+  // ---------- Habit's Media posts ----------
   const NOT_TEXT = new Set(["cartoon", "aivideo", "reel", "youtube", "video"]);
   function posts(cat, { days = 120, kind, notKind } = {}) {
     const since = Date.now() - days * 86400e3;
@@ -74,7 +74,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     served.delete(dev); served.set(dev, s);
     if (served.size > 5000) served.delete(served.keys().next().value);
   }
-  const srcOf = it => (it && it.url ? [{ title: (it.source || "BigD Media").slice(0, 80), url: it.url }] : []);
+  const srcOf = it => (it && it.url ? [{ title: (it.source || "Habit Media").slice(0, 80), url: it.url }] : []);
   const tokCache = new Map();
   function tokensOf(it) {
     let t = tokCache.get(it.id);
@@ -125,7 +125,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
         : say(te, "నా పెద్ద AI మెదడు కొంతసేపు విశ్రాంతి తీసుకుంటోంది.", "My big AI brain is resting for a while."),
       down: say(te, "నా పెద్ద AI మెదడు ఇప్పుడు బిజీగా ఉంది, కొంచెం తర్వాత మళ్ళీ అడగండి.", "My big AI brain is busy right now; please ask again in a little while."),
       your_day: say(te, "ఈ రోజు మీ ఉచిత AI మెసేజ్‌లు అయిపోయాయి, రేపు మళ్ళీ వస్తాయి.", "You've used today's free AI messages; they come back tomorrow."),
-      busy_day: say(te, "ఈ రోజు BigD కి చాలా రద్దీగా ఉంది, రేపు పెద్ద AI మళ్ళీ జవాబిస్తుంది.", "BigD is very busy today; the big AI answers again tomorrow."),
+      busy_day: say(te, "ఈ రోజు హ్యాబిట్‌కి చాలా రద్దీగా ఉంది, రేపు పెద్ద AI మళ్ళీ జవాబిస్తుంది.", "Habit is very busy today; the big AI answers again tomorrow."),
       no_key: say(te, "నా పెద్ద AI మెదడు ఇంకా సిద్ధం కాలేదు.", "My big AI brain isn't set up yet.")
     };
     let s = lines[info.why] || lines.down;
@@ -137,7 +137,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
 
   // ---------- skills ----------
   const re = (s) => new RegExp(s, "i");
-  const GREET = re("^(hi+|hello+|hey+|hai+|hii+|namaste|namaskaram|namaskar|vanakkam|good ?(morning|afternoon|evening)|gm|bro|bigd|big d)\\b(\\s+(there|everyone|all|friend|buddy|dear|ra|raa|andi))?[\\s,!.]*|^(నమస్తే|నమస్కారం|హాయ్|హలో|శుభోదయం|గుడ్ ?మార్నింగ్)[\\s,!.]*");
+  const GREET = re("^(hi+|hello+|hey+|hai+|hii+|namaste|namaskaram|namaskar|vanakkam|good ?(morning|afternoon|evening)|gm|bro|bigd|big d|habit(?=\\s*[,!.]|\\s*$))\\b(\\s+(there|everyone|all|friend|buddy|dear|ra|raa|andi|bigd|habit(?=\\s*[,!.]|\\s*$)))?[\\s,!.]*|^(నమస్తే|నమస్కారం|హాయ్|హలో|శుభోదయం|గుడ్ ?మార్నింగ్)[\\s,!.]*");
   const CRISIS = re("suicid|kill myself|end my life|want to die|wanna die|don'?t want to live|self[- ]?harm|cut myself|ఆత్మహత్య|చనిపోవాలని|చనిపోతాను|చావాలని|చచ్చిపోవాలని|బతకాలని లేదు|బ్రతకాలని లేదు|chanipovalani|chachipovalani|chavalani|bathakalani ledu");
   const SYMPTOM = re("\\b(fever|pain|ache|vomit\\w*|loose motions?|diarrh\\w*|bleed\\w*|breath\\w*|medicine|tablet|dose|dosage|pregnan\\w*|injury|burn|bite|bitten|poison\\w*)\\b|జ్వరం|నొప్పి|వాంతి|విరేచనాలు|రక్తం|ఆయాసం|మందు|మాత్ర|టాబ్లెట్|గర్భ|కాటు|విషం|jwaram|noppi");
 
@@ -150,8 +150,8 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     if (re("\\b(thanks|thank you|thank u|thanku|thx|tq|ty)\\b|ధన్యవాదాలు|థాంక్స్|థ్యాంక్స్|థాంక్యూ").test(q))
       return R("chat", say(te, "పర్వాలేదు! మీకు సహాయం చేయడం నాకు చాలా ఇష్టం. 😊", "You're welcome! I love helping you. 😊"), "love");
     if (re("who are (you|u)|what('?s| is) (your|ur) name|ur name|nuvvu evaru|nee peru|నువ్వు ఎవరు|నీ పేరు|మీరు ఎవరు|నువ్వెవరు").test(q))
-      return R("chat", say(te, `నేను BigD, మీ ఫోన్‌లో ఉండే మీ స్నేహితుడైన ${pet.te}ని! 🐾 మీతో మాట్లాడతాను, రిమైండర్లు పెడతాను, వార్తలు, కథలు, పంచాంగం చెబుతాను.`,
-        `${snd}I'm BigD, your friendly ${pet.name} who lives on your phone! 🐾 I chat with you, set reminders, and tell you the news, stories and the panchangam.`), "proud");
+      return R("chat", say(te, `నేను హ్యాబిట్, మీ ఫోన్‌లో ఉండే మీ స్నేహితుడైన ${pet.te}ని! 🐾 మీతో మాట్లాడతాను, రిమైండర్లు పెడతాను, వార్తలు, కథలు, పంచాంగం చెబుతాను.`,
+        `${snd}I'm Habit, your friendly ${pet.name} who lives on your phone! 🐾 I chat with you, set reminders, and tell you the news, stories and the panchangam.`), "proud");
     if (re("^(help|menu)$|what (all )?can (you|u) do|what do you do|em chestav|em cheyagalav|ఏం చేయగలవు|ఏమి చేయగలవు|ఏం చేస్తావు|^సహాయం$").test(q))
       return R("chat", say(te, "ఇప్పుడు నేను " + CAN(true) + " ఏది కావాలో చెప్పండి! 🐾", "Right now " + CAN(false) + " Just tell me which! 🐾"), "excited");
     if (re("\\b(i )?(love|luv) (you|u)\\b|ఐ లవ్ యూ|నువ్వంటే ఇష్టం|నువ్వు అంటే ఇష్టం").test(q)) return R("chat", say(te, "❤️ నాకూ మీరంటే చాలా ఇష్టం!", "❤️ I love you too!"), "love");
@@ -220,7 +220,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     return R("festival", say(te, `ఈరోజు పెద్ద పండుగ ఏమీ లేదు. ${soon.length ? "రాబోయే పండుగలు: " + soonTxt + "." : ""}`, `No big festival today. ${soon.length ? "Coming up: " + soonTxt + "." : ""}`), "happy");
   }
 
-  /** Fresh headlines straight from Google News (when BigD's own Media news is old, e.g. while Claude rests). */
+  /** Fresh headlines straight from Google News (when Habit's own Media news is old, e.g. while Claude rests). */
   async function googleNews(topic, te) {
     const hl = te ? "hl=te&gl=IN&ceid=IN:te" : "hl=en-IN&gl=IN&ceid=IN:en";
     const u = topic ? `https://news.google.com/rss/search?q=${encodeURIComponent(topic + " when:2d")}&${hl}` : `https://news.google.com/rss?${hl}`;
@@ -249,7 +249,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
         const hit = all.concat(posts("news", { days: 14 })).filter((i, k, a) => a.indexOf(i) === k).filter(i => { const t = tokensOf(i); return tw.every(w => t.title.some(x => same(x, w)) || t.body.some(x => same(x, w))); });
         if (hit.length) return R("news", say(te, `📰 ${topic} గురించి తాజా వార్తలు:\n`, `📰 The latest news about ${topic}:\n`) + listTitles(hit, 3) + "\n" + clip(hit[0].body, 300), "thinking", { sources: srcOf(hit[0]) });
       }
-      // nothing new in BigD's Media (or not on that topic): the headlines straight from Google News
+      // nothing new in Habit's Media (or not on that topic): the headlines straight from Google News
       if (!all.length || tw.length) {
         try {
           const g = await googleNews(tw.length ? topic : "", te);
@@ -258,7 +258,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
         } catch (e) { }
       }
       if (!all.length) return R("news", say(te, "📰 ఈరోజు ఇంకా కొత్త వార్తలు రాలేదు. కొంచెం తర్వాత మళ్ళీ అడగండి.", "📰 No new news has come in yet today. Please ask again a little later."), "thinking");
-      return R("news", say(te, "📰 ఈరోజు ముఖ్య వార్తలు:\n", "📰 Today's top news (in Telugu, from BigD Media):\n") + listTitles(all, 3) + "\n" + clip(all[0].body, 260) + say(te, "\nమరిన్ని వివరాలు మీడియా పేజీలో.", "\nThere's more on the Media page."), "thinking", { sources: srcOf(all[0]) });
+      return R("news", say(te, "📰 ఈరోజు ముఖ్య వార్తలు:\n", "📰 Today's top news (in Telugu, from Habit Media):\n") + listTitles(all, 3) + "\n" + clip(all[0].body, 260) + say(te, "\nమరిన్ని వివరాలు మీడియా పేజీలో.", "\nThere's more on the Media page."), "thinking", { sources: srcOf(all[0]) });
     }
     if (re("\\b(jobs?|job notifications?|recruitment|vacanc\\w*|naukri|udyogam|udyogalu)\\b|ఉద్యోగ|ఉద్యోగాల నోటిఫికేషన్|రిక్రూట్‌మెంట్|ఖాళీలు").test(q))
       return latest("jobs", posts("jobs", { days: 30 }), say(te, "💼 కొత్త ఉద్యోగ ప్రకటనలు:", "💼 New job notifications:"),
@@ -392,7 +392,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
       const k = learn && learn.searchKnowledge ? learn.searchKnowledge(q, 1)[0] : null;
       if (k && k.of >= (strong ? 0.6 : 0.5) && k.score >= 2.5) return R("library", say(te, `📚 "${k.title}" ప్రకారం: `, `📚 From "${k.title}": `) + clip(k.text, 600), "thinking");
       const m = searchPosts(q, strong ? 0.66 : 0.5);
-      if (m) return R("media", say(te, "📰 BigD మీడియాలో దీని గురించి: ", "📰 Here's what BigD Media has on this: ") + `${String(m.it.title).replace(/^[^\p{L}\p{N}]+/u, "")}\n${clip(m.it.body, 650)}`, "thinking", { sources: srcOf(m.it) });
+      if (m) return R("media", say(te, "📰 హ్యాబిట్ మీడియాలో దీని గురించి: ", "📰 Here's what Habit Media has on this: ") + `${String(m.it.title).replace(/^[^\p{L}\p{N}]+/u, "")}\n${clip(m.it.body, 650)}`, "thinking", { sources: srcOf(m.it) });
       if (!strong || DEFINE.test(q)) { const wk = await wiki(q, te); if (wk) return wk; }
     } catch (e) { console.error("Self brain:", e.message); }
     return strong ? null : fallback(te, ctx, info);

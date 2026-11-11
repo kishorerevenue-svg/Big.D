@@ -1,7 +1,7 @@
-// One-tap updates for BigD AI Lite. Every Lite build on GitHub becomes a public release (see the build workflow);
+// One-tap updates for Habit AI Lite. Every Lite build on GitHub becomes a public release (see the build workflow);
 // this finds the newest one, so people who got the app on WhatsApp get new versions without a GitHub account.
 //   /app/latest  -> { versionCode, versionName, url, size, notes }  (the app asks this once in a while)
-//   /download    -> the newest BigD AI Lite APK (a link anyone can share)
+//   /download    -> the newest Habit AI Lite APK (a link anyone can share)
 const { execFileSync } = require("child_process");
 
 module.exports = function makeAppUpdate({ REPO_DIR }) {
@@ -23,12 +23,12 @@ module.exports = function makeAppUpdate({ REPO_DIR }) {
     if (!r) return null;
     try {
       const res = await fetch(`${process.env.GITHUB_API || "https://api.github.com"}/repos/${r}/releases?per_page=10`, {
-        headers: { accept: "application/vnd.github+json", "user-agent": "BigD-AI-server" }, signal: AbortSignal.timeout(8000) });
+        headers: { accept: "application/vnd.github+json", "user-agent": "Habit-AI-server" }, signal: AbortSignal.timeout(8000) });
       if (!res.ok) throw new Error("GitHub said " + res.status);
       const list = await res.json();
       const rel = (Array.isArray(list) ? list : []).find(x => !x.draft && !x.prerelease && /^lite-v/.test(x.tag_name || ""));
       const apk = rel && (rel.assets || []).find(a => /lite.*\.apk$/i.test(a.name || ""));
-      // the tiny brain app (BigD Brain) from the newest release that has it
+      // the tiny brain app (Habit Brain) from the newest release that has it
       const withBrain = (Array.isArray(list) ? list : []).find(x => !x.draft && /^lite-v/.test(x.tag_name || "") && (x.assets || []).some(a => /brain.*\.apk$/i.test(a.name || "")));
       const brain = withBrain && withBrain.assets.find(a => /brain.*\.apk$/i.test(a.name || ""));
       const data = apk ? {

@@ -14,7 +14,7 @@ import java.util.Locale
 /**
  * The phone reads the internet by itself when the AI can't be reached (our server is down or the AI is busy):
  * weather from Open-Meteo, news headlines from Google News and short explanations from Wikipedia (Telugu or English).
- * The phone asks these sites directly; nothing goes through the BigD server. Blocking: call it off the main thread.
+ * The phone asks these sites directly; nothing goes through the Habit server. Blocking: call it off the main thread.
  */
 object LocalWeb {
     private fun re(p: String) = Regex(p, RegexOption.IGNORE_CASE)
@@ -41,7 +41,7 @@ object LocalWeb {
     private fun download(url: String): String? = try {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 8000; c.readTimeout = 10000
-        c.setRequestProperty("User-Agent", "BigD-AI/1.0 (Android app; https://bigdai.tech)")
+        c.setRequestProperty("User-Agent", "Habit-AI/1.0 (Android app; https://bigdai.tech)")
         if (c.responseCode in 200..299) c.inputStream.bufferedReader().use { it.readText() } else null
     } catch (e: Exception) { null }
 
