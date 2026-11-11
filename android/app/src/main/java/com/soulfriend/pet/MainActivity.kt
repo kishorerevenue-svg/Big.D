@@ -1386,10 +1386,10 @@ class MainActivity : Activity() {
         val isCard = item.type == "card"
         val card = if (isCard) LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(16))
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.parseColor("#14383A"), Color.parseColor("#0E6B6B"))).apply { cornerRadius = ui.dpf(20) }
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(AppLook.mix(AppLook.PRIMARY, Color.BLACK, 0.5f), AppLook.PRIMARY)).apply { cornerRadius = ui.dpf(20) }
         } else ui.card()
         val fg = if (isCard) Color.WHITE else Ui.INK
-        val sub = if (isCard) Color.parseColor("#BFE3DF") else Ui.MUTED
+        val sub = if (isCard) Color.parseColor("#CCFFFFFF") else Ui.MUTED
         var shown = false
         val num = ui.text(VaultItem.masked(item.number), if (isCard) 20f else 16f, fg, bold = true).apply { letterSpacing = 0.06f }
         card.addView(ui.line(ui.text(VaultItem.icon(item.type) + "  " + item.title, 15.5f, fg, bold = true), ui.text(VaultItem.label(item.type), 12f, sub)))

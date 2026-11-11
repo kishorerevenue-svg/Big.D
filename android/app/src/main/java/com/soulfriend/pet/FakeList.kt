@@ -83,7 +83,7 @@ class FakeList(private val m: MainActivity) {
         orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(9), dp(12), dp(9))
         background = if (on) ui.round(Ui.TEAL, 16) else ui.round(Color.WHITE, 16, Ui.LINE)
         addView(ui.text(title, 14.5f, if (on) Color.WHITE else Ui.INK, bold = true))
-        addView(ui.text(sub, 12f, if (on) Color.parseColor("#D7EDEA") else Ui.MUTED))
+        addView(ui.text(sub, 12f, if (on) Color.parseColor("#DDFFFFFF") else Ui.MUTED))
         contentDescription = title
         setOnClickListener { onClick() }
     }

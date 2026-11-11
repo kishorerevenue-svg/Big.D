@@ -16,6 +16,8 @@ import java.io.File
  * TEST BUILDS ONLY (src/debug): fills Habit Chat with made-up sample chats (no real people, nothing sent anywhere)
  * and opens one screen in one theme, for the CI's screenshots:
  *   adb shell am start -n <app>/com.soulfriend.pet.DemoActivity --es theme dark|light|auto --es screen list|chat|group|settings|info
+ *   (also --es colour teal|purple|orange|green|blue|maroon for the app's colour, and the app's pages: home, tasks, files, vault,
+ *   pet, translate, family, govt, media)
  */
 class DemoActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,6 +27,7 @@ class DemoActivity : Activity() {
         if (db.kv("demo") != "1") seed(store, db)
         intent.getStringExtra("theme")?.let { db.setKv("set:theme", it) }
         intent.getStringExtra("lang")?.let { store.lang = it }
+        intent.getStringExtra("colour")?.let { db.setKv("set:appColour", it) }
         val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         val go = when (intent.getStringExtra("screen") ?: "list") {
             "chat" -> Intent(this, ChatActivity::class.java).putExtra("cid", "dm-ravi")
@@ -36,6 +39,8 @@ class DemoActivity : Activity() {
             "media" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "dm-ravi").putExtra("mode", "media")
             "starred" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "").putExtra("mode", "starred")
             "devices" -> Intent(this, LinkedDevicesActivity::class.java)
+            "home", "tasks", "files", "vault", "pet", "translate", "family", "govt" -> Intent(this, MainActivity::class.java).putExtra("tab", intent.getStringExtra("screen"))
+            "media" -> Intent(this, MainActivity::class.java).putExtra("tab", "feedback")
             else -> Intent(this, MainActivity::class.java).putExtra("tab", "messages")
         }
         startActivity(go.addFlags(flags))
@@ -45,6 +50,10 @@ class DemoActivity : Activity() {
     private fun seed(store: Store, db: ChatDb) {
         store.loggedIn = true; store.onboarded = true; store.lang = "en"
         store.server = "http://127.0.0.1:9"          // nothing goes anywhere
+        // a few to-dos and reminders for Home
+        store.addTodo("Send the survey report to the RDO office"); store.addTodo("Check the pension list"); store.addTodo("Call the VRO about Survey No. 214")
+        store.addReminder(System.currentTimeMillis() + 2 * 3600_000L, "Call the RDO office")
+        store.addReminder(System.currentTimeMillis() + 26 * 3600_000L, "Take BP medicine", "daily")
         val me = "me1"
         db.setKv("me", JSONObject().put("uid", me).put("name", "Kishore Kumar").put("handle", "kishore").put("emoji", "🐾").toString())
         db.setKv("ready", "1")

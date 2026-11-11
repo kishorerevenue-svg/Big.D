@@ -126,7 +126,7 @@ class LetterHelper(private val m: MainActivity) {
         orientation = LinearLayout.VERTICAL; setPadding(m.dp(14), m.dp(12), m.dp(14), m.dp(12))
         background = if (on) ui.round(Ui.TEAL, 18) else ui.round(Color.WHITE, 18, Ui.LINE)
         addView(ui.text(title, 15f, if (on) Color.WHITE else Ui.INK, bold = true))
-        addView(ui.text(sub, 12.5f, if (on) Color.parseColor("#D7EDEA") else Ui.MUTED))
+        addView(ui.text(sub, 12.5f, if (on) Color.parseColor("#DDFFFFFF") else Ui.MUTED))
         contentDescription = title
         setOnClickListener { onClick() }
     }
