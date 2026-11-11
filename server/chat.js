@@ -22,6 +22,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
 
 module.exports = function makeChat({ DATA_DIR, social, h }) {
   const FILE = path.join(DATA_DIR, "chat.json");
@@ -42,22 +43,38 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   const blocked = (a, b) => (db.blocks[a] || []).includes(b);        // a blocked b
   const person = uid => social.person(uid) || { uid, name: "Habit friend", handle: "", emoji: "🐾", avatar: "", gone: true };
 
-  // ---------- each person's events (what their phone hasn't confirmed yet) ----------
-  const waiters = new Map();   // uid -> Set of functions that wake a waiting sync
-  function box(uid) { return db.inbox[uid] || (db.inbox[uid] = { n: 0, ev: [] }); }
-  function push(uid, ev) {
-    const b = box(uid);
+  // ---------- linked computers (Habit Chat on the web, like WhatsApp Web) ----------
+  // A computer shows a QR code with its own one-time public key; the phone scans it and sends the chat key locked for
+  // that one-time key (this server only passes it on, and can't open it). The computer then has its own inbox: every
+  // event goes to the phone's inbox ("<uid>") and to each linked computer's ("<uid>#<id>"), and a message stays here
+  // until every device has it.
+  db.web = db.web || {};                 // device key -> { uid, id, name, at, seen }
+  const webIdx = new Map();              // uid -> [their linked computers]
+  function reindex() { webIdx.clear(); for (const w of Object.values(db.web)) { if (!webIdx.has(w.uid)) webIdx.set(w.uid, []); webIdx.get(w.uid).push(w); } }
+  reindex();
+  const devicesOf = uid => webIdx.get(uid) || [];
+  const boxIds = uid => [uid].concat(devicesOf(uid).map(w => uid + "#" + w.id));
+  /** A newly added member's computers don't wait for the messages from before they joined. */
+  function joinDevices(c, u) { for (const w of devicesOf(u)) { c.dd = c.dd || {}; c.dd[u + "#" + w.id] = c.seq; } }
+
+  // ---------- each device's events (what it hasn't confirmed yet) ----------
+  const waiters = new Map();   // inbox id -> Set of functions that wake a waiting sync
+  function box(bid) { return db.inbox[bid] || (db.inbox[bid] = { n: 0, ev: [] }); }
+  function pushBox(bid, ev) {
+    const b = box(bid);
     ev.n = ++b.n; ev.at = Date.now();
     // one "conversation changed" or "ticks changed" event per chat is enough (one "typing" per person and chat, and one
     // "status updates changed" / "communities changed")
-    if (ev.k === "c" || ev.k === "r") b.ev = b.ev.filter(e => !(e.k === ev.k && e.cid === ev.cid));
+    if (ev.k === "c" || ev.k === "r" || ev.k === "q") b.ev = b.ev.filter(e => !(e.k === ev.k && e.cid === ev.cid));
     else if (ev.k === "t") b.ev = b.ev.filter(e => !(e.k === "t" && e.cid === ev.cid && e.u === ev.u));
     else if (ev.k === "s" || ev.k === "v" || ev.k === "k") b.ev = b.ev.filter(e => e.k !== ev.k);
     b.ev.push(ev);
     if (b.ev.length > 5000) b.ev = b.ev.slice(-5000);
-    const w = waiters.get(uid);
+    const w = waiters.get(bid);
     if (w) for (const f of [...w]) f();
   }
+  /** An event for a person: to their phone and each of their linked computers ([except]: the device that did it). */
+  function push(uid, ev, except) { for (const bid of boxIds(uid)) if (bid !== except) pushBox(bid, Object.assign({}, ev)); }
   const pushAll = (conv, ev, except) => { for (const u of conv.members) if (u !== except) push(u, Object.assign({}, ev)); };
 
   // ---------- chats ----------
@@ -78,8 +95,9 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
       comm: k ? { id: k.id, name: k.name, emoji: k.emoji || "🏘️" } : null, link: c.kind === "group" && c.code && c.admins.includes(me) ? c.code : "" };
   }
   /** Someone leaves a group (a group with nobody left is deleted). */
+  const dropDevices = (c, u) => { if (c.dd) for (const k of Object.keys(c.dd)) if (k.startsWith(u + "#")) delete c.dd[k]; };
   function leaveConv(c, u) {
-    c.members = c.members.filter(x => x !== u); c.admins = c.admins.filter(x => x !== u); delete c.st[u];
+    c.members = c.members.filter(x => x !== u); c.admins = c.admins.filter(x => x !== u); delete c.st[u]; dropDevices(c, u);
     push(u, { k: "x", cid: c.id });
     if (c.kind === "group" && c.members.length) {
       if (!c.admins.length) c.admins.push(c.members[0]);          // a group always has an admin
@@ -103,7 +121,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     const add = [];
     for (const gid of k.groups) { const g = db.convs[gid]; if (g) for (const u of g.members) if (!ann.members.includes(u) && !add.includes(u)) add.push(u); }
     if (!add.length) return;
-    for (const u of add) { ann.members.push(u); ann.st[u] = { ok: true, d: ann.seq, r: ann.seq }; }
+    for (const u of add) { ann.members.push(u); ann.st[u] = { ok: true, d: ann.seq, r: ann.seq }; joinDevices(ann, u); }
     sysMsg(ann, { what: "joined", who: add });
     pushAll(ann, { k: "c", cid: ann.id });
   }
@@ -139,9 +157,11 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     if (l.length >= 40) return false;
     l.push(now); typingMinute.set(me, l); return true;
   }
-  const ticks = c => { const o = {}; for (const u of c.members) o[u] = { d: (c.st[u] || {}).d || 0, r: (c.st[u] || {}).r || 0 }; return o; };
+  /** How far a person has the chat: their phone ([st].d), any of their linked computers ([dd]), or read. */
+  const gotUpTo = (c, u) => Math.max((c.st[u] || {}).d || 0, (c.st[u] || {}).r || 0, ...devicesOf(u).map(w => (c.dd || {})[u + "#" + w.id] || 0));
+  const ticks = c => { const o = {}; for (const u of c.members) o[u] = { d: gotUpTo(c, u), r: (c.st[u] || {}).r || 0 }; return o; };
   function sysMsg(c, sys) {
-    const m = { seq: ++c.seq, id: "s" + c.seq, from: sys.by || "", at: Date.now(), type: "sys", sys };
+    const m = { seq: ++c.seq, id: "s" + c.seq, from: sys.by || "", dev: "*", at: Date.now(), type: "sys", sys };
     (db.msgs[c.id] = db.msgs[c.id] || []).push(m);
     c.last = m.at;
     for (const u of c.members) push(u, { k: "m", cid: c.id, seq: m.seq });
@@ -150,28 +170,41 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   const msgView = (m, me, cid) => ({ cid, seq: m.seq, id: m.id, from: m.from, at: m.at, type: m.type, task: m.task || null, sys: m.sys || null,
     env: m.env ? { v: m.env.v, epk: m.env.epk, iv: m.env.iv, ct: m.env.ct, key: (m.env.keys || {})[me] || "" } : null });
 
-  /** Marks what this phone confirmed (events up to [upTo]) as delivered, and forgets messages everyone has. */
-  function ack(me, upTo) {
-    const b = box(me);
+  /** Marks what this device ([bid]: "<uid>" or "<uid>#<computer>") confirmed (events up to [upTo]) as delivered, and
+   *  forgets messages every device has. */
+  function ack(bid, me, upTo) {
+    const b = box(bid);
     if (!upTo || !b.ev.length) return;
     const done = b.ev.filter(e => e.n <= upTo);
     if (!done.length) return;
     b.ev = b.ev.filter(e => e.n > upTo);
-    const touched = new Set();
+    const ticked = new Set(), got = new Set();
     for (const e of done) {
       if (e.k !== "m") continue;
       const c = db.convs[e.cid];
       if (!c || !c.st[me]) continue;
-      if (e.seq > (c.st[me].d || 0)) { c.st[me].d = e.seq; touched.add(c.id); }
+      got.add(c.id);
+      const before = gotUpTo(c, me);
+      if (bid !== me) { c.dd = c.dd || {}; if (e.seq > (c.dd[bid] || 0)) c.dd[bid] = e.seq; }
+      else if (e.seq > (c.st[me].d || 0)) c.st[me].d = e.seq;          // (only what the phone itself got)
+      if (gotUpTo(c, me) > before) ticked.add(c.id);
     }
-    for (const cid of touched) { const c = db.convs[cid]; pushAll(c, { k: "r", cid }, me); purge(c); }
+    for (const cid of ticked) pushAll(db.convs[cid], { k: "r", cid }, me);
+    for (const cid of got) purge(db.convs[cid]);
     save();
   }
-  /** A message is deleted from the server once every other member has it. */
+  /** A message is deleted from the server once every device that should get it has it: each member's phone and linked
+   *  computers (the sender's own other devices get a copy too), except the device that sent it ([m].dev; older
+   *  messages: the sender's phone; a note like "X joined": every device). */
   function purge(c) {
     const list = db.msgs[c.id];
     if (!list || !list.length) return;
-    db.msgs[c.id] = list.filter(m => c.members.some(u => u !== m.from && ((c.st[u] || {}).d || 0) < m.seq));
+    const dd = c.dd || {};
+    db.msgs[c.id] = list.filter(m => {
+      const src = m.dev !== undefined ? m.dev : m.from;
+      return c.members.some(u => (u !== src && ((c.st[u] || {}).d || 0) < m.seq) ||
+        devicesOf(u).some(w => { const b = u + "#" + w.id; return b !== src && (dd[b] || 0) < m.seq; }));
+    });
   }
 
   // ---------- requests ----------
@@ -206,24 +239,32 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     const p = url.pathname;
     if (p.startsWith("/c/") && req.method === "GET") return invitePage(req, res, decodeURIComponent(p.slice(3)));
     if (p.startsWith("/g/") && req.method === "GET") return groupPage(req, res, decodeURIComponent(p.slice(3)));
+    if ((p === "/web" || p === "/web/") && req.method === "GET") return webPage(req, res);
+    if (p.startsWith("/api/web/")) return webApi(req, res, url, origin);
     if (!p.startsWith("/api/chat/")) return false;
     const send = (st, o) => { h.send(res, st, o, origin); return true; };
     const me = social.who(req);
     // (by person, not by internet address: many phones share one address on mobile data)
-    if (!h.allowed(me ? "chat:" + me : "chatip:" + h.clientIp(req), undefined, me ? 900 : 300)) return send(429, { error: "Too many requests. Please wait a few minutes." });
+    if (!h.allowed(me ? "chat:" + me : "chatip:" + h.clientIp(req), undefined, me ? 900 + 600 * devicesOf(me).length : 300)) return send(429, { error: "Too many requests. Please wait a few minutes." });
     const mine = me && social.person(me);
     if (!mine) return send(403, { error: "Make your Habit profile first: write your name.", needProfile: true });
+    // which device: the phone, or one of the person's linked computers (it has its own inbox)
+    const w0 = db.web[social.devKey(req)];
+    const web = w0 && w0.uid === me ? w0 : null;
+    const bid = web ? me + "#" + web.id : me;
     let body = {};
     if (req.method === "POST" && p !== "/api/chat/file") { try { body = await h.readBody(req, 1024 * 1024); } catch (e) { return send(400, { error: "Bad request." }); } }
 
-    // this phone's lock: its public key (the private key never leaves the phone)
+    // this phone's lock: its public key (the private key never leaves the phone, except to a computer it links)
     if (p === "/api/chat/hello" && req.method === "POST") {
+      if (web) return send(403, { error: "This computer uses your phone's chat lock." });
       const pub = str(body.pub, 400);
       if (!keyOk(pub)) return send(400, { error: "Bad key." });
       const kid = kidOf(pub), old = db.keys[me];
       if (!old || old.kid !== kid) {
         db.keys[me] = { pub, kid, at: Date.now() };
         db.inbox[me] = { n: box(me).n, ev: [] };        // a new phone: old locked messages were for the old key
+        for (const x of devicesOf(me).slice()) unlinkWeb(x);   // and computers linked to the old phone can't open new ones
         for (const c of Object.values(db.convs)) if (c.members.includes(me)) pushAll(c, { k: "c", cid: c.id }, me);
         save();
       }
@@ -233,7 +274,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
 
     if (p === "/api/chat/convs" && req.method === "GET") {
       const list = Object.values(db.convs).filter(c => c.members.includes(me)).map(c => view(c, me));
-      return send(200, { convs: list, cursor: box(me).n, me: mine });
+      return send(200, { convs: list, cursor: box(bid).n, me: mine, keys: { uid: me, pub: db.keys[me].pub, kid: db.keys[me].kid } });
     }
     if (p === "/api/chat/find" && req.method === "GET") {
       return send(200, { people: social.findPeople(url.searchParams.get("q"), me, 15, u => !!db.keys[u] && !blocked(u, me)) });
@@ -323,14 +364,15 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
       const c0 = Math.max(0, Number(url.searchParams.get("c")) || 0);
       const fg = url.searchParams.get("fg") === "1";        // the app is open on the screen (not only the floating pet)
       if (fg) lastSeen.set(me, Date.now());
-      ack(me, c0);
-      const pending = () => box(me).ev.filter(e => e.n > c0);
+      if (web) web.seen = Date.now();
+      ack(bid, me, c0);
+      const pending = () => box(bid).ev.filter(e => e.n > c0);
       let ev = pending();
       if (!ev.length && url.searchParams.get("wait") === "1") {
         await new Promise(resolve => {
-          let set = waiters.get(me); if (!set) waiters.set(me, set = new Set());
+          let set = waiters.get(bid); if (!set) waiters.set(bid, set = new Set());
           let t = null;
-          const wake = () => { clearTimeout(t); set.delete(wake); if (!set.size) waiters.delete(me); resolve(); };
+          const wake = () => { clearTimeout(t); set.delete(wake); if (!set.size) waiters.delete(bid); resolve(); };
           set.add(wake);
           t = setTimeout(wake, WAIT_MS);
           res.on("close", wake);
@@ -340,7 +382,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         ev = pending();
       }
       ev = ev.slice(0, 300);
-      const out = { cursor: ev.length ? ev[ev.length - 1].n : c0, convs: [], msgs: [], ticks: [], gone: [], typing: [], more: pending().length > ev.length, now: Date.now() };
+      const out = { cursor: ev.length ? ev[ev.length - 1].n : c0, convs: [], msgs: [], ticks: [], gone: [], typing: [], read: [], more: pending().length > ev.length, now: Date.now() };
       const seen = new Set();
       for (const e of ev) {
         if (e.k === "s" || e.k === "v") { out.status = true; continue; }       // status updates changed: the phone asks for them
@@ -351,6 +393,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         if (!c) continue;
         if (e.k === "c" && !seen.has("c" + e.cid)) { seen.add("c" + e.cid); out.convs.push(view(c, me)); }
         else if (e.k === "r" && !seen.has("r" + e.cid)) { seen.add("r" + e.cid); out.ticks.push({ cid: c.id, st: ticks(c) }); }
+        else if (e.k === "q") out.read.push({ cid: c.id, seq: e.seq });      // read on my other device
         else if (e.k === "m") { const m = (db.msgs[c.id] || []).find(x => x.seq === e.seq); if (m) out.msgs.push(msgView(m, me, c.id)); }
       }
       return send(200, out);
@@ -386,6 +429,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         if (!c) {
           c = db.convs[cid] = { id: cid, kind: "dm", members: [me, other], admins: [me, other], name: "", by: me, at: Date.now(), last: Date.now(), seq: 0,
             st: { [me]: { ok: true, d: 0, r: 0 }, [other]: { ok: knows(other, me), d: 0, r: 0 } }, told: { [me]: true } };
+          push(me, { k: "c", cid }, bid);       // my other devices (phone / computers) see the new chat too
           save();
         }
         if (!c.st[me].ok) { c.st[me].ok = true; save(); }
@@ -482,7 +526,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
           if (!g || !k.groups.includes(g.id)) return send(404, { error: "That group isn't in this community any more." });
           if (!g.members.includes(me)) {
             if (g.members.length >= MAX_GROUP) return send(400, { error: `That group is full (${MAX_GROUP} people).` });
-            g.members.push(me); g.st[me] = { ok: true, d: g.seq, r: g.seq };
+            g.members.push(me); g.st[me] = { ok: true, d: g.seq, r: g.seq }; joinDevices(g, me);
             sysMsg(g, { what: "joined", who: [me] });
             pushAll(g, { k: "c", cid: g.id }); syncComm(k); push(me, { k: "k" }); save();
           }
@@ -510,7 +554,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         if (!c || c.kind !== "group") return send(404, { error: "This invite link doesn't work any more. Ask for a new one." });
         if (!c.members.includes(me)) {
           if (c.members.length >= MAX_GROUP) return send(400, { error: `This group is full (${MAX_GROUP} people).` });
-          c.members.push(me); c.st[me] = { ok: true, d: c.seq, r: c.seq };
+          c.members.push(me); c.st[me] = { ok: true, d: c.seq, r: c.seq }; joinDevices(c, me);
           sysMsg(c, { what: "joined", who: [me], link: true });
           pushAll(c, { k: "c", cid: c.id });
           const k = commOfConv(c); if (k) { syncComm(k); pushComm(k); }
@@ -532,10 +576,10 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         if (info && !admin && c.adminsEdit !== false) return send(403, { error: "Only admins can change this group's name, picture and description." });
         const add = list("add").filter(u => !c.members.includes(u) && social.person(u) && db.keys[u] && !blocked(u, me));
         if (c.members.length + add.length > MAX_GROUP) return send(400, { error: `A group can have up to ${MAX_GROUP} people.` });
-        for (const u of add) { c.members.push(u); c.st[u] = { ok: knows(u, me), d: c.seq, r: c.seq }; }
+        for (const u of add) { c.members.push(u); c.st[u] = { ok: knows(u, me), d: c.seq, r: c.seq }; joinDevices(c, u); }
         if (add.length) sysMsg(c, { what: "added", by: me, who: add });
         const remove = list("remove").filter(u => c.members.includes(u) && u !== me);
-        for (const u of remove) { c.members = c.members.filter(x => x !== u); c.admins = c.admins.filter(x => x !== u); delete c.st[u]; push(u, { k: "x", cid: c.id }); }
+        for (const u of remove) { c.members = c.members.filter(x => x !== u); c.admins = c.admins.filter(x => x !== u); delete c.st[u]; dropDevices(c, u); push(u, { k: "x", cid: c.id }); }
         if (remove.length) sysMsg(c, { what: "removed", by: me, who: remove });
         const up = list("admin").filter(u => c.members.includes(u) && !c.admins.includes(u));
         for (const u of up) c.admins.push(u);
@@ -581,7 +625,10 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
       if (p === "/api/chat/read") {
         const seq = Math.min(c.seq, Math.max(0, Number(body.seq) || 0));
         const s = c.st[me];
-        if (seq > (s.r || 0)) { s.r = seq; s.d = Math.max(s.d || 0, seq); pushAll(c, { k: "r", cid: c.id }, me); purge(c); save(); }
+        // my other devices learn it was read here (also with read receipts off: then only they know)
+        if (seq > 0 && seq > (s.q || 0)) { s.q = seq; push(me, { k: "q", cid: c.id, seq }, bid); }
+        if (!body.quiet && seq > (s.r || 0)) { s.r = seq; pushAll(c, { k: "r", cid: c.id }, me); push(me, { k: "r", cid: c.id }, bid); }
+        save();
         return send(200, { ok: true });
       }
       if (p === "/api/chat/report") {
@@ -638,17 +685,18 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
           }
           task = { id: tid, action: act, to: T[tid].to, due: T[tid].due, by: T[tid].by, state: T[tid].state };
         }
-        const m = { seq: ++c.seq, id: id || "m" + c.seq, from: me, at: Date.now(), type, env: { v: 1, epk: str(env.epk, 400), iv: str(env.iv, 40), ct: env.ct, keys: {} } };
+        const m = { seq: ++c.seq, id: id || "m" + c.seq, from: me, dev: bid, at: Date.now(), type, env: { v: 1, epk: str(env.epk, 400), iv: str(env.iv, 40), ct: env.ct, keys: {} } };
         for (const u of c.members) if (env.keys[u]) m.env.keys[u] = str(env.keys[u], 400);
         if (task) m.task = task;
         list.push(m);
-        c.last = m.at; c.st[me].d = c.st[me].r = m.seq; c.st[me].sent = (c.st[me].sent || 0) + 1;
+        c.last = m.at; c.st[me].r = Math.max(c.st[me].r || 0, m.seq); c.st[me].sent = (c.st[me].sent || 0) + 1;
         db.sent[me] = sentToday(me) + 1;
         for (const u of c.members) {
           if (u === me) continue;
           if (c.told && !c.told[u]) { c.told[u] = true; push(u, { k: "c", cid: c.id }); }   // a new chat reaches them with its first message
           push(u, { k: "m", cid: c.id, seq: m.seq });
         }
+        push(me, { k: "m", cid: c.id, seq: m.seq }, bid);       // a copy for my other devices (sent from the computer: the phone shows it too)
         save();
         return send(200, { seq: m.seq, at: m.at, task });
       }
@@ -685,6 +733,120 @@ ${hd ? `<a class="a" href="${esc(app)}">💬 Open in Habit AI</a>` : ""}<a class
     res.end(html);
     return true;
   }
+  // ---------- linking a computer: the QR code on bigdai.tech/web, scanned by the phone ----------
+  const LINK_MS = 3 * 60e3;
+  const pendingLinks = new Map();      // code -> { dk, name, at, payload, wake }
+  setInterval(() => { const now = Date.now(); for (const [k, x] of pendingLinks) if (now - x.at > LINK_MS + 60e3) pendingLinks.delete(k); }, 60e3).unref();
+  function unlinkWeb(w) {
+    const dk = Object.keys(db.web).find(k => db.web[k] === w);
+    if (!dk) return;
+    delete db.web[dk]; reindex();
+    social.unlinkDevice(dk);
+    const wb = w.uid + "#" + w.id;
+    delete db.inbox[wb];
+    const ws = waiters.get(wb); if (ws) for (const f of [...ws]) f();
+    for (const c of Object.values(db.convs)) if (c.dd && c.dd[wb] !== undefined) { delete c.dd[wb]; purge(c); }
+  }
+  async function webApi(req, res, url, origin) {
+    const p = url.pathname;
+    const send = (st, o) => { h.send(res, st, o, origin); return true; };
+    const who0 = social.who(req);
+    if (!h.allowed(who0 ? "webu:" + who0 : "web:" + h.clientIp(req), undefined, 300)) return send(429, { error: "Too many tries. Please wait a few minutes." });
+    const dk = social.devKey(req);
+    let body = {};
+    if (req.method === "POST") { try { body = await h.readBody(req, 512 * 1024); } catch (e) { return send(400, { error: "Bad request." }); } }
+    // the computer asks for a link code (for its QR code, with its own one-time key)
+    if (p === "/api/web/start" && req.method === "POST") {
+      if (!/^web-[0-9a-f]{32}$/.test(String(req.headers["x-device"] || ""))) return send(400, { error: "Bad device." });
+      if (db.web[dk]) return send(200, { linked: true });
+      for (const [k, x] of pendingLinks) if (x.dk === dk) pendingLinks.delete(k);
+      let code;
+      do { code = crypto.randomBytes(12).toString("base64").replace(/[^A-Za-z0-9]/g, "").slice(0, 12); } while (code.length < 12 || pendingLinks.has(code));
+      pendingLinks.set(code, { dk, name: str(body.name, 60).replace(/[\r\n<>"]/g, " ").trim() || "Computer", at: Date.now(), payload: null, wake: new Set() });
+      return send(200, { code, ms: LINK_MS });
+    }
+    // the computer waits (up to 25 s at a time) for the phone to link it
+    if (p === "/api/web/wait" && req.method === "GET") {
+      const code = str(url.searchParams.get("code"), 20), x = pendingLinks.get(code);
+      if (!x || x.dk !== dk) return send(410, { error: "expired" });
+      if (!x.payload && Date.now() - x.at < LINK_MS && url.searchParams.get("w") !== "0") {
+        await new Promise(resolve => {
+          let t = null;
+          const wake = () => { clearTimeout(t); x.wake.delete(wake); resolve(); };
+          x.wake.add(wake); t = setTimeout(wake, WAIT_MS); res.on("close", wake);
+        });
+        if (res.writableEnded || res.destroyed) return true;
+      }
+      if (x.payload) { pendingLinks.delete(code); return send(200, Object.assign({ linked: true }, x.payload)); }
+      if (Date.now() - x.at >= LINK_MS) { pendingLinks.delete(code); return send(410, { error: "expired" }); }
+      return send(200, { waiting: true });
+    }
+    // the rest: a person with Habit Chat (their phone, or a computer already linked)
+    const me = social.who(req);
+    if (!me || !social.person(me) || !db.keys[me]) return send(403, { error: "Open Habit Chat on your phone first.", needProfile: true });
+    const mineWeb = db.web[dk] && db.web[dk].uid === me ? db.web[dk] : null;
+    // the phone links the computer: the chat key and recent chats go to it locked for its one-time key
+    if (p === "/api/web/link" && req.method === "POST") {
+      if (mineWeb) return send(403, { error: "Link a computer from your phone." });
+      const x = pendingLinks.get(str(body.code, 20));
+      if (!x || x.payload || Date.now() - x.at >= LINK_MS) return send(410, { error: "This QR code has expired. Open bigdai.tech/web on the computer again for a new one." });
+      const s = body.sealed || {};
+      if (typeof s.epk !== "string" || typeof s.iv !== "string" || typeof s.ct !== "string" || typeof s.key !== "string" || s.ct.length > 400000) return send(400, { error: "Bad link." });
+      if (devicesOf(me).length >= 4) return send(400, { error: "You can link up to 4 computers. Log one out first (⋮ › Linked devices)." });
+      if (db.web[x.dk]) unlinkWeb(db.web[x.dk]);
+      const id = crypto.randomBytes(4).toString("hex");
+      const w = db.web[x.dk] = { uid: me, id, name: x.name, at: Date.now(), seen: Date.now() };
+      reindex();
+      social.linkDevice(x.dk, me);
+      const wb = me + "#" + id;
+      db.inbox[wb] = { n: 0, ev: [] };
+      // older messages come from the phone (locked for the computer); what reached here after the phone's copy is sent too
+      const upto = body.upto && typeof body.upto === "object" ? body.upto : {};
+      for (const c of Object.values(db.convs)) {
+        if (!c.members.includes(me)) continue;
+        c.dd = c.dd || {};
+        const u0 = Number(upto[c.id]);
+        const from = Object.prototype.hasOwnProperty.call(upto, c.id) && u0 >= 0 ? Math.min(c.seq, u0) : c.seq;
+        c.dd[wb] = from;
+        for (const m of (db.msgs[c.id] || []).filter(m => m.seq > from).slice(-300)) pushBox(wb, { k: "m", cid: c.id, seq: m.seq });
+      }
+      x.payload = { sealed: { epk: str(s.epk, 400), iv: str(s.iv, 40), ct: s.ct, key: str(s.key, 400) }, uid: me, me: social.person(me) };
+      for (const f of [...x.wake]) f();
+      save();
+      return send(200, { ok: true, device: { id, name: w.name, at: w.at } });
+    }
+    if (p === "/api/web/devices" && req.method === "GET") {
+      return send(200, { devices: devicesOf(me).map(w => ({ id: w.id, name: w.name, at: w.at, seen: w.seen || w.at, me: !!mineWeb && mineWeb.id === w.id })) });
+    }
+    // log out a computer (from the phone, or the computer itself)
+    if (p === "/api/web/logout" && req.method === "POST") {
+      const id = str(body.id, 20);
+      const w = id ? devicesOf(me).find(x => x.id === id) : mineWeb;
+      if (w) { unlinkWeb(w); save(); }
+      return send(200, { ok: true });
+    }
+    return send(404, { error: "Not found" });
+  }
+  /** bigdai.tech/web: Habit Chat on a computer. One page; it may only talk to this server (a strict content policy). */
+  let webParts = null;
+  function webPage(req, res) {
+    if (webParts === null) { try { webParts = fs.readFileSync(path.join(__dirname, "webchat.html"), "utf8").split("__NONCE__"); } catch (e) { webParts = []; } }
+    if (!webParts.length) { res.writeHead(404, { "Content-Type": "text/plain" }); res.end("Not found"); return true; }
+    const nonce = crypto.randomBytes(16).toString("base64");
+    let body = Buffer.from(webParts.join(nonce), "utf8");
+    const gz = /\bgzip\b/.test(String(req.headers["accept-encoding"] || ""));
+    if (gz) body = zlib.gzipSync(body, { level: 6 });
+    res.writeHead(200, Object.assign({
+      "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "DENY", "Cross-Origin-Opener-Policy": "same-origin", "Permissions-Policy": "camera=(), geolocation=(self), microphone=(self), payment=(), usb=()",
+      "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; ` +
+        "font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "Content-Length": body.length, "Vary": "Accept-Encoding"
+    }, gz ? { "Content-Encoding": "gzip" } : {}));
+    res.end(body);
+    return true;
+  }
+
   // ---------- a group's invite link: bigdai.tech/g/<code> ----------
   function groupPage(req, res, code) {
     const c = db.convs[db.links[String(code || "").slice(0, 20)] || ""];
@@ -732,6 +894,8 @@ ${ok ? `<a class="a" href="${esc(app)}">👥 Join in Habit AI</a>` : ""}<a class
     for (const [id, k] of Object.entries(db.comms)) if (!db.convs[k.ann]) { for (const g of k.groups) if (db.convs[g]) delete db.convs[g].comm; delete db.comms[id]; }
     for (const [code, cid] of Object.entries(db.links)) if (!db.convs[cid] || db.convs[cid].code !== code) delete db.links[code];
     db.seenAt = Object.fromEntries(lastSeen);
+    // computers not used for 30 days are logged out (like WhatsApp)
+    for (const w of Object.values(db.web)) if (now - (w.seen || w.at) > 30 * DAY) unlinkWeb(w);
     tidyFiles(); save();
   }
   setInterval(tidy, 3600e3).unref();
@@ -740,7 +904,8 @@ ${ok ? `<a class="a" href="${esc(app)}">👥 Join in Habit AI</a>` : ""}<a class
     const convs = Object.values(db.convs);
     return { people: Object.keys(db.keys).length, chats: convs.filter(c => c.kind === "dm").length, groups: convs.filter(c => c.kind === "group").length,
       waiting: Object.values(db.msgs).reduce((a, l) => a + l.length, 0), files: Object.keys(db.files).length, reports: db.reports.length,
-      statuses: Object.values(db.status).reduce((a, l) => a + l.filter(s => Date.now() - s.at < DAY).length, 0), communities: Object.keys(db.comms).length };
+      statuses: Object.values(db.status).reduce((a, l) => a + l.filter(s => Date.now() - s.at < DAY).length, 0), communities: Object.keys(db.comms).length,
+      computers: Object.keys(db.web).length };
   }
   function reports() { return db.reports.slice(-100).reverse().map(r => Object.assign({}, r, { byName: person(r.by).name, whoName: r.who ? person(r.who).name : "", whoHandle: r.who ? person(r.who).handle : "" })); }
 

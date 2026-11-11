@@ -185,9 +185,20 @@ object ChatSync {
                 if (autoFetch(ctx, cm)) fetchFile(ctx, store, cm)
             }
         }
+        // read on my linked computer: not new here any more (no notification for it either)
+        j.optJSONArray("read")?.let { a ->
+            for (i in 0 until a.length()) {
+                val r = a.optJSONObject(i) ?: continue
+                val cid = r.optString("cid"); val seq = r.optLong("seq")
+                if (cid.isEmpty() || seq <= 0) continue
+                fresh.removeAll { it.cid == cid && it.seq in 1..seq }
+                val top = db.msgs(cid, 60).filter { it.sender != me && it.seq > 0 }.maxOfOrNull { it.seq } ?: 0L
+                if (top <= seq) { db.readAll(cid); db.setKv("unr:$cid", ""); clearNotification(ctx, cid) }
+            }
+        }
         if (fresh.isNotEmpty()) notify(ctx, fresh)
         // only "typing…" came: the chats don't need drawing again
-        val onlyTyping = listOf("convs", "gone", "ticks", "msgs").all { (j.optJSONArray(it)?.length() ?: 0) == 0 } && !j.optBoolean("comms")
+        val onlyTyping = listOf("convs", "gone", "ticks", "msgs", "read").all { (j.optJSONArray(it)?.length() ?: 0) == 0 } && !j.optBoolean("comms")
         if (!onlyTyping) changed()
     }
 

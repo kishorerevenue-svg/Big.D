@@ -492,11 +492,13 @@ class ChatActivity : Activity() {
 
     private fun markRead(c: ChatConv, msgs: List<ChatMsg>) {
         db.readAll(cid)
-        if (c.isLocal || !c.accepted || !ChatTheme.receiptsOn(this)) return
+        if (c.isLocal || !c.accepted) return
         val top = msgs.filter { it.sender != me && it.seq > 0 }.maxOfOrNull { it.seq } ?: 0L
         if (top > readSent) {
             readSent = top
-            Thread { ChatSync.api(store, "POST", "/api/chat/read", JSONObject().put("cid", cid).put("seq", top).toString()) }.start()
+            // (read receipts off: only my linked computers learn it, quietly)
+            val quiet = !ChatTheme.receiptsOn(this)
+            Thread { ChatSync.api(store, "POST", "/api/chat/read", JSONObject().put("cid", cid).put("seq", top).put("quiet", quiet).toString()) }.start()
         }
     }
 
@@ -1884,6 +1886,7 @@ class ChatActivity : Activity() {
     }
     private fun onQr(read: () -> Uri?) {
         val text = try { read()?.let { QrRead.decode(this, it) } ?: "" } catch (e: Exception) { "" }
+        if (LinkedDevices.isLink(text)) { LinkedDevicesActivity.open(this, text); finish(); return }
         Regex("/g/([A-Za-z0-9]{10,20})").find(text)?.groupValues?.get(1)?.let { joinGroup(it); return }
         val h = Regex("/c/([A-Za-z0-9_]{3,20})").find(text)?.groupValues?.get(1) ?: Regex("bigd://chat/([A-Za-z0-9_]{3,20})").find(text)?.groupValues?.get(1)
         if (h == null) { toast(if (text.isEmpty()) t("No QR code found in that picture.", "ఆ ఫోటోలో QR కోడ్ కనిపించలేదు.") else t("That isn't a Habit chat QR code.", "అది Habit చాట్ QR కోడ్ కాదు.")); finish(); return }

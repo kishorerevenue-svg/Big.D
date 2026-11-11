@@ -647,6 +647,7 @@ class ChatPage(private val m: MainActivity) {
         add(t("📢 New broadcast", "📢 కొత్త బ్రాడ్‌కాస్ట్")) { Broadcasts.create(m, store) }
         add(t("⭐ Starred messages", "⭐ స్టార్ చేసిన మెసేజ్‌లు")) { ChatInfoActivity.open(m, "", "starred") }
         add(t("🔳 My QR code / invite link", "🔳 నా QR కోడ్ / ఆహ్వాన లింక్")) { myQr() }
+        add(t("💻 Linked devices (computer)", "💻 లింక్ చేసిన పరికరాలు (కంప్యూటర్)")) { LinkedDevicesActivity.open(m) }
         add(t("✓ Read all", "✓ అన్నీ చదివినట్టు")) { db.convs().forEach { db.readAll(it.cid); db.setKv("unr:${it.cid}", "") }; redraw() }
         add("🔒 " + t("Locked chats", "లాక్ చేసిన చాట్‌లు")) { openHidden() }
         add(t("⚙️ Settings", "⚙️ సెట్టింగ్స్")) { m.startActivity(Intent(m, ChatSettingsActivity::class.java)) }

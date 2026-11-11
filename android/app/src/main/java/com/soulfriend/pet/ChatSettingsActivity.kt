@@ -67,6 +67,7 @@ class ChatSettingsActivity : Activity() {
         toggle("📋", t("Show open tasks as a bar at the top", "తెరిచిన పనులు పైన బార్‌గా చూపించు"),
             t("Off: a small 📋 next to the chat's name shows them", "ఆఫ్: చాట్ పేరు పక్కన చిన్న 📋 చూపిస్తుంది"), ChatTheme.tasksBar(this)) { db.setKv("set:tasksbar", if (it) "1" else "0") }
         item("⭐", t("Starred messages", "స్టార్ చేసిన మెసేజ్‌లు"), t("Messages you starred, in all chats", "అన్ని చాట్‌లలో మీరు స్టార్ చేసినవి")) { ChatInfoActivity.open(this, "", "starred") }
+        item("💻", t("Linked devices", "లింక్ చేసిన పరికరాలు"), t("Habit Chat on your computer: bigdai.tech/web", "మీ కంప్యూటర్‌లో Habit చాట్: bigdai.tech/web")) { LinkedDevicesActivity.open(this) }
         line()
         head(t("Notifications", "నోటిఫికేషన్లు"))
         toggle("🔔", t("Message notifications", "మెసేజ్ నోటిఫికేషన్లు"), t("New messages show a notification", "కొత్త మెసేజ్‌లకు నోటిఫికేషన్"), ChatTheme.notifyOn(this)) { db.setKv("set:notify", if (it) "1" else "0") }

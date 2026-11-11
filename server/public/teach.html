@@ -440,7 +440,7 @@ $("ctMake").onclick = async () => {
 
 async function loadChat() {
   const { stats: st, reports, fakes: fk } = await api("chat");
-  say($("chatState"), `${st.people} people use Habit Chat · ${st.chats} one-to-one chats · ${st.groups} groups · ${st.waiting} messages waiting to be delivered · ${st.files} photos/voice notes · ${st.reports} reports` + (st.statuses !== undefined ? ` · ${st.statuses} status updates now · ${st.communities} communities` : "") +
+  say($("chatState"), `${st.people} people use Habit Chat · ${st.chats} one-to-one chats · ${st.groups} groups · ${st.waiting} messages waiting to be delivered · ${st.files} photos/voice notes · ${st.reports} reports` + (st.statuses !== undefined ? ` · ${st.statuses} status updates now · ${st.communities} communities` : "") + (st.computers !== undefined ? ` · ${st.computers} linked computers` : "") +
     (fk ? `\n📋 Fake messages list: ${fk.items} messages (${fk.today} new today) · ${fk.comments} comments · ${fk.votes} votes · ${fk.hidden} hidden by reports (open the list in the app with the team password to check them)` : ""), true);
   const ul = $("chatReports"); ul.textContent = "";
   for (const r of reports.slice(0, 30)) ul.append(row(`⚠️ ${r.byName} reported ${r.whoName || (r.name ? "the group " + r.name : "a chat")}${r.whoHandle ? " (@" + r.whoHandle + ")" : ""}: ${r.reason || ""}`,

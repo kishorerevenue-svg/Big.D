@@ -792,5 +792,11 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     return out.sort((a, b) => b[0] - a[0]).slice(0, n).map(([, uid]) => person(uid)).filter(Boolean);
   }
 
-  return { handle, stats, engagement, postCartoon, who, person, byHandle, findPeople };
+  // ---------- linked computers (Habit Chat on the web): one more device for the same person ----------
+  /** A device's key: the salted hash of its device id (the same one used to know who a phone is). */
+  const devKey = req => devHash(req);
+  function linkDevice(dk, uid) { db.devices[dk] = uid; save(); }
+  function unlinkDevice(dk) { if (db.devices[dk]) { delete db.devices[dk]; save(); } }
+
+  return { handle, stats, engagement, postCartoon, who, person, byHandle, findPeople, devKey, linkDevice, unlinkDevice };
 };
