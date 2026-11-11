@@ -67,8 +67,8 @@ class Ui(private val ctx: Context) {
         setPadding(dp(16), dp(10), dp(16), dp(10))
         val (bg, fg, line) = when (kind) {
             "primary" -> Triple(TEAL, ON_TEAL, null)
-            "sun" -> Triple(SUN, INK, null)
-            "ghost" -> Triple(SURFACE, TEAL, LINE)
+            "sun" -> Triple(SUN, Color.parseColor("#1A1C24"), null)
+            "ghost" -> Triple(SURFACE, TEAL_DARK, LINE)
             "danger" -> Triple(DANGER_SOFT, DANGER, null)
             else -> Triple(TEAL_SOFT, TEAL_DARK, null)
         }

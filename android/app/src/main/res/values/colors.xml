@@ -3,4 +3,5 @@
     <!-- Habit Chat: "Navy and gold" and "Clean light" (the rest of the colours are in ChatTheme.kt) -->
     <color name="habit_navy">#0B1026</color>
     <color name="habit_light_bg">#F4F5FA</color>
+    <color name="habit_app_dark">#0F1418</color>
 </resources>

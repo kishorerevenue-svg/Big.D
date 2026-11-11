@@ -109,7 +109,7 @@ class FamilyPage(private val m: MainActivity) {
             val hint = ui.text("Press and hold for 3 seconds", 15.5f, Ui.DANGER, bold = true).apply { gravity = Gravity.CENTER }
             val btn = TextView(m).apply {
                 text = "🆘\nSOS"; textSize = 30f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; typeface = Fonts.bold(context)
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.DANGER); setStroke(m.dp(8), Color.parseColor("#F6C3C4")) }
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.DANGER); setStroke(m.dp(8), AppLook.lt(Color.parseColor("#F6C3C4"), AppLook.DANGER_SOFT)) }
                 elevation = m.dp(6).toFloat()
                 contentDescription = "SOS. Press and hold for 3 seconds to call your family for help."
             }
@@ -543,7 +543,7 @@ class FamilyPage(private val m: MainActivity) {
             m.add(equal(*pair.map { (num, name, what, icon) ->
                 LinearLayout(m).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(m.dp(14), m.dp(12), m.dp(14), m.dp(12))
-                    background = ui.round(Color.WHITE, 18, Ui.LINE)
+                    background = ui.round(Ui.SURFACE, 18, Ui.LINE)
                     addView(ui.text("$icon $num", 20f, if (num == "112") Ui.DANGER else Ui.TEAL_DARK, bold = true))
                     addView(ui.text(name, 14f, Ui.INK, bold = true))
                     addView(ui.text(what, 12f, Ui.MUTED))

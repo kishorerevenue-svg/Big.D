@@ -124,7 +124,7 @@ class LetterHelper(private val m: MainActivity) {
 
     private fun modeTab(title: String, sub: String, on: Boolean, onClick: () -> Unit) = LinearLayout(m).apply {
         orientation = LinearLayout.VERTICAL; setPadding(m.dp(14), m.dp(12), m.dp(14), m.dp(12))
-        background = if (on) ui.round(Ui.TEAL, 18) else ui.round(Color.WHITE, 18, Ui.LINE)
+        background = if (on) ui.round(Ui.TEAL, 18) else ui.round(Ui.SURFACE, 18, Ui.LINE)
         addView(ui.text(title, 15f, if (on) Color.WHITE else Ui.INK, bold = true))
         addView(ui.text(sub, 12.5f, if (on) Color.parseColor("#DDFFFFFF") else Ui.MUTED))
         contentDescription = title
@@ -252,7 +252,7 @@ class LetterHelper(private val m: MainActivity) {
 
     private fun paperRow(p: Paper, i: Int) = LinearLayout(m).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        setPadding(m.dp(8), m.dp(8), m.dp(8), m.dp(8)); background = ui.round(Color.parseColor("#F5F8F7"), 14, Ui.LINE)
+        setPadding(m.dp(8), m.dp(8), m.dp(8), m.dp(8)); background = ui.round(Ui.FIELD, 14, Ui.LINE)
         if (p.thumb != null) addView(ImageView(m).apply { setImageBitmap(p.thumb); scaleType = ImageView.ScaleType.CENTER_CROP; background = ui.round(Ui.LINE, 8); clipToOutline = true },
             LinearLayout.LayoutParams(m.dp(46), m.dp(46)))
         else addView(TextView(m).apply { text = "📄"; textSize = 26f; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(m.dp(46), m.dp(46)))
@@ -580,7 +580,7 @@ class LetterHelper(private val m: MainActivity) {
         }, 12)
         val preview = r.optString("preview")
         if (preview.isNotBlank()) m.add(ui.section("Preview").apply {
-            put(ui.text(preview, 14.5f, Ui.INK).apply { setTextIsSelectable(true); setPadding(m.dp(12), m.dp(12), m.dp(12), m.dp(12)); background = ui.round(Color.parseColor("#FBFCFC"), 12, Ui.LINE) }, 10)
+            put(ui.text(preview, 14.5f, Ui.INK).apply { setTextIsSelectable(true); setPadding(m.dp(12), m.dp(12), m.dp(12), m.dp(12)); background = ui.round(Ui.FIELD, 12, Ui.LINE) }, 10)
         }, 12)
         m.add(ui.button("✏️ Change my answers and make it again") { stage = "questions"; result = null; m.render(); m.scrollTop() }, 12)
         m.add(ui.button("➕ New letter", "ghost") { reset() }, 8)

@@ -17,7 +17,7 @@ import java.io.File
  * and opens one screen in one theme, for the CI's screenshots:
  *   adb shell am start -n <app>/com.soulfriend.pet.DemoActivity --es theme dark|light|auto --es screen list|chat|group|settings|info
  *   (also --es colour teal|purple|orange|green|blue|maroon for the app's colour, and the app's pages: home, tasks, files, vault,
- *   pet, translate, family, govt, media)
+ *   pet, translate, family, govt, feed (the Media tab))
  */
 class DemoActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,7 +40,7 @@ class DemoActivity : Activity() {
             "starred" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "").putExtra("mode", "starred")
             "devices" -> Intent(this, LinkedDevicesActivity::class.java)
             "home", "tasks", "files", "vault", "pet", "translate", "family", "govt" -> Intent(this, MainActivity::class.java).putExtra("tab", intent.getStringExtra("screen"))
-            "media" -> Intent(this, MainActivity::class.java).putExtra("tab", "feedback")
+            "feed" -> Intent(this, MainActivity::class.java).putExtra("tab", "feedback")
             else -> Intent(this, MainActivity::class.java).putExtra("tab", "messages")
         }
         startActivity(go.addFlags(flags))

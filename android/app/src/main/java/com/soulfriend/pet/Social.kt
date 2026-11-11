@@ -148,7 +148,7 @@ class SocialPage(private val m: MainActivity) {
     companion object {
         private val BLUE = Color.parseColor("#1D9BF0")
         private val PINK = Color.parseColor("#F91880")
-        private val SOFT = Color.parseColor("#E9EEF0")
+        private val SOFT get() = AppLook.lt(Color.parseColor("#E9EEF0"), AppLook.FIELD)
         private val CAT_COLOR = mapOf("news" to "#3B82F6", "movies" to "#F97316", "jobs" to "#6366F1", "devotional" to "#FB923C", "kids" to "#F472B6",
             "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B", "facts" to "#8B5CF6", "fun" to "#EC4899")
     }
@@ -313,7 +313,7 @@ class SocialPage(private val m: MainActivity) {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(TextView(m).apply {
                 text = "←"; textSize = 22f; setTextColor(Ui.INK); gravity = Gravity.CENTER
-                background = ui.round(Color.WHITE, 22, Ui.LINE); setOnClickListener { back() }; contentDescription = "Back"
+                background = ui.round(Ui.SURFACE, 22, Ui.LINE); setOnClickListener { back() }; contentDescription = "Back"
             }, LinearLayout.LayoutParams(dp(44), dp(44)))
             addView(ui.text(title, 19f, Ui.INK, bold = true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(12), 0, 0, 0) },
                 LinearLayout.LayoutParams(0, -2, 1f))
@@ -339,7 +339,7 @@ class SocialPage(private val m: MainActivity) {
         note(tab)?.let { m.add(ui.text(it, 12.5f, Ui.MUTED), 10) }
         if (tab == "foryou" || tab == "fun" || tab == "kids") m.add(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(10), dp(10), dp(10))
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(Color.parseColor("#FFF1D6"), Color.parseColor("#FFE0EC"))).apply { cornerRadius = dp(18).toFloat() }
+            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(AppLook.lt(Color.parseColor("#FFF1D6"), AppLook.WARN_SOFT), AppLook.lt(Color.parseColor("#FFE0EC"), AppLook.DANGER_SOFT))).apply { cornerRadius = dp(18).toFloat() }
             addView(ui.text("🎬", 30f, Ui.INK))
             addView(ui.stack(ui.text("Make a cartoon · కార్టూన్", 15f, Ui.INK, bold = true), ui.text("Your idea → your own cartoon video", 12.5f, Ui.MUTED)).apply { setPadding(dp(10), 0, dp(6), 0) },
                 LinearLayout.LayoutParams(0, -2, 1f))
@@ -474,7 +474,7 @@ class SocialPage(private val m: MainActivity) {
             else -> "🎬 " + (ai?.optString("why")?.takeIf { it.isNotBlank() } ?: "AI cartoons from your idea are coming soon!")
         }
         if (banner != null) m.add(ui.text(banner, 14.5f, if (aiOn) Ui.TEAL else Ui.INK, bold = true).apply {
-            setPadding(dp(12), dp(10), dp(12), dp(10)); background = ui.round(if (aiOn) Color.parseColor("#E6F7F4") else Color.parseColor("#FFF6E5"), 14) }, 8)
+            setPadding(dp(12), dp(10), dp(12), dp(10)); background = ui.round(if (aiOn) AppLook.lt(Color.parseColor("#E6F7F4"), AppLook.GOOD_SOFT) else AppLook.lt(Color.parseColor("#FFF6E5"), AppLook.WARN_SOFT), 14) }, 8)
         m.add(ui.text(if (aiOn) "Tell your idea: the people, the place, what happens and the funny ending. You can write in Telugu or English." else "Tell your idea, or leave it empty.", 14f, Ui.MUTED), 8)
         val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
         ctKinds.forEachIndexed { i, (k, label) ->
@@ -484,7 +484,7 @@ class SocialPage(private val m: MainActivity) {
         val box = EditText(m).apply {
             hint = "ఉదా: ఆరు టీ గ్లాసులతో జారిపడిన చాయ్ · e.g. Chai slips with six glasses of tea"; setText(ctIdea); textSize = 15f; minLines = 2; maxLines = 8
             filters = arrayOf(android.text.InputFilter.LengthFilter(1000))
-            background = ui.round(Color.WHITE, 14, Ui.LINE); setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = ui.round(Ui.SURFACE, 14, Ui.LINE); setPadding(dp(12), dp(10), dp(12), dp(10))
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(e: android.text.Editable?) { ctIdea = e?.toString() ?: "" }
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -672,7 +672,7 @@ class SocialPage(private val m: MainActivity) {
     /** A round profile picture: the photo, or the person's emoji on a soft circle. */
     private fun avatar(u: SUser, size: Int, onClick: (() -> Unit)? = null): View {
         val box = FrameLayout(m).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (u.official) Color.parseColor("#E6F0FF") else Ui.TEAL_SOFT) }
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (u.official) AppLook.lt(Color.parseColor("#E6F0FF"), AppLook.TINT3.first) else Ui.TEAL_SOFT) }
             clipToOutline = true
             if (onClick != null) setOnClickListener { onClick() }
         }
@@ -698,7 +698,7 @@ class SocialPage(private val m: MainActivity) {
     private fun postRow(p: SPost, full: Boolean = false): View {
         val row = LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(12), dp(12), dp(4))
-            background = ui.round(Color.WHITE, 18, Ui.LINE)
+            background = ui.round(Ui.SURFACE, 18, Ui.LINE)
         }
         row.addView(avatar(p.author, 44) { openProfile(p.author.uid) }, LinearLayout.LayoutParams(dp(44), dp(44)))
         val col = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
@@ -834,7 +834,7 @@ class SocialPage(private val m: MainActivity) {
     private fun hostOf(u: String) = try { Uri.parse(u).host?.removePrefix("www.")?.removePrefix("m.") ?: "" } catch (e: Exception) { "" }
 
     private fun linkCard(site: String, title: String, image: String, url: String, onClick: (() -> Unit)? = null): View = LinearLayout(m).apply {
-        orientation = LinearLayout.VERTICAL; background = ui.round(Color.WHITE, 16, Ui.LINE); clipToOutline = true
+        orientation = LinearLayout.VERTICAL; background = ui.round(Ui.SURFACE, 16, Ui.LINE); clipToOutline = true
         if (image.isNotBlank()) addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(SOFT); Images.load(image, this, 900) },
             LinearLayout.LayoutParams(-1, dp(170)))
         addView(ui.stack(
@@ -860,7 +860,7 @@ class SocialPage(private val m: MainActivity) {
         list.forEachIndexed { i, u ->
             row.addView(LinearLayout(m).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(10), dp(14), dp(10), dp(12))
-                background = ui.round(Color.WHITE, 18, Ui.LINE)
+                background = ui.round(Ui.SURFACE, 18, Ui.LINE)
                 setOnClickListener { openProfile(u.uid) }
                 addView(avatar(u, 64) { openProfile(u.uid) }, LinearLayout.LayoutParams(dp(64), dp(64)))
                 addView(LinearLayout(m).apply {
@@ -898,11 +898,11 @@ class SocialPage(private val m: MainActivity) {
     private fun buildProfile() {
         val u = profile ?: run { screen = "feed"; buildFeed(); return }
         backBar(u.name)
-        val head = FrameLayout(m).apply { background = ui.round(Color.WHITE, 20, Ui.LINE); clipToOutline = true }
+        val head = FrameLayout(m).apply { background = ui.round(Ui.SURFACE, 20, Ui.LINE); clipToOutline = true }
         val tint = if (u.official) Color.parseColor(CAT_COLOR[u.uid.removePrefix("s_")] ?: "#19A39A") else Ui.TEAL
         head.addView(View(m).apply { background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.TEAL_DARK, tint)) }, FrameLayout.LayoutParams(-1, dp(96)))
         head.addView(FrameLayout(m).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.SURFACE) }
             setPadding(dp(4), dp(4), dp(4), dp(4))
             addView(avatar(u, 80) { if (u.avatar.isNotBlank()) openPhoto(abs(u.avatar), u) }, FrameLayout.LayoutParams(-1, -1))
         }, FrameLayout.LayoutParams(dp(88), dp(88), Gravity.TOP or Gravity.START).apply { setMargins(dp(14), dp(52), 0, 0) })
@@ -1526,7 +1526,7 @@ class SocialPage(private val m: MainActivity) {
         else if (shown.isEmpty()) m.add(ui.text("No comments yet. Be the first!", 14f, Ui.MUTED), 8)
         shown.forEach { c ->
             m.add(LinearLayout(m).apply {
-                orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(10), dp(12), dp(10)); background = ui.round(Color.WHITE, 16, Ui.LINE)
+                orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(10), dp(12), dp(10)); background = ui.round(Ui.SURFACE, 16, Ui.LINE)
                 addView(avatar(c.author, 36) { openProfile(c.author.uid) }, LinearLayout.LayoutParams(dp(36), dp(36)))
                 addView(ui.stack(nameLine(c.author, c.at) { commentMenu(c) }, ui.text(c.text, 14.5f, Ui.INK).apply { setTextIsSelectable(true) }).apply { setPadding(dp(10), 0, 0, 0) },
                     LinearLayout.LayoutParams(0, -2, 1f))

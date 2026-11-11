@@ -127,15 +127,20 @@ class MainActivity : Activity() {
     internal fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
     internal fun granted(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
 
+    /** The look this screen was made in (it is made again when the phone's dark mode or the Theme setting changes). */
+    private var builtDark = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // dark or light pages (and pop-ups) in the chosen colour
+        AppLook.refresh(this); builtDark = AppLook.dark
+        setTheme(if (builtDark) R.style.Habit_AppDark else R.style.Habit_App)
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this); vault = VaultStore(this)
         // like WhatsApp: everyone logs in first (mobile number or email + password), once
         if (!store.loggedIn) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
         Reminders.ensureChannel(this)
         if (ChatSync.isSetUp(this)) ChatAlarm.schedule(this)
-        window.statusBarColor = Ui.BG
-        if (Build.VERSION.SDK_INT >= 23) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        ChatTheme.bars(this, Ui.BG, AppLook.CARD)
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(28)) }
         scroll = ScrollView(this).apply { addView(content); isFillViewport = true }
         // the bottom bar: Home · Chats · (the raised round Talk button) · Tasks · Media
@@ -229,7 +234,9 @@ class MainActivity : Activity() {
     }
 
     override fun onResume() {
-        super.onResume(); resumedNow = true; leavingForSystemScreen = false; render()
+        super.onResume(); resumedNow = true; leavingForSystemScreen = false
+        AppLook.refresh(this); if (AppLook.dark != builtDark) { recreate(); return }
+        render()
         ChatSync.listeners.add(navRefresh)      // the number of unread chats on the Chats tab
         ChatSync.hold(this, "main")      // Habit Chat: new messages come at once while the app is open
         if (BuildConfig.AUTO_CARDS && store.autoCards && AutoCards.allowed(this)) AutoCards.schedule(this)
@@ -322,12 +329,12 @@ class MainActivity : Activity() {
         val chat = tab == "messages"
         if (chat) ChatTheme.refresh(this)
         // Habit Chat's rows reach closer to the screen's edges (it lines up its own top part)
-        content.setPadding(if (chat) dp(8) else dp(16), dp(12), if (chat) dp(8) else dp(16), dp(28))
+        // (room at the bottom so the end of a page isn't under the round Talk button)
+        content.setPadding(if (chat) dp(8) else dp(16), dp(12), if (chat) dp(8) else dp(16), dp(48))
         updateNav()
         scroll.setBackgroundColor(if (chat) ChatTheme.BG else Color.TRANSPARENT)
         rootFrame.setBackgroundColor(if (chat) ChatTheme.BG else Ui.BG)
-        window.statusBarColor = if (chat) ChatTheme.BG else Ui.BG
-        window.decorView.systemUiVisibility = if (chat && ChatTheme.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        ChatTheme.bars(this, if (chat) ChatTheme.BG else Ui.BG, if (chat) ChatTheme.BAR else AppLook.CARD)
         if (chat) {
             // Habit Chat's new-chat button: a rounded square with a pen (gold on navy, navy on white)
             val ld = android.graphics.drawable.LayerDrawable(arrayOf(ChatTheme.round(ChatTheme.PRIMARY, dp(20).toFloat()), Ico.d(this, R.drawable.ic_edit, ChatTheme.ON_PRIMARY_ICON)))
@@ -513,8 +520,9 @@ class MainActivity : Activity() {
         words.addView(ui.text(greetEn + if (first.isNotEmpty()) ", $first" else "", 20f, Color.WHITE).apply { typeface = Fonts.heavy(context); setLineSpacing(0f, 1.05f) })
         words.addView(TextView(this).apply {
             val label = if (PetService.running) t("Close my pet", "పెట్‌ని మూసేయి") else t("Show my pet", "నా పెట్‌ని చూపించు")
-            text = Ico.withIcon(context, R.drawable.ic_pawprint, Ui.TEAL, dp(16), label)
-            textSize = 13.5f; setTextColor(Ui.TEAL_DARK); typeface = Fonts.bold(context); includeFontPadding = false; gravity = Gravity.CENTER_VERTICAL
+            // (on white in both looks: the deep main colour)
+            text = Ico.withIcon(context, R.drawable.ic_pawprint, AppLook.p.primary, dp(16), label)
+            textSize = 13.5f; setTextColor(AppLook.p.primaryTxt); typeface = Fonts.bold(context); includeFontPadding = false; gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(9), dp(16), dp(9)); background = ui.round(Color.WHITE, 20)
             setOnClickListener { togglePet() }
         }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
@@ -861,7 +869,7 @@ class MainActivity : Activity() {
                 val chosen = k == current
                 val cell = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(4), dp(8), dp(4), dp(10))
-                    background = ui.round(if (chosen) Ui.SUN_SOFT else Color.parseColor("#F5F8F7"), 18, if (chosen) Ui.SUN else null)
+                    background = ui.round(if (chosen) Ui.SUN_SOFT else Ui.FIELD, 18, if (chosen) Ui.SUN else null)
                     addView(PuppyView(this@MainActivity).apply { kind = k; mood = if (chosen) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY }, LinearLayout.LayoutParams(dp(70), dp(70)))
                     addView(ui.text((if (chosen) "✓ " else "") + k.label, 13.5f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER })
                     addView(ui.text(k.telugu, 12f, Ui.MUTED).apply { gravity = Gravity.CENTER })
@@ -1212,7 +1220,7 @@ class MainActivity : Activity() {
         val te = store.lang == "te"
         val banner = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(12), dp(10), dp(12))
-            background = ui.round(Color.WHITE, 20, Ui.LINE); elevation = dp(10).toFloat()
+            background = ui.round(Ui.SURFACE, 20, Ui.LINE); elevation = dp(10).toFloat()
             addView(TextView(this@MainActivity).apply { text = "🐾"; textSize = 26f })
             addView(ui.text(if (te) "👀 మిమ్మల్ని చూస్తున్నాను…" else "👀 Looking at you…", 15f, Ui.INK, bold = true),
                 LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(10) })

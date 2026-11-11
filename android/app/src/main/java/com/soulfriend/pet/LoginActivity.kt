@@ -40,11 +40,11 @@ class LoginActivity : Activity() {
     private fun dp(v: Int) = ui.dp(v)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppLook.refresh(this); setTheme(if (AppLook.dark) R.style.Habit_AppDark else R.style.Habit_App)
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this)
         if (store.lang != "te" && store.lang != "en") store.lang = if (Locale.getDefault().language == "te") "te" else "en"
-        window.statusBarColor = Ui.BG
-        if (Build.VERSION.SDK_INT >= 23) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        ChatTheme.bars(this, Ui.BG, Ui.BG)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(28), dp(24), dp(28)) }
         setContentView(ScrollView(this).apply { setBackgroundColor(Ui.BG); isFillViewport = true; addView(box) })
@@ -95,7 +95,7 @@ class LoginActivity : Activity() {
 
     private fun field(hint: String, type: Int): EditText = EditText(this).apply {
         this.hint = hint; textSize = 18f; inputType = type; setSingleLine(true); setTextColor(Ui.INK)
-        setPadding(dp(14), dp(12), dp(14), dp(12)); background = ui.round(Color.WHITE, 12, Ui.LINE)
+        setPadding(dp(14), dp(12), dp(14), dp(12)); background = ui.round(Ui.SURFACE, 12, Ui.LINE)
     }
     private fun bigButton(label: String, onClick: () -> Unit) = ui.button(label, "primary") { if (!busy) onClick() }
 
@@ -210,7 +210,7 @@ class LoginActivity : Activity() {
     }
 
     private fun showToggle(vararg fields: EditText) = TextView(this).apply {
-        text = t("👁 Show password", "👁 పాస్‌వర్డ్ చూపించు"); textSize = 13.5f; setTextColor(Ui.TEAL); setPadding(0, dp(8), 0, 0)
+        text = t("👁 Show password", "👁 పాస్‌వర్డ్ చూపించు"); textSize = 13.5f; setTextColor(Ui.TEAL_DARK); setPadding(0, dp(8), 0, 0)
         var shown = false
         setOnClickListener {
             shown = !shown
@@ -218,7 +218,7 @@ class LoginActivity : Activity() {
             text = if (shown) t("🙈 Hide password", "🙈 పాస్‌వర్డ్ దాచు") else t("👁 Show password", "👁 పాస్‌వర్డ్ చూపించు")
         }
     }
-    private fun link(label: String, onClick: () -> Unit) = ui.text(label, 14f, Ui.TEAL, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0); setOnClickListener { if (!busy) onClick() } }
+    private fun link(label: String, onClick: () -> Unit) = ui.text(label, 14f, Ui.TEAL_DARK, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0); setOnClickListener { if (!busy) onClick() } }
 
     /** Logged in: remember it, and into the app. */
     private fun done(me: JSONObject) {

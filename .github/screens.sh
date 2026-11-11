@@ -63,8 +63,17 @@ adb shell input swipe 540 1700 540 500 400; adb shell input swipe 540 1700 540 5
 shot light home home-sheet0
 adb shell input tap 983 212; snap home-sheet
 adb shell input keyevent KEYCODE_BACK
-for sc in tasks files vault pet translate family govt media; do shot light $sc "page-$sc"; done
-shot dark home dark-home
+for sc in tasks files vault pet translate family govt feed; do shot light $sc "page-$sc"; done
+# the dark look of the rest of the app (the phone's dark mode, or Theme › Dark)
+for col in teal purple orange green blue maroon; do shot dark home "dark-home-$col" en $col; done
+shot dark home dark-home-top
+adb shell input swipe 540 1700 540 700 400; snap dark-home-mid
+adb shell input swipe 540 1700 540 500 400; adb shell input swipe 540 1700 540 500 400; snap dark-home-bottom
+shot dark home dark-home-sheet0
+adb shell input tap 983 212; snap dark-home-sheet
+adb shell input keyevent KEYCODE_BACK
+for sc in tasks files pet translate family govt feed; do shot dark $sc "dark-page-$sc"; done
+shot dark home te-dark-home te
 shot light home te-home te
 # Telugu words take more room: check they fit
 shot dark list te-dark-list te

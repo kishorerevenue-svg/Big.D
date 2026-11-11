@@ -42,43 +42,88 @@ object AppLook {
 
     var p: Palette = PALETTES.first { it.id == DEFAULT }
         private set
+    /** True: the dark look (the phone's dark mode, or Theme › Dark, the same setting as the chats). */
+    var dark = false
+        private set
+    private var dk = Dark(p)
 
-    /** Reads the saved choice (call before drawing a page). */
+    /** Reads the saved choice and the dark / light look (call before drawing a page). */
     fun refresh(ctx: Context) {
         val id = try { ChatDb.get(ctx).kv("set:appColour") } catch (e: Exception) { "" }
-        p = PALETTES.firstOrNull { it.id == id } ?: PALETTES.first { it.id == DEFAULT }
+        val np = PALETTES.firstOrNull { it.id == id } ?: PALETTES.first { it.id == DEFAULT }
+        if (np !== p) { p = np; dk = Dark(np) }
+        ChatTheme.refresh(ctx); dark = ChatTheme.dark
     }
     fun choose(ctx: Context, id: String) { ChatDb.get(ctx).setKv("set:appColour", id); refresh(ctx) }
 
+    /** The dark look of a colour choice: deep pages tinted with the main colour, lighter words and icons. */
+    private class Dark(p: Palette) {
+        val hue = hueOf(p.primary)
+        val bg = hsl(hue, 0.30f, 0.075f)
+        val card = hsl(hue, 0.25f, 0.12f)
+        val field = hsl(hue, 0.22f, 0.16f)
+        val line = hsl(hue, 0.20f, 0.21f)
+        val txt = hsl(hue, 0.25f, 0.95f)
+        val sub = hsl(hue, 0.14f, 0.70f)
+        val primary = mix(p.primary, Color.WHITE, 0.06f)
+        val primaryTxt = mix(p.primary, Color.WHITE, 0.55f)
+        val soft = mix(card, p.primary, 0.32f)
+        val soft2 = mix(card, p.accent, 0.24f); val ink2 = mix(p.accent, Color.WHITE, 0.35f)
+        val soft3 = mix(card, p.ink3, 0.34f); val ink3 = mix(p.ink3, Color.WHITE, 0.55f)
+        val accentTxt = mix(p.accent, Color.WHITE, 0.30f)
+        val g1 = mix(p.g1, Color.BLACK, 0.12f); val g2 = mix(p.g2, Color.BLACK, 0.20f)
+    }
+    private fun pk(light: Int, darkC: Int) = if (dark) darkC else light
+    /** [light] in the light look, [darkC] in the dark look. */
+    fun lt(light: Int, darkC: Int) = pk(light, darkC)
+
     // ----- the tokens the pages use -----
-    val BG get() = p.bg
-    val CARD get() = Color.WHITE
+    val BG get() = pk(p.bg, dk.bg)
+    val CARD get() = pk(Color.WHITE, dk.card)
     /** A text box or a card inside a card. */
-    val FIELD get() = mix(p.bg, Color.WHITE, 0.45f)
-    val LINE get() = p.line
-    val TXT get() = p.txt
-    val SUB get() = p.sub
+    val FIELD get() = pk(mix(p.bg, Color.WHITE, 0.45f), dk.field)
+    val LINE get() = pk(p.line, dk.line)
+    val TXT get() = pk(p.txt, dk.txt)
+    val SUB get() = pk(p.sub, dk.sub)
     /** The main colour: buttons, the chosen chip, the Talk button. */
-    val PRIMARY get() = p.primary
+    val PRIMARY get() = pk(p.primary, dk.primary)
     val ON_PRIMARY get() = Color.WHITE
-    /** The main colour as words (a little deeper, so it reads well on white). */
-    val PRIMARY_TXT get() = p.primaryTxt
+    /** The main colour as words and icons (deeper on white, lighter on the dark look). */
+    val PRIMARY_TXT get() = pk(p.primaryTxt, dk.primaryTxt)
     /** A soft tint of the main colour (icon squares, soft buttons, the tip card). */
-    val SOFT get() = p.soft
+    val SOFT get() = pk(p.soft, dk.soft)
     val ACCENT get() = p.accent
-    val ACCENT_TXT get() = p.accentTxt
-    val ACCENT_SOFT get() = p.soft2
+    val ACCENT_TXT get() = pk(p.accentTxt, dk.accentTxt)
+    val ACCENT_SOFT get() = pk(p.soft2, dk.soft2)
     /** Two more soft colour pairs (background, ink) for icon squares. */
-    val TINT2 get() = p.soft2 to p.ink2
-    val TINT3 get() = p.soft3 to p.ink3
+    val TINT2 get() = if (dark) dk.soft2 to dk.ink2 else p.soft2 to p.ink2
+    val TINT3 get() = if (dark) dk.soft3 to dk.ink3 else p.soft3 to p.ink3
     /** The big card on Home: a gradient between these. */
-    val HERO get() = intArrayOf(p.g1, p.g2)
+    val HERO get() = if (dark) intArrayOf(dk.g1, dk.g2) else intArrayOf(p.g1, p.g2)
     /** The chosen tab's pill in the bottom bar. */
-    val PILL get() = p.soft
-    val PILL_TXT get() = p.primaryTxt
-    val DANGER get() = Color.parseColor("#C63B3F")
-    val DANGER_SOFT get() = Color.parseColor("#FBE3E3")
-    val GOOD get() = Color.parseColor("#1D8A5B")
+    val PILL get() = SOFT
+    val PILL_TXT get() = PRIMARY_TXT
+    val DANGER get() = pk(Color.parseColor("#C63B3F"), Color.parseColor("#FF7B7B"))
+    val DANGER_SOFT get() = pk(Color.parseColor("#FBE3E3"), mix(dk.card, Color.parseColor("#FF6B6B"), 0.22f))
+    val GOOD get() = pk(Color.parseColor("#1D8A5B"), Color.parseColor("#4CC38A"))
+    val GOOD_SOFT get() = pk(Color.parseColor("#DFF3E8"), mix(dk.card, Color.parseColor("#4CC38A"), 0.22f))
+    /** "Be careful" (between safe and danger). */
+    val WARN get() = pk(Color.parseColor("#B7791F"), Color.parseColor("#F2B84B"))
+    val WARN_SOFT get() = pk(Color.parseColor("#FFF3D6"), mix(dk.card, Color.parseColor("#F2B84B"), 0.22f))
+
+    // ----- colour helpers -----
+    private fun hueOf(c: Int): Float { val hsv = FloatArray(3); Color.colorToHSV(c, hsv); return hsv[0] }
+    /** A colour from hue (0..360), saturation and lightness (0..1). */
+    fun hsl(h: Float, s: Float, l: Float): Int {
+        val c = (1 - Math.abs(2 * l - 1)) * s
+        val x = c * (1 - Math.abs((h / 60f) % 2 - 1))
+        val m = l - c / 2
+        val (r, g, b) = when {
+            h < 60 -> Triple(c, x, 0f); h < 120 -> Triple(x, c, 0f); h < 180 -> Triple(0f, c, x)
+            h < 240 -> Triple(0f, x, c); h < 300 -> Triple(x, 0f, c); else -> Triple(c, 0f, x)
+        }
+        return Color.rgb(((r + m) * 255).toInt().coerceIn(0, 255), ((g + m) * 255).toInt().coerceIn(0, 255), ((b + m) * 255).toInt().coerceIn(0, 255))
+    }
 
     /** [a] moved toward [b] by [t] (0..1). */
     fun mix(a: Int, b: Int, t: Float): Int {
