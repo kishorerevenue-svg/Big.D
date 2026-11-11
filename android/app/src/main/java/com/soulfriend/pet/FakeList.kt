@@ -188,7 +188,8 @@ class FakeList(private val m: MainActivity) {
                     val list = if (append) items ?: JSONArray() else JSONArray()
                     for (i in 0 until got.length()) list.put(got.get(i))
                     items = list; more = r.json.optBoolean("more")
-                } else error = r.error(t("Couldn't load the list. Check the internet.", "లిస్ట్ రాలేదు. ఇంటర్నెట్ చూడండి."))
+                } else error = if (r.code == 404) t("The list is getting ready on the Habit server. Please look again in a little while.", "ఈ లిస్ట్ Habit సర్వర్‌లో సిద్ధమవుతోంది. కాసేపట్లో మళ్ళీ చూడండి.")
+                    else r.error(t("Couldn't load the list. Check the internet.", "లిస్ట్ రాలేదు. ఇంటర్నెట్ చూడండి."))
                 redraw()
             }
         }

@@ -111,8 +111,8 @@ class MessagesPage(private val m: MainActivity) {
             if (reportOpen) m.add(reportCard(), 10)
         }
 
+        fakes.build()   // the fake messages list people add to, right under the check (the yellow "Automatic checking" box is gone)
         scamsCard()
-        fakes.build()   // the fake messages list people add to (in Lite it took the place of the yellow "Automatic checking" box)
 
         if (BuildConfig.MESSAGE_REPLIES) {
             val access = MessageHub.accessGranted(m)
