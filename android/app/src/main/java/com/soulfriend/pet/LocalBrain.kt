@@ -359,7 +359,8 @@ object LocalBrain {
         "ఫోన్" to "phone", "కాంటాక్ట్స్" to "contacts", "క్యాలెండర్" to "calendar", "ప్లే స్టోర్" to "play store")
     private val PAGES = listOf("tasks" to "list|lists|todo|to-?do|tasks|reminders|లిస్ట్|లిస్టు|రిమైండర్లు", "vault" to "vault|వాల్ట్",
         "family" to "sos|family|family & sos|ఫ్యామిలీ|కుటుంబం", "translate" to "translate|translator|అనువాదం|ట్రాన్స్‌?లేట్",
-        "files" to "letter|letters|files|లెటర్|లేఖ", "feedback" to "media|మీడియా", "govt" to "govt|government|government services|ప్రభుత్వ సేవలు")
+        "files" to "letter|letters|files|లెటర్|లేఖ", "feedback" to "media|మీడియా", "govt" to "govt|government|government services|ప్రభుత్వ సేవలు",
+        "safety" to "fake messages|fraud check|scam check|check a message|మోసపు మెసేజ్‌లు|ఫేక్ మెసేజ్‌లు", "messages" to "chat|chats|habit chat|చాట్")
 
     private fun openApp(t: String, te: Boolean): JSONObject? {
         val m = re("^(?:open|start|launch)\\s+(?:the\\s+|my\\s+)?(.+?)(?:\\s+app)?$").find(t)

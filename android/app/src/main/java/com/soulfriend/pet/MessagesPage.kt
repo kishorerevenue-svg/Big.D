@@ -26,7 +26,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Messages page: is a message safe or a fraud? Paste or share it, or check a screenshot or a QR code.
+ * Messages tab: Habit Chat only. Tasks › 🛡️ Fake messages (buildSafety): is a message safe or a fraud? Paste or share it, or check a screenshot or a QR code.
  * For any message: explain it in simple words, write a reply (and send it by WhatsApp, SMS or any app),
  * and report or block it. This week's new scams, the fake messages list that people add to (FakeList),
  * and the messages of the last 7 days with 🟢 🟡 🔴 labels.
@@ -79,11 +79,15 @@ class MessagesPage(private val m: MainActivity) {
     /** Text shared to Habit AI from another app: check it right away. */
     fun checkShared(text: String) { input = text.take(3000); pic = null; qr = ""; verdict = null; check() }
 
+    /** The Messages tab: Habit Chat only (chats, groups, calls, photos, videos, documents, tasks). */
     fun build() {
-        resultView = null
-        m.pageHeader("Messages · మెసేజ్‌లు", "Chat with your people on Habit, and check whether a message is safe or a fraud.")
+        m.pageHeader("Messages · మెసేజ్‌లు", if (store.lang == "te") "మీ వాళ్ళతో Habit లో చాట్, కాల్స్, ఫోటోలు, ఫైల్స్ · వాట్సాప్ లాగా" else "Chat, call and share with your people on Habit, like WhatsApp.")
         m.chatPage.build()
+    }
 
+    /** Tasks › 🛡️ Fake messages: is a message safe or a fraud, the fake messages list people add to, this week's new scams. */
+    fun buildSafety() {
+        resultView = null
         m.add(ui.section("🛡️ Is this message safe?", "Paste a message you got, share it to Habit AI, or check a picture of it.").apply {
             val box = ui.input("Paste or type the message here…", input, multi = true)
             box.onText { input = it }
@@ -459,9 +463,9 @@ class MessagesPage(private val m: MainActivity) {
                 if (r.ok && r.json.optJSONArray("items") != null) { store.scamCache = r.json.put("lang", lang); scamsRetries = 0 }
                 else if (r.code == 202 && scamsRetries < 3) {
                     scamsRetries++
-                    handler.postDelayed({ if (m.tab == "messages" && !scamsLoading) loadScams() }, 30_000)
+                    handler.postDelayed({ if (m.onSafety() && !scamsLoading) loadScams() }, 30_000)
                 } else scamsRetries = 0
-                scamsHolder?.takeIf { it.isAttachedToWindow && m.tab == "messages" }?.let { fillScams(it) }
+                scamsHolder?.takeIf { it.isAttachedToWindow && m.onSafety() }?.let { fillScams(it) }
             }
         }
     }

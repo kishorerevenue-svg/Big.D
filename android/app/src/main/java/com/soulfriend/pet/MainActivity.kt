@@ -73,7 +73,7 @@ class MainActivity : Activity() {
     internal val io = Executors.newSingleThreadExecutor()
 
     internal var tab = "home"
-    private var tasksTab = "todo"
+    internal var tasksTab = "todo"
     private var pickingPhotoFor: String? = null
     internal var leavingForSystemScreen = false
     private var pendingShare: String? = null
@@ -202,7 +202,7 @@ class MainActivity : Activity() {
     /** Opens a page, a letter request from the pet, or something shared to Habit AI from another app. */
     private fun handleIntent(i: Intent?) {
         if (i == null) return
-        i.getStringExtra("tab")?.let { tab = it }
+        i.getStringExtra("tab")?.let { setTab(it) }
         if (i.getBooleanExtra("mirror", false)) { pendingMirror = true; i.removeExtra("mirror") }
         i.getStringExtra("letter")?.let { tab = "files"; pendingLetter = it; i.removeExtra("letter") }
         val toMedia = i.component?.className?.endsWith(".PostToMedia") == true
@@ -214,7 +214,7 @@ class MainActivity : Activity() {
             i.action = Intent.ACTION_MAIN
         } else if (i.action == Intent.ACTION_SEND && i.type?.startsWith("text/") == true) {
             val t = i.getStringExtra(Intent.EXTRA_TEXT)?.trim()
-            if (!t.isNullOrBlank()) { tab = "messages"; pendingShare = t }
+            if (!t.isNullOrBlank()) { setTab("safety"); pendingShare = t }      // Share › Habit AI: check the message
             i.action = Intent.ACTION_MAIN
         }
     }
@@ -263,7 +263,11 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    internal fun go(t: String) { tab = t; render(); scroll.scrollTo(0, 0) }
+    internal fun go(t: String) { setTab(t); render(); scroll.scrollTo(0, 0) }
+    /** "safety" is not a tab of its own: it is Tasks › 🛡️ Fake (checking messages, the fake messages list, new scams). */
+    private fun setTab(t: String) { if (t == "safety") { tasksTab = "fake"; tab = "tasks" } else tab = t }
+    /** True while Tasks › 🛡️ Fake is on screen. */
+    internal fun onSafety() = tab == "tasks" && tasksTab == "fake"
     /** Opens the letter helper on the Files page with this request (e.g. "Application for a birth certificate").
      *  [mode] "public" or "office" switches the helper first (e.g. a police complaint from the Messages page is always "public"). */
     internal fun openLetter(req: String, mode: String? = null) { tab = "files"; scroll.scrollTo(0, 0); letter.start(req, mode) }
@@ -543,7 +547,7 @@ class MainActivity : Activity() {
         add(pair(tile("🎤", "Talk now", "Ask anything by voice") { talkNow() },
             tile("📄", "Make a file", "Word letter or Excel sheet") { go("files") }), 8)
         add(pair(tile("⏰", "Add reminder", "Once or repeating") { tasksTab = "rem"; go("tasks") },
-            tile("🛡️", "Check a message", "Safe, or a fraud?") { go("messages") }), 10)
+            tile("🛡️", "Check a message", "Safe, or a fraud?") { go("safety") }), 10)
         add(pair(tile("🔒", "My Vault", "Cards and documents") { go("vault") },
             tile("📺", "Media · మీడియా", "News, movies, jobs and more") { go("feedback") }), 10)
 
@@ -558,7 +562,7 @@ class MainActivity : Activity() {
             "Say \"make a leave letter for 2 days as a Word file\"",
             "Hold the pet for the menu: type, photo, lists",
             "Long-press a tab at the bottom and drag it to move it",
-            "Got a strange message? Copy it and check it on the Messages tab",
+            "Got a strange message? Copy it and check it in Tasks › 🛡️ Fake",
             if (BuildConfig.MESSAGE_REPLIES) "Turn on WhatsApp replies in the Pet page" else null,
             "Drag the pet down to ✕ to close it",
             "Can't read an English letter or board? Take a photo in Translate",
@@ -647,11 +651,11 @@ class MainActivity : Activity() {
         }, 12)
 
         add(ui.section("Permissions · అనుమతులు").apply { permissionRows(this) }, 12)
-        // Message replies and danger alerts now live on the Messages tab.
+        // Message checks, replies and danger alerts live in Tasks › 🛡️ Fake.
         add(ui.card(Ui.TEAL_SOFT).apply {
-            addView(ui.line(ui.stack(ui.text("💬 Messages and danger alerts", 15f, Ui.TEAL_DARK, bold = true),
-                ui.text("Check messages for fraud" + if (BuildConfig.MESSAGE_REPLIES) ", reply settings and auto-reply" else "", 12.5f, Ui.MUTED)),
-                ui.button("Open", "primary") { go("messages") }))
+            addView(ui.line(ui.stack(ui.text("🛡️ Fake messages and danger alerts", 15f, Ui.TEAL_DARK, bold = true),
+                ui.text("Tasks › 🛡️ Fake: check messages for fraud" + if (BuildConfig.MESSAGE_REPLIES) ", reply settings and auto-reply" else "", 12.5f, Ui.MUTED)),
+                ui.button("Open", "primary") { go("safety") }))
         }, 12)
         if (BuildConfig.HANDS_FREE) add(handsFreeCard(), 12)
         add(briefingCard(), 12)
@@ -874,16 +878,19 @@ class MainActivity : Activity() {
 
     // =================== 3. TASKS ===================
     private fun tasksPage() {
-        pageHeader("Tasks", "To-dos, reminders and notes")
+        if (tasksTab == "notes") tasksTab = "rem"            // notes now sit under reminders
+        pageHeader("Tasks", "To-dos, reminders and notes, and checking fake messages")
+        // the bar: three options
         add(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            listOf("todo" to "✅ To-do", "rem" to "⏰ Reminders", "notes" to "📝 Notes").forEachIndexed { i, (k, label) ->
-                addView(ui.chip(label, tasksTab == k) { tasksTab = k; render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(8) })
+            listOf("todo" to "✅ To-do", "rem" to "⏰ Reminders & 📝 Notes", "fake" to "🛡️ Fake messages").forEachIndexed { i, (k, label) ->
+                addView(ui.chip(label, tasksTab == k) { tasksTab = k; render(); scroll.scrollTo(0, 0) }.apply { maxLines = 2; textSize = 13.5f; setPadding(dp(8), dp(9), dp(8), dp(9)) },
+                    LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = dp(6) })
             }
         }, 14)
         when (tasksTab) {
-            "rem" -> remindersSection()
-            "notes" -> notesSection()
+            "rem" -> { remindersSection(); add(ui.label("📝 Notes · నోట్స్"), 22); notesSection() }
+            "fake" -> messages.buildSafety()
             else -> todoSection()
         }
     }

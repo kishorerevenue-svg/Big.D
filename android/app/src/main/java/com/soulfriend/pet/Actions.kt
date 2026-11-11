@@ -80,7 +80,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
 
     /** Opens a page of the Habit AI app (tasks, family, translate, files, vault, feedback, govt, messages). */
     private fun openPage(page: String): String? {
-        val p = page.takeIf { it in setOf("tasks", "family", "translate", "files", "vault", "feedback", "govt", "messages", "home") } ?: "home"
+        val p = page.takeIf { it in setOf("tasks", "family", "translate", "files", "vault", "feedback", "govt", "messages", "safety", "home") } ?: "home"
         return if (start(Intent(ctx, MainActivity::class.java).putExtra("tab", p))) null else "Open the Habit AI app"
     }
 

@@ -12,7 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * The fake messages list in the Messages tab (where the yellow "Automatic checking" box was).
+ * The fake messages list in Tasks › 🛡️ Fake messages, right under the message check.
  * People add a fake message they got; the server hides numbers, links and names first. Under each one anyone can
  * tap 🚨 Fake · 📩 I got it too · ✅ Safe and write a short comment (checked before it shows).
  * A small switch on top, like Files' Public / Office: 🆕 Latest | 🔥 Most reported.
@@ -48,7 +48,7 @@ class FakeList(private val m: MainActivity) {
         m.add(h, 14)
     }
 
-    private fun redraw() { holder?.takeIf { it.isAttachedToWindow && m.tab == "messages" }?.let { fill(it) } }
+    private fun redraw() { holder?.takeIf { it.isAttachedToWindow && m.onSafety() }?.let { fill(it) } }
 
     private fun fill(h: LinearLayout) {
         h.removeAllViews()

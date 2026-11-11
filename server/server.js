@@ -449,7 +449,7 @@ const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, medi
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Habit Chat: chats and groups between people who use the app, locked end to end on the phones (the server can't read them)
 const chat = require("./chat.js")({ DATA_DIR, social, h: { send, readBody, allowed, clientIp, baseUrl } });
-// The fake messages list (Messages tab): people warn each other about fraud messages they got, with votes and comments
+// The fake messages list (app: Tasks › 🛡️ Fake messages): people warn each other about fraud messages they got, with votes and comments
 const fakes = require("./fakes.js")({ DATA_DIR, social, learn, MODEL, API_KEY,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Translate page, and Govt services (official links + answers from official websites only)

@@ -112,7 +112,7 @@ object ScamCheck {
         if (nm.getNotificationChannel("danger") == null)
             nm.createNotificationChannel(NotificationChannel("danger", "Danger alerts", NotificationManager.IMPORTANCE_HIGH).apply { description = "Warnings about fraud and dangerous messages" })
         val v = Verdict.from(item.optJSONObject("v") ?: JSONObject())
-        val open = PendingIntent.getActivity(ctx, 77, Intent(ctx, MainActivity::class.java).putExtra("tab", "messages").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        val open = PendingIntent.getActivity(ctx, 77, Intent(ctx, MainActivity::class.java).putExtra("tab", "safety").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = Notification.Builder(ctx, "danger").setSmallIcon(R.drawable.ic_paw)
             .setContentTitle("⚠️ Danger: message from ${item.optString("sender")}")
