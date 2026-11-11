@@ -312,6 +312,9 @@ class MainActivity : Activity() {
         if (keepY > 0) scroll.post { scroll.scrollTo(0, keepY) }
         val chat = tab == "messages"
         if (chat) ChatTheme.refresh(this)
+        // Habit Chat's rows reach closer to the screen's edges (it lines up its own top part)
+        content.setPadding(if (chat) dp(8) else dp(16), dp(12), if (chat) dp(8) else dp(16), dp(28))
+        updateNav()
         scroll.setBackgroundColor(if (chat) ChatTheme.BG else Color.TRANSPARENT)
         rootFrame.setBackgroundColor(if (chat) ChatTheme.BG else Ui.BG)
         window.statusBarColor = if (chat) ChatTheme.BG else Ui.BG
@@ -428,19 +431,23 @@ class MainActivity : Activity() {
     }
 
     private fun updateNav() {
+        // on Habit Chat the bar takes the chat's look (navy and gold, or clean light)
+        val chat = tab == "messages"
+        nav.setBackgroundColor(if (chat) ChatTheme.BAR else Color.WHITE)
         navItems.forEach { (key, item) ->
             val on = key == tab || (key == "home" && tab in TOOL_PAGES)
-            item.background = if (on) ui.round(Ui.TEAL_SOFT, 24, Ui.TEAL) else null
+            item.background = if (!on) null else if (chat) ChatTheme.round(ChatTheme.PILL, dp(24).toFloat()) else ui.round(Ui.TEAL_SOFT, 24, Ui.TEAL)
+            (item.getChildAt(1) as? TextView)?.setTextColor(if (chat) ChatTheme.PILL_TXT else Ui.TEAL_DARK)
             item.getChildAt(1).visibility = if (on) View.VISIBLE else View.GONE
             item.alpha = if (key == dragKey) 0.35f else 1f
             (item.layoutParams as? LinearLayout.LayoutParams)?.let { lp -> val w = if (on) 3.2f else 1f; if (lp.weight != w) { lp.weight = w; item.layoutParams = lp } }
         }
         val onMedia = tab == "feedback"
         mediaFab.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.parseColor("#FF7A45"), Color.parseColor("#E8336D"))).apply {
-            shape = GradientDrawable.OVAL; setStroke(dp(if (onMedia) 4 else 3), if (onMedia) Ui.TEAL_DARK else Color.WHITE)
+            shape = GradientDrawable.OVAL; setStroke(dp(if (onMedia) 4 else 3), if (onMedia) Ui.TEAL_DARK else if (tab == "messages") ChatTheme.BAR else Color.WHITE)
         }
         mediaFab.animate().scaleX(if (onMedia) 1.08f else 1f).scaleY(if (onMedia) 1.08f else 1f).setDuration(160).start()
-        mediaLabel.setTextColor(if (onMedia) Color.parseColor("#E8336D") else Ui.TEAL_DARK)
+        mediaLabel.setTextColor(if (onMedia) Color.parseColor("#E8336D") else if (tab == "messages") ChatTheme.SUB else Ui.TEAL_DARK)
     }
 
     private fun startTabDrag(v: View, key: String) {

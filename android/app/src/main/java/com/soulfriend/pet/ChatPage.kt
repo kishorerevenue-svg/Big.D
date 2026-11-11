@@ -84,8 +84,11 @@ class ChatPage(private val m: MainActivity) {
     private fun draw(s: LinearLayout) {
         ChatTheme.refresh(m)
         s.removeAllViews()
-        // the top: the big title, then round buttons: scan a QR code, more
+        // the top: the big title, then round buttons: scan a QR code, more (MainActivity gives Habit Chat 8dp at the sides;
+        // the top part keeps 16dp, the rows of chats reach out to 8dp)
+        val side = LinearLayout.LayoutParams(-1, -2).apply { marginStart = dp(8); marginEnd = dp(8) }
         s.addView(LinearLayout(m).apply {
+            layoutParams = LinearLayout.LayoutParams(side)
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(2), 0, dp(4))
             addView(txt(t("Chats", "చాట్‌లు"), 30f, C.TXT).apply { typeface = Fonts.heavy(m); letterSpacing = -0.02f; setLineSpacing(0f, 1f) }, LinearLayout.LayoutParams(0, -2, 1f))
             if (ChatSync.isSetUp(m)) {
@@ -99,7 +102,7 @@ class ChatPage(private val m: MainActivity) {
         val tabs = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; background = C.round(C.CARD, dp(24).toFloat(), C.EDGE, dp(1)); setPadding(dp(4), dp(4), dp(4), dp(4)) }
         tabsBox = tabs
         fillTabs(tabs)
-        s.addView(tabs, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        s.addView(tabs, LinearLayout.LayoutParams(side).apply { topMargin = dp(8) })
         if (page == "chats") {
             // the search bar: chats, people, contacts, or ask the AI
             val search = EditText(m).apply {
@@ -113,8 +116,8 @@ class ChatPage(private val m: MainActivity) {
                 handler.removeCallbacksAndMessages("people")
                 if (query.length >= 2) handler.postAtTime({ findPeople(query) }, "people", android.os.SystemClock.uptimeMillis() + 450)
             }
-            s.addView(search, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-            val chips = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL }
+            s.addView(search, LinearLayout.LayoutParams(side).apply { topMargin = dp(12) })
+            val chips = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(8), 0, dp(8), 0) }
             chipsBox = chips
             fillChips(chips)
             s.addView(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(chips) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
@@ -123,7 +126,7 @@ class ChatPage(private val m: MainActivity) {
         listBox = list
         fillList(list)
         // the rows reach a little closer to the screen's edges than the rest
-        s.addView(list, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6); marginStart = -dp(8); marginEnd = -dp(8) })
+        s.addView(list, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         s.addView(View(m), LinearLayout.LayoutParams(-1, dp(80)))      // room for the new-chat button
     }
 
@@ -170,7 +173,7 @@ class ChatPage(private val m: MainActivity) {
                 "🔒 ఎండ్ టు ఎండ్ లాక్: చాట్‌లో ఉన్నవాళ్ళు మాత్రమే చదవగలరు, Habit సర్వర్ కూడా చదవలేదు."), 14.5f, C.SUB).apply { setPadding(0, dp(8), 0, 0) })
             addView(goldButton(if (starting) t("Starting…", "మొదలవుతోంది…") else t("💬 Start Habit Chat", "💬 Habit చాట్ మొదలుపెట్టండి")) { if (!starting) start() },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); marginStart = dp(8); marginEnd = dp(8) })
     }
 
     private fun goldButton(label: String, onClick: () -> Unit) = TextView(m).apply {

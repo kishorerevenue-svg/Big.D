@@ -36,6 +36,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          cores: 4
+          ram-size: 4096M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
           script: bash .github/screens.sh
