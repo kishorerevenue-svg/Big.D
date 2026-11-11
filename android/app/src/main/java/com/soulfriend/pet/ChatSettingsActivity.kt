@@ -58,29 +58,42 @@ class ChatSettingsActivity : Activity() {
             })
         })
         line()
-        head(t("Look", "రూపం"))
+        head(t("Chats", "చాట్‌లు"))
         val wall = ChatTheme.wall(db.kv("set:wall").toIntOrNull() ?: 0)
-        item("🎨", t("Chat wallpaper", "చాట్ వాల్‌పేపర్"), if (te) wall.te else wall.en) { pickWall() }
+        item("🎨", t("Chat theme (wallpaper)", "చాట్ థీమ్ (వాల్‌పేపర్)"), if (te) wall.te else wall.en) { pickWall() }
+        item("🔤", t("Font size", "అక్షరాల సైజు"), when (db.kv("set:font")) { "s" -> t("Small", "చిన్నది"); "l" -> t("Large", "పెద్దది"); else -> t("Medium", "మధ్యస్థం") }) { pickFont() }
+        toggle("⏎", t("Enter is send", "ఎంటర్ నొక్కితే పంపు"), t("The keyboard's Enter key sends the message", "కీబోర్డ్ ఎంటర్ నొక్కితే మెసేజ్ వెళ్తుంది"), ChatTheme.enterSends(this)) { db.setKv("set:enter", if (it) "1" else "0") }
+        toggle("🔗", t("Link previews", "లింక్ ప్రివ్యూలు"), t("A link you send shows its title and picture (made on your phone)", "మీరు పంపే లింక్‌కి టైటిల్, బొమ్మ (మీ ఫోన్‌లోనే తయారవుతుంది)"), ChatTheme.linkPreviews(this)) { db.setKv("set:previews", if (it) "1" else "0") }
         toggle("📋", t("Show open tasks as a bar at the top", "తెరిచిన పనులు పైన బార్‌గా చూపించు"),
             t("Off: a small 📋 next to the chat's name shows them", "ఆఫ్: చాట్ పేరు పక్కన చిన్న 📋 చూపిస్తుంది"), ChatTheme.tasksBar(this)) { db.setKv("set:tasksbar", if (it) "1" else "0") }
+        item("⭐", t("Starred messages", "స్టార్ చేసిన మెసేజ్‌లు"), t("Messages you starred, in all chats", "అన్ని చాట్‌లలో మీరు స్టార్ చేసినవి")) { ChatInfoActivity.open(this, "", "starred") }
         line()
         head(t("Notifications", "నోటిఫికేషన్లు"))
         toggle("🔔", t("Message notifications", "మెసేజ్ నోటిఫికేషన్లు"), t("New messages show a notification", "కొత్త మెసేజ్‌లకు నోటిఫికేషన్"), ChatTheme.notifyOn(this)) { db.setKv("set:notify", if (it) "1" else "0") }
         toggle("👁", t("Show the message in the notification", "నోటిఫికేషన్‌లో మెసేజ్ చూపించు"), t("Off: only \"New message\"", "ఆఫ్: \"కొత్త మెసేజ్\" మాత్రమే"), ChatTheme.previewOn(this)) { db.setKv("set:preview", if (it) "1" else "0") }
+        toggle("❤️", t("Reaction notifications", "స్పందనల నోటిఫికేషన్లు"), t("When someone reacts to your message", "మీ మెసేజ్‌కి ఎవరైనా స్పందిస్తే"), ChatTheme.reactNotify(this)) { db.setKv("set:reactnotify", if (it) "1" else "0") }
         item("🎵", t("Ringtone for calls", "కాల్స్ రింగ్‌టోన్"), t("Phone settings › Habit calls (ringing)", "ఫోన్ సెట్టింగ్స్ › Habit calls (ringing)")) {
             CallManager.channels(this)
             try { startActivity(android.content.Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, CallManager.RING)) } catch (e: Exception) { }
         }
         line()
         head(t("Privacy", "గోప్యత"))
+        toggle("🟢", t("Last seen and online", "చివరిగా చూసింది, ఆన్‌లైన్"), t("Off: nobody sees when you were online, and you don't see theirs", "ఆఫ్: మీరు ఎప్పుడు ఆన్‌లైన్‌లో ఉన్నారో ఎవరికీ తెలియదు, మీకూ వాళ్ళది కనిపించదు"), db.kv("set:seen") != "0") { on ->
+            db.setKv("set:seen", if (on) "1" else "0")
+            Thread { ChatSync.api(store, "POST", "/api/chat/privacy", JSONObject().put("seen", on).toString()) }.start()
+        }
         toggle("✓✓", t("Read receipts (blue ticks)", "చదివిన గుర్తు (నీలి టిక్కులు)"), t("Off: people don't see when you read their messages", "ఆఫ్: మీరు చదివారని ఇతరులకు తెలియదు"), ChatTheme.receiptsOn(this)) { db.setKv("set:receipts", if (it) "1" else "0") }
-        toggle("🔒", t("Lock hidden chats", "దాచిన చాట్‌లకు లాక్"), t("Open them with your fingerprint or phone lock", "వేలిముద్ర లేదా ఫోన్ లాక్‌తో తెరవండి"), ChatTheme.lockHidden(this)) { db.setKv("set:lock", if (it) "1" else "0") }
+        item("⭕", t("Status privacy", "స్టేటస్ గోప్యత"), when (ChatStatus.privacy(this).first) { "except" -> t("Everyone I chat with, except some", "అందరూ, కొందరు తప్ప"); "only" -> t("Only the people I chose", "నేను ఎంచుకున్నవాళ్ళు మాత్రమే"); else -> t("Everyone I chat with", "నేను చాట్ చేసే అందరూ") }) { ChatStatus.privacyDialog(this, store) }
+        item("⏱", t("Default message timer", "కొత్త చాట్‌లకు టైమర్"), t("New chats you start: ", "మీరు మొదలుపెట్టే కొత్త చాట్‌లు: ") + ChatTheme.timerText(ChatTheme.defaultTimer(this), te)) { pickTimer() }
+        toggle("🔒", t("Lock the locked chats", "లాక్ చేసిన చాట్‌లకు లాక్"), t("Open 🔒 Locked chats with your fingerprint or phone lock", "🔒 లాక్ చేసిన చాట్‌లను వేలిముద్ర లేదా ఫోన్ లాక్‌తో తెరవండి"), ChatTheme.lockHidden(this)) { db.setKv("set:lock", if (it) "1" else "0") }
         val blocked = db.convs().filter { it.blocked && !it.isGroup }
         item("🚫", t("Blocked people", "బ్లాక్ చేసినవాళ్ళు"), if (blocked.isEmpty()) t("None", "ఎవరూ లేరు") else blocked.joinToString(", ") { it.name }) { blockedList() }
         line()
         head(t("Storage and data", "స్టోరేజ్, డేటా"))
         val dl = ChatTheme.autoDl(this)
         item("⬇", t("Download videos and documents", "వీడియోలు, ఫైల్స్ డౌన్‌లోడ్"), when (dl) { "always" -> t("Always (also on mobile data)", "ఎప్పుడూ (మొబైల్ డేటాలో కూడా)"); "never" -> t("Only when I tap", "నేను నొక్కినప్పుడు మాత్రమే"); else -> t("On Wi-Fi (small ones always)", "Wi-Fi లో (చిన్నవి ఎప్పుడూ)") }) { pickDl() }
+        val used = try { ChatSync.dir(this).listFiles()?.sumOf { it.length() } ?: 0L } catch (e: Exception) { 0L }
+        item("💾", t("Manage storage", "స్టోరేజ్ నిర్వహణ"), t("Photos, videos and files take %.1f MB. Tap to free up space (the messages stay).", "ఫోటోలు, వీడియోలు, ఫైల్స్ %.1f MB వాడుతున్నాయి. ఖాళీ చేయడానికి నొక్కండి (మెసేజ్‌లు ఉంటాయి).").format(java.util.Locale.ENGLISH, used / 1_000_000.0)) { freeSpace() }
         item("🧹", t("Clear all chats on this phone", "ఈ ఫోన్‌లో అన్ని చాట్‌లు క్లియర్"), t("Messages, photos and files here; chats stay in the list", "ఇక్కడి మెసేజ్‌లు, ఫోటోలు, ఫైల్స్")) { clearAll() }
         line()
         head(t("About", "గురించి"))
@@ -153,6 +166,37 @@ class ChatSettingsActivity : Activity() {
                     runOnUiThread { if (r.ok) { db.patchConv(c.cid) { it.put("blocked", false) }; draw() } }
                 }.start()
             }.setNegativeButton(t("Close", "మూసివేయి"), null).show()
+    }
+
+    private fun pickFont() {
+        val keys = listOf("s", "m", "l")
+        val labels = arrayOf(t("Small", "చిన్నది"), t("Medium", "మధ్యస్థం"), t("Large", "పెద్దది"))
+        AlertDialog.Builder(this).setTitle(t("🔤 Font size", "🔤 అక్షరాల సైజు"))
+            .setSingleChoiceItems(labels, keys.indexOf(db.kv("set:font").ifEmpty { "m" }).coerceAtLeast(0)) { d, i -> db.setKv("set:font", keys[i]); d.dismiss(); draw() }
+            .setNegativeButton(t("Close", "మూసివేయి"), null).show()
+    }
+    private fun pickTimer() {
+        val cur = ChatTheme.defaultTimer(this)
+        AlertDialog.Builder(this).setTitle(t("⏱ Default message timer", "⏱ కొత్త చాట్‌లకు టైమర్"))
+            .setSingleChoiceItems(ChatTheme.TIMERS.map { ChatTheme.timerText(it, te) }.toTypedArray(), ChatTheme.TIMERS.indexOfFirst { it == cur }.coerceAtLeast(0)) { d, i ->
+                db.setKv("set:timer", ChatTheme.TIMERS[i].toString()); d.dismiss(); draw()
+            }.setNegativeButton(t("Close", "మూసివేయి"), null).show()
+    }
+    /** Deletes downloaded photos, videos and files (they come again from the chat while the server still has them). */
+    private fun freeSpace() {
+        val opts = arrayOf(t("Videos and documents", "వీడియోలు, ఫైల్స్"), t("Everything (photos, voice notes and stickers too)", "అన్నీ (ఫోటోలు, వాయిస్, స్టిక్కర్లు కూడా)"))
+        AlertDialog.Builder(this).setTitle(t("💾 Free up space", "💾 ఖాళీ చేయండి")).setItems(opts) { _, i ->
+            var n = 0
+            for (c in db.allConvs()) for (m in db.msgs(c.cid, 100_000)) {
+                if (!ChatSync.hasFile(m)) continue
+                if (i == 0 && m.kind != "video" && m.kind != "doc") continue
+                val f = m.body.optString("local").takeIf { it.isNotEmpty() }?.let { java.io.File(it) } ?: continue
+                if (f.exists() && f.delete()) n++
+                m.body.remove("local"); db.setBody(m.cid, m.id, m.body)
+            }
+            android.widget.Toast.makeText(this, t("Freed $n files.", "$n ఫైల్స్ తొలగించాం."), android.widget.Toast.LENGTH_LONG).show()
+            ChatSync.changed(); draw()
+        }.setNegativeButton(t("Cancel", "వద్దు"), null).show()
     }
 
     private fun clearAll() {

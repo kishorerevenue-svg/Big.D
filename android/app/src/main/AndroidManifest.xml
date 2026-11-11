@@ -207,8 +207,22 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="bigd" android:host="chat" />
+                <data android:scheme="bigd" android:host="group" />
             </intent-filter>
         </activity>
+        <!-- Habit Chat: contact info, group info, broadcast lists, media / links / docs and starred messages (light dialogs, like the chat) -->
+        <activity
+            android:name=".ChatInfoActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <!-- Habit Chat status updates (24 hours): watch them, or make one -->
+        <activity
+            android:name=".StatusActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <!-- Habit Chat: a quiet check for new messages every 15 minutes while the app is closed -->
         <receiver android:name=".ChatAlarm" android:exported="false" />
         <!-- Habit voice and video calls (CallManager): the call screen, "Decline" on the ring, and staying on during a call -->

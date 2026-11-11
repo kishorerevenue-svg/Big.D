@@ -73,7 +73,9 @@ object ChatContacts {
         val me = ChatSync.me(ctx)
         val h = me.optString("handle")
         val link = if (h.isNotEmpty()) store.server.trimEnd('/') + "/c/" + h else store.server.trimEnd('/') + "/download"
-        val first = name.trim().split(" ").firstOrNull().orEmpty()
+        // the first real name, not an initial or surname letters ("K. Srinivas", "Ja Srinivas Reddy" → Srinivas)
+        val words = name.trim().split(Regex("[\\s.]+")).filter { it.isNotBlank() }
+        val first = words.firstOrNull { w -> w.count { it.isLetter() || it.code > 0x7F } >= 3 && !(w.length <= 3 && w.all { it.isUpperCase() }) } ?: words.firstOrNull().orEmpty()
         return if (store.lang == "te") "హాయ్ $first! Habit AI లో చాట్, కాల్ చేద్దాం (ఉచితం, ఎండ్ టు ఎండ్ లాక్, తెలుగు & ఇంగ్లీష్): $link"
             else "Hi $first! Let's chat and call on Habit AI (free, locked end to end, Telugu and English): $link"
     }

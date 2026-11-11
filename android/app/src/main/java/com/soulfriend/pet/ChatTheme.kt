@@ -137,6 +137,22 @@ object ChatTheme {
     fun lockHidden(ctx: Context) = db(ctx).kv("set:lock") != "0"
     fun tasksBar(ctx: Context) = db(ctx).kv("set:tasksbar") == "1"
     fun isHidden(ctx: Context, cid: String) = db(ctx).kv("lock:$cid") == "1"
+    /** Disappearing messages in this chat: seconds (0 = off). */
+    fun disappear(ctx: Context, cid: String): Long = db(ctx).kv("dis:$cid").toLongOrNull() ?: 0L
+    /** For new chats: start with disappearing messages on (seconds, 0 = off). */
+    fun defaultTimer(ctx: Context): Long = db(ctx).kv("set:timer").toLongOrNull() ?: 0L
+    fun reactNotify(ctx: Context) = db(ctx).kv("set:reactnotify") != "0"
+    fun linkPreviews(ctx: Context) = db(ctx).kv("set:previews") != "0"
+    fun enterSends(ctx: Context) = db(ctx).kv("set:enter") == "1"
+    /** Message text size: 0.9 small, 1.0 medium, 1.15 large. */
+    fun fontScale(ctx: Context): Float = when (db(ctx).kv("set:font")) { "s" -> 0.9f; "l" -> 1.15f; else -> 1f }
+    fun timerText(s: Long, te: Boolean): String = when {
+        s <= 0 -> if (te) "ఆఫ్" else "Off"
+        s <= 86400 -> if (te) "24 గంటలు" else "24 hours"
+        s <= 7 * 86400 -> if (te) "7 రోజులు" else "7 days"
+        else -> if (te) "90 రోజులు" else "90 days"
+    }
+    val TIMERS = longArrayOf(0L, 86400L, 7 * 86400L, 90 * 86400L)
     /** Hidden chats open with the fingerprint or the phone lock (its own prompt: it doesn't open the Vault). */
     fun unlockHidden(act: android.app.Activity, done: (String?) -> Unit) {
         val km = act.getSystemService(android.app.KeyguardManager::class.java)

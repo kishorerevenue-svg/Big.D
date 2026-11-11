@@ -66,9 +66,28 @@ class ChatConv(val cid: String, val data: JSONObject, val last: Long, val unread
     val member get() = data.optBoolean("member", true)
     val isGroup get() = kind == "group"
     val isSelf get() = kind == "self"
+    /** 🐾 Habit AI: a chat with the AI, only on this phone. */
+    val isAi get() = kind == "ai"
+    /** 📢 A broadcast list: a message here goes to each person's own chat with me (only on this phone). */
+    val isBcast get() = kind == "bcast"
+    /** Chats that live only on this phone (nothing goes to the server from here). */
+    val isLocal get() = isSelf || isAi || isBcast
+    val isDm get() = kind == "dm"
+    /** A community's announcements group. */
+    val isAnn get() = data.optBoolean("ann")
+    val avatar get() = data.optString("avatar")
+    val desc get() = data.optString("desc")
+    val onlyAdmins get() = data.optBoolean("onlyAdmins")
+    val adminsEdit get() = data.optBoolean("adminsEdit", true)
+    /** The other person in a one-to-one chat. */
+    val other get() = data.optString("other").ifEmpty { "" }
+    val comm: JSONObject? get() = data.optJSONObject("comm")
     fun members(): List<JSONObject> { val a = data.optJSONArray("members") ?: JSONArray(); return (0 until a.length()).mapNotNull { a.optJSONObject(it) } }
-    fun isAdmin(uid: String) = kind == "dm" || kind == "self" || (data.optJSONArray("admins")?.let { a -> (0 until a.length()).any { a.optString(it) == uid } } ?: false)
-    fun nameOf(uid: String): String = members().firstOrNull { it.optString("uid") == uid }?.optString("name") ?: "Someone"
+    fun isAdmin(uid: String) = kind == "dm" || isLocal || (data.optJSONArray("admins")?.let { a -> (0 until a.length()).any { a.optString(it) == uid } } ?: false)
+    fun nameOf(uid: String): String = if (uid == "ai") "Habit AI" else members().firstOrNull { it.optString("uid") == uid }?.optString("name") ?: "Someone"
+    fun otherUid(me: String): String = other.ifEmpty { members().map { it.optString("uid") }.firstOrNull { it != me } ?: "" }
+    /** Can I write here? (not for members of "only admins" groups, blocked people, requests to join…) */
+    fun canSend(me: String) = isLocal || (member && !blocked && (accepted || !isGroup) && !(isGroup && onlyAdmins && !isAdmin(me)))
     /** ✓ sent, ✓✓ delivered to everyone, ✓✓ (blue) read by everyone: 1, 2 or 3 (0 = not sent yet). */
     fun ticks(seq: Long, me: String): Int {
         if (seq <= 0) return 0
@@ -90,6 +109,10 @@ class ChatDb private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "bigd_cha
         @Volatile private var one: ChatDb? = null
         fun get(ctx: Context): ChatDb = one ?: synchronized(this) { one ?: ChatDb(ctx.applicationContext).also { one = it } }
         const val SELF = "self"
+        const val AI = "ai"
+        /** Small notes that change another message (or say something to the phones) and never show as a message. */
+        val HIDDEN = setOf("del", "react", "vote", "rsvp", "edit", "pin", "opened")
+        private val HIDDEN_SQL = HIDDEN.joinToString(",") { "'$it'" }
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -135,6 +158,18 @@ class ChatDb private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "bigd_cha
         if (conv(SELF) != null) return
         putConv(JSONObject().put("cid", SELF).put("kind", "self").put("name", name).put("emoji", "📌").put("accepted", true).put("member", true).put("at", 1L).put("last", 1L))
     }
+    /** 🐾 Habit AI: a chat with the AI (only on this phone, like the notes chat). */
+    fun ensureAi() {
+        if (conv(AI) != null) return
+        putConv(JSONObject().put("cid", AI).put("kind", "ai").put("name", "Habit AI").put("emoji", "🐾").put("accepted", true).put("member", true).put("at", 2L).put("last", 2L))
+    }
+    /** Takes a chat off this phone completely (a broadcast list that's deleted). */
+    fun dropConv(cid: String) {
+        writableDatabase.delete("msgs", "cid=?", arrayOf(cid)); writableDatabase.delete("tasks", "cid=?", arrayOf(cid)); writableDatabase.delete("convs", "cid=?", arrayOf(cid))
+    }
+    /** Every chat, hidden (cleared) ones too. */
+    fun allConvs(): List<ChatConv> = readableDatabase.rawQuery("SELECT cid, data, last, unread, preview, muted FROM convs ORDER BY last DESC", null).use { c ->
+        val out = ArrayList<ChatConv>(); while (c.moveToNext()) out.add(conv(c)); out }
 
     // ---------- messages ----------
     private fun msg(c: android.database.Cursor) = ChatMsg(c.getString(0), c.getString(1), c.getLong(2), c.getString(3) ?: "", c.getLong(4), c.getString(5) ?: "text",
@@ -154,8 +189,43 @@ class ChatDb private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "bigd_cha
     fun setBody(cid: String, id: String, body: JSONObject) { writableDatabase.execSQL("UPDATE msgs SET body=? WHERE cid=? AND id=?", arrayOf(body.toString(), cid, id)) }
     fun deleteMsg(cid: String, id: String) { writableDatabase.delete("msgs", "cid=? AND id=?", arrayOf(cid, id)) }
     fun msg(cid: String, id: String): ChatMsg? = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND id=?", arrayOf(cid, id)).use { c -> if (c.moveToFirst()) msg(c) else null }
-    /** The newest message that shows in the chat (not the hidden "delete for everyone" notes). */
-    fun lastMsg(cid: String): ChatMsg? = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND kind<>'del' ORDER BY at DESC LIMIT 1", arrayOf(cid)).use { c -> if (c.moveToFirst()) msg(c) else null }
+    /** The newest message that shows in the chat (not the hidden notes: "delete for everyone", reactions, votes…). */
+    fun lastMsg(cid: String): ChatMsg? = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND kind NOT IN ($HIDDEN_SQL) ORDER BY at DESC LIMIT 1", arrayOf(cid)).use { c -> if (c.moveToFirst()) msg(c) else null }
+    /** How many messages show in this chat. */
+    fun count(cid: String): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM msgs WHERE cid=? AND kind NOT IN ($HIDDEN_SQL)", arrayOf(cid)).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+    private fun list(sql: String, args: Array<String>): List<ChatMsg> = readableDatabase.rawQuery(sql, args).use { c -> val out = ArrayList<ChatMsg>(); while (c.moveToNext()) out.add(msg(c)); out }
+    /** Messages of these kinds (newest first), in one chat or in all ([cid] empty). */
+    fun ofKinds(cid: String, kinds: Collection<String>, n: Int = 500): List<ChatMsg> {
+        val k = kinds.joinToString(",") { "'" + it.filter { ch -> ch.isLetter() } + "'" }
+        return if (cid.isEmpty()) list("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE kind IN ($k) ORDER BY at DESC LIMIT ?", arrayOf(n.toString()))
+            else list("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND kind IN ($k) ORDER BY at DESC LIMIT ?", arrayOf(cid, n.toString()))
+    }
+    /** ⭐ Starred messages (newest first), in one chat or in all. */
+    fun starred(cid: String = ""): List<ChatMsg> =
+        (if (cid.isEmpty()) list("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE body LIKE '%\"_star\":true%' ORDER BY at DESC LIMIT 500", arrayOf())
+         else list("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND body LIKE '%\"_star\":true%' ORDER BY at DESC LIMIT 500", arrayOf(cid))).filter { it.body.optBoolean("_star") }
+    /** Messages with links (newest first). */
+    fun withLinks(cid: String, n: Int = 300): List<ChatMsg> = list("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND kind='text' AND (body LIKE '%http%' OR body LIKE '%www.%') ORDER BY at DESC LIMIT ?", arrayOf(cid, n.toString()))
+    /** Messages whose words contain [q] (newest last), for search in a chat. */
+    fun search(cid: String, q: String, n: Int = 3000): List<ChatMsg> {
+        val s = q.trim().lowercase(); if (s.isEmpty()) return emptyList()
+        return list("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND kind NOT IN ($HIDDEN_SQL) AND body LIKE ? ORDER BY at ASC LIMIT ?", arrayOf(cid, "%" + s.replace("%", "").replace("_", "") + "%", n.toString()))
+            .filter { m -> listOf("text", "name", "title", "q", "note", "place").any { m.body.optString(it).lowercase().contains(s) } }
+    }
+    /** Disappearing messages: the ones past their time go (with their files). Returns how many. */
+    fun expire(): Int {
+        val now = System.currentTimeMillis()
+        val gone = ArrayList<Pair<String, String>>(); val files = ArrayList<String>()
+        readableDatabase.rawQuery("SELECT cid, id, body FROM msgs WHERE body LIKE '%\"_exp\"%'", null).use { c ->
+            while (c.moveToNext()) {
+                val b = try { JSONObject(c.getString(2) ?: "{}") } catch (e: Exception) { continue }
+                if (b.optLong("_exp") in 1 until now) { gone.add(c.getString(0) to c.getString(1)); b.optString("local").takeIf { it.isNotEmpty() }?.let { files.add(it) } }
+            }
+        }
+        for ((cid, id) in gone) deleteMsg(cid, id)
+        for (f in files) try { java.io.File(f).delete() } catch (e: Exception) { }
+        return gone.size
+    }
     /** Habit calls (the lines that stay in the chats), newest first. */
     fun callLogs(n: Int = 100): List<ChatMsg> = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE kind='clog' ORDER BY at DESC LIMIT ?", arrayOf(n.toString())).use { c ->
         val out = ArrayList<ChatMsg>(); while (c.moveToNext()) out.add(msg(c)); out }

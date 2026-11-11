@@ -14,6 +14,11 @@
 //  - Voice and video calls: the ring / answer / hang-up notes travel as locked messages like any other; the sound and
 //    video go straight between the phones (WebRTC). /api/chat/turn gives short-lived passwords for the call relay
 //    (coturn on this server, see turn-setup.sh) for phones that can't reach each other directly.
+//  - Like WhatsApp also: reactions, poll votes, edits and pins are small locked "control" notes (type "ctl"); groups can
+//    be "only admins send messages" and have a description and an invite link (/g/<code>); "typing…", online and last
+//    seen (hidden for people who hide theirs); status updates for 24 hours (locked for the people you chat with, the
+//    server only keeps who has seen them); communities (an announcements group plus the groups linked to it).
+//  - GIFs: the phone searches KLIPY or GIPHY itself (their rules), with the key kept in .env (GIF_KEY).
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -24,8 +29,12 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   fs.mkdirSync(FDIR, { recursive: true });
   const MAX_GROUP = 100, KEEP = 30 * 86400e3, BEFORE_ACCEPT = 5, WAIT_MS = Number(process.env.CHAT_WAIT_MS || 25000);
   const FILE_MAX = Number(process.env.CHAT_FILE_MAX_MB || 32) * 1024 * 1024 + 64 * 1024, FILES_MAX_BYTES = Number(process.env.CHAT_FILES_MAX_MB || 5000) * 1024 * 1024;
-  let db = { keys: {}, convs: {}, msgs: {}, inbox: {}, blocks: {}, tasks: {}, reports: [], files: {}, day: "", sent: {} };
+  let db = { keys: {}, convs: {}, msgs: {}, inbox: {}, blocks: {}, tasks: {}, reports: [], files: {}, day: "", sent: {}, status: {}, comms: {}, links: {}, priv: {}, seenAt: {} };
   try { db = Object.assign(db, JSON.parse(fs.readFileSync(FILE, "utf8"))); } catch (e) { }
+  const DAY = 86400e3;
+  /** When each person last had Habit open (online = within the last 40 s). Kept in memory, saved with the hourly tidy. */
+  const lastSeen = new Map(Object.entries(db.seenAt || {}));
+  const hidesSeen = u => (db.priv[u] || {}).seen === false;
   let timer = null;
   const save = () => { clearTimeout(timer); timer = setTimeout(() => { try { fs.writeFileSync(FILE + ".tmp", JSON.stringify(db)); fs.renameSync(FILE + ".tmp", FILE); } catch (e) { console.error("chat save:", e.message); } }, 300); };
   const str = (v, n) => String(v === undefined || v === null ? "" : v).slice(0, n);
@@ -39,8 +48,11 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   function push(uid, ev) {
     const b = box(uid);
     ev.n = ++b.n; ev.at = Date.now();
-    // one "conversation changed" or "ticks changed" event per chat is enough
+    // one "conversation changed" or "ticks changed" event per chat is enough (one "typing" per person and chat, and one
+    // "status updates changed" / "communities changed")
     if (ev.k === "c" || ev.k === "r") b.ev = b.ev.filter(e => !(e.k === ev.k && e.cid === ev.cid));
+    else if (ev.k === "t") b.ev = b.ev.filter(e => !(e.k === "t" && e.cid === ev.cid && e.u === ev.u));
+    else if (ev.k === "s" || ev.k === "v" || ev.k === "k") b.ev = b.ev.filter(e => e.k !== ev.k);
     b.ev.push(ev);
     if (b.ev.length > 5000) b.ev = b.ev.slice(-5000);
     const w = waiters.get(uid);
@@ -58,9 +70,74 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   function view(c, me) {
     const other = c.kind === "dm" ? c.members.find(u => u !== me) || c.gone : "";
     const p = other ? person(other) : null;
-    return { cid: c.id, kind: c.kind, name: c.kind === "dm" ? p.name : c.name, handle: p ? p.handle : "", emoji: c.kind === "dm" ? p.emoji : "👥", avatar: p ? p.avatar : "",
-      members: c.members.map(u => Object.assign(person(u), { admin: c.admins.includes(u), key: !!db.keys[u] })), admins: c.admins.slice(), by: c.by, at: c.at, last: c.last,
-      accepted: !!(c.st[me] && c.st[me].ok), seq: c.seq, st: ticks(c), blocked: !!other && blocked(me, other), member: c.members.includes(me) };
+    const k = c.comm && db.comms[c.comm];
+    return { cid: c.id, kind: c.kind, name: c.kind === "dm" ? p.name : c.name, handle: p ? p.handle : "", emoji: c.kind === "dm" ? p.emoji : (c.emoji || (c.ann ? "📢" : "👥")), avatar: p ? p.avatar : "",
+      other: other || "", members: c.members.map(u => Object.assign(person(u), { admin: c.admins.includes(u), key: !!db.keys[u] })), admins: c.admins.slice(), by: c.by, at: c.at, last: c.last,
+      accepted: !!(c.st[me] && c.st[me].ok), seq: c.seq, st: ticks(c), blocked: !!other && blocked(me, other), member: c.members.includes(me),
+      desc: c.desc || "", onlyAdmins: !!c.onlyAdmins, adminsEdit: c.adminsEdit !== false, ann: !!c.ann,
+      comm: k ? { id: k.id, name: k.name, emoji: k.emoji || "🏘️" } : null, link: c.kind === "group" && c.code && c.admins.includes(me) ? c.code : "" };
+  }
+  /** Someone leaves a group (a group with nobody left is deleted). */
+  function leaveConv(c, u) {
+    c.members = c.members.filter(x => x !== u); c.admins = c.admins.filter(x => x !== u); delete c.st[u];
+    push(u, { k: "x", cid: c.id });
+    if (c.kind === "group" && c.members.length) {
+      if (!c.admins.length) c.admins.push(c.members[0]);          // a group always has an admin
+      sysMsg(c, { what: "left", by: u });
+      pushAll(c, { k: "c", cid: c.id });
+    }
+    if (!c.members.length) { if (c.code) delete db.links[c.code]; delete db.convs[c.id]; delete db.msgs[c.id]; delete db.tasks[c.id]; }
+  }
+
+  // ---------- communities: an announcements group (only admins write) plus groups linked to it ----------
+  const commAdmin = (k, u) => { const ann = db.convs[k.ann]; return !!ann && ann.admins.includes(u); };
+  const inComm = (k, u) => { const ann = db.convs[k.ann]; return (!!ann && ann.members.includes(u)) || k.groups.some(g => db.convs[g] && db.convs[g].members.includes(u)); };
+  function commView(k, me) {
+    const ann = db.convs[k.ann];
+    return { id: k.id, name: k.name, desc: k.desc || "", emoji: k.emoji || "🏘️", admin: commAdmin(k, me), by: k.by, at: k.at, ann: ann ? k.ann : "", people: ann ? ann.members.length : 0,
+      groups: k.groups.map(g => db.convs[g]).filter(Boolean).map(g => ({ cid: g.id, name: g.name, emoji: g.emoji || "👥", n: g.members.length, joined: g.members.includes(me) })) };
+  }
+  /** Everyone in a community's groups is also in its announcements group. */
+  function syncComm(k) {
+    const ann = db.convs[k.ann]; if (!ann) return;
+    const add = [];
+    for (const gid of k.groups) { const g = db.convs[gid]; if (g) for (const u of g.members) if (!ann.members.includes(u) && !add.includes(u)) add.push(u); }
+    if (!add.length) return;
+    for (const u of add) { ann.members.push(u); ann.st[u] = { ok: true, d: ann.seq, r: ann.seq }; }
+    sysMsg(ann, { what: "joined", who: add });
+    pushAll(ann, { k: "c", cid: ann.id });
+  }
+  function pushComm(k) {
+    const all = new Set((db.convs[k.ann] || { members: [] }).members);
+    for (const g of k.groups) (db.convs[g] || { members: [] }).members.forEach(u => all.add(u));
+    for (const u of all) push(u, { k: "k" });
+  }
+  /** Links the groups [list] (this admin's own, not in another community) to community [k]. */
+  function linkGroups(k, me, list) {
+    for (const cid of (Array.isArray(list) ? list : []).map(x => str(x, 40))) {
+      const g = db.convs[cid];
+      if (!g || g.kind !== "group" || g.ann || g.comm || !g.admins.includes(me) || k.groups.length >= 50) continue;
+      k.groups.push(cid); g.comm = k.id;
+      sysMsg(g, { what: "linked", by: me, name: k.name });
+      pushAll(g, { k: "c", cid });
+    }
+  }
+  function unlinkGroup(k, cid, me) {
+    const g = db.convs[cid];
+    k.groups = k.groups.filter(x => x !== cid);
+    if (g) { delete g.comm; sysMsg(g, { what: "unlinked", by: me, name: k.name }); pushAll(g, { k: "c", cid }); }
+  }
+  const commOfConv = c => c.comm && db.comms[c.comm];
+  const newCode = () => { let code; do { code = crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, "").slice(0, 12); } while (db.links[code] || code.length < 10); return code; };
+
+  // ---------- status updates (24 hours) ----------
+  const liveStatus = uid => (db.status[uid] || []).filter(s => Date.now() - s.at < DAY);
+  function dropStatus(s) { for (const f of s.files || []) { try { fs.rmSync(path.join(FDIR, f), { force: true }); } catch (e) { } delete db.files[f]; } }
+  const typingMinute = new Map();
+  function typingOk(me) {
+    const now = Date.now(), l = (typingMinute.get(me) || []).filter(t => now - t < 60e3);
+    if (l.length >= 40) return false;
+    l.push(now); typingMinute.set(me, l); return true;
   }
   const ticks = c => { const o = {}; for (const u of c.members) o[u] = { d: (c.st[u] || {}).d || 0, r: (c.st[u] || {}).r || 0 }; return o; };
   function sysMsg(c, sys) {
@@ -128,6 +205,7 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   async function handle(req, res, url, origin) {
     const p = url.pathname;
     if (p.startsWith("/c/") && req.method === "GET") return invitePage(req, res, decodeURIComponent(p.slice(3)));
+    if (p.startsWith("/g/") && req.method === "GET") return groupPage(req, res, decodeURIComponent(p.slice(3)));
     if (!p.startsWith("/api/chat/")) return false;
     const send = (st, o) => { h.send(res, st, o, origin); return true; };
     const me = social.who(req);
@@ -170,6 +248,60 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
       if (!c || !c.members.includes(me)) return send(404, { error: "Not found" });
       return send(200, { keys: keysOf(c.members) });
     }
+    // the people I chat with one-to-one (both accepted, nobody blocked), with their keys: for status updates, new calls
+    // and broadcast lists
+    if (p === "/api/chat/contacts" && req.method === "GET") {
+      const people = [];
+      for (const c of Object.values(db.convs)) {
+        if (c.kind !== "dm" || !c.members.includes(me)) continue;
+        const u = c.members.find(x => x !== me);
+        if (!u || !(c.st[me] && c.st[me].ok) || !(c.st[u] && c.st[u].ok) || blocked(me, u) || blocked(u, me) || !db.keys[u]) continue;
+        const pp = social.person(u);
+        if (pp) people.push(Object.assign({}, pp, { cid: c.id, pub: db.keys[u].pub, kid: db.keys[u].kid }));
+      }
+      return send(200, { people, me: { uid: me, pub: db.keys[me].pub, kid: db.keys[me].kid } });
+    }
+    // online / last seen of someone I chat with (nothing for people who hide theirs, and nothing if I hide mine)
+    if (p === "/api/chat/presence" && req.method === "GET") {
+      const u = str(url.searchParams.get("uid"), 40);
+      const shared = !!u && u !== me && Object.values(db.convs).some(c => c.kind === "dm" && c.members.includes(me) && c.members.includes(u) && c.st[me] && c.st[me].ok && c.st[u] && c.st[u].ok);
+      if (!shared || blocked(u, me) || blocked(me, u)) return send(200, { on: false, at: 0 });
+      if (hidesSeen(u) || hidesSeen(me)) return send(200, { on: false, at: 0, hidden: true });
+      const at = Number(lastSeen.get(u)) || 0;
+      return send(200, { on: Date.now() - at < 40e3, at });
+    }
+    if (p === "/api/chat/privacy" && req.method === "GET") return send(200, { seen: !hidesSeen(me) });
+    // status updates I can see (locked; only the key for me is given), and mine with who has seen them
+    if (p === "/api/chat/status" && req.method === "GET") {
+      const updates = [];
+      for (const [owner, list] of Object.entries(db.status)) {
+        if (owner === me || blocked(me, owner) || blocked(owner, me)) continue;
+        const items = list.filter(s => Date.now() - s.at < DAY && s.env.keys[me]).map(s => ({ id: s.id, at: s.at, kind: s.kind || "text", seen: !!s.views[me],
+          env: { v: 1, epk: s.env.epk, iv: s.env.iv, ct: s.env.ct, key: s.env.keys[me] } }));
+        const pp = items.length ? social.person(owner) : null;
+        if (pp) updates.push({ owner, person: pp, items });
+      }
+      const mine = liveStatus(me).map(s => ({ id: s.id, at: s.at, kind: s.kind || "text", env: { v: 1, epk: s.env.epk, iv: s.env.iv, ct: s.env.ct, key: s.env.keys[me] || "" },
+        views: Object.entries(s.views).map(([u, at]) => Object.assign({ at }, person(u))).sort((a, b) => b.at - a.at) }));
+      return send(200, { updates, mine });
+    }
+    if (p === "/api/chat/communities" && req.method === "GET") {
+      return send(200, { communities: Object.values(db.comms).filter(k => inComm(k, me)).map(k => commView(k, me)) });
+    }
+    // a group invite link: what the group is, before joining
+    if (p === "/api/chat/group/peek" && req.method === "GET") {
+      const c = db.convs[db.links[str(url.searchParams.get("code"), 20)] || ""];
+      if (!c || c.kind !== "group") return send(404, { error: "This invite link doesn't work any more. Ask for a new one." });
+      return send(200, { name: c.name, emoji: c.emoji || "👥", n: c.members.length, desc: c.desc || "", member: c.members.includes(me), cid: c.id });
+    }
+    // GIFs: the phone searches KLIPY or GIPHY itself (their rules allow only the app to ask), with the key from .env
+    if (p === "/api/chat/gifkey" && req.method === "GET") {
+      const key = process.env.GIF_KEY || process.env.KLIPY_KEY || process.env.GIPHY_KEY || "";
+      if (!key) return send(200, { key: "" });
+      const giphyOnly = process.env.GIPHY_KEY && !process.env.GIF_KEY && !process.env.KLIPY_KEY;
+      const base = String(process.env.GIF_API || (giphyOnly ? "https://api.giphy.com/v2" : "https://api.klipy.com/v2")).replace(/\/+$/, "");
+      return send(200, { key, base, name: /giphy/i.test(base) ? "GIPHY" : "KLIPY" });
+    }
 
     // calls: where the phones find each other (STUN), and the relay for when they can't (TURN, short-lived password)
     if (p === "/api/chat/turn" && req.method === "GET") {
@@ -189,6 +321,8 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
     // the long wait for new messages
     if (p === "/api/chat/sync" && req.method === "GET") {
       const c0 = Math.max(0, Number(url.searchParams.get("c")) || 0);
+      const fg = url.searchParams.get("fg") === "1";        // the app is open on the screen (not only the floating pet)
+      if (fg) lastSeen.set(me, Date.now());
       ack(me, c0);
       const pending = () => box(me).ev.filter(e => e.n > c0);
       let ev = pending();
@@ -201,14 +335,18 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
           t = setTimeout(wake, WAIT_MS);
           res.on("close", wake);
         });
+        if (fg) lastSeen.set(me, Date.now());
         if (res.writableEnded || res.destroyed) return true;
         ev = pending();
       }
       ev = ev.slice(0, 300);
-      const out = { cursor: ev.length ? ev[ev.length - 1].n : c0, convs: [], msgs: [], ticks: [], gone: [], more: pending().length > ev.length, now: Date.now() };
+      const out = { cursor: ev.length ? ev[ev.length - 1].n : c0, convs: [], msgs: [], ticks: [], gone: [], typing: [], more: pending().length > ev.length, now: Date.now() };
       const seen = new Set();
       for (const e of ev) {
+        if (e.k === "s" || e.k === "v") { out.status = true; continue; }       // status updates changed: the phone asks for them
+        if (e.k === "k") { out.comms = true; continue; }                      // communities changed
         const c = db.convs[e.cid];
+        if (e.k === "t") { if (c && c.members.includes(me)) out.typing.push({ cid: c.id, u: e.u, on: e.on !== false, what: e.what || "", at: e.at }); continue; }
         if (e.k === "x" || (c && !c.members.includes(me))) { if (!seen.has("x" + e.cid)) { seen.add("x" + e.cid); out.gone.push(e.cid); } continue; }
         if (!c) continue;
         if (e.k === "c" && !seen.has("c" + e.cid)) { seen.add("c" + e.cid); out.convs.push(view(c, me)); }
@@ -267,14 +405,131 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         save();
         return send(200, { conv: view(c, me) });
       }
+      // last seen and online: on or off (off: others don't see mine, and I don't see theirs)
+      if (p === "/api/chat/privacy") {
+        const pr = db.priv[me] || (db.priv[me] = {});
+        if (body.seen !== undefined) pr.seen = !!body.seen;
+        save();
+        return send(200, { seen: !hidesSeen(me) });
+      }
+      // a status update: locked on the phone for the people chosen (only people who know me can get a key)
+      if (p === "/api/chat/status") {
+        const env = body.env || {};
+        if (env.v !== 1 || typeof env.ct !== "string" || typeof env.iv !== "string" || typeof env.epk !== "string" || !env.keys || typeof env.keys !== "object" || env.ct.length > 200000)
+          return send(400, { error: "Bad update." });
+        if (!rate(me)) return send(429, { error: "Too many. Please wait a little." });
+        const id = str(body.id, 40) || "s" + crypto.randomBytes(6).toString("hex");
+        const list = db.status[me] = liveStatus(me);
+        const dup = list.find(s => s.id === id);
+        if (dup) return send(200, { id, at: dup.at });
+        if (list.length >= 30) return send(429, { error: "You can share up to 30 status updates in a day." });
+        const keys = {};
+        for (const [u, k] of Object.entries(env.keys)) if (u === me || (db.keys[u] && !blocked(u, me) && !blocked(me, u) && knows(me, u))) keys[u] = str(k, 400);
+        if (!keys[me]) return send(400, { error: "Bad update." });
+        const files = (Array.isArray(body.files) ? body.files : []).map(x => str(x, 40)).filter(f => db.files[f] && db.files[f].by === me).slice(0, 2);
+        const s = { id, at: Date.now(), kind: ["text", "photo", "video"].includes(body.kind) ? body.kind : "text", env: { v: 1, epk: str(env.epk, 400), iv: str(env.iv, 40), ct: env.ct, keys }, files, views: {} };
+        list.push(s);
+        for (const u of Object.keys(keys)) if (u !== me) push(u, { k: "s" });
+        save();
+        return send(200, { id, at: s.at, to: Object.keys(keys).length - 1 });
+      }
+      if (p === "/api/chat/status/seen") {
+        const owner = str(body.owner, 40), s = liveStatus(owner).find(x => x.id === str(body.id, 40));
+        if (s && owner !== me && s.env.keys[me] && !s.views[me]) { s.views[me] = Date.now(); push(owner, { k: "v" }); save(); }
+        return send(200, { ok: true });
+      }
+      if (p === "/api/chat/status/delete") {
+        const id = str(body.id, 40), list = db.status[me] || [], s = list.find(x => x.id === id);
+        if (s) { dropStatus(s); db.status[me] = list.filter(x => x !== s); for (const u of Object.keys(s.env.keys)) if (u !== me) push(u, { k: "s" }); save(); }
+        return send(200, { ok: true });
+      }
+      // communities
+      if (p === "/api/chat/community") {
+        const name = str(body.name, 40).replace(/[\r\n]/g, " ").trim();
+        if (name.length < 2) return send(400, { error: "Give the community a name." });
+        if (Object.values(db.comms).filter(k => k.by === me).length >= 20) return send(429, { error: "You've made many communities already." });
+        const id = "k" + crypto.randomBytes(8).toString("hex"), gid = "g" + crypto.randomBytes(8).toString("hex");
+        const desc = str(body.desc, 500).trim(), emoji = str(body.emoji, 16).trim() || "🏘️";
+        const ann = db.convs[gid] = { id: gid, kind: "group", members: [me], admins: [me], name, by: me, at: Date.now(), last: Date.now(), seq: 0, st: { [me]: { ok: true, d: 0, r: 0 } }, told: null,
+          onlyAdmins: true, ann: true, comm: id, emoji: "📢", desc };
+        const k = db.comms[id] = { id, name, desc, emoji, by: me, at: Date.now(), groups: [], ann: gid };
+        sysMsg(ann, { what: "community", by: me, name });
+        linkGroups(k, me, body.groups);
+        syncComm(k);
+        pushAll(ann, { k: "c", cid: gid }); pushComm(k);
+        save();
+        return send(200, { community: commView(k, me), conv: view(ann, me) });
+      }
+      if (p.startsWith("/api/chat/community/")) {
+        const k = db.comms[str(body.id, 40)];
+        if (!k || !inComm(k, me)) return send(404, { error: "This community isn't there any more." });
+        const ann = db.convs[k.ann];
+        if (p === "/api/chat/community/edit") {
+          if (!commAdmin(k, me)) return send(403, { error: "Only a community admin can do that." });
+          const name = str(body.name, 40).replace(/[\r\n]/g, " ").trim();
+          if (name.length >= 2 && name !== k.name) { k.name = name; if (ann) { ann.name = name; sysMsg(ann, { what: "name", by: me, name }); } }
+          if (body.desc !== undefined) { k.desc = str(body.desc, 500).trim(); if (ann) ann.desc = k.desc; }
+          if (body.emoji !== undefined && str(body.emoji, 16).trim()) k.emoji = str(body.emoji, 16).trim();
+          linkGroups(k, me, body.add);
+          for (const cid of (Array.isArray(body.remove) ? body.remove : []).map(x => str(x, 40))) if (k.groups.includes(cid)) unlinkGroup(k, cid, me);
+          syncComm(k);
+          if (ann) pushAll(ann, { k: "c", cid: ann.id });
+          pushComm(k); save();
+          return send(200, { community: commView(k, me) });
+        }
+        if (p === "/api/chat/community/join") {
+          const g = db.convs[str(body.cid, 40)];
+          if (!g || !k.groups.includes(g.id)) return send(404, { error: "That group isn't in this community any more." });
+          if (!g.members.includes(me)) {
+            if (g.members.length >= MAX_GROUP) return send(400, { error: `That group is full (${MAX_GROUP} people).` });
+            g.members.push(me); g.st[me] = { ok: true, d: g.seq, r: g.seq };
+            sysMsg(g, { what: "joined", who: [me] });
+            pushAll(g, { k: "c", cid: g.id }); syncComm(k); push(me, { k: "k" }); save();
+          }
+          return send(200, { conv: view(g, me) });
+        }
+        if (p === "/api/chat/community/leave") {
+          for (const cid of [k.ann, ...k.groups]) { const g = db.convs[cid]; if (g && g.members.includes(me)) leaveConv(g, me); }
+          push(me, { k: "k" }); save();
+          return send(200, { ok: true });
+        }
+        if (p === "/api/chat/community/delete") {
+          if (!commAdmin(k, me)) return send(403, { error: "Only a community admin can do that." });
+          pushComm(k);
+          for (const cid of k.groups.slice()) unlinkGroup(k, cid, me);
+          if (ann) { for (const u of ann.members) push(u, { k: "x", cid: ann.id }); delete db.convs[ann.id]; delete db.msgs[ann.id]; delete db.tasks[ann.id]; }
+          delete db.comms[k.id];
+          save();
+          return send(200, { ok: true });
+        }
+        return send(404, { error: "Not found" });
+      }
+      // joining a group with its invite link
+      if (p === "/api/chat/join") {
+        const c = db.convs[db.links[str(body.code, 20)] || ""];
+        if (!c || c.kind !== "group") return send(404, { error: "This invite link doesn't work any more. Ask for a new one." });
+        if (!c.members.includes(me)) {
+          if (c.members.length >= MAX_GROUP) return send(400, { error: `This group is full (${MAX_GROUP} people).` });
+          c.members.push(me); c.st[me] = { ok: true, d: c.seq, r: c.seq };
+          sysMsg(c, { what: "joined", who: [me], link: true });
+          pushAll(c, { k: "c", cid: c.id });
+          const k = commOfConv(c); if (k) { syncComm(k); pushComm(k); }
+          save();
+        }
+        return send(200, { conv: view(c, me) });
+      }
       const c = db.convs[str(body.cid, 40)];
       if (!c || !c.members.includes(me)) return send(404, { error: "This chat isn't there any more." });
       const admin = c.kind === "dm" || c.admins.includes(me);
 
       if (p === "/api/chat/group/edit") {
         if (c.kind !== "group") return send(400, { error: "Only groups can be changed." });
-        if (!admin) return send(403, { error: "Only a group admin can do that." });
         const list = k => [...new Set((Array.isArray(body[k]) ? body[k] : []).map(x => str(x, 40)))];
+        // people and settings: admins only; the name, picture and description: admins, or everyone if the group allows it
+        const people = ["add", "remove", "admin", "unadmin"].some(k => list(k).length) || body.onlyAdmins !== undefined || body.adminsEdit !== undefined;
+        const info = body.name !== undefined || body.desc !== undefined || body.emoji !== undefined;
+        if (people && !admin) return send(403, { error: "Only a group admin can do that." });
+        if (info && !admin && c.adminsEdit !== false) return send(403, { error: "Only admins can change this group's name, picture and description." });
         const add = list("add").filter(u => !c.members.includes(u) && social.person(u) && db.keys[u] && !blocked(u, me));
         if (c.members.length + add.length > MAX_GROUP) return send(400, { error: `A group can have up to ${MAX_GROUP} people.` });
         for (const u of add) { c.members.push(u); c.st[u] = { ok: knows(u, me), d: c.seq, r: c.seq }; }
@@ -289,20 +544,36 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         if (up.length || down.length) sysMsg(c, { what: "admins", by: me, who: up, not: down });
         const name = str(body.name, 40).replace(/[\r\n]/g, " ").trim();
         if (name && name.length >= 2 && name !== c.name) { c.name = name; sysMsg(c, { what: "name", by: me, name }); }
+        if (body.desc !== undefined) { const d = str(body.desc, 500).trim(); if (d !== (c.desc || "")) { c.desc = d; sysMsg(c, { what: "desc", by: me }); } }
+        if (body.emoji !== undefined) { const e = str(body.emoji, 16).trim(); if (e && e !== c.emoji) { c.emoji = e; sysMsg(c, { what: "emoji", by: me, emoji: e }); } }
+        if (body.onlyAdmins !== undefined && !!body.onlyAdmins !== !!c.onlyAdmins) { c.onlyAdmins = !!body.onlyAdmins; sysMsg(c, { what: "only", by: me, on: c.onlyAdmins }); }
+        if (body.adminsEdit !== undefined && !!body.adminsEdit !== (c.adminsEdit !== false)) { c.adminsEdit = !!body.adminsEdit; sysMsg(c, { what: "infoedit", by: me, on: c.adminsEdit }); }
+        const k = commOfConv(c);
+        if (k) { if (c.ann) { k.name = c.name; k.desc = c.desc || ""; } syncComm(k); pushComm(k); }
         pushAll(c, { k: "c", cid: c.id });
         purge(c); save();
         return send(200, { conv: view(c, me) });
       }
+      // the group's invite link (admins): make one, make a new one (the old one stops working), or turn it off
+      if (p === "/api/chat/group/link") {
+        if (c.kind !== "group" || c.ann) return send(400, { error: "Only groups have invite links." });
+        if (!admin) return send(403, { error: "Only a group admin can do that." });
+        if (body.off) { if (c.code) delete db.links[c.code]; c.code = ""; }
+        else if (!c.code || body.reset) { if (c.code) delete db.links[c.code]; c.code = newCode(); db.links[c.code] = c.id; }
+        pushAll(c, { k: "c", cid: c.id }); save();
+        return send(200, { code: c.code || "", url: c.code ? h.baseUrl(req) + "/g/" + c.code : "", conv: view(c, me) });
+      }
+      // "typing…" / "recording audio…" (not kept: a few seconds old is already stale)
+      if (p === "/api/chat/typing") {
+        if (!typingOk(me)) return send(200, { ok: true });
+        const other = c.kind === "dm" ? c.members.find(u => u !== me) : "";
+        if (!(c.st[me] && c.st[me].ok) || (other && (blocked(other, me) || blocked(me, other)))) return send(200, { ok: true });
+        for (const u of c.members) if (u !== me && c.st[u] && c.st[u].ok) push(u, { k: "t", cid: c.id, u: me, on: body.on !== false, what: body.what === "rec" ? "rec" : "" });
+        return send(200, { ok: true });
+      }
       if (p === "/api/chat/leave") {
         if (c.kind === "dm") return send(200, { ok: true });      // a one-to-one chat is only cleared on the phone
-        c.members = c.members.filter(u => u !== me); c.admins = c.admins.filter(u => u !== me); delete c.st[me];
-        push(me, { k: "x", cid: c.id });
-        if (c.kind === "group" && c.members.length) {
-          if (!c.admins.length) c.admins.push(c.members[0]);          // a group always has an admin
-          sysMsg(c, { what: "left", by: me });
-          pushAll(c, { k: "c", cid: c.id });
-        }
-        if (!c.members.length) { delete db.convs[c.id]; delete db.msgs[c.id]; delete db.tasks[c.id]; }
+        leaveConv(c, me);
         save();
         return send(200, { ok: true });
       }
@@ -322,11 +593,15 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
         return send(200, { ok: true });
       }
       if (p === "/api/chat/send") {
-        const type = body.type === "task" ? "task" : "msg";
+        // "ctl": a small control note (a reaction, a poll vote, an edit, a pin…): allowed in "only admins" groups too;
+        // the phones check what it really is after opening it
+        const type = body.type === "task" ? "task" : body.type === "ctl" ? "ctl" : "msg";
         const env = body.env || {};
         if (env.v !== 1 || typeof env.ct !== "string" || typeof env.iv !== "string" || typeof env.epk !== "string" || !env.keys || typeof env.keys !== "object" || env.ct.length > 200000)
           return send(400, { error: "Bad message." });
         if (!rate(me) || sentToday(me) >= 3000) return send(429, { error: "Too many messages. Please wait a little." });
+        if (c.kind === "group" && c.onlyAdmins && !admin && (type === "msg" || (type === "task" && (body.task || {}).action === "new")))
+          return send(403, { error: "Only admins can send messages in this group." });
         const id = str(body.id, 40);
         const list = db.msgs[c.id] || (db.msgs[c.id] = []);
         const dup = id && list.find(m => m.from === me && m.id === id);
@@ -410,6 +685,26 @@ ${hd ? `<a class="a" href="${esc(app)}">💬 Open in Habit AI</a>` : ""}<a class
     res.end(html);
     return true;
   }
+  // ---------- a group's invite link: bigdai.tech/g/<code> ----------
+  function groupPage(req, res, code) {
+    const c = db.convs[db.links[String(code || "").slice(0, 20)] || ""];
+    const ok = !!c && c.kind === "group";
+    const name = ok ? c.name : "This invite link doesn't work any more";
+    const app = `intent://group/${encodeURIComponent(code)}#Intent;scheme=bigd;S.browser_fallback_url=${encodeURIComponent(h.baseUrl(req) + "/download")};end`;
+    const html = `<!doctype html><html lang="te"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(name)} · Habit Chat group</title><link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"><meta property="og:image" content="${esc(h.baseUrl(req))}/icon-512.png">
+<meta property="og:title" content="${ok ? "Join \"" + esc(c.name) + "\" on Habit Chat" : "Habit Chat"}"><meta property="og:description" content="${ok ? c.members.length + " people · locked end to end, Telugu and English." : "Ask for a new invite link."}">
+<style>body{margin:0;font-family:system-ui,sans-serif;background:#0F1330;color:#ECEFF7;display:flex;min-height:100vh;align-items:center;justify-content:center}
+main{background:#1E2550;border-radius:20px;padding:28px 22px;max-width:360px;margin:16px;text-align:center}
+.e{font-size:56px}h1{font-size:22px;margin:8px 0}p{color:#9AA3C7;line-height:1.5}a{display:block;margin-top:12px;padding:14px;border-radius:14px;text-decoration:none;font-weight:700}
+.a{background:#F6C453;color:#0F1330}.b{background:#2A3266;color:#ECEFF7}</style></head><body><main>
+<div class="e">${esc(ok ? c.emoji || "👥" : "🔗")}</div><h1>${esc(name)}</h1>
+<p>${ok ? c.members.length + " people · గ్రూప్‌లో చేరడానికి ఆహ్వానం<br>" + esc(c.desc || "") : "Ask the group admin for a new link."}</p>
+${ok ? `<a class="a" href="${esc(app)}">👥 Join in Habit AI</a>` : ""}<a class="b" href="/download">Get Habit AI (free)</a></main></body></html>`;
+    res.writeHead(ok ? 200 : 404, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(html);
+    return true;
+  }
 
   // ---------- tidy up: messages and files older than 30 days ----------
   function tidyFiles() {
@@ -424,16 +719,28 @@ ${hd ? `<a class="a" href="${esc(app)}">💬 Open in Habit AI</a>` : ""}<a class
   function tidy() {
     const now = Date.now();
     for (const [cid, list] of Object.entries(db.msgs)) { db.msgs[cid] = list.filter(m => now - m.at < KEEP); if (!db.msgs[cid].length) delete db.msgs[cid]; }
-    for (const b of Object.values(db.inbox)) b.ev = b.ev.filter(e => now - e.at < KEEP);
+    // old "typing…" notes go after a minute
+    for (const b of Object.values(db.inbox)) b.ev = b.ev.filter(e => now - e.at < (e.k === "t" ? 60e3 : KEEP));
     for (const T of Object.values(db.tasks)) for (const [id, t] of Object.entries(T)) if (t.state === "closed" && now - (t.last || t.at) > 60 * 86400e3) delete T[id];
+    // status updates go after 24 hours (with their photos and videos)
+    for (const [u, list] of Object.entries(db.status)) {
+      const keep = [];
+      for (const s of list) { if (now - s.at < DAY) keep.push(s); else dropStatus(s); }
+      if (keep.length) db.status[u] = keep; else delete db.status[u];
+    }
+    // communities whose announcements group is gone; invite links of groups that are gone
+    for (const [id, k] of Object.entries(db.comms)) if (!db.convs[k.ann]) { for (const g of k.groups) if (db.convs[g]) delete db.convs[g].comm; delete db.comms[id]; }
+    for (const [code, cid] of Object.entries(db.links)) if (!db.convs[cid] || db.convs[cid].code !== code) delete db.links[code];
+    db.seenAt = Object.fromEntries(lastSeen);
     tidyFiles(); save();
   }
-  setInterval(tidy, 6 * 3600e3).unref();
+  setInterval(tidy, 3600e3).unref();
 
   function stats() {
     const convs = Object.values(db.convs);
     return { people: Object.keys(db.keys).length, chats: convs.filter(c => c.kind === "dm").length, groups: convs.filter(c => c.kind === "group").length,
-      waiting: Object.values(db.msgs).reduce((a, l) => a + l.length, 0), files: Object.keys(db.files).length, reports: db.reports.length };
+      waiting: Object.values(db.msgs).reduce((a, l) => a + l.length, 0), files: Object.keys(db.files).length, reports: db.reports.length,
+      statuses: Object.values(db.status).reduce((a, l) => a + l.filter(s => Date.now() - s.at < DAY).length, 0), communities: Object.keys(db.comms).length };
   }
   function reports() { return db.reports.slice(-100).reverse().map(r => Object.assign({}, r, { byName: person(r.by).name, whoName: r.who ? person(r.who).name : "", whoHandle: r.who ? person(r.who).handle : "" })); }
 
