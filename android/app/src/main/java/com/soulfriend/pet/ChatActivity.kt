@@ -494,7 +494,7 @@ class ChatActivity : Activity() {
             avatarBox.addView(ChatDraw.avatar(this, store, c.emoji, if (c.isDm) c.avatar else "", dp(42), null, c.name, c.isGroup || c.isBcast, c.cid, c.isAi), FrameLayout.LayoutParams(-1, -1))
         }
         title.text = c.name
-        sub.text = subtitle(c)
+        sub.text = Ico.iconize(this, subtitle(c), "🔒 ", R.drawable.ic_lock, ChatTheme.SUB, dp(13))
         val typing = ChatSync.typingIn(cid).isNotEmpty() || (c.isAi && ChatSync.aiBusy)
         val online = presence.isNotEmpty() && presence == t("online", "ఆన్‌లైన్‌లో ఉన్నారు")
         sub.setTextColor(if (typing) ChatTheme.GOLD_TXT else if (online) ChatTheme.ONLINE_TXT else ChatTheme.SUB)
@@ -1053,7 +1053,7 @@ class ChatActivity : Activity() {
             if (playingId == m.id) stopPlaying() else play(m.id, local)
         }
         row.addView(btn, LinearLayout.LayoutParams(dp(40), dp(40)))
-        val wave = Wave(this, m.id, k.accent).apply { progress = if (playing) playProgress() else 0f }
+        val wave = Wave(this, m.id, k.accent, k.waveRest).apply { progress = if (playing) playProgress() else 0f }
         if (playing) playingWave = wave
         row.addView(wave, LinearLayout.LayoutParams(0, dp(30), 1f).apply { marginStart = dp(10); marginEnd = dp(4) })
         box.addView(row)
@@ -1119,7 +1119,7 @@ class ChatActivity : Activity() {
             addView(ui.text(word, 10.5f, Color.WHITE).apply { gravity = Gravity.CENTER; typeface = Fonts.heavy(context); background = ui.round(tile, 10); setLineSpacing(0f, 1f) }, LinearLayout.LayoutParams(dp(40), dp(48)))
             addView(LinearLayout(this@ChatActivity).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, dp(8), 0)
-                addView(ui.text(name, 14f, k.txt, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
+                addView(ui.text(name, 14f, k.txt, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
                 addView(ui.text(listOf(ext, sizeText(m.body.optLong("size"))).filter { it.isNotBlank() }.joinToString(" · "), 12f, k.sub))
             }, LinearLayout.LayoutParams(0, -2, 1f))
             val res = when { !ready && ChatSync.isFetching(m) -> R.drawable.ic_clock; !ready -> R.drawable.ic_download; audio && playingId == m.id -> R.drawable.ic_pause; audio -> R.drawable.ic_play; else -> R.drawable.ic_chevron_right }

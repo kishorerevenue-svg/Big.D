@@ -115,7 +115,15 @@ object ChatTheme {
      * [gold]: gold words (mentions, "View votes"). [button]: the small round button on a file.
      */
     class Ink(val bg: Int, val edge: Int?, val txt: Int, val sub: Int, val accent: Int, val onAccent: Int, val link: Int,
-              val inner: Int, val read: Int, val tick: Int, val gold: Int, val button: Int, val btn: Int, val onBtn: Int, val outline: Int)
+              val inner: Int, val read: Int, val tick: Int, val gold: Int, val button: Int, val btn: Int, val onBtn: Int, val outline: Int) {
+        /** A voice note's bars not played yet. */
+        val waveRest: Int get() = when (accent) {
+            c("#14182E") -> c("#5914182E")           // on my gold bubble
+            c("#F2B53A") -> c("#59FFFFFF")           // on my navy bubble
+            c("#F5C451") -> c("#66A9B0D3")           // their bubble, navy look
+            else -> c("#4D10163A")                   // their bubble, light look
+        }
+    }
     fun ink(mine: Boolean): Ink = when {
         mine && dark -> Ink(c("#F5C451"), null, c("#14182E"), c("#5C4A16"), c("#14182E"), c("#F5C451"), c("#1D4E9E"), c("#1A14182E"), c("#1D5FBF"),
             c("#5C4A16"), c("#14182E"), c("#2414182E"), c("#14182E"), c("#F5C451"), c("#5514182E"))

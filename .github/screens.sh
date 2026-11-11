@@ -24,8 +24,18 @@ shot() { # theme screen name [language]
   echo "== $3: $(adb shell dumpsys window | grep -m1 mCurrentFocus)" >> android/shots/focus.txt
   adb exec-out screencap -p > "android/shots/$3.png"
 }
+snap() { sleep 2; adb exec-out screencap -p > "android/shots/$1.png"; }
 for th in dark light; do
   for sc in list chat group settings info ai devices; do shot $th $sc "$th-$sc"; done
+  # the group's older messages (the task card and the poll)
+  shot $th group "$th-group"
+  adb shell input swipe 540 800 540 2000 250; adb shell input swipe 540 800 540 2000 250; snap "$th-group-top"
+  # the attach sheet, and the long-press menu of a message
+  shot $th chat "$th-chat"
+  adb shell input tap 630 2242; snap "$th-attach"
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+  adb shell input swipe 360 1890 360 1890 900; snap "$th-menu"
+  adb shell input keyevent KEYCODE_BACK
 done
 # Telugu words take more room: check they fit
 shot dark list te-dark-list te
@@ -37,5 +47,6 @@ sleep 4
 shot auto list auto-night-list
 shot auto chat auto-night-chat
 adb shell cmd uimode night no
-adb logcat -d -t 600 '*:E' | grep -iv "wifi\|bluetooth\|telephony" | tail -150 > android/shots/errors.txt || true
+adb logcat -d -b crash > android/shots/crash.txt || true
+adb logcat -d | grep -E "soulfriend|kishore|AndroidRuntime|FATAL" | tail -300 > android/shots/app-log.txt || true
 ls -la android/shots

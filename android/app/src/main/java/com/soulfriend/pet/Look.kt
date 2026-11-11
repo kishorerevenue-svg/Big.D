@@ -78,6 +78,18 @@ object Ico {
         else { sb.append("⁠ "); sb.setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE); sb.append(words) }
         return sb
     }
+    /** Words where each [token] (an emoji like "🔒 ") becomes a small icon. */
+    fun iconize(ctx: Context, words: String, token: String, res: Int, color: Int, sizePx: Int): CharSequence {
+        if (!words.contains(token)) return words
+        val sb = SpannableStringBuilder(words)
+        var i = words.indexOf(token)
+        while (i >= 0) {
+            val span = ImageSpan(d(ctx, res, color, sizePx), if (Build.VERSION.SDK_INT >= 29) ImageSpan.ALIGN_CENTER else ImageSpan.ALIGN_BASELINE)
+            sb.setSpan(span, i, i + token.trimEnd().length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            i = words.indexOf(token, i + token.length)
+        }
+        return sb
+    }
     /** Sets a TextView's words with a small icon before them. */
     fun label(tv: TextView, res: Int, color: Int, words: CharSequence, sizeDp: Int = 16) {
         tv.text = withIcon(tv.context, res, color, (sizeDp * tv.resources.displayMetrics.density).toInt(), words)
@@ -85,12 +97,12 @@ object Ico {
 }
 
 /** A voice note's sound bars (the same pattern every time for the same message); the part already played is darker. */
-class Wave(ctx: Context, id: String, private val color: Int) : View(ctx) {
+class Wave(ctx: Context, id: String, private val color: Int, rest: Int = (color and 0x00FFFFFF) or (0x66 shl 24)) : View(ctx) {
     var progress = 0f
         set(v) { field = v.coerceIn(0f, 1f); invalidate() }
     private val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
     private val seed = id.hashCode()
-    private val faded = (color and 0x00FFFFFF) or (0x66 shl 24)
+    private val faded = rest
     override fun onDraw(c: android.graphics.Canvas) {
         val d = resources.displayMetrics.density
         val bw = 3f * d; val gap = 2.2f * d
