@@ -224,6 +224,12 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@android:style/Theme.Material.NoActionBar" />
         <receiver android:name=".CallActionReceiver" android:exported="false" />
+        <!-- Habit Chat settings (wallpaper, notifications, read receipts, downloads, hidden chats, blocked people) -->
+        <activity
+            android:name=".ChatSettingsActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <service
             android:name=".CallService"
             android:exported="false"

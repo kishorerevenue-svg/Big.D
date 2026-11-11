@@ -151,7 +151,7 @@ object ChatSync {
                 val mine = cm.sender == me
                 db.touch(cid, cm.at, preview(ctx, cm), !mine && cid != openCid && cm.kind != "sys")
                 if (!mine && cm.kind != "sys") fresh.add(cm)
-                if (autoFetch(cm)) fetchFile(ctx, store, cm)
+                if (autoFetch(ctx, cm)) fetchFile(ctx, store, cm)
             }
         }
         if (fresh.isNotEmpty()) notify(ctx, fresh)
@@ -177,8 +177,16 @@ object ChatSync {
         "photo" -> ".jpg"; "voice" -> ".m4a"; "video" -> ".mp4"
         else -> m.body.optString("name").substringAfterLast('.', "").lowercase().filter { it.isLetterOrDigit() }.take(6).let { if (it.isEmpty()) ".bin" else ".$it" }
     }
-    /** Files that small come by themselves; bigger videos and documents wait for a tap (kind to mobile data). */
-    private fun autoFetch(m: ChatMsg) = m.kind == "photo" || m.kind == "voice" || (m.kind in FILE_KINDS && m.body.optLong("size") in 1..5_000_000L)
+    /** Photos and voice notes come by themselves; videos and documents as chosen in Chat settings (small ones always, unless "only when I tap"). */
+    private fun autoFetch(ctx: Context, m: ChatMsg): Boolean {
+        if (m.kind == "photo" || m.kind == "voice") return true
+        if (m.kind !in FILE_KINDS) return false
+        return when (ChatTheme.autoDl(ctx)) {
+            "never" -> false
+            "always" -> true
+            else -> m.body.optLong("size") in 1..5_000_000L || ChatTheme.onWifi(ctx)
+        }
+    }
 
     /** A task message changes the task pinned at the top of the chat. */
     fun applyTask(ctx: Context, m: ChatMsg) {
@@ -395,6 +403,7 @@ object ChatSync {
     }
 
     fun notify(ctx: Context, list: List<ChatMsg>) {
+        if (!ChatTheme.notifyOn(ctx)) return
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         ensureChannel(ctx)
         val db = ChatDb.get(ctx)
@@ -409,7 +418,17 @@ object ChatSync {
                 conv.isGroup -> conv.nameOf(last.sender) + " @ " + conv.name
                 else -> conv.name
             }
-            val text = (if (ms.size > 1) "(${ms.size}) " else "") + preview(ctx, last)
+            // hidden chats and "don't show the message" (Chat settings): only "New message"
+            val secret = ChatTheme.isHidden(ctx, cid) || !ChatTheme.previewOn(ctx)
+            if (ChatTheme.isHidden(ctx, cid)) {
+                val te0 = Store(ctx).lang == "te"
+                val open0 = PendingIntent.getActivity(ctx, 7302, Intent(ctx, MainActivity::class.java).putExtra("tab", "messages").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                val b0 = android.app.Notification.Builder(ctx, CHANNEL).setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle("Habit Chat")
+                    .setContentText(if (te0) "🔒 కొత్త మెసేజ్" else "🔒 New message").setAutoCancel(true).setContentIntent(open0).setCategory(android.app.Notification.CATEGORY_MESSAGE)
+                try { nm.notify("chat", "hidden".hashCode(), b0.build()) } catch (e: SecurityException) { }
+                continue
+            }
+            val text = if (secret) (if (te) "కొత్త మెసేజ్" else "New message") + (if (ms.size > 1) " (${ms.size})" else "") else (if (ms.size > 1) "(${ms.size}) " else "") + preview(ctx, last)
             val open = PendingIntent.getActivity(ctx, cid.hashCode(), Intent(ctx, ChatActivity::class.java).putExtra("cid", cid).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val b = (if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(ctx, CHANNEL) else @Suppress("DEPRECATION") android.app.Notification.Builder(ctx))

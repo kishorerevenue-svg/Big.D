@@ -108,6 +108,7 @@ class MainActivity : Activity() {
         const val REQ_CAM_INTENT = 24
         const val REQ_CAM_MIRROR = 25
         const val REQ_CARD_PERM = 26
+        const val REQ_CHAT_CONTACTS = 27
         const val REQ_LOCATION = 21
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
@@ -309,7 +310,15 @@ class MainActivity : Activity() {
         }
         renderedTab = tab
         if (keepY > 0) scroll.post { scroll.scrollTo(0, keepY) }
-        fab.visibility = if (tab == "feedback" && social.showFab) View.VISIBLE else View.GONE
+        val chat = tab == "messages"
+        scroll.setBackgroundColor(if (chat) ChatTheme.NAVY else Color.TRANSPARENT)
+        window.statusBarColor = if (chat) ChatTheme.NAVY else Ui.BG
+        window.decorView.systemUiVisibility = if (chat) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        fab.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (chat) ChatTheme.GOLD else Ui.TEAL) }
+        fab.setTextColor(if (chat) ChatTheme.NAVY else Color.WHITE)
+        fab.contentDescription = if (chat) "New chat" else "New post"
+        fab.setOnClickListener { if (tab == "messages") chatPage.plusMenu() else social.startCompose() }
+        fab.visibility = if ((tab == "feedback" && social.showFab) || (chat && ChatSync.isSetUp(this))) View.VISIBLE else View.GONE
         if (tab == "feedback") scroll.post { socialPage?.checkSeen() }
         updateBack()
     }
@@ -1719,6 +1728,7 @@ class MainActivity : Activity() {
             if (yes && p != null) { leavingForSystemScreen = true; try { startActivityForResult(p.first, p.second) } catch (e: Exception) { leavingForSystemScreen = false; toast("No camera app found.") } }
             else if (!yes) toast("Allow the camera to take a photo here.")
         }
+        if (requestCode == REQ_CHAT_CONTACTS) { if (tab == "messages") render() }
         if (requestCode == REQ_CARD_PERM) {
             if (AutoCards.allowed(this)) { store.autoCards = true; AutoCards.schedule(this); startAutoScan() }
             else toast("Allow Photos so I can look at your screenshots, or tap \"choose pictures yourself\".")

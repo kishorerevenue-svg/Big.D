@@ -128,7 +128,8 @@ class ChatDb private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "bigd_cha
         writableDatabase.delete("msgs", "cid=?", arrayOf(cid)); writableDatabase.delete("tasks", "cid=?", arrayOf(cid))
         writableDatabase.execSQL("UPDATE convs SET preview='', unread=0, hidden=? WHERE cid=?", arrayOf(if (hide) 1 else 0, cid))
     }
-    fun unreadTotal(): Int = readableDatabase.rawQuery("SELECT SUM(unread) FROM convs WHERE hidden=0 AND muted=0", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+    /** New messages waiting (not counting muted chats or 🔒 hidden chats). */
+    fun unreadTotal(): Int = readableDatabase.rawQuery("SELECT SUM(unread) FROM convs WHERE hidden=0 AND muted=0 AND cid NOT IN (SELECT substr(k, 6) FROM kv WHERE k LIKE 'lock:%' AND v='1')", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
     /** My own notes and reminders: a chat only on this phone. */
     fun ensureSelf(name: String) {
         if (conv(SELF) != null) return
@@ -155,6 +156,9 @@ class ChatDb private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "bigd_cha
     fun msg(cid: String, id: String): ChatMsg? = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND id=?", arrayOf(cid, id)).use { c -> if (c.moveToFirst()) msg(c) else null }
     /** The newest message that shows in the chat (not the hidden "delete for everyone" notes). */
     fun lastMsg(cid: String): ChatMsg? = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE cid=? AND kind<>'del' ORDER BY at DESC LIMIT 1", arrayOf(cid)).use { c -> if (c.moveToFirst()) msg(c) else null }
+    /** Habit calls (the lines that stay in the chats), newest first. */
+    fun callLogs(n: Int = 100): List<ChatMsg> = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE kind='clog' ORDER BY at DESC LIMIT ?", arrayOf(n.toString())).use { c ->
+        val out = ArrayList<ChatMsg>(); while (c.moveToNext()) out.add(msg(c)); out }
     /** "Delete for everyone": the message stays as "This message was deleted". */
     fun gone(cid: String, id: String) { writableDatabase.execSQL("UPDATE msgs SET kind='gone', body='{\"t\":\"gone\"}' WHERE cid=? AND id=?", arrayOf(cid, id)) }
     fun pending(): List<ChatMsg> = readableDatabase.rawQuery("SELECT cid, id, seq, sender, at, kind, body, state FROM msgs WHERE state=0 ORDER BY at ASC", null).use { c ->

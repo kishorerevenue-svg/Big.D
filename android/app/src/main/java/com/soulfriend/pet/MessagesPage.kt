@@ -80,10 +80,7 @@ class MessagesPage(private val m: MainActivity) {
     fun checkShared(text: String) { input = text.take(3000); pic = null; qr = ""; verdict = null; check() }
 
     /** The Messages tab: Habit Chat only (chats, groups, calls, photos, videos, documents, tasks). */
-    fun build() {
-        m.pageHeader("Messages · మెసేజ్‌లు", if (store.lang == "te") "మీ వాళ్ళతో Habit లో చాట్, కాల్స్, ఫోటోలు, ఫైల్స్ · వాట్సాప్ లాగా" else "Chat, call and share with your people on Habit, like WhatsApp.")
-        m.chatPage.build()
-    }
+    fun build() { m.chatPage.build() }     // Habit Chat draws its own dark top (title, 📷, ⋮, search)
 
     /** Tasks › 🛡️ Fake messages: is a message safe or a fraud, the fake messages list people add to, this week's new scams. */
     fun buildSafety() {
