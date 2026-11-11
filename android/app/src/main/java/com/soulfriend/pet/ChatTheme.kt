@@ -212,6 +212,7 @@ object ChatTheme {
     @Suppress("DEPRECATION")
     fun bars(act: android.app.Activity, top: Int = BAR, bottom: Int = CHAT_BG) {
         val w = act.window
+        w.decorView     // (makes the window's views first: the insets controller needs them)
         w.statusBarColor = top; w.navigationBarColor = bottom
         val lightTop = !isDarkColor(top); val lightBottom = !isDarkColor(bottom)
         if (android.os.Build.VERSION.SDK_INT >= 30) {

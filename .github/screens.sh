@@ -26,7 +26,12 @@ shot() { # theme screen name [language]
 }
 snap() { sleep 2; adb exec-out screencap -p > "android/shots/$1.png"; }
 for th in dark light; do
-  for sc in list chat group settings info ai devices; do shot $th $sc "$th-$sc"; done
+  for sc in list chat group settings info contact media starred ai devices; do shot $th $sc "$th-$sc"; done
+  # the chat list's other tabs: Updates, Communities, Calls
+  shot $th list "$th-list"
+  adb shell input tap 418 396; snap "$th-updates"
+  adb shell input tap 662 396; snap "$th-comms"
+  adb shell input tap 906 396; snap "$th-calls"
   # the group's older messages (the task card and the poll)
   shot $th group "$th-group"
   adb shell input swipe 540 800 540 2000 250; adb shell input swipe 540 800 540 2000 250; snap "$th-group-top"

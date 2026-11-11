@@ -32,6 +32,9 @@ class DemoActivity : Activity() {
             "ai" -> Intent(this, ChatActivity::class.java).putExtra("cid", ChatDb.AI)
             "settings" -> Intent(this, ChatSettingsActivity::class.java)
             "info" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "g-office").putExtra("mode", "info")
+            "contact" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "dm-ravi").putExtra("mode", "info")
+            "media" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "dm-ravi").putExtra("mode", "media")
+            "starred" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "").putExtra("mode", "starred")
             "devices" -> Intent(this, LinkedDevicesActivity::class.java)
             else -> Intent(this, MainActivity::class.java).putExtra("tab", "messages")
         }
@@ -87,7 +90,7 @@ class DemoActivity : Activity() {
         msg("dm-ravi", "ravi", now - 2 * hour, "photo", JSONObject().put("w", 800).put("h", 520).put("local", pic.absolutePath).put("text", "Map added, sir")
             .put("_rx", JSONObject().put(me, JSONObject().put("e", "❤️"))))
         msg("dm-ravi", me, now - 2 * hour + 4 * min, "voice", JSONObject().put("dur", 18).put("local", voice.absolutePath))
-        msg("dm-ravi", "ravi", now - 40 * min, "text", JSONObject().put("text", "Noted sir. I'll finish the remaining part by evening and send it to the RDO office."))
+        msg("dm-ravi", "ravi", now - 40 * min, "text", JSONObject().put("text", "Noted sir. I'll finish the remaining part by evening and send it to the RDO office.").put("_star", true))
         msg("dm-ravi", me, now - 25 * min, "text", JSONObject().put("text", "Thank you, Ravi 🙏"))
         db.touch("dm-ravi", now - 25 * min, "Thank you, Ravi 🙏", false)
         db.setKv("pinmsg:dm-ravi", JSONObject().put("id", doc).put("until", 0).toString())

@@ -71,10 +71,10 @@ class ChatInfoActivity : Activity() {
             addView(Ico.view(this@ChatInfoActivity, R.drawable.ic_back, C.TXT, 22, 48, t("Back", "వెనక్కి")) { finish() })
             addView(titleView, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(4) })
         })
-        ChatTheme.bars(this, C.BG, C.BG)
         box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(32)) }
         root.addView(ScrollView(this).apply { addView(box) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        ChatTheme.bars(this, C.BG, C.BG)
         loadBio()
     }
     override fun onResume() { super.onResume(); ChatSync.listeners.add(refresh); ChatSync.hold(this, "info"); draw() }
