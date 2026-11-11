@@ -9,8 +9,8 @@ adb shell pm grant $pkg android.permission.POST_NOTIFICATIONS || true
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
-shot() { # theme screen name
-  adb shell am start -W -n $pkg/com.soulfriend.pet.DemoActivity --es theme "$1" --es screen "$2"
+shot() { # theme screen name [language]
+  adb shell am start -W -n $pkg/com.soulfriend.pet.DemoActivity --es theme "$1" --es screen "$2" --es lang "${4:-en}"
   sleep 5
   adb exec-out screencap -p > "android/shots/$3.png"
 }
@@ -18,6 +18,10 @@ adb shell cmd uimode night no
 for th in dark light; do
   for sc in list chat group settings info ai devices; do shot $th $sc "$th-$sc"; done
 done
+# Telugu words take more room: check they fit
+shot dark list te-dark-list te
+shot light chat te-light-chat te
+shot dark group te-dark-group te
 # "Automatic" follows the phone's dark mode
 adb shell cmd uimode night yes
 sleep 3
