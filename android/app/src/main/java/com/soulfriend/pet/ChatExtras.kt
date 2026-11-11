@@ -272,7 +272,7 @@ object Emojis {
         ChatDb.get(ctx).setKv("recentEmoji", JSONArray(l).toString())
     }
     /** The quick reactions (long-press a message). */
-    val QUICK = listOf("❤️", "😂", "😮", "😢", "🙏", "👍")
+    val QUICK = listOf("👍", "❤️", "😂", "😮", "😢", "🙏")
 }
 
 /**

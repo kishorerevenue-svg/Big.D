@@ -107,6 +107,10 @@ object ChatTheme {
     /** The "Today" chip between messages. */
     val DAY_BG get() = pick(c("#1A2148"), Color.WHITE)
     val DAY_TXT get() = pick(c("#C9CEE8"), c("#5A6286"))
+    /** A picked message's row (long-press), from edge to edge: soft gold. */
+    val PICK get() = pick(c("#38F5C451"), c("#4DF2B53A"))
+    /** The quick emojis' pill that floats above a picked message. */
+    val STRIP get() = pick(c("#222A5C"), Color.WHITE)
 
     /**
      * The colours inside one message bubble ("ink"): mine (gold or navy) or theirs (and cards on the page).

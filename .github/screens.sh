@@ -35,16 +35,31 @@ for th in dark light; do
   # the group's older messages (the task card and the poll)
   shot $th group "$th-group"
   adb shell input swipe 540 800 540 2000 250; adb shell input swipe 540 800 540 2000 250; snap "$th-group-top"
-  # the attach sheet, and the long-press menu of a message
+  # the attach sheet; then picking messages like WhatsApp: long-press one (top bar + emojis above it), tap another, ⋮
   shot $th chat "$th-chat"
   adb shell input tap 630 2242; snap "$th-attach"
   adb shell input keyevent KEYCODE_BACK; sleep 1
-  adb shell input swipe 360 1890 360 1890 900; snap "$th-menu"
+  adb shell input swipe 360 1890 360 1890 900; snap "$th-pick1"
+  adb shell input tap 840 2040; snap "$th-pick2"
+  adb shell input tap 1022 208; snap "$th-pickmore"
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+  adb shell input keyevent KEYCODE_BACK; snap "$th-pick-back"
+  # a message near the top: the emojis go under it
+  adb shell input swipe 460 600 460 600 900; snap "$th-picktop"
   adb shell input keyevent KEYCODE_BACK
+  # picking chats in the list: long-press one, tap another, ⋮
+  shot $th list "$th-list"
+  adb shell input swipe 540 1236 540 1236 900; snap "$th-listpick1"
+  adb shell input tap 540 1424; snap "$th-listpick2"
+  adb shell input tap 1017 211; snap "$th-listpickmore"
+  adb shell input keyevent KEYCODE_BACK; sleep 1
+  adb shell input keyevent KEYCODE_BACK; snap "$th-listpick-back"
 done
 # Telugu words take more room: check they fit
 shot dark list te-dark-list te
 shot light chat te-light-chat te
+adb shell input swipe 360 1890 360 1890 900; snap te-light-pick1
+adb shell input keyevent KEYCODE_BACK
 shot dark group te-dark-group te
 # "Automatic" follows the phone's dark mode
 adb shell cmd uimode night yes

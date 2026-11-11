@@ -33,7 +33,10 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.text.util.Linkify
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -215,9 +218,33 @@ class ChatActivity : Activity() {
     }
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (panelOpen) { closePanel(); return }
-        if (searchBar.visibility == View.VISIBLE) { closeSearch(); return }
+        if (innerBack()) return
         @Suppress("DEPRECATION") super.onBackPressed()
+    }
+    /** Back closes what's open on this screen first (picked messages, the 😊 panel, search); false when nothing is open. */
+    private fun innerBack(): Boolean {
+        when {
+            picked.isNotEmpty() -> clearPick()
+            panelOpen -> closePanel()
+            searchBar.visibility == View.VISIBLE -> closeSearch()
+            else -> return false
+        }
+        syncBack(); return true
+    }
+    // Android 16 doesn't call onBackPressed for apps like this one: Back reaches [innerBack] through this callback instead,
+    // registered only while something is open (so Back still leaves the chat at once otherwise).
+    private var backCb: Any? = null
+    private fun syncBack() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val want = picked.isNotEmpty() || panelOpen || searchBar.visibility == View.VISIBLE
+        if (want && backCb == null) {
+            val cb = android.window.OnBackInvokedCallback { innerBack() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+            backCb = cb
+        } else if (!want && backCb != null) {
+            (backCb as? android.window.OnBackInvokedCallback)?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
+            backCb = null
+        }
     }
 
     /** Online / last seen of the other person (every 30 seconds while the chat is open). */
@@ -292,6 +319,9 @@ class ChatActivity : Activity() {
         // 🔍 search in the chat (in place of the header)
         searchBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(4)); minimumHeight = dp(62); setBackgroundColor(ChatTheme.BAR); visibility = View.GONE }
         root.addView(searchBar)
+        // while messages are picked (a long-press): ← · how many · reply · star · delete · forward · ⋮ (in place of the header)
+        pickBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(4), dp(2), dp(4)); minimumHeight = dp(62); setBackgroundColor(ChatTheme.BAR); visibility = View.GONE }
+        root.addView(pickBar)
         root.addView(View(this).apply { setBackgroundColor(ChatTheme.DIVIDER) }, LinearLayout.LayoutParams(-1, 1))
         banner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(banner)
@@ -299,9 +329,15 @@ class ChatActivity : Activity() {
         root.addView(pinMsgBar)
         pinned = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(pinned)
-        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(6), dp(12), dp(12)) }
+        // (no padding at the sides: each message's row is the full width, so a picked message lights up from edge to edge)
+        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(12)) }
         scroll = ScrollView(this).apply { addView(list); isFillViewport = true }
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        // the messages, and the quick emojis that float over them while one message is picked
+        stage = FrameLayout(this)
+        stage.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        root.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
+        scroll.setOnScrollChangeListener { _, _, _, _, _ -> if (strip != null) placeStrip() }
+        stage.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (strip != null) placeStrip() }
         replyBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.CHAT_BG) }
         root.addView(replyBar)
         lpBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(ChatTheme.CHAT_BG) }
@@ -422,10 +458,10 @@ class ChatActivity : Activity() {
             onSticker = { ref -> sendSticker(ref) }, onGif = { g -> sendGif(g) }, onCreateSticker = { pickPhoto(REQ_STICKER) }).also { panel = it }
         if (p.view.parent == null) panelBox.addView(p.view, FrameLayout.LayoutParams(-1, -1))
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
-        handler.postDelayed({ panelBox.visibility = View.VISIBLE; panelOpen = true; Ico.tint(emojiBtn, R.drawable.ic_keyboard, ChatTheme.SUB) }, 120)
+        handler.postDelayed({ panelBox.visibility = View.VISIBLE; panelOpen = true; Ico.tint(emojiBtn, R.drawable.ic_keyboard, ChatTheme.SUB); syncBack() }, 120)
     }
     private fun closePanel(showKeyboard: Boolean = false) {
-        panelBox.visibility = View.GONE; panelOpen = false; Ico.tint(emojiBtn, R.drawable.ic_smile, ChatTheme.SUB)
+        panelBox.visibility = View.GONE; panelOpen = false; Ico.tint(emojiBtn, R.drawable.ic_smile, ChatTheme.SUB); syncBack()
         if (showKeyboard) { input.requestFocus(); getSystemService(InputMethodManager::class.java)?.showSoftInput(input, 0) }
     }
 
@@ -443,6 +479,7 @@ class ChatActivity : Activity() {
         renderReplyBar()
         val total = db.count(cid)
         val msgs = db.msgs(cid, showLimit).filter { it.kind !in ChatDb.HIDDEN }
+        if (picked.isNotEmpty()) { val ids = msgs.mapTo(HashSet()) { it.id }; if (picked.retainAll(ids) && picked.isEmpty()) clearPick() }
         val atBottom = !scroll.canScrollVertically(1) || lastCount < 0
         list.removeAllViews()
         if (total > msgs.size) list.addView(ui.text("⬆  " + t("Earlier messages", "పాత మెసేజ్‌లు"), 13.5f, ChatTheme.GOLD_TXT, bold = true).apply {
@@ -461,14 +498,15 @@ class ChatActivity : Activity() {
                 "🔒 ఇక్కడి మెసేజ్‌లు ఎండ్ టు ఎండ్ లాక్: ఈ చాట్‌లో ఉన్నవాళ్ళు మాత్రమే చదవగలరు, Habit సర్వర్ కూడా చదవలేదు. హాయ్ చెప్పండి! 👋")
         }, 13.5f, ChatTheme.SUB).apply {
             gravity = Gravity.CENTER; setPadding(dp(18), dp(14), dp(18), dp(14)); background = ChatTheme.round(ChatTheme.DAY_BG, dp(18).toFloat(), ChatTheme.EDGE, dp(1))
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(16), dp(20), dp(16), dp(20)) }
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(28), dp(20), dp(28), dp(20)) }
         })
         var day: LocalDate? = null
         for (m in msgs) {
             val d = Instant.ofEpochMilli(m.at).atZone(ZoneId.systemDefault()).toLocalDate()
             if (d != day) { day = d; list.addView(dayLine(d)) }
-            list.addView(bubble(c, m).apply { tag = m.id })
+            list.addView(pickRow(c, m))
         }
+        if (picked.isNotEmpty()) { renderPickBar(); list.post { if (strip != null) placeStrip() } }
         if (pendingGoto.isNotEmpty()) { val g = pendingGoto; pendingGoto = ""; scroll.post { goTo(g) } }
         else if (searchQ.isEmpty() && (atBottom || msgs.size != lastCount)) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
         lastCount = msgs.size
@@ -679,56 +717,240 @@ class ChatActivity : Activity() {
         AlertDialog.Builder(this).setTitle(t("Reactions", "స్పందనలు")).setItems(rows.map { it.first }.toTypedArray()) { _, i -> if (rows[i].second == me) { ChatSync.react(this, store, m, ""); render() } }.show()
     }
 
-    // =================== the long-press menu: reactions and what to do ===================
-    private fun msgMenu(c: ChatConv, m: ChatMsg) {
-        val content = m.kind in CONTENT
-        val items = ArrayList<Pair<String, () -> Unit>>()
-        val canWrite = c.canSend(me) && whyNoSend(c).isEmpty() && c.member
-        if (content && canWrite && !c.isBcast) items.add(t("↩️ Reply", "↩️ జవాబు") to { replyTo = m; renderReplyBar(); input.requestFocus() })
-        if (content && !(m.kind == "photo" && m.body.optBoolean("once"))) items.add(t("↪️ Forward", "↪️ ఫార్వర్డ్") to { forward(m) })
-        if (m.kind == "text" || m.body.optString("text").isNotBlank()) items.add(t("📋 Copy", "📋 కాపీ") to {
-            getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("message", m.body.optString("text"))); toast(t("Copied", "కాపీ అయింది")) })
-        if (content) items.add((if (m.body.optBoolean("_star")) t("⭐ Unstar", "⭐ స్టార్ తీసేయి") else t("⭐ Star", "⭐ స్టార్")) to { ChatSync.star(this, m, !m.body.optBoolean("_star")) })
-        val pinnedNow = ChatSync.pinned(this, cid)?.id == m.id
-        if (content && !c.isLocal && c.member && m.state == 1 && !(c.isGroup && c.adminsEdit && !c.isAdmin(me))) items.add((if (pinnedNow) t("📌 Unpin", "📌 పిన్ తీసేయి") else t("📌 Pin", "📌 పిన్ చేయి")) to { if (pinnedNow) ChatSync.pin(this, store, m, false, 0) else pinFor(m) })
-        if (m.kind == "text" && m.sender == me && (c.isLocal || m.state == 1) && System.currentTimeMillis() - m.at < 15 * 60_000L && !c.isBcast && !c.isAi)
-            items.add(t("✏️ Edit", "✏️ మార్చు") to { editMsg(m) })
-        if (m.sender == me && !c.isLocal && m.state == 1 && content) items.add(t("ℹ️ Info", "ℹ️ వివరాలు") to { msgInfo(c, m) })
-        if (m.sender != me && !c.isLocal && (m.kind == "text" || m.body.optString("text").isNotBlank())) items.add(t("🛡️ Check for fraud", "🛡️ మోసమేమో చెక్ చేయి") to { checkFraud(m) })
-        if ((m.kind == "video" || m.kind == "doc" || m.kind == "photo" || m.kind == "gif") && fileReady(m) && !m.body.optBoolean("once")) items.add(t("📤 Share / save", "📤 షేర్ / సేవ్") to { openFile(m, true) })
-        if (m.kind == "sticker") {
-            val ref = stickerRef(m)
-            if (ref != null) items.add((if (Stickers.isFav(this, ref)) t("⭐ Take off favourite stickers", "⭐ ఇష్టమైన స్టిక్కర్ల నుంచి తీసేయి") else t("⭐ Add to favourite stickers", "⭐ ఇష్టమైన స్టిక్కర్లలో చేర్చు")) to {
-                val r = if (ref.startsWith("file:") && m.sender != me) "file:" + Stickers.saveMine(this, File(ref.removePrefix("file:")).readBytes()).absolutePath else ref
-                Stickers.fav(this, r, !Stickers.isFav(this, ref)); toast(t("Done ⭐", "అయింది ⭐")) })
+    // =================== picking messages with a long-press, like WhatsApp ===================
+    // The picked message's row lights up from edge to edge, the top bar shows what to do with it
+    // (reply · star · delete · forward · ⋮ more) and the quick emojis float just above it. Nothing covers the chat:
+    // it still scrolls, and a tap on other messages picks them too. ← or the phone's Back stops picking.
+    private val picked = LinkedHashSet<String>()
+    private lateinit var pickBar: LinearLayout
+    private lateinit var stage: FrameLayout
+    private var strip: View? = null
+    private var stripFor = ""
+    private var stripMine = false
+    private var searchWasOpen = false
+
+    /** One message's row, the whole width. A long-press anywhere on it (on a photo, a link, a button, or beside the
+     *  bubble) picks it; while picking, a tap anywhere on it picks or unpicks it (the things inside don't get that tap). */
+    private inner class PickRow(val mid: String, val onLong: () -> Unit) : FrameLayout(this@ChatActivity) {
+        private val slop = ViewConfiguration.get(context).scaledTouchSlop
+        private var downX = 0f
+        private var downY = 0f
+        private var fired = false
+        private val longPress = Runnable {
+            fired = true
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            onLong()
+            cancelInside()
         }
-        if (m.kind == "event") items.add(t("📆 Add to calendar", "📆 క్యాలెండర్‌లో చేర్చు") to { addToCalendar(m) })
-        if (content && m.sender == me && !c.isLocal && m.state == 1 && System.currentTimeMillis() - m.at < 2 * 86_400_000L && c.member)
-            items.add(t("🚫 Delete for everyone", "🚫 అందరికీ తొలగించు") to {
-                AlertDialog.Builder(this).setMessage(t("Delete this message for everyone in the chat?", "ఈ మెసేజ్ చాట్‌లో అందరికీ తొలగించాలా?"))
-                    .setPositiveButton(t("Delete", "తొలగించు")) { _, _ -> ChatSync.deleteForAll(this, store, m) { e -> if (e != null && !e.startsWith("No connection")) toast(e) } }
-                    .setNegativeButton(t("Cancel", "వద్దు"), null).show()
-            })
-        items.add(t("🗑️ Delete for me", "🗑️ నాకు మాత్రమే తొలగించు") to { m.body.optString("local").takeIf { it.isNotEmpty() }?.let { try { File(it).delete() } catch (e: Exception) { } }; db.deleteMsg(cid, m.id); render() })
-        if (m.sender != me && m.sender != "ai" && !c.isLocal) items.add(t("⚠️ Report", "⚠️ రిపోర్ట్") to { report(listOf(m), m.sender) })
-        // a sheet from the bottom: the quick reactions on top (like WhatsApp), then the list
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(6), dp(8), dp(4)) }
-        var dlg: Dialog? = null
-        if (content && (!c.isLocal || c.isSelf)) {
-            val mineNow = m.body.optJSONObject("_rx")?.optJSONObject(me)?.optString("e") ?: ""
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(8), dp(6), dp(8), dp(10)) }
-            for (e in Emojis.QUICK) row.addView(TextView(this).apply {
-                text = e; textSize = 25f; gravity = Gravity.CENTER; background = if (e == mineNow) ChatTheme.circle(ChatTheme.PILL) else Ico.ripple(context)
-                setOnClickListener { dlg?.dismiss(); ChatSync.react(this@ChatActivity, store, m, if (e == mineNow) "" else e); render() }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f))
-            row.addView(Ico.view(this, R.drawable.ic_plus, ChatTheme.SUB, 22, 48, t("More reactions", "ఇంకా స్పందనలు"), ChatTheme.circle(ChatTheme.CARD2)) { dlg?.dismiss(); anyReaction(m) },
-                LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
-            box.addView(row)
-            box.addView(View(this).apply { setBackgroundColor(ChatTheme.LINE) }, LinearLayout.LayoutParams(-1, 1).apply { marginStart = dp(12); marginEnd = dp(12) })
+        /** The photo, link or button under the finger doesn't also get a tap (or a long-press) from this touch. */
+        private fun cancelInside() {
+            val e = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+            super.dispatchTouchEvent(e); e.recycle()
         }
-        for ((label, f) in items) box.addView(ui.text(label, 15.5f, ChatTheme.TXT).apply { setPadding(dp(18), dp(13), dp(18), dp(13)); background = Ico.rowRipple(context); setOnClickListener { dlg?.dismiss(); f() } })
-        dlg = ChatTheme.sheet(this, ScrollView(this).apply { addView(box); isVerticalScrollBarEnabled = false })
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    fired = false; downX = ev.x; downY = ev.y; removeCallbacks(longPress)
+                    if (picked.isEmpty()) postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
+                }
+                MotionEvent.ACTION_MOVE -> if (Math.abs(ev.x - downX) > slop || Math.abs(ev.y - downY) > slop) removeCallbacks(longPress)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> removeCallbacks(longPress)
+            }
+            if (fired) return true      // the rest of this touch belongs to the long-press
+            return super.dispatchTouchEvent(ev)
+        }
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = picked.isNotEmpty() || super.onInterceptTouchEvent(ev)
+        fun paint() = setBackgroundColor(if (mid in picked) ChatTheme.PICK else Color.TRANSPARENT)
     }
+    private fun pickRow(c: ChatConv, m: ChatMsg): View {
+        val v = bubble(c, m)
+        if (m.kind == "sys" || m.kind == "timer") return v.apply { tag = m.id }
+        return PickRow(m.id) { msgMenu(c, m) }.apply {
+            tag = m.id
+            setPadding(dp(12), 0, dp(12), 0)
+            addView(v, FrameLayout.LayoutParams(-1, -2))
+            setOnClickListener { if (picked.isNotEmpty()) togglePick(m.id) }
+            paint()
+        }
+    }
+    private var lastPickAt = 0L
+    private var lastPickId = ""
+    /** A long-press on a message: pick it (while picking: pick or unpick it). The row and the photo / bubble inside it
+     *  may both feel the same long-press: it counts once. */
+    private fun msgMenu(c: ChatConv, m: ChatMsg) {
+        if (m.kind == "sys" || m.kind == "timer" || c.cid != cid) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (m.id == lastPickId && now - lastPickAt < 700) return
+        lastPickAt = now; lastPickId = m.id
+        if (picked.isEmpty()) searchWasOpen = searchBar.visibility == View.VISIBLE
+        togglePick(m.id)
+    }
+    private fun togglePick(id: String) {
+        if (!picked.remove(id)) picked.add(id)
+        if (picked.isEmpty()) { clearPick(); return }
+        head.visibility = View.GONE; searchBar.visibility = View.GONE; pickBar.visibility = View.VISIBLE
+        paintRows(); renderPickBar(); showStrip(); syncBack()
+    }
+    private fun clearPick() {
+        picked.clear(); hideStrip()
+        if (pickBar.visibility == View.VISIBLE) {
+            pickBar.visibility = View.GONE
+            if (searchWasOpen) searchBar.visibility = View.VISIBLE else head.visibility = View.VISIBLE
+            paintRows()
+        }
+        syncBack()
+    }
+    private fun paintRows() { for (i in 0 until list.childCount) (list.getChildAt(i) as? PickRow)?.paint() }
+    private fun rowOf(id: String): View? { for (i in 0 until list.childCount) list.getChildAt(i).let { if (it.tag == id) return it }; return null }
+    private fun pickedMsgs(): List<ChatMsg> = picked.mapNotNull { db.msg(cid, it) }.sortedBy { it.at }
+
+    /** The top bar while picking: ← · how many · then only what can be done with all of them. */
+    private fun renderPickBar() {
+        val c = conv() ?: return
+        val msgs = pickedMsgs()
+        pickBar.removeAllViews()
+        pickBar.addView(iconBtn(R.drawable.ic_back, t("Stop picking", "ఎంచుకోవడం ఆపు")) { clearPick() })
+        pickBar.addView(ui.text(msgs.size.toString(), 20f, ChatTheme.TXT, bold = true).apply { setPadding(dp(12), 0, 0, 0); setLineSpacing(0f, 1f) }, LinearLayout.LayoutParams(0, -2, 1f))
+        val one = msgs.singleOrNull()
+        val content = msgs.isNotEmpty() && msgs.all { it.kind in CONTENT }
+        if (one != null && canReply(c, one)) pickBar.addView(iconBtn(R.drawable.ic_reply, t("Reply", "జవాబు")) { replyNow(one) })
+        if (content) {
+            val all = msgs.all { it.body.optBoolean("_star") }
+            pickBar.addView(iconBtn(if (all) R.drawable.ic_star_off else R.drawable.ic_star_line, if (all) t("Unstar", "స్టార్ తీసేయి") else t("Star", "స్టార్")) { starPicked(!all) })
+        }
+        pickBar.addView(iconBtn(R.drawable.ic_trash, t("Delete", "తొలగించు"), size = 21) { deletePicked() })
+        if (content && msgs.none { it.kind == "photo" && it.body.optBoolean("once") })
+            pickBar.addView(iconBtn(R.drawable.ic_forward, t("Forward", "ఫార్వర్డ్")) { clearPick(); forward(msgs) })
+        if (moreActions(c, msgs).isNotEmpty()) pickBar.addView(iconBtn(R.drawable.ic_more, t("More", "ఇంకా"), size = 20, box = 40) { pickMore(it) })
+    }
+    private fun canReply(c: ChatConv, m: ChatMsg) = m.kind in CONTENT && c.canSend(me) && whyNoSend(c).isEmpty() && c.member && !c.isBcast
+    private fun replyNow(m: ChatMsg) {
+        clearPick(); replyTo = m; renderReplyBar()
+        if (panelOpen) closePanel(showKeyboard = true)
+        else { input.requestFocus(); getSystemService(InputMethodManager::class.java)?.showSoftInput(input, 0) }
+    }
+    private fun starPicked(on: Boolean) {
+        val msgs = pickedMsgs().filter { it.kind in CONTENT }
+        clearPick()
+        msgs.forEach { ChatSync.star(this, it, on) }
+    }
+    /** Delete: also "for everyone" when they are all mine and were sent in the last 2 days. */
+    private fun deletePicked() {
+        val c = conv() ?: return
+        val msgs = pickedMsgs()
+        if (msgs.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val forAll = !c.isLocal && c.member && msgs.all { it.kind in CONTENT && it.sender == me && it.state == 1 && now - it.at < 2 * 86_400_000L }
+        val opts = ArrayList<Pair<String, () -> Unit>>()
+        if (forAll) opts.add(t("Delete for everyone", "అందరికీ తొలగించు") to {
+            clearPick()
+            msgs.forEach { m -> ChatSync.deleteForAll(this, store, m) { e -> if (e != null && !e.startsWith("No connection")) toast(e) } }
+        })
+        opts.add(t("Delete for me", "నాకు మాత్రమే తొలగించు") to {
+            clearPick()
+            for (m in msgs) { m.body.optString("local").takeIf { it.isNotEmpty() }?.let { try { File(it).delete() } catch (e: Exception) { } }; db.deleteMsg(cid, m.id) }
+            render()
+        })
+        AlertDialog.Builder(this).setTitle(if (msgs.size == 1) t("Delete this message?", "ఈ మెసేజ్ తొలగించాలా?") else t("Delete ${msgs.size} messages?", "${msgs.size} మెసేజ్‌లు తొలగించాలా?"))
+            .setItems(opts.map { it.first }.toTypedArray()) { _, i -> opts[i].second() }
+            .setNegativeButton(t("Cancel", "వద్దు"), null).show()
+    }
+    /** Copy: one message's words; several as "[date, time] name: words" lines (like WhatsApp). */
+    private fun copyPicked(msgs: List<ChatMsg>) {
+        val c = conv() ?: return
+        val withText = msgs.filter { it.body.optString("text").isNotBlank() }
+        if (withText.isEmpty()) return
+        val s = if (withText.size == 1) withText[0].body.optString("text") else withText.joinToString("\n") { m ->
+            "[" + Instant.ofEpochMilli(m.at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d/M/yy, h:mm a", Locale.ENGLISH)) + "] " +
+                (if (m.sender == me) t("You", "మీరు") else c.nameOf(m.sender)) + ": " + m.body.optString("text")
+        }
+        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("message", s))
+        toast(if (withText.size == 1) t("Copied", "కాపీ అయింది") else t("${withText.size} messages copied", "${withText.size} మెసేజ్‌లు కాపీ అయ్యాయి"))
+    }
+    /** ⋮ while picking: the rest (info, copy, pin, edit, share, report…), only what fits the picked messages. */
+    private fun moreActions(c: ChatConv, msgs: List<ChatMsg>): List<Pair<String, () -> Unit>> {
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        val m = msgs.singleOrNull()
+        if (m == null) {
+            if (msgs.any { it.body.optString("text").isNotBlank() }) items.add(t("Copy", "కాపీ") to { copyPicked(msgs) })
+            val from = msgs.map { it.sender }.toSet().singleOrNull()
+            if (from != null && from != me && from != "ai" && !c.isLocal) items.add(t("Report", "రిపోర్ట్") to { report(msgs, from) })
+            return items
+        }
+        val content = m.kind in CONTENT
+        if (m.sender == me && !c.isLocal && m.state == 1 && content) items.add(t("Info", "వివరాలు") to { msgInfo(c, m) })
+        if (m.body.optString("text").isNotBlank()) items.add(t("Copy", "కాపీ") to { copyPicked(msgs) })
+        val pinnedNow = ChatSync.pinned(this, cid)?.id == m.id
+        if (content && !c.isLocal && c.member && m.state == 1 && !(c.isGroup && c.adminsEdit && !c.isAdmin(me)))
+            items.add((if (pinnedNow) t("Unpin", "పిన్ తీసేయి") else t("Pin", "పిన్ చేయి")) to { if (pinnedNow) ChatSync.pin(this, store, m, false, 0) else pinFor(m) })
+        if (m.kind == "text" && m.sender == me && (c.isLocal || m.state == 1) && System.currentTimeMillis() - m.at < 15 * 60_000L && !c.isBcast && !c.isAi)
+            items.add(t("Edit", "మార్చు") to { editMsg(m) })
+        if ((m.kind == "video" || m.kind == "doc" || m.kind == "photo" || m.kind == "gif") && fileReady(m) && !m.body.optBoolean("once"))
+            items.add(t("Share / save", "షేర్ / సేవ్") to { openFile(m, true) })
+        if (m.kind == "sticker") stickerRef(m)?.let { ref ->
+            items.add((if (Stickers.isFav(this, ref)) t("Remove from favourite stickers", "ఇష్టమైన స్టిక్కర్ల నుంచి తీసేయి") else t("Add to favourite stickers", "ఇష్టమైన స్టిక్కర్లలో చేర్చు")) to {
+                val r = if (ref.startsWith("file:") && m.sender != me) "file:" + Stickers.saveMine(this, File(ref.removePrefix("file:")).readBytes()).absolutePath else ref
+                Stickers.fav(this, r, !Stickers.isFav(this, ref)); toast(t("Done ⭐", "అయింది ⭐"))
+            })
+        }
+        if (m.kind == "event") items.add(t("Add to calendar", "క్యాలెండర్‌లో చేర్చు") to { addToCalendar(m) })
+        if (m.sender != me && !c.isLocal && (m.kind == "text" || m.body.optString("text").isNotBlank())) items.add(t("Check for fraud", "మోసమేమో చెక్ చేయి") to { checkFraud(m) })
+        if (m.sender != me && m.sender != "ai" && !c.isLocal) items.add(t("Report", "రిపోర్ట్") to { report(listOf(m), m.sender) })
+        return items
+    }
+    private fun pickMore(anchor: View) {
+        val c = conv() ?: return
+        val items = moreActions(c, pickedMsgs())
+        if (items.isEmpty()) return
+        val pm = PopupMenu(this, anchor)
+        items.forEachIndexed { i, it -> pm.menu.add(0, i, i, it.first) }
+        pm.setOnMenuItemClickListener { mi -> clearPick(); items[mi.itemId].second(); true }
+        pm.show()
+    }
+
+    /** The quick emojis (👍 ❤️ 😂 😮 😢 🙏 ＋), floating just above the picked message (when one message is picked). */
+    private fun showStrip() {
+        hideStrip()
+        val c = conv() ?: return
+        val m = pickedMsgs().singleOrNull() ?: return
+        if (m.kind !in CONTENT || (c.isLocal && !c.isSelf)) return
+        val mineNow = m.body.optJSONObject("_rx")?.optJSONObject(me)?.optString("e") ?: ""
+        val s = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(6), dp(4), dp(6), dp(4))
+            background = ChatTheme.round(ChatTheme.STRIP, dp(28).toFloat(), ChatTheme.EDGE, dp(1)); elevation = dp(8).toFloat()
+        }
+        for (e in Emojis.QUICK) s.addView(TextView(this).apply {
+            text = e; textSize = 25f; gravity = Gravity.CENTER; includeFontPadding = false; contentDescription = e
+            background = if (e == mineNow) ChatTheme.circle(ChatTheme.PILL) else Ico.ripple(context)
+            setOnClickListener { clearPick(); ChatSync.react(this@ChatActivity, store, m, if (e == mineNow) "" else e) }
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        s.addView(Ico.view(this, R.drawable.ic_plus, ChatTheme.TXT2, 20, 36, t("More reactions", "ఇంకా స్పందనలు"), ChatTheme.circle(ChatTheme.CARD2)) { clearPick(); anyReaction(m) },
+            LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(4); marginEnd = dp(2) })
+        strip = s; stripFor = m.id; stripMine = m.sender == me || c.isSelf
+        s.visibility = View.INVISIBLE
+        stage.addView(s, FrameLayout.LayoutParams(-2, -2))
+        s.post {
+            if (strip !== s) return@post
+            placeStrip()
+            s.pivotX = if (stripMine) s.width.toFloat() else 0f; s.pivotY = s.height.toFloat()
+            s.alpha = 0f; s.scaleX = 0.8f; s.scaleY = 0.8f
+            s.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150).start()
+        }
+    }
+    /** Keeps the emojis just above the message (under it when there's no room above), also while the chat scrolls. */
+    private fun placeStrip() {
+        val s = strip ?: return
+        val row = rowOf(stripFor) ?: run { hideStrip(); return }
+        val top = row.top - scroll.scrollY
+        val h = s.height; val w = s.width
+        var y = top - h + dp(2)
+        if (y < dp(4)) y = top + row.height + dp(2)
+        y = y.coerceIn(dp(4), maxOf(dp(4), stage.height - h - dp(4)))
+        s.translationX = maxOf(dp(4), if (stripMine) stage.width - w - dp(10) else dp(10)).toFloat()
+        s.translationY = y.toFloat()
+        s.visibility = if (top + row.height < 0 || top > stage.height) View.INVISIBLE else View.VISIBLE
+    }
+    private fun hideStrip() { strip?.let { stage.removeView(it) }; strip = null; stripFor = "" }
     private fun anyReaction(m: ChatMsg) {
         val all = Emojis.recent(this).take(16) + Emojis.CATS.flatMap { it.list }.take(160)
         val grid = android.widget.GridView(this).apply { numColumns = 7; setPadding(dp(8), dp(8), dp(8), dp(8)) }
@@ -1207,7 +1429,7 @@ class ChatActivity : Activity() {
             val v = list.getChildAt(i)
             if (v.tag == id) {
                 scroll.post { scroll.smoothScrollTo(0, maxOf(0, v.top - dp(80))) }
-                v.setBackgroundColor(ChatTheme.PILL); v.postDelayed({ v.setBackgroundColor(Color.TRANSPARENT) }, 1400)
+                v.setBackgroundColor(ChatTheme.PILL); v.postDelayed({ (v as? PickRow)?.paint() ?: v.setBackgroundColor(Color.TRANSPARENT) }, 1400)
                 return
             }
         }
@@ -1236,21 +1458,25 @@ class ChatActivity : Activity() {
     }
 
     // forwarding: a copy goes to other chats (files are locked again with new keys)
-    private fun forward(m: ChatMsg) {
-        if (ChatSync.hasFile(m) && !fileReady(m)) { ChatSync.fetchFile(this, store, m); toast(t("Getting it first… try again in a moment.", "ముందు డౌన్‌లోడ్ చేస్తున్నాం… కాసేపట్లో మళ్ళీ ప్రయత్నించండి.")); return }
+    private fun forward(m: ChatMsg) = forward(listOf(m))
+    private fun forward(msgs: List<ChatMsg>) {
+        val waiting = msgs.filter { ChatSync.hasFile(it) && !fileReady(it) }
+        if (waiting.isNotEmpty()) { waiting.forEach { ChatSync.fetchFile(this, store, it) }; toast(t("Getting it first… try again in a moment.", "ముందు డౌన్‌లోడ్ చేస్తున్నాం… కాసేపట్లో మళ్ళీ ప్రయత్నించండి.")); return }
         val targets = db.convs().filter { (it.accepted || it.isLocal) && it.member && !it.blocked && !it.isAi && it.canSend(me) }.sortedByDescending { it.last }
-        if (targets.isEmpty()) return
-        val picked = BooleanArray(targets.size)
-        AlertDialog.Builder(this).setTitle(t("↪️ Forward to…", "↪️ ఎవరికి ఫార్వర్డ్ చేయాలి?"))
-            .setMultiChoiceItems(targets.map { "${it.emoji}  ${it.name}" }.toTypedArray(), picked) { _, i, on -> picked[i] = on }
+        if (targets.isEmpty() || msgs.isEmpty()) return
+        val ticked = BooleanArray(targets.size)
+        AlertDialog.Builder(this).setTitle(if (msgs.size == 1) t("↪️ Forward to…", "↪️ ఎవరికి ఫార్వర్డ్ చేయాలి?") else t("↪️ Forward ${msgs.size} messages to…", "↪️ ${msgs.size} మెసేజ్‌లు ఎవరికి ఫార్వర్డ్ చేయాలి?"))
+            .setMultiChoiceItems(targets.map { "${it.emoji}  ${it.name}" }.toTypedArray(), ticked) { _, i, on -> ticked[i] = on }
             .setPositiveButton(t("Send", "పంపు")) { _, _ ->
-                val chosen = targets.filterIndexed { i, _ -> picked[i] }.take(5)
+                val chosen = targets.filterIndexed { i, _ -> ticked[i] }.take(5)
                 if (chosen.isEmpty()) return@setPositiveButton
-                val bytes = if (ChatSync.hasFile(m)) try { File(m.body.optString("local")).readBytes() } catch (e: Exception) { null } else null
-                for (c in chosen) {
-                    val body = ChatSync.cleanBody(m.body).apply { for (k in listOf("file", "key", "iv", "re", "mn")) remove(k); put("fwd", true) }
-                    if (ChatSync.hasFile(m)) { if (bytes != null) ChatSync.sendFile(this, store, c.cid, m.kind, bytes, body) { e -> if (e != null && !e.startsWith("No connection")) toast(e) } }
-                    else ChatSync.send(this, store, c.cid, body) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
+                for (m in msgs.sortedBy { it.at }) {
+                    val bytes = if (ChatSync.hasFile(m)) try { File(m.body.optString("local")).readBytes() } catch (e: Exception) { null } else null
+                    for (c in chosen) {
+                        val body = ChatSync.cleanBody(m.body).apply { for (k in listOf("file", "key", "iv", "re", "mn")) remove(k); put("fwd", true) }
+                        if (ChatSync.hasFile(m)) { if (bytes != null) ChatSync.sendFile(this, store, c.cid, m.kind, bytes, body) { e -> if (e != null && !e.startsWith("No connection")) toast(e) } }
+                        else ChatSync.send(this, store, c.cid, body) { e -> if (e != null && !e.startsWith("No connection")) toast(e) }
+                    }
                 }
                 toast(t("Forwarded ✓", "ఫార్వర్డ్ చేశాం ✓"))
             }.setNegativeButton(t("Cancel", "వద్దు"), null).show()
@@ -1823,7 +2049,7 @@ class ChatActivity : Activity() {
         searchBar.addView(hitLabel)
         searchBar.addView(iconBtn(R.drawable.ic_chevron_up, t("Earlier", "ముందుది"), size = 22, box = 40) { moveHit(-1) })
         searchBar.addView(iconBtn(R.drawable.ic_chevron_down, t("Later", "తర్వాతది"), size = 22, box = 40) { moveHit(1) })
-        head.visibility = View.GONE; searchBar.visibility = View.VISIBLE
+        head.visibility = View.GONE; searchBar.visibility = View.VISIBLE; syncBack()
         q.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -1848,7 +2074,7 @@ class ChatActivity : Activity() {
         goTo(hits[hitIdx])
     }
     private fun closeSearch() {
-        searchBar.visibility = View.GONE; head.visibility = View.VISIBLE
+        searchBar.visibility = View.GONE; head.visibility = View.VISIBLE; syncBack()
         searchQ = ""; hits = emptyList(); hitIdx = -1
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(searchBar.windowToken, 0)
         lastCount = -1; render()

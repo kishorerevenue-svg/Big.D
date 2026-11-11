@@ -490,7 +490,7 @@ class ChatInfoActivity : Activity() {
     // =================== ⭐ starred messages ===================
     private fun starred() {
         val list = db.starred(cid)
-        if (list.isEmpty()) { box.addView(ui.text(t("⭐ No starred messages. Hold a message › ⭐ Star to keep it here.", "⭐ స్టార్ చేసిన మెసేజ్‌లు లేవు. మెసేజ్‌ని నొక్కి పట్టి › ⭐ స్టార్ నొక్కండి."), 14.5f, C.SUB).apply { setPadding(dp(6), dp(20), dp(6), dp(6)) }); return }
+        if (list.isEmpty()) { box.addView(ui.text(t("⭐ No starred messages. Hold a message, then tap ☆ at the top to keep it here.", "⭐ స్టార్ చేసిన మెసేజ్‌లు లేవు. మెసేజ్‌ని నొక్కి పట్టి, పైన ☆ నొక్కండి."), 14.5f, C.SUB).apply { setPadding(dp(6), dp(20), dp(6), dp(6)) }); return }
         for (m in list) {
             val c = db.conv(m.cid) ?: continue
             val who = if (m.sender == me) t("You", "మీరు") else c.nameOf(m.sender)

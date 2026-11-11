@@ -36,8 +36,9 @@ import java.util.Locale
  *  - The top: "Habit Chat", 📷 scan a QR code, ⋮ (new group, community, broadcast, ⭐ starred, read all, locked chats,
  *    settings); then 💬 Chats · ⭕ Updates · 🏘️ Communities · 📞 Calls.
  *  - Chats: "Ask Habit AI or search" (chats, Habit people, phone contacts, or ask the AI); chips: All · Unread · ⭐
- *    Favourites · Groups · my own lists · ＋. 📌 Pinned chats first; long-press a chat: pin, favourite, mute, read /
- *    unread, add to list, lock (🔒 locked chats open with the fingerprint), theme, delete, block.
+ *    Favourites · Groups · my own lists · ＋. 📌 Pinned chats first; long-press a chat to pick it (like WhatsApp: a bar at
+ *    the top with pin, delete, mute and ⋮ favourite, add to list, read / unread, lock (🔒 locked chats open with the
+ *    fingerprint), theme, block, select all; tap more chats to pick them too).
  *  - "Invite your people": ⭐ favourite contacts and people you called or invited; everyone else by search.
  *  - Updates: status updates for 24 hours (text, photo, video), locked end to end. Communities: groups together under
  *    one announcements group. Calls: every Habit call, a new call, favourites.
@@ -97,6 +98,7 @@ class ChatPage(private val m: MainActivity) {
             }
         })
         if (!ChatSync.isSetUp(m)) { intro(s); return }
+        if (pickedChats.isNotEmpty()) m.setTopBar(pickBar())
         db.ensureAi()
         // Chats · Updates · Communities · Calls
         val tabs = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; background = C.round(C.CARD, dp(24).toFloat(), C.EDGE, dp(1)); setPadding(dp(4), dp(4), dp(4), dp(4)) }
@@ -266,6 +268,7 @@ class ChatPage(private val m: MainActivity) {
         }
         if (q.isNotEmpty()) chats = chats.filter { it.name.lowercase().contains(q) || it.preview.lowercase().contains(q) || it.data.optString("handle").lowercase().contains(q) }
         chats = chats.sortedWith(compareByDescending<ChatConv> { pinned(it.cid) }.thenByDescending { if (pinned(it.cid)) pinAt(it.cid) else 0L }.thenByDescending { it.last })
+        shownCids = chats.map { it.cid }
         if (requests.isNotEmpty() && q.isEmpty() && filter == "all" && !hiddenOpen) {
             box.addView(heading(t("Requests", "రిక్వెస్ట్‌లు") + " · ${requests.size}"))
             requests.forEach { box.addView(row(it, true)) }
@@ -276,8 +279,8 @@ class ChatPage(private val m: MainActivity) {
             q.isNotEmpty() -> t("No chats with \"$query\".", "\"$query\" తో చాట్‌లు లేవు.")
             filter == "unread" -> t("No unread chats. 🎉", "చదవని చాట్‌లు లేవు. 🎉")
             filter == "groups" -> t("No groups yet. Tap ➕ › New group.", "ఇంకా గ్రూప్‌లు లేవు. ➕ › కొత్త గ్రూప్ నొక్కండి.")
-            filter == "fav" -> t("No favourites yet. Long-press a chat › ⭐ Add to favourites.", "ఇంకా ఇష్టమైనవి లేవు. చాట్‌ని నొక్కి పట్టి › ⭐ ఎంచుకోండి.")
-            filter.startsWith("list:") -> t("No chats in this list. Long-press a chat › 📋 Add to list.", "ఈ లిస్ట్‌లో చాట్‌లు లేవు. చాట్‌ని నొక్కి పట్టి › 📋 లిస్ట్‌లో చేర్చు.")
+            filter == "fav" -> t("No favourites yet. Long-press a chat, then ⋮ › Add to favourites.", "ఇంకా ఇష్టమైనవి లేవు. చాట్‌ని నొక్కి పట్టి, ⋮ › ఇష్టమైనవిలో చేర్చు నొక్కండి.")
+            filter.startsWith("list:") -> t("No chats in this list. Long-press a chat, then ⋮ › Add to list.", "ఈ లిస్ట్‌లో చాట్‌లు లేవు. చాట్‌ని నొక్కి పట్టి, ⋮ › లిస్ట్‌లో చేర్చు నొక్కండి.")
             else -> t("No chats yet. Tap ➕ to start one, or invite your people below.", "ఇంకా చాట్‌లు లేవు. ➕ నొక్కి మొదలుపెట్టండి, లేదా కింద మీ వాళ్ళను ఆహ్వానించండి.")
         }, 14f, C.SUB).apply { setPadding(dp(14), dp(16), dp(14), dp(10)) })
         if (hiddenOpen) return
@@ -287,12 +290,16 @@ class ChatPage(private val m: MainActivity) {
 
     private fun row(c: ChatConv, request: Boolean): View {
         val pin = pinned(c.cid) && !request
+        val picked = c.cid in pickedChats
         val r = LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = C.press(m, dp(22).toFloat(), if (pin) C.round(C.ROW_HI, dp(22).toFloat()) else null)
-            if (pin && !C.dark) elevation = dp(1).toFloat()
+            background = if (picked) C.round(C.PICK, dp(22).toFloat()) else C.press(m, dp(22).toFloat(), if (pin) C.round(C.ROW_HI, dp(22).toFloat()) else null)
+            if (pin && !C.dark && !picked) elevation = dp(1).toFloat()
         }
-        r.addView(ChatDraw.avatar(m, store, c.emoji, if (c.isDm) c.avatar else "", dp(52), null, c.name, c.isGroup || c.isBcast, c.cid, c.isAi), LinearLayout.LayoutParams(dp(52), dp(52)))
+        r.addView(FrameLayout(m).apply {
+            addView(ChatDraw.avatar(m, store, c.emoji, if (c.isDm) c.avatar else "", dp(52), null, c.name, c.isGroup || c.isBcast, c.cid, c.isAi), FrameLayout.LayoutParams(dp(52), dp(52)))
+            if (picked) addView(Ico.view(m, R.drawable.ic_tick, C.ON_GOLD, 13, 22, "", C.round(C.GOLD, dp(11).toFloat(), C.BG, dp(2))), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.BOTTOM or Gravity.END))
+        }, LinearLayout.LayoutParams(dp(52), dp(52)))
         val mid = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(8), 0) }
         c.comm?.let { k -> mid.addView(txt(k.optString("name") + "  ›", 11.5f, C.SUB).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }) }
         val tasks = db.tasks(c.cid).size
@@ -346,8 +353,8 @@ class ChatPage(private val m: MainActivity) {
             else if (markedUnread(c.cid)) addView(View(m).apply { background = ChatTheme.circle(C.GOLD) }, LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginStart = dp(6) })
         }, LinearLayout.LayoutParams(-2, dp(22)).apply { topMargin = dp(6) })
         r.addView(end)
-        r.setOnClickListener { db.setKv("unr:${c.cid}", ""); ChatActivity.open(m, c.cid) }
-        r.setOnLongClickListener { chatMenu(c); true }
+        r.setOnClickListener { if (pickedChats.isNotEmpty()) togglePick(c.cid) else { db.setKv("unr:${c.cid}", ""); ChatActivity.open(m, c.cid) } }
+        r.setOnLongClickListener { togglePick(c.cid); true }
         return r
     }
     /** The last message in a row: ticks, then an icon for photos, voice notes, places… instead of the emoji. */
@@ -375,38 +382,100 @@ class ChatPage(private val m: MainActivity) {
         }
     }
 
-    // ---------- long-press a chat ----------
-    private fun chatMenu(c: ChatConv) {
+    // ---------- picking chats with a long-press, like WhatsApp ----------
+    // The picked chats light up (✓ on the picture); a bar stays at the top of the screen with what to do:
+    // ← · how many · 📌 pin · 🗑 delete · 🔕 mute · ⋮ more. Tap other chats to pick them too; ← or Back stops.
+    private val pickedChats = LinkedHashSet<String>()
+    private var shownCids: List<String> = emptyList()
+    /** True while chats are picked (Back stops picking first). */
+    val picking get() = pickedChats.isNotEmpty()
+    private fun togglePick(cid: String) { if (!pickedChats.remove(cid)) pickedChats.add(cid); afterPick() }
+    private fun afterPick() {
+        listBox?.let { fillList(it) }
+        m.setTopBar(if (pickedChats.isEmpty()) null else pickBar())
+        m.backChanged()
+    }
+    /** Back while picking: stop picking (true). */
+    fun back(): Boolean { if (pickedChats.isEmpty()) return false; pickedChats.clear(); afterPick(); return true }
+    /** Leaving Habit Chat for another page: stop picking. */
+    fun leave() { if (pickedChats.isNotEmpty()) { pickedChats.clear(); m.setTopBar(null) } }
+    private fun donePicking() { pickedChats.clear(); m.setTopBar(null); m.backChanged(); redraw() }
+    private fun pickedConvs() = pickedChats.mapNotNull { db.conv(it) }
+
+    private fun pickBar(): View {
+        val cs = pickedConvs()
+        val bar = LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(4), dp(2), dp(4)); minimumHeight = dp(62)
+            setBackgroundColor(C.BAR); elevation = dp(3).toFloat(); isClickable = true
+        }
+        bar.addView(icon(R.drawable.ic_back, t("Stop picking", "ఎంచుకోవడం ఆపు")) { back() })
+        bar.addView(txt(cs.size.toString(), 20f, C.TXT, true).apply { setPadding(dp(12), 0, 0, 0); setLineSpacing(0f, 1f) }, LinearLayout.LayoutParams(0, -2, 1f))
+        val allPinned = cs.isNotEmpty() && cs.all { pinned(it.cid) }
+        bar.addView(icon(if (allPinned) R.drawable.ic_pin_off else R.drawable.ic_pin, if (allPinned) t("Unpin", "పిన్ తీసేయి") else t("Pin", "పిన్ చేయి")) { pinPicked(!allPinned) })
+        bar.addView(icon(R.drawable.ic_trash, t("Delete", "తొలగించు")) { deletePicked() })
+        val canMute = cs.filter { !it.isLocal }
+        if (canMute.isNotEmpty()) {
+            val allMuted = canMute.all { it.muted }
+            bar.addView(icon(if (allMuted) R.drawable.ic_bell else R.drawable.ic_bell_off, if (allMuted) t("Unmute", "శబ్దం ఆన్") else t("Mute", "శబ్దం ఆఫ్")) {
+                canMute.forEach { db.setMuted(it.cid, !allMuted) }; donePicking() })
+        }
+        bar.addView(icon(R.drawable.ic_more, t("More", "ఇంకా")) { pickMore(it) })
+        return bar
+    }
+    private fun pinPicked(on: Boolean) {
+        val cs = pickedConvs()
+        if (on) {
+            val add = cs.filter { !pinned(it.cid) }
+            if (db.convs().count { pinned(it.cid) } + add.size > 5) { m.toast(t("You can pin up to 5 chats.", "5 చాట్‌ల వరకు పిన్ చేయవచ్చు.")); return }
+            var at = System.currentTimeMillis()
+            add.forEach { db.setKv("pin:${it.cid}", (at++).toString()) }
+        } else cs.forEach { db.setKv("pin:${it.cid}", "0") }
+        donePicking()
+    }
+    private fun deletePicked() {
+        val cs = pickedConvs()
+        if (cs.isEmpty()) return
+        if (cs.size == 1) { donePicking(); deleteChat(cs[0]); return }
+        AlertDialog.Builder(m).setMessage(t("Delete these ${cs.size} chats from this phone? (You also leave the groups among them.)", "ఈ ${cs.size} చాట్‌లు ఈ ఫోన్ నుంచి తొలగించాలా? (వాటిలోని గ్రూప్‌ల నుంచి కూడా వెళ్ళిపోతారు.)"))
+            .setPositiveButton(t("Delete", "తొలగించు")) { _, _ -> donePicking(); cs.forEach { removeChat(it) } }
+            .setNegativeButton(t("Cancel", "వద్దు"), null).show()
+    }
+    /** ⋮ while picking: favourites, lists, read / unread, lock, theme, block, select all. */
+    private fun pickMore(anchor: View) {
+        val cs = pickedConvs()
+        if (cs.isEmpty()) return
+        val one = cs.singleOrNull()
         val items = ArrayList<Pair<String, () -> Unit>>()
-        val pin = pinned(c.cid)
-        items.add((if (pin) t("📌 Unpin", "📌 పిన్ తీసేయి") else t("📌 Pin to the top", "📌 పైన పిన్ చేయి")) to {
-            if (!pin && db.convs().count { pinned(it.cid) } >= 5) m.toast(t("You can pin up to 5 chats.", "5 చాట్‌ల వరకు పిన్ చేయవచ్చు."))
-            else { db.setKv("pin:${c.cid}", if (pin) "0" else System.currentTimeMillis().toString()); redraw() }
-        })
-        items.add((if (fav(c.cid)) t("⭐ Remove from favourites", "⭐ ఇష్టమైనవి నుంచి తీసేయి") else t("⭐ Add to favourites", "⭐ ఇష్టమైనవిలో చేర్చు")) to {
-            db.setKv("fav:${c.cid}", if (fav(c.cid)) "" else "1"); redraw() })
-        items.add(t("📋 Add to list", "📋 లిస్ట్‌లో చేర్చు") to { ChatLists.pick(m, c.cid) { redraw() } })
-        if (!c.isLocal) items.add((if (c.muted) t("🔔 Unmute", "🔔 శబ్దం ఆన్") else t("🔕 Mute", "🔕 శబ్దం ఆఫ్")) to { db.setMuted(c.cid, !c.muted); redraw() })
-        if (c.unread > 0 || markedUnread(c.cid)) items.add(t("✓ Mark as read", "✓ చదివినట్టు") to { db.readAll(c.cid); db.setKv("unr:${c.cid}", ""); redraw() })
-        else items.add(t("● Mark as unread", "● చదవనట్టు") to { db.setKv("unr:${c.cid}", "1"); redraw() })
-        if (!c.isSelf && !c.isAi) items.add((if (hidden(c.cid)) t("👁 Show in the list again", "👁 మళ్ళీ లిస్ట్‌లో చూపించు") else t("🔒 Lock chat (hide)", "🔒 చాట్ లాక్ (దాచు)")) to {
-            val on = !hidden(c.cid)
-            db.setKv("lock:${c.cid}", if (on) "1" else "")
-            if (on) m.toast(t("Locked. Open it from 🔒 Locked chats at the top of the list.", "లాక్ చేశాం. లిస్ట్ పైన 🔒 లాక్ చేసిన చాట్‌లు నుంచి తెరవండి."))
-            redraw()
-        })
-        items.add(t("🎨 Chat theme", "🎨 చాట్ థీమ్") to { pickWall(c.cid) })
-        if (c.isDm) {
-            val other = c.otherUid(ChatSync.myUid(m))
-            items.add((if (c.blocked) t("✅ Unblock", "✅ అన్‌బ్లాక్") else t("🚫 Block", "🚫 బ్లాక్")) to {
-                Thread {
-                    val r = ChatSync.api(store, "POST", "/api/chat/block", JSONObject().put("uid", other).put("on", !c.blocked).toString())
-                    m.runOnUiThread { if (r.ok) { db.patchConv(c.cid) { it.put("blocked", !c.blocked) }; m.toast(if (c.blocked) t("Unblocked", "అన్‌బ్లాక్ చేశాం") else t("Blocked", "బ్లాక్ చేశాం")); redraw() } else m.toast(r.error("Couldn't do it.")) }
-                }.start()
+        val allFav = cs.all { fav(it.cid) }
+        items.add((if (allFav) t("Remove from favourites", "ఇష్టమైనవి నుంచి తీసేయి") else t("Add to favourites", "ఇష్టమైనవిలో చేర్చు")) to {
+            cs.forEach { db.setKv("fav:${it.cid}", if (allFav) "" else "1") }; donePicking() })
+        if (one != null) items.add(t("Add to list", "లిస్ట్‌లో చేర్చు") to { donePicking(); ChatLists.pick(m, one.cid) { redraw() } })
+        val anyUnread = cs.any { it.unread > 0 || markedUnread(it.cid) }
+        items.add((if (anyUnread) t("Mark as read", "చదివినట్టు") else t("Mark as unread", "చదవనట్టు")) to {
+            cs.forEach { if (anyUnread) { db.readAll(it.cid); db.setKv("unr:${it.cid}", "") } else db.setKv("unr:${it.cid}", "1") }; donePicking() })
+        val lockable = cs.filter { !it.isSelf && !it.isAi }
+        if (lockable.isNotEmpty()) {
+            val allHidden = lockable.all { hidden(it.cid) }
+            items.add((if (allHidden) t("Show in the list again", "మళ్ళీ లిస్ట్‌లో చూపించు") else t("Lock chat (hide)", "చాట్ లాక్ (దాచు)")) to {
+                lockable.forEach { db.setKv("lock:${it.cid}", if (allHidden) "" else "1") }
+                if (!allHidden) m.toast(t("Locked. Open it from 🔒 Locked chats at the top of the list.", "లాక్ చేశాం. లిస్ట్ పైన 🔒 లాక్ చేసిన చాట్‌లు నుంచి తెరవండి."))
+                donePicking()
             })
         }
-        items.add((if (c.isGroup && c.member) t("🚪 Exit group and delete", "🚪 గ్రూప్ వదిలి తొలగించు") else if (c.isSelf || c.isAi) t("🧹 Clear this chat", "🧹 ఈ చాట్ క్లియర్") else if (c.isBcast) t("🗑️ Delete broadcast list", "🗑️ బ్రాడ్‌కాస్ట్ లిస్ట్ తొలగించు") else t("🗑️ Delete chat", "🗑️ చాట్ తొలగించు")) to { deleteChat(c) })
-        AlertDialog.Builder(m).setTitle(c.emoji + "  " + c.name).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
+        if (one != null) items.add(t("Chat theme", "చాట్ థీమ్") to { donePicking(); pickWall(one.cid) })
+        if (one != null && one.isDm) items.add((if (one.blocked) t("Unblock", "అన్‌బ్లాక్") else t("Block", "బ్లాక్")) to { donePicking(); block(one) })
+        if (shownCids.any { it !in pickedChats }) items.add(t("Select all", "అన్నీ ఎంచుకో") to { pickedChats.addAll(shownCids); afterPick() })
+        val pm = android.widget.PopupMenu(m, anchor)
+        items.forEachIndexed { i, it -> pm.menu.add(0, i, i, it.first) }
+        pm.setOnMenuItemClickListener { mi -> items[mi.itemId].second(); true }
+        pm.show()
+    }
+    private fun block(c: ChatConv) {
+        val other = c.otherUid(ChatSync.myUid(m))
+        Thread {
+            val r = ChatSync.api(store, "POST", "/api/chat/block", JSONObject().put("uid", other).put("on", !c.blocked).toString())
+            m.runOnUiThread { if (r.ok) { db.patchConv(c.cid) { it.put("blocked", !c.blocked) }; m.toast(if (c.blocked) t("Unblocked", "అన్‌బ్లాక్ చేశాం") else t("Blocked", "బ్లాక్ చేశాం")); redraw() } else m.toast(r.error("Couldn't do it.")) }
+        }.start()
     }
 
     private fun deleteChat(c: ChatConv) {
@@ -417,17 +486,20 @@ class ChatPage(private val m: MainActivity) {
             c.isBcast -> t("Delete this broadcast list? Messages already sent stay in each person's chat.", "ఈ బ్రాడ్‌కాస్ట్ లిస్ట్ తొలగించాలా? పంపినవి వాళ్ళ చాట్‌లలో ఉంటాయి.")
             else -> t("Delete this chat from this phone? (A new message from them brings it back.)", "ఈ ఫోన్ నుంచి ఈ చాట్ తొలగించాలా? (వాళ్ళ కొత్త మెసేజ్ వస్తే మళ్ళీ వస్తుంది.)")
         }
-        AlertDialog.Builder(m).setMessage(msg).setPositiveButton(t("Delete", "తొలగించు")) { _, _ ->
-            when {
-                c.isGroup && c.member -> Thread {
-                    val r = ChatSync.api(store, "POST", "/api/chat/leave", JSONObject().put("cid", c.cid).toString())
-                    m.runOnUiThread { if (r.ok) { db.patchConv(c.cid) { it.put("member", false) }; db.clear(c.cid, true); redraw() } else m.toast(r.error("Couldn't leave the group.")) }
-                }.start()
-                c.isBcast -> { db.dropConv(c.cid); redraw() }
-                c.isSelf || c.isAi -> { db.clear(c.cid, false); if (c.isAi) ChatSync.aiForget(); redraw() }
-                else -> { db.clear(c.cid, true); redraw() }
-            }
-        }.setNegativeButton(t("Cancel", "వద్దు"), null).show()
+        AlertDialog.Builder(m).setMessage(msg).setPositiveButton(t("Delete", "తొలగించు")) { _, _ -> removeChat(c) }
+            .setNegativeButton(t("Cancel", "వద్దు"), null).show()
+    }
+    /** Deletes a chat from this phone (and leaves a group first). */
+    private fun removeChat(c: ChatConv) {
+        when {
+            c.isGroup && c.member -> Thread {
+                val r = ChatSync.api(store, "POST", "/api/chat/leave", JSONObject().put("cid", c.cid).toString())
+                m.runOnUiThread { if (r.ok) { db.patchConv(c.cid) { it.put("member", false) }; db.clear(c.cid, true); redraw() } else m.toast(r.error("Couldn't leave the group.")) }
+            }.start()
+            c.isBcast -> { db.dropConv(c.cid); redraw() }
+            c.isSelf || c.isAi -> { db.clear(c.cid, false); if (c.isAi) ChatSync.aiForget(); redraw() }
+            else -> { db.clear(c.cid, true); redraw() }
+        }
     }
 
     fun pickWall(cid: String) {
