@@ -17,7 +17,7 @@ adb install -r "$apk"
 adb shell pm grant $pkg android.permission.POST_NOTIFICATIONS || true
 shot() { # theme screen name [language]
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
-  adb shell am start -W -n $pkg/com.soulfriend.pet.DemoActivity --es theme "$1" --es screen "$2" --es lang "${4:-en}"
+  echo "== $3: $(adb shell am start -S -W -n $pkg/com.soulfriend.pet.DemoActivity --es theme "$1" --es screen "$2" --es lang "${4:-en}" 2>&1 | tr "\n" " ")" >> android/shots/starts.txt
   sleep 6
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
   sleep 1

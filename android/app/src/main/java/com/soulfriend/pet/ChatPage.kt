@@ -331,7 +331,8 @@ class ChatPage(private val m: MainActivity) {
         r.addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
         val end = LinearLayout(m).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
         val hot = unread && !c.muted
-        if (c.last > 10 && !c.isSelf) end.addView(txt(whenText(c.last), 12f, if (hot) C.GOLD_TXT else C.SUB).apply { gravity = Gravity.END; typeface = if (hot) Fonts.bold(m) else Fonts.regular(m); setLineSpacing(0f, 1f) })
+        if (c.last > 10 && !c.isSelf) end.addView(txt(whenText(c.last), 12f, if (hot) C.GOLD_TXT else C.SUB).apply { gravity = Gravity.END; maxLines = 1; typeface = if (hot) Fonts.bold(m) else Fonts.regular(m); setLineSpacing(0f, 1f) },
+            LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.END })
         end.addView(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL
             fun mark(res: Int) = addView(ImageView(m).apply { setImageDrawable(m.getDrawable(res)!!.mutate()); imageTintList = android.content.res.ColorStateList.valueOf(C.SUB) }, LinearLayout.LayoutParams(dp(15), dp(15)).apply { marginStart = dp(5) })
