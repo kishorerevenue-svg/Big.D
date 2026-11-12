@@ -63,6 +63,13 @@ for col in teal purple orange green blue maroon; do shot light home "home-$col" 
 shot light home home-top
 adb shell input swipe 540 1700 540 700 400; snap home-mid
 adb shell input swipe 540 1700 540 500 400; adb shell input swipe 540 1700 540 500 400; snap home-bottom
+# the Office box on Home (a little way down), and the Office side of Files
+shot light home home-office0
+adb shell input swipe 540 1600 540 1000 500; snap home-office
+shot dark home dark-home-office0
+adb shell input swipe 540 1600 540 1000 500; snap dark-home-office
+shot light office page-office
+shot dark office dark-page-office
 shot light home home-sheet0
 adb shell input tap 983 212; snap home-sheet
 adb shell input keyevent KEYCODE_BACK

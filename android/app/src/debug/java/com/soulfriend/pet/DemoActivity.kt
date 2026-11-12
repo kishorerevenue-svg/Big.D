@@ -39,7 +39,9 @@ class DemoActivity : Activity() {
             "media" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "dm-ravi").putExtra("mode", "media")
             "starred" -> Intent(this, ChatInfoActivity::class.java).putExtra("cid", "").putExtra("mode", "starred")
             "devices" -> Intent(this, LinkedDevicesActivity::class.java)
-            "home", "tasks", "files", "vault", "pet", "translate", "family", "govt" -> Intent(this, MainActivity::class.java).putExtra("tab", intent.getStringExtra("screen"))
+            "home", "tasks", "vault", "pet", "translate", "family", "govt" -> Intent(this, MainActivity::class.java).putExtra("tab", intent.getStringExtra("screen"))
+            "files" -> { store.letterMode = "public"; Intent(this, MainActivity::class.java).putExtra("tab", "files") }
+            "office" -> { store.letterMode = "office"; Intent(this, MainActivity::class.java).putExtra("tab", "files") }
             "feed" -> Intent(this, MainActivity::class.java).putExtra("tab", "feedback")
             "login" -> Intent(this, LoginActivity::class.java)
             else -> Intent(this, MainActivity::class.java).putExtra("tab", "messages")
