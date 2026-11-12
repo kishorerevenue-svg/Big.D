@@ -873,11 +873,12 @@ class MainActivity : Activity() {
             brainAt = System.currentTimeMillis()
             io.execute {
                 val r = Net.get(store, "/api/brain/status")
-                if (r.ok) runOnUiThread { brainStatus = r.json; if (tab == "pet") render() }
+                runOnUiThread { brainStatus = if (r.ok) r.json else JSONObject().put("offline", true); if (tab == "pet") render() }
             }
         }
         val s = brainStatus
         if (s == null) { put(ui.text(t("Checking…", "చూస్తోంది…"), 13.5f, Ui.MUTED), 8); return@apply }
+        if (s.optBoolean("offline")) { put(ui.text(t("Can't reach Habit's server right now. Check the internet.", "ఇప్పుడు Habit సర్వర్ అందడం లేదు. ఇంటర్నెట్ చూడండి."), 13.5f, Ui.MUTED), 8); return@apply }
         fun row(icon: String, label: String, value: String) = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(ui.text("$icon  $label", 14f, Ui.INK), LinearLayout.LayoutParams(0, -2, 1f))
