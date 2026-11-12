@@ -41,6 +41,7 @@ class DemoActivity : Activity() {
             "devices" -> Intent(this, LinkedDevicesActivity::class.java)
             "home", "tasks", "files", "vault", "pet", "translate", "family", "govt" -> Intent(this, MainActivity::class.java).putExtra("tab", intent.getStringExtra("screen"))
             "feed" -> Intent(this, MainActivity::class.java).putExtra("tab", "feedback")
+            "login" -> Intent(this, LoginActivity::class.java)
             else -> Intent(this, MainActivity::class.java).putExtra("tab", "messages")
         }
         startActivity(go.addFlags(flags))

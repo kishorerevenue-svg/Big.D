@@ -43,6 +43,7 @@ jobs:
           script: bash .github/screens.sh
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true      # (GitHub's file store sometimes fails; the pictures also go to the ui-shots branch)
         with:
           name: screens
           path: android/shots

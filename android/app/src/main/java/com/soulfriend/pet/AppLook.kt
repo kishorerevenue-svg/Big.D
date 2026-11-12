@@ -37,8 +37,8 @@ object AppLook {
         Palette("maroon", "Maroon & Saffron", "మెరూన్ & కాషాయం", "#9F1239", "#881337", "#881337", "#E0434F", "#F59E0B", "#9A5A00",
             "#FDF3F2", "#F2DEDC", "#3A0A15", "#85595F", "#FBE0E3", "#FFEFCF", "#9A5A00", "#E2EEFB", "#2B5BA0"),
     )
-    /** The choice before the user picks one. */
-    const val DEFAULT = "teal"
+    /** The colour before the user picks one: Royal Purple (it goes with the chats' navy and gold). */
+    const val DEFAULT = "purple"
 
     var p: Palette = PALETTES.first { it.id == DEFAULT }
         private set
