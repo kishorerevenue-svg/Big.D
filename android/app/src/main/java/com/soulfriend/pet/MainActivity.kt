@@ -115,11 +115,13 @@ class MainActivity : Activity() {
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
         /** Pages opened from Home (not in the bottom bar). Back and the Home tab return to Home. */
-        val TOOL_PAGES = setOf("translate", "family", "govt", "pet", "files", "vault")
-        /** The bottom bar: two tabs, the round Talk button, two tabs. */
+        val TOOL_PAGES = setOf("translate", "family", "govt", "pet")
+        /** The bottom bar: three tabs, the round Talk button, three tabs. */
         class NavTab(val key: String, val en: String, val te: String, val icon: Int)
         val TABS = listOf(NavTab("home", "Home", "హోమ్", R.drawable.ic_home), NavTab("messages", "Chats", "చాట్‌లు", R.drawable.ic_chat),
-            NavTab("tasks", "Tasks", "పనులు", R.drawable.ic_tasks), NavTab("feedback", "Media", "మీడియా", R.drawable.ic_media))
+            NavTab("files", "Files", "ఫైల్స్", R.drawable.ic_folder),
+            NavTab("tasks", "Tasks", "పనులు", R.drawable.ic_tasks), NavTab("vault", "Vault", "వాల్ట్", R.drawable.ic_lock),
+            NavTab("feedback", "Media", "మీడియా", R.drawable.ic_media))
     }
 
     internal fun dp(v: Int) = ui.dp(v)
@@ -158,7 +160,7 @@ class MainActivity : Activity() {
             setOnClickListener { talkNow() }
         }
         nav.addView(navLeft, LinearLayout.LayoutParams(0, dp(56), 1f))
-        nav.addView(navMid, LinearLayout.LayoutParams(dp(72), dp(56)))
+        nav.addView(navMid, LinearLayout.LayoutParams(dp(66), dp(56)))
         nav.addView(navRight, LinearLayout.LayoutParams(0, dp(56), 1f))
         talkFab = ImageView(this).apply {
             setImageDrawable(getDrawable(R.drawable.ic_mic)!!.mutate()); scaleType = ImageView.ScaleType.FIT_CENTER
@@ -400,7 +402,7 @@ class MainActivity : Activity() {
     private fun buildNav() {
         if (navItems.isEmpty()) {
             TABS.forEach { navItems[it.key] = navItem(it) }
-            navItems.values.forEachIndexed { i, v -> (if (i < 2) navLeft else navRight).addView(v, LinearLayout.LayoutParams(0, dp(54), 1f).apply { setMargins(dp(3), 0, dp(3), 0) }) }
+            navItems.values.forEachIndexed { i, v -> (if (i < 3) navLeft else navRight).addView(v, LinearLayout.LayoutParams(0, dp(54), 1f).apply { setMargins(dp(1), 0, dp(1), 0) }) }
         }
         updateNav()
     }
@@ -413,9 +415,12 @@ class MainActivity : Activity() {
         box.addView(TextView(this@MainActivity).apply {
             textSize = 10f; typeface = Fonts.heavy(context); gravity = Gravity.CENTER; includeFontPadding = false; setPadding(dp(4), 0, dp(4), 0); minWidth = dp(16); visibility = View.GONE
         }, FrameLayout.LayoutParams(-2, dp(16), Gravity.TOP or Gravity.END))
-        addView(box, LinearLayout.LayoutParams(dp(44), dp(26)))
-        addView(TextView(this@MainActivity).apply { textSize = 11.5f; gravity = Gravity.CENTER; maxLines = 1; includeFontPadding = false },
-            LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(3) })
+        addView(box, LinearLayout.LayoutParams(dp(40), dp(26)))
+        // the name shrinks a little on narrow phones (six tabs and Talk share the bar)
+        addView(TextView(this@MainActivity).apply {
+            textSize = 11f; gravity = Gravity.CENTER; maxLines = 1; includeFontPadding = false
+            setAutoSizeTextTypeUniformWithConfiguration(8, 11, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+        }, LinearLayout.LayoutParams(-1, dp(16)).apply { topMargin = dp(2); marginStart = dp(2); marginEnd = dp(2) })
         setOnClickListener { if (tab != t.key) go(t.key) else if (t.key == "feedback") social.home() else scrollTop() }
     }
 
