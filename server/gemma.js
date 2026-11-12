@@ -245,7 +245,8 @@ module.exports = function makeGemma({ DATA_DIR, SERVER_DIR, ownBrain, learn, HF_
       for (const x of me.items) { const b = by[x.cat] || (by[x.cat] = [0, 0]); b[1]++; if (x.ok) b[0]++; }
       const run = { at: Date.now(), model: m, quick: me.quick, n: me.done, total: me.total, score: me.done ? Math.round(me.ok * 100 / me.done) : 0,
         format: me.done ? Math.round(me.format * 100 / me.done) : 0, byCat: by, minutes: Math.round((Date.now() - me.started) / 60000), stopped: me.stop || !!me.problem };
-      if (me.done) { results.runs.unshift(run); results.runs = results.runs.slice(0, 20); results.last = { ...run, items: me.items }; save("gemma-exams.json", results); }
+      // an exam that couldn't ask the model at all (it isn't there, Ollama is off) isn't kept: only its problem is shown
+      if (me.done && !me.problem) { results.runs.unshift(run); results.runs = results.runs.slice(0, 20); results.last = { ...run, items: me.items }; save("gemma-exams.json", results); }
     })().catch(e => { me.finished = true; me.problem = e.message; });
     return { ok: true, total: items.length };
   }

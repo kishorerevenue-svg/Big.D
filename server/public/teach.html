@@ -134,7 +134,7 @@ summary{cursor:pointer;font-weight:600}
           <li>Make two free accounts: <a href="https://www.kaggle.com" target="_blank" rel="noopener">Kaggle</a> (verify your phone number there) and <a href="https://huggingface.co/join" target="_blank" rel="noopener">Hugging Face</a>.</li>
           <li>Hugging Face › Settings › <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">Access Tokens</a> › Create new token, type <b>Write</b>. Copy it. On the server run <code>bash /root/Big.D/server/set-key.sh HF_TOKEN hf_…</code> (paste your token at the end). Keep the token secret: never send it to anyone.</li>
           <li>Here, in step 1 below: <b>Make a new link</b>, and copy it.</li>
-          <li>Kaggle › Create › New Notebook. In Settings: Accelerator <b>GPU T4 x2</b>, Internet <b>on</b>. In Add-ons › Secrets: add <b>HF_TOKEN</b> (your token) and <b>HABIT_LINK</b> (the link).</li>
+          <li>Kaggle › Create › New Notebook. In Settings: Accelerator <b>GPU T4 x2</b>, Internet <b>on</b>. In Add-ons › Secrets: add <b>HF_TOKEN</b> (your token) and <b>HABIT_LINK</b> (the link), and tick the box next to each.</li>
           <li>Paste this in the first cell, then Save Version › Save &amp; Run All. It is a 1-hour test:<br><code id="gmCell">!curl -fsSL https://raw.githubusercontent.com/kishorerevenue-svg/Big.D/main/brain/habit_gemma.py -o habit_gemma.py &amp;&amp; python habit_gemma.py --test</code> <button type="button" class="ghost" id="gmCopyCell">Copy</button></li>
           <li>When it says <b>THE TEST WORKED</b>: change <code>--test</code> to <code>--full</code> and Save &amp; Run All again (4 to 8 hours; you can close the phone).</li>
           <li>When it says <b>habit-gemma IS READY</b>: come back here and press <b>Put habit-gemma on this server</b> (step 5).</li>
@@ -604,7 +604,7 @@ async function loadGemma() {
   if (!hf.set) text += "To bring habit-gemma here, save your Hugging Face token on the server: bash /root/Big.D/server/set-key.sh HF_TOKEN hf_…";
   else if (hf.problem) text += "Hugging Face: " + hf.problem;
   else if (!rep) text += `No habit-gemma in ${hf.repo} yet: make it on Kaggle (the steps above).`;
-  else text += `In ${hf.repo}: habit-gemma made ${gmDate(rep.made)} from Gemma 4 ${rep.size}, exam ${rep.exam.habit.score}% right (the plain Gemma ${rep.exam.base.score}%), ${Math.round(((rep.gguf || {}).bytes || 0) / 1048576)} MB. Lessons: Big Gemma ${rep.lessons.teacher}, yours ${rep.lessons.owner + (rep.lessons["owner-asked"] || 0)}, library ${rep.lessons.library}, Aya ${rep.lessons.aya}.`;
+  else text += `In ${hf.repo}: habit-gemma made ${gmDate(rep.made)} from Gemma 4 ${rep.size}, exam ${rep.exam.habit.score}% right (the plain Gemma ${rep.exam.base.score}%), ${Math.round(((rep.gguf || {}).bytes || 0) / 1048576)} MB. Lessons: Big Gemma ${rep.lessons.teacher}, yours ${rep.lessons.owner}, library ${rep.lessons.library}, Aya ${rep.lessons.aya}.`;
   say($("gmHf"), text, mo.now === "habit-gemma" || !!rep);
   $("gmGet").textContent = mo.now === "habit-gemma" ? "Get the newest habit-gemma" : "Put habit-gemma on this server";
   $("gmGet").disabled = mo.getting || !hf.set || !rep; $("gmBack").hidden = !mo.base || mo.getting; $("gmBack").textContent = `Back to ${mo.base || "the plain Gemma"}`;

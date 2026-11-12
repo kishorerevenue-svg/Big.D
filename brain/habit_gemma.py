@@ -141,7 +141,7 @@ def machine(cfg):
     cfg.hf = secret("HF_TOKEN")
     cfg.link = secret("HABIT_LINK")
     if not cfg.hf:
-        stop("add your Hugging Face token: in the notebook Add-ons › Secrets › Add secret, name HF_TOKEN (type Write). See the guide.")
+        stop("add your Hugging Face token: in the notebook Add-ons › Secrets › Add secret, name HF_TOKEN (type Write), and tick its box. See the guide.")
     from huggingface_hub import HfApi
     try:
         cfg.user = HfApi(token=cfg.hf).whoami()["name"]
@@ -426,18 +426,21 @@ def plan(cfg):
 def teacher_lessons(cfg):
     step("2. Big Gemma writes lessons")
     old, info = ([], None) if cfg.mode == "test" else saved_lessons(cfg)
-    fresh = info and info.get("complete") and time.time() - info.get("at", 0) < 30 * 86400
-    if cfg.new_lessons == "no" or (cfg.new_lessons == "auto" and fresh):
+    if cfg.new_lessons == "no":
         if old:
-            say(f"Using the {len(old)} lessons Big Gemma wrote on {time.strftime('%d %b', time.localtime(info.get('at', 0)))} (--new-lessons yes to write new ones).")
+            say(f"Using the {len(old)} lessons Big Gemma wrote before (--new-lessons no).")
             return old
-        if cfg.new_lessons == "no":
-            stop("there are no saved lessons yet: run with --new-lessons auto.")
-    done = set(info.get("done", [])) if (info and not info.get("complete") and cfg.new_lessons == "auto") else set()
-    lessons = old if done else []
+        stop("there are no saved lessons yet: run with --new-lessons auto.")
+    # auto: keep the saved lessons (less than 30 days old, or not finished yet) and write only the topics they don't have
+    recent = bool(info) and time.time() - info.get("at", 0) < 30 * 86400
+    done = set(info.get("done", [])) if (info and cfg.new_lessons == "auto" and (recent or not info.get("complete"))) else set()
+    lessons = list(old) if done else []
     jobs = [j for j in plan(cfg) if f"{j[0]}|{j[1][0]}|{j[2]}" not in done]
+    if not jobs:
+        say(f"Using the {len(lessons)} lessons Big Gemma wrote on {time.strftime('%d %b', time.localtime(info.get('at', 0)))} (--new-lessons yes to write new ones).")
+        return lessons
     if done:
-        say(f"Continuing: {len(lessons)} lessons were written before, {len(jobs)} topics are left.")
+        say(f"{len(lessons)} lessons were written before; {len(jobs)} topics are left (or new).")
     need_teacher(cfg)
     budget = 0.15 if cfg.mode == "test" else cfg.hours
     lock, last_save, t_start = threading.Lock(), time.time(), time.time()
@@ -483,7 +486,8 @@ def teacher_lessons(cfg):
                 for x in futs:
                     x.cancel()
                 break
-    info["complete"] = len(info["done"]) >= len(plan(cfg)) and cfg.mode != "test"
+    have = set(info["done"])
+    info["complete"] = cfg.mode != "test" and all(f"{j[0]}|{j[1][0]}|{j[2]}" in have for j in plan(cfg))
     info["at"] = time.time()
     keep_lessons(cfg, lessons, info)
     say(f"Big Gemma's lessons: {len(lessons)} ✓")
@@ -613,6 +617,7 @@ def mix(cfg, teacher, own, asked, lib, people):
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     counts = {k: sum(1 for r in rows if r["from"] == k) for k in ["teacher", "owner", "owner-asked", "library", "aya"]}
+    counts["owner"] = len(own)   # the owner's lessons (each one is in the file three times)
     counts["total"] = len(rows)
     say("Lessons for training: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
     return counts

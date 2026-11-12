@@ -74,6 +74,7 @@ It works for 14 days.
 - *Add-ons › Secrets › Add secret*: name `HF_TOKEN`, value your Hugging Face token.
 - *Add-ons › Secrets › Add secret*: name `HABIT_LINK`, value the training link. This one is optional: without it, only
   Big Gemma and Aya teach.
+- Tick the box next to each secret, so that this notebook can use it.
 
 **4. Test run (about 1 hour).** Paste this in the first cell:
 
@@ -121,7 +122,8 @@ The last lines say what to do:
 
 - **there is no GPU**: in *Settings › Accelerator*, choose GPU T4 x2.
 - **no internet**: turn on *Settings › Internet*. It needs a verified phone number.
-- **add your Hugging Face token** / **didn't accept HF_TOKEN**: add the secret `HF_TOKEN`, with a Write token.
+- **add your Hugging Face token** / **didn't accept HF_TOKEN**: add the secret `HF_TOKEN`, with a Write token, and tick
+  its box in *Add-ons › Secrets*.
 - **the training link has expired**: make a new link on the Teach page and change the `HABIT_LINK` secret.
 - **habit-gemma did worse than the plain Gemma**: nothing is changed. Add more lessons, then run again. Each answer is in
   `exam-habit-gemma.json`, in the notebook's output.
@@ -178,7 +180,7 @@ The last lines say what to do:
 3. **Kaggle నోట్‌బుక్:** Kaggle › *Create › New Notebook* తెరిచి ఇవి చేయండి:
    - *Settings › Accelerator*: **GPU T4 x2**
    - *Settings › Internet*: **On**
-   - *Add-ons › Secrets*: `HF_TOKEN` (మీ టోకెన్), `HABIT_LINK` (లింక్)
+   - *Add-ons › Secrets*: `HF_TOKEN` (మీ టోకెన్), `HABIT_LINK` (లింక్). ప్రతి దాని పక్కన టిక్ పెట్టండి.
 4. **పరీక్ష రన్ (1 గంట):** పైన ఇంగ్లీష్ భాగంలోని **4వ దశలో ఉన్న లైన్** కాపీ చేసి మొదటి సెల్‌లో పేస్ట్ చేయండి. తర్వాత
    **Save Version › Save & Run All** నొక్కండి. చివర్లో **✅ THE TEST WORKED** వస్తే అంతా సరిగ్గా ఉంది.
 5. **అసలు రన్ (4 నుంచి 8 గంటలు):** `--test` బదులు `--full` పెట్టి మళ్ళీ *Save & Run All* నొక్కండి. చివర్లో
