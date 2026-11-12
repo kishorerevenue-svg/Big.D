@@ -832,7 +832,7 @@ class MainActivity : Activity() {
 
         add(ui.section("Privacy", "Useful for office files. Photos are sent as they are.").apply {
             put(ui.check("Hide personal details before sending (Aadhaar, phone and PAN numbers become XXXX…1234)", store.hidePersonal) { store.hidePersonal = it }, 8)
-            put(ui.check("Help Habit learn common questions: general questions like \"What is PM Kisan?\" are counted, never who asked, and never questions about you", store.learnShare) { store.learnShare = it }, 8)
+            put(ui.check("Help Habit learn: general questions like \"What is PM Kisan?\" are counted (never who asked, never questions about you), and you can rate answers from Habit's own brain with 👍 / 👎", store.learnShare) { store.learnShare = it }, 8)
         }, 12)
 
         add(ui.section("Your Media profile", "Your public profile, posts, photos and comments in the Media tab.").apply {

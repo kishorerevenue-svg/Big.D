@@ -51,6 +51,9 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
     warm();
   }
   function claudeWorked() { claude.fails = 0; claude.skipUntil = 0; }
+  /** When someone last asked the own brain (the exam waits while people are using it). */
+  let lastAsked = 0;
+  const busyNow = () => Date.now() - lastAsked < 45000 || Date.now() < claude.skipUntil;
   function skipClaude() { const s = Date.now() < claude.skipUntil; if (s) stats.skippedClaude++; return s; }
 
   // load the model into memory before it is needed (the first answer is then quicker)
@@ -106,14 +109,18 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
     return "";
   }
 
-  /** Facts for the question: what was learned, the owner's library, and the internet. Each look-up gives up after a few seconds. */
-  async function facts(q, lang) {
+  /** Facts for the question: what was learned, the owner's library, and the internet. Each look-up gives up after a few seconds.
+   *  [used] (optional) gets claude: true when a fact came from Claude (an answer learned from Claude, or a document Claude read):
+   *  then this answer is never used to teach Habit's own model. */
+  async function facts(q, lang, used) {
     const te = lang === "te" || isTe(q);
     const out = [];
     const learned = answers ? answers.lookup(q) : null;
     if (learned) out.push(`A prepared answer to this common question (checked earlier with the internet):\n${learned.answer.slice(0, 1000)}`);
-    const k = learn.knowledgeBlock(q);
+    const info = {};
+    const k = learn.knowledgeBlock(q, info);
     if (k) out.push(k.trim().slice(0, 900));
+    if (used && (learned || (k && info.claude))) used.claude = true;
     const jobs = [];
     if (/news|headline|వార్త|న్యూస్|samachar|varthalu/i.test(q)) jobs.push(news(q, te));
     if (/weather|rain|temperature|forecast|వాతావరణం|వర్షం|ఎండ|వేడి|చలి|ఉష్ణోగ్రత/i.test(q)) jobs.push(weather(q));
@@ -141,6 +148,7 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
     required: ["emotion", "reply"]
   };
 
+  /** The words the own brain is told before each answer (also the exam's, brain/exam.json, with no facts). */
   function prompt(lang, ctx, pet, found, photo) {
     const memories = (ctx.memories || []).slice(-8).filter(Boolean).map(m => String(m).slice(0, 160));
     return `You are ${pet.name}, ${pet.like}, a kind friend who lives on the person's phone in the Habit AI app. Right now you are Habit's own brain on Habit's own server (the big AI is not reachable), so answer by yourself.
@@ -154,15 +162,17 @@ ${memories.length ? "Things they told you before (use them kindly when they fit)
 ${found.length ? found.join("\n\n") : "(none)"}`;
   }
 
-  /** A reply in the same shape as Claude's pet reply ({emotion, reply, actions, sound}), plus own: true. Throws if it can't. */
+  /** The answer's text (JSON: {emotion, reply, sound}) and clean: false when Claude's words were among its facts. Throws if it can't. */
   async function pet(messages, lang, ctx, petInfo) {
     if (!(await ready())) throw Object.assign(new Error("Our own brain isn't installed or running yet."), { status: 503, user: true });
     const t0 = Date.now();
+    lastAsked = t0;
     const last = messages[messages.length - 1];
     const photo = Array.isArray(last.content) ? last.content.find(c => c.type === "image") : null;
     const lastText = Array.isArray(last.content) ? String((last.content.find(c => c.type === "text") || {}).text || "") : String(last.content || "");
     const question = lastText.replace(/^\[Your eyes:[^\]]*\]\s*(\(looking again\)\s*)?/, "");
-    const found = photo ? [] : await facts(question, lang);
+    const used = {};
+    const found = photo ? [] : await facts(question, lang, used);
     const msgs = messages.slice(-4).map((m, i, all) => {
       const text = Array.isArray(m.content) ? String((m.content.find(c => c.type === "text") || {}).text || "") : String(m.content || "");
       const o = { role: m.role === "assistant" ? "assistant" : "user", content: text.slice(0, i === all.length - 1 ? 1200 : 400) };
@@ -180,8 +190,8 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
       if (!r.ok) throw Object.assign(new Error(j.error || "own brain error " + r.status), { status: 502 });
       const text = String((j.message || {}).content || "").trim();
       if (!text) throw Object.assign(new Error("own brain gave no answer"), { status: 502 });
-      stats.answered++; stats.lastMs = Date.now() - t0;
-      return { text, sources: [] };
+      stats.answered++; stats.lastMs = Date.now() - t0; lastAsked = Date.now();
+      return { text, sources: [], clean: !used.claude };
     } catch (e) {
       stats.failed++; stats.lastProblem = new Date().toISOString() + " " + String(e.message || e).slice(0, 120);
       seen.at = 0;   // check again next time
@@ -247,5 +257,5 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
   /** For /health: what we know right now, without waiting (it checks again in the background). */
   function quick() { ready().catch(() => {}); return { installed: !!model(), model: model() || "none", ready: seen.ok, vision: seen.ok && seen.vision, answered: stats.answered }; }
 
-  return { ready, pet, writeJson, canWrite, facts, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats };
+  return { ready, pet, writeJson, canWrite, facts, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
 };

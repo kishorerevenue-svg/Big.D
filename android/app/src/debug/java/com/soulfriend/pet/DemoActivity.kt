@@ -139,7 +139,17 @@ class DemoActivity : Activity() {
         db.touch("dm-lakshmi", now - 3 * day, "📍 Home", false)
         db.putMsg(ChatMsg(ChatDb.AI, "ai1", 0, me, now - 6 * hour, "text", JSONObject().put("t", "text").put("text", "Remind me at 9 PM every day to update the diary"), 1))
         db.putMsg(ChatMsg(ChatDb.AI, "ai2", 0, "ai", now - 6 * hour + min, "text", JSONObject().put("t", "text").put("text", "Done! Reminder set for 9 PM every day. ⏰"), 1))
-        db.touch(ChatDb.AI, now - 6 * hour + min, "Done! Reminder set for 9 PM every day. ⏰", true)
+        // answers from Habit's own brain (Claude was resting): 👍 / 👎 under them, one already rated
+        val q1 = "రేషన్ కార్డులో కొత్త పేరు ఎలా చేర్చాలి?"
+        val a1 = "మీ గ్రామ లేదా వార్డు సచివాలయంలో దరఖాస్తు ఇవ్వండి. ఆధార్, పుట్టిన తేదీ సర్టిఫికెట్ తీసుకెళ్ళండి. మిగతా వివరాలు అక్కడి సిబ్బంది చెబుతారు."
+        db.putMsg(ChatMsg(ChatDb.AI, "ai3", 0, me, now - 2 * hour, "text", JSONObject().put("t", "text").put("text", q1), 1))
+        db.putMsg(ChatMsg(ChatDb.AI, "ai4", 0, "ai", now - 2 * hour + min, "text", JSONObject().put("t", "text").put("text", a1)
+            .put("_rate", JSONObject().put("rid", "0123456789abcdef").put("q", q1).put("r", a1).put("b", "own")), 1))
+        val a2 = "Why did the phone wear glasses? Because it lost its contacts! 😄"
+        db.putMsg(ChatMsg(ChatDb.AI, "ai5", 0, me, now - 10 * min, "text", JSONObject().put("t", "text").put("text", "Tell me a joke"), 1))
+        db.putMsg(ChatMsg(ChatDb.AI, "ai6", 0, "ai", now - 9 * min, "text", JSONObject().put("t", "text").put("text", a2)
+            .put("_rate", JSONObject().put("rid", "fedcba9876543210").put("q", "Tell me a joke").put("r", a2).put("b", "self")).put("_rated", "up"), 1))
+        db.touch(ChatDb.AI, now - 9 * min, a2, true)
         db.setKv("demo", "1")
     }
 }

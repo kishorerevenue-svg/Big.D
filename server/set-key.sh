@@ -3,6 +3,7 @@
 #   bash /root/Big.D/server/set-key.sh GOOGLE_TTS_KEY AIzaSy...
 #   bash /root/Big.D/server/set-key.sh ANTHROPIC_API_KEY sk-ant-...   (a new Claude key)
 #   bash /root/Big.D/server/set-key.sh GEMINI_API_KEY AIza...         (the backup AI, optional)
+#   bash /root/Big.D/server/set-key.sh HF_TOKEN hf_...                (Hugging Face: brings Habit's own trained model)
 #   bash /root/Big.D/server/set-key.sh GEMINI_API_KEY --remove        (takes a setting out again)
 # A Claude or Gemini key is tested with the company first. A key they say is wrong is NOT saved,
 # so the key that is already there keeps working.
@@ -41,6 +42,7 @@ code=skip
 case "$name" in
   ANTHROPIC_API_KEY) code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://api.anthropic.com/v1/models -H "x-api-key: $value" -H 'anthropic-version: 2023-06-01')" ;;
   GEMINI_API_KEY)    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://generativelanguage.googleapis.com/v1beta/models -H "x-goog-api-key: $value")" ;;
+  HF_TOKEN)          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://huggingface.co/api/whoami-v2 -H "Authorization: Bearer $value")" ;;
 esac
 case "$code" in
   skip) ;;

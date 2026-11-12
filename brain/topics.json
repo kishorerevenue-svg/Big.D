@@ -1,0 +1,125 @@
+{
+ "about": "Topics for Big Gemma (the teacher) to write lessons about. Only names of topics: Big Gemma writes the questions and the answers itself. Add your own topics anywhere.",
+ "groups": {
+  "daily": {
+   "en": "Everyday life", "te": "రోజువారీ జీవితం",
+   "topics": [
+    ["cooking simple home meals", "ఇంట్లో సులభమైన వంటలు"], ["healthy breakfast ideas", "ఆరోగ్యకరమైన టిఫిన్"], ["good sleep habits", "మంచి నిద్ర అలవాట్లు"],
+    ["waking up early", "త్వరగా నిద్ర లేవడం"], ["saving money at home", "ఇంట్లో డబ్బు పొదుపు"], ["planning a monthly budget", "నెలవారీ బడ్జెట్"],
+    ["keeping the house clean", "ఇల్లు శుభ్రంగా ఉంచడం"], ["travelling by bus and train", "బస్సు, రైలు ప్రయాణం"], ["summer heat care", "ఎండాకాలం జాగ్రత్తలు"],
+    ["rainy season care", "వర్షాకాలం జాగ్రత్తలు"], ["helping children study", "పిల్లల చదువుకు సహాయం"], ["children and phone use", "పిల్లలు, ఫోన్ వాడకం"],
+    ["caring for elderly parents", "వృద్ధ తల్లిదండ్రుల సంరక్షణ"], ["growing plants at home", "ఇంట్లో మొక్కలు పెంచడం"], ["caring for a pet dog or cat", "కుక్క, పిల్లి సంరక్షణ"],
+    ["good daily habits", "మంచి రోజువారీ అలవాట్లు"], ["time management", "సమయ నిర్వహణ"], ["shopping wisely", "తెలివిగా షాపింగ్"],
+    ["birthday and wedding wishes", "పుట్టినరోజు, పెళ్లి శుభాకాంక్షలు"], ["writing a kind message to someone", "ఎవరికైనా మంచి సందేశం రాయడం"]
+   ]
+  },
+  "festivals": {
+   "en": "Festivals and culture", "te": "పండుగలు, సంస్కృతి",
+   "topics": [
+    ["Sankranti", "సంక్రాంతి"], ["Ugadi", "ఉగాది"], ["Diwali", "దీపావళి"], ["Dasara", "దసరా"], ["Vinayaka Chavithi", "వినాయక చవితి"],
+    ["Sri Rama Navami", "శ్రీరామ నవమి"], ["Ramzan", "రంజాన్"], ["Christmas", "క్రిస్మస్"], ["Holi", "హోళీ"], ["Karthika masam", "కార్తీక మాసం"],
+    ["Telugu poets like Vemana and Annamayya", "వేమన, అన్నమయ్య వంటి తెలుగు కవులు"], ["famous places in Andhra Pradesh", "ఆంధ్రప్రదేశ్‌లో ప్రసిద్ధ ప్రదేశాలు"],
+    ["Telugu proverbs and their meaning", "తెలుగు సామెతలు, వాటి అర్థం"], ["Indian Independence Day and Republic Day", "స్వాతంత్ర్య దినోత్సవం, గణతంత్ర దినోత్సవం"]
+   ]
+  },
+  "feelings": {
+   "en": "Feelings and friendship", "te": "మనసు, స్నేహం",
+   "topics": [
+    ["feeling lonely", "ఒంటరితనం"], ["stress at work", "పనిలో ఒత్తిడి"], ["controlling anger", "కోపం తగ్గించుకోవడం"], ["fear of exams", "పరీక్షల భయం"],
+    ["staying motivated", "ఉత్సాహంగా ఉండటం"], ["saying sorry to a friend", "స్నేహితుడికి క్షమాపణ చెప్పడం"], ["family arguments", "ఇంట్లో గొడవలు"],
+    ["building confidence", "ఆత్మవిశ్వాసం పెంచుకోవడం"], ["feeling sad for many days", "చాలా రోజులుగా బాధగా ఉండటం"], ["being grateful", "కృతజ్ఞతగా ఉండటం"],
+    ["celebrating a small success", "చిన్న విజయాన్ని పంచుకోవడం"], ["missing family when away from home", "ఇంటికి దూరంగా ఉన్నప్పుడు కుటుంబం గుర్తుకు రావడం"]
+   ]
+  },
+  "safety": {
+   "en": "Money safety and scams", "te": "డబ్బు భద్రత, మోసాలు",
+   "topics": [
+    ["OTP fraud calls", "OTP మోసం కాల్స్"], ["UPI fraud", "UPI మోసాలు"], ["fake loan apps", "నకిలీ లోన్ యాప్‌లు"], ["KYC update scam messages", "KYC అప్‌డేట్ మోసం మెసేజ్‌లు"],
+    ["fake job offers that ask for a fee", "ఫీజు అడిగే నకిలీ ఉద్యోగాలు"], ["lottery and prize scams", "లాటరీ, బహుమతి మోసాలు"], ["digital arrest scam calls", "డిజిటల్ అరెస్ట్ మోసం కాల్స్"],
+    ["screen sharing apps like AnyDesk", "AnyDesk వంటి స్క్రీన్ షేరింగ్ యాప్‌లు"], ["QR code scams", "QR కోడ్ మోసాలు"], ["fake customer care numbers", "నకిలీ కస్టమర్ కేర్ నంబర్లు"],
+    ["safe passwords", "సురక్షితమైన పాస్‌వర్డ్‌లు"], ["ATM safety", "ATM దగ్గర జాగ్రత్తలు"], ["online shopping safety", "ఆన్‌లైన్ షాపింగ్ జాగ్రత్తలు"],
+    ["what to do after losing money to a fraud", "మోసంలో డబ్బు పోయిన తర్వాత ఏం చేయాలి"], ["fake electricity bill messages", "నకిలీ కరెంటు బిల్లు మెసేజ్‌లు"],
+    ["suspicious APK files and links", "అనుమానాస్పద APK ఫైల్స్, లింక్‌లు"], ["investment and chit fund traps", "పెట్టుబడి, చిట్ ఫండ్ మోసాలు"]
+   ]
+  },
+  "health": {
+   "en": "Health (general, safe advice)", "te": "ఆరోగ్యం (సాధారణ సలహా)",
+   "topics": [
+    ["fever", "జ్వరం"], ["cold and cough", "జలుబు, దగ్గు"], ["diabetes food habits", "షుగర్ ఉన్నవారి ఆహారం"], ["high blood pressure", "హై బీపీ"],
+    ["heat stroke", "వడదెబ్బ"], ["drinking enough water", "తగినంత నీళ్ళు తాగడం"], ["first aid for burns", "కాలిన గాయాలకు ప్రథమ చికిత్స"],
+    ["first aid for cuts", "తెగిన గాయాలకు ప్రథమ చికిత్స"], ["snake bite first steps", "పాము కాటు వేస్తే మొదట ఏం చేయాలి"], ["dog bite care", "కుక్క కాటు"],
+    ["care during pregnancy", "గర్భిణీ సంరక్షణ"], ["child vaccinations", "పిల్లల టీకాలు"], ["eye care and screen time", "కంటి సంరక్షణ, స్క్రీన్ టైమ్"],
+    ["dental care", "పళ్ళ సంరక్షణ"], ["walking and exercise for elders", "పెద్దవారికి నడక, వ్యాయామం"], ["when to see a doctor quickly", "వెంటనే డాక్టర్‌ని ఎప్పుడు కలవాలి"],
+    ["mosquito-borne fevers like dengue and malaria", "డెంగ్యూ, మలేరియా వంటి దోమల జ్వరాలు"], ["taking medicines safely", "మందులు సురక్షితంగా వాడటం"]
+   ]
+  },
+  "govt": {
+   "en": "Government services (Andhra Pradesh and India)", "te": "ప్రభుత్వ సేవలు (ఆంధ్రప్రదేశ్, భారత్)",
+   "topics": [
+    ["ration card", "రేషన్ కార్డు"], ["old age, widow and disability pensions", "వృద్ధాప్య, వితంతు, వికలాంగుల పింఛన్లు"], ["income certificate", "ఆదాయ ధృవీకరణ పత్రం"],
+    ["caste certificate", "కుల ధృవీకరణ పత్రం"], ["residence certificate", "నివాస ధృవీకరణ పత్రం"], ["Aadhaar update", "ఆధార్ అప్‌డేట్"], ["PAN card", "పాన్ కార్డు"],
+    ["voter ID and the voter list", "ఓటర్ ఐడీ, ఓటర్ జాబితా"], ["land records: Adangal and 1-B", "భూమి రికార్డులు: అడంగల్, 1-బి"], ["land mutation", "భూమి మ్యుటేషన్"],
+    ["house tax", "ఇంటి పన్ను"], ["electricity bill and new connection", "కరెంటు బిల్లు, కొత్త కనెక్షన్"], ["birth and death certificates", "జనన, మరణ ధృవీకరణ పత్రాలు"],
+    ["marriage registration", "వివాహ నమోదు"], ["Aarogyasri health scheme", "ఆరోగ్యశ్రీ పథకం"], ["PM-KISAN", "PM-కిసాన్"], ["crop insurance", "పంటల బీమా"],
+    ["MGNREGA job card", "ఉపాధి హామీ జాబ్ కార్డు"], ["student scholarships", "విద్యార్థుల స్కాలర్‌షిప్‌లు"], ["driving licence", "డ్రైవింగ్ లైసెన్స్"],
+    ["passport", "పాస్‌పోర్ట్"], ["Right to Information (RTI)", "సమాచార హక్కు (RTI)"], ["public grievance complaints", "ప్రజా సమస్యల ఫిర్యాదులు"],
+    ["Village and Ward Secretariat services", "గ్రామ, వార్డు సచివాలయ సేవలు"], ["MeeSeva services", "మీసేవ సేవలు"], ["DigiLocker", "డిజిలాకర్"]
+   ]
+  },
+  "office": {
+   "en": "Office writing", "te": "ఆఫీసు రాతపని",
+   "topics": [
+    ["leave letters", "సెలవు లేఖలు"], ["applications to an officer", "అధికారికి దరఖాస్తులు"], ["complaint letters", "ఫిర్యాదు లేఖలు"], ["office memos", "ఆఫీసు మెమోలు"],
+    ["circulars", "సర్క్యులర్లు"], ["office orders", "ఆఫీసు ఉత్తర్వులు"], ["covering letters", "కవరింగ్ లేఖలు"], ["show-cause notices", "షోకాజ్ నోటీసులు"],
+    ["minutes of a meeting", "సమావేశ మినిట్స్"], ["joining and relieving reports", "జాయినింగ్, రిలీవింగ్ రిపోర్టులు"], ["polite official emails", "మర్యాదపూర్వక అధికారిక ఈమెయిళ్ళు"],
+    ["replying to a petition", "పిటిషన్‌కు జవాబు"], ["writing a short report", "చిన్న రిపోర్టు రాయడం"], ["making a sentence polite", "మాటని మర్యాదగా మార్చడం"],
+    ["letters to a bank manager", "బ్యాంక్ మేనేజర్‌కి లేఖలు"], ["letters to a school principal", "స్కూల్ ప్రిన్సిపాల్‌కి లేఖలు"]
+   ]
+  },
+  "farming": {
+   "en": "Farming", "te": "వ్యవసాయం",
+   "topics": [
+    ["paddy cultivation", "వరి సాగు"], ["using fertilizer correctly", "ఎరువులు సరిగ్గా వాడటం"], ["pest control basics", "చీడపీడల నివారణ"], ["drip irrigation", "బిందు సేద్యం"],
+    ["soil testing", "మట్టి పరీక్ష"], ["Rythu Bharosa Kendras", "రైతు భరోసా కేంద్రాలు"], ["organic farming", "సేంద్రియ వ్యవసాయం"], ["cattle care", "పశువుల సంరక్షణ"],
+    ["poultry", "కోళ్ల పెంపకం"], ["weather and sowing time", "వాతావరణం, విత్తే సమయం"], ["selling crops at a fair price", "పంటకు సరైన ధర"]
+   ]
+  },
+  "tech": {
+   "en": "Phones and apps", "te": "ఫోన్, యాప్‌లు",
+   "topics": [
+    ["WhatsApp tips", "వాట్సాప్ చిట్కాలు"], ["freeing phone storage", "ఫోన్ స్టోరేజ్ ఖాళీ చేయడం"], ["phone battery", "ఫోన్ బ్యాటరీ"], ["UPI basics", "UPI ప్రాథమికాలు"],
+    ["video calls with family", "కుటుంబంతో వీడియో కాల్స్"], ["Google Maps", "గూగుల్ మ్యాప్స్"], ["safe phone settings", "ఫోన్ భద్రతా సెట్టింగ్‌లు"], ["email basics", "ఈమెయిల్ ప్రాథమికాలు"],
+    ["taking backups of photos", "ఫోటోల బ్యాకప్"]
+   ]
+  },
+  "learn": {
+   "en": "Learning and general knowledge", "te": "చదువు, సాధారణ జ్ఞానం",
+   "topics": [
+    ["simple science for children", "పిల్లలకు సులభమైన సైన్స్"], ["Indian history basics", "భారత చరిత్ర ప్రాథమికాలు"], ["rivers Godavari and Krishna", "గోదావరి, కృష్ణా నదులు"],
+    ["districts and cities of Andhra Pradesh", "ఆంధ్రప్రదేశ్ జిల్లాలు, నగరాలు"], ["the solar system", "సౌర వ్యవస్థ"], ["simple maths and percentages", "సులభమైన లెక్కలు, శాతాలు"],
+    ["learning English words", "ఇంగ్లీష్ పదాలు నేర్చుకోవడం"], ["the Indian Constitution basics", "భారత రాజ్యాంగం ప్రాథమికాలు"], ["how to prepare for exams", "పరీక్షలకు ఎలా సిద్ధం కావాలి"]
+   ]
+  },
+  "fun": {
+   "en": "Fun", "te": "సరదా",
+   "topics": [
+    ["clean jokes", "మంచి జోకులు"], ["riddles", "పొడుపు కథలు"], ["short stories for children", "పిల్లలకు చిన్న కథలు"], ["short poems", "చిన్న కవితలు"],
+    ["fun facts", "ఆసక్తికరమైన విషయాలు"], ["quiz questions", "క్విజ్ ప్రశ్నలు"]
+   ]
+  },
+  "emergency": {
+   "en": "Emergencies", "te": "అత్యవసర పరిస్థితులు",
+   "topics": [
+    ["emergency phone numbers in India", "భారతదేశంలో అత్యవసర ఫోన్ నంబర్లు"], ["road accidents", "రోడ్డు ప్రమాదాలు"], ["fire at home", "ఇంట్లో అగ్ని ప్రమాదం"],
+    ["a child is missing", "పిల్లలు కనిపించకపోతే"], ["help for women in danger", "ప్రమాదంలో ఉన్న మహిళలకు సహాయం"], ["floods and cyclones", "వరదలు, తుఫానులు"]
+   ]
+  },
+  "refuse": {
+   "en": "Requests to say no to, kindly", "te": "మర్యాదగా వద్దని చెప్పాల్సిన అభ్యర్థనలు",
+   "topics": [
+    ["hacking someone's phone or account", "ఎవరి ఫోన్ లేదా అకౌంట్ హ్యాక్ చేయడం"], ["making fake certificates", "నకిలీ సర్టిఫికెట్లు"], ["cheating in exams", "పరీక్షల్లో కాపీ"],
+    ["giving a bribe", "లంచం ఇవ్వడం"], ["threatening or bullying someone", "ఎవరినైనా బెదిరించడం"], ["spying on a family member", "కుటుంబ సభ్యులపై రహస్యంగా నిఘా"]
+   ]
+  }
+ }
+}

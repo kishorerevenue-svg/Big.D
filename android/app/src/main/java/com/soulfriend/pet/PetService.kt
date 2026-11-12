@@ -86,6 +86,14 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     private var lastQuestion = ""
     private var lastReply = ""
+    /** The last answer when Habit's own brain gave it (for 👍 / 👎): its id, the question, its exact words, which brain. */
+    private var lastRate: JSONObject? = null
+    /** After 👎: the next thing typed in the panel is the right answer (sent with the 👎), not a question. */
+    private var fixing: JSONObject? = null
+    private var rateUp: View? = null
+    private var rateDown: View? = null
+    private var panelNote: TextView? = null
+    private var panelSend: Button? = null
     private var panelContent = ""
     private var utter = 0
     private var photoQuestion = ""
@@ -601,6 +609,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun handleReply(json: JSONObject, fromPhoto: Boolean = false, eyes: Boolean = false) {
         val reply = json.optString("reply", "Woof!")
         lastReply = reply
+        lastRate = if (!fromPhoto && json.optString("rid").isNotEmpty()) JSONObject().put("rid", json.optString("rid")).put("q", lastQuestion.take(600))
+            .put("r", reply).put("b", json.optString("brain")) else null
+        endFix()
         val done = mutableListOf<String>()
         val arr = json.optJSONArray("actions")
         var replyTo: Pair<Incoming, String>? = null
@@ -647,6 +658,35 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         screenAsk?.let { q -> main.postDelayed({ readScreen(q) }, 1500) }
         replyTo?.let { (m, text) -> openMsgCard(m); msgInput?.setText(text); msgInput?.setSelection(text.length) }
         panelText?.let { if (panel != null && panelContent.isEmpty()) { it.text = reply + extra; panelTools?.visibility = View.VISIBLE } }
+        showRate()
+    }
+
+    private fun endFix() { if (fixing == null) return; fixing = null; panelSend?.text = "Send"; panelInput?.hint = "Type, or ask about a photo 📷 or your screen 📱…" }
+    /** 👍 / 👎 in the panel, under an answer from Habit's own brain (only with "Help Habit learn" on). */
+    private fun showRate() {
+        val on = lastRate != null && store.learnShare && panelContent.isEmpty()
+        rateUp?.visibility = if (on) View.VISIBLE else View.GONE
+        rateDown?.visibility = if (on) View.VISIBLE else View.GONE
+    }
+    private fun rate(good: Boolean, fix: String = "") {
+        val r = lastRate ?: return
+        val te = store.lang == "te"
+        if (ChatDb.get(this).kv("gemma:rateOk") != "1" && panelNote?.tag != "ask") {
+            panelNote?.tag = "ask"
+            panelNote?.text = if (te) "మీ ప్రశ్న, ఈ జవాబు హ్యాబిట్ సర్వర్‌కి వెళ్తాయి, హ్యాబిట్ సొంత AIకి నేర్పించడానికి (నంబర్లు తీసేస్తాం, యజమాని చూస్తారు). పంపడానికి మళ్ళీ నొక్కండి."
+                else "Your question and this answer go to Habit's server to teach Habit's own AI (numbers are taken out; the owner checks them). Tap again to send."
+            return
+        }
+        ChatDb.get(this).setKv("gemma:rateOk", "1"); panelNote?.tag = null
+        brain.rate(r.optString("rid"), r.optString("q"), r.optString("r"), good, fix) { err ->
+            if (err != null) { panelNote?.text = err; return@rate }
+            if (!good && fix.isEmpty()) {
+                fixing = r; rateUp?.visibility = View.GONE; rateDown?.visibility = View.GONE
+                panelSend?.text = if (te) "జవాబు పంపు" else "Send answer"
+                panelInput?.hint = if (te) "సరైన జవాబు రాసి పంపండి (కావాలంటే)" else "Type the right answer and Send (you can skip this)"
+                panelNote?.text = if (te) "👎 ధన్యవాదాలు! సరైన జవాబు తెలిస్తే కింద రాసి పంపండి." else "👎 Thank you! If you know the right answer, type it below and tap Send."
+            } else { panelNote?.text = if (te) "ధన్యవాదాలు! దీంతో హ్యాబిట్ సొంత మెదడు నేర్చుకుంటుంది." else "Thank you! This helps Habit's own brain learn."; lastRate = null; showRate() }
+        }
     }
 
     // ---------------- menu panel (hold the puppy) ----------------
@@ -674,6 +714,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val head = if (title != null) "$title\n\n" else ""
         panelText?.text = head + content.ifBlank { "Type a message below, or tap 🎤 to talk." }
         panelTools?.visibility = if (content.isBlank()) View.GONE else View.VISIBLE
+        showRate()
     }
 
     private fun buildPanel() {
@@ -708,7 +749,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         card.addView(scroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
         val reported = TextView(this).apply { textSize = 12f; setTextColor(Color.parseColor("#5F6688")) }
+        panelNote = reported
+        val up = pill("👍") { rate(true) }.apply { contentDescription = "Good answer"; visibility = View.GONE }
+        val down = pill("👎") { rate(false) }.apply { contentDescription = "Wrong answer"; visibility = View.GONE }
+        rateUp = up; rateDown = down
         val tools = row(
+            up, down,
             pill("Copy") { actions.copy(currentPanelText()); reported.text = "Copied" },
             pill("Share") { closePanel(); actions.share(currentPanelText()) },
             pill("Report") {
@@ -731,7 +777,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         panelInput = input
         val sendIt = {
             val q = input.text.toString().trim()
-            if (q.isNotEmpty()) { input.setText(""); panelContent = ""; panelText?.text = "…"; panelTools?.visibility = View.GONE; send(q) }
+            val fx = fixing
+            if (fx != null) {
+                // after 👎: this is the right answer (it goes with the 👎), not a new question
+                endFix(); input.setText("")
+                if (q.isNotEmpty()) { lastRate = fx; rate(false, q) }
+            } else if (q.isNotEmpty()) { input.setText(""); panelContent = ""; panelText?.text = "…"; panelTools?.visibility = View.GONE; send(q) }
         }
         input.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { sendIt(); true } else false }
         val mic = pill("🎤") { input.clearFocus(); hideKeyboard(input); startListening() }
@@ -744,6 +795,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             readScreen(q)
         }
         val sendBtn = pill("Send", primary = true) { sendIt() }
+        panelSend = sendBtn
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(input, LinearLayout.LayoutParams(0, -2, 1f))
@@ -782,6 +834,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun closePanel() {
         panel?.let { try { wm.removeView(it) } catch (e: Exception) { } }
         panel = null; panelText = null; panelInput = null; panelTools = null; langBtn = null; voiceBtn = null; panelContent = ""
+        rateUp = null; rateDown = null; panelNote = null; panelSend = null; fixing = null
     }
 
     private fun nextPet() {

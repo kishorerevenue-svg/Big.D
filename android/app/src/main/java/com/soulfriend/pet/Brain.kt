@@ -184,6 +184,22 @@ class Brain(private val store: Store) {
         } catch (e: Exception) { null }
     }
 
+    /** 👍 / 👎 on an answer from Habit's own brain ([rid] came with it): it teaches Habit's own AI model. Only the question,
+     *  the answer and the right answer they wrote go (the server takes out phone numbers, e-mails and long numbers, and the
+     *  owner checks them first). [done] gets null, or what went wrong. */
+    fun rate(rid: String, question: String, reply: String, good: Boolean, fix: String, done: (String?) -> Unit) {
+        val body = JSONObject().put("rid", rid).put("q", Privacy.maybe(store, question).take(600)).put("reply", reply).put("good", good)
+            .put("fix", Privacy.maybe(store, fix).take(1500)).toString()
+        val server = store.server
+        pool.execute {
+            val err = try {
+                val (code, out) = post("$server/api/brain/rate", body)
+                if (code in 200..299) null else (try { JSONObject(out).optString("error") } catch (e: Exception) { "" }).ifBlank { "Couldn't send it now. Please try again." }
+            } catch (e: Exception) { "No connection. Please try again." }
+            main.post { done(err) }
+        }
+    }
+
     fun report(reason: String, reply: String, question: String) {
         val body = JSONObject().put("reason", reason).put("reply", reply).put("question", question).toString()
         val server = store.server

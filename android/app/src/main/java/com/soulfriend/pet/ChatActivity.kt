@@ -646,6 +646,7 @@ class ChatActivity : Activity() {
         }
         if (media && m.body.optString("text").isNotBlank())
             box.addView(ui.text("", 15.5f * fs, k.txt).apply { text = rich(m.body.optString("text")); setPadding(dp(6), dp(6), dp(6), 0); Linkify.addLinks(this, Linkify.WEB_URLS); setLinkTextColor(k.link); setLineSpacing(0f, 1.15f) })
+        if (m.sender == "ai") m.body.optJSONObject("_rate")?.let { box.addView(rateRow(m, it, k)) }
         // the time and the ticks (voice notes have them next to their length)
         if (m.kind != "voice") box.addView(foot, LinearLayout.LayoutParams(if (bare) -2 else -1, -2).apply { gravity = Gravity.END; if (media) marginEnd = dp(6) })
         if (m.state == -1) box.addView(ui.text(t("Not sent. Tap to try again.", "పంపలేదు. మళ్ళీ ప్రయత్నించడానికి నొక్కండి."), 12f, if (mine) k.txt else ChatTheme.DANGER, bold = true).apply { setPadding(inset, dp(2), 0, 0) })
@@ -665,6 +666,44 @@ class ChatActivity : Activity() {
         box.setOnClickListener { if (m.state == -1) retry(m) }
         box.setOnLongClickListener { msgMenu(c, m); true }
         return row
+    }
+    /** Under an answer from Habit's own brain (when Claude is resting or down): which brain answered, and 👍 / 👎, which
+     *  teach Habit's own AI model (only with "Help Habit learn" on). */
+    private fun rateRow(m: ChatMsg, r: JSONObject, k: ChatTheme.Ink): View {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, 0) }
+        val self = r.optString("b") == "self"
+        row.addView(ui.text("🧠 " + (if (self) t("Habit's own brain", "హ్యాబిట్ సొంత మెదడు") else t("Habit's own AI (Gemma)", "హ్యాబిట్ సొంత AI (జెమ్మా)")), 12f, k.sub), LinearLayout.LayoutParams(0, -2, 1f))
+        if (!store.learnShare) return row
+        val rated = m.body.optString("_rated")
+        if (rated.isNotEmpty()) { row.addView(ui.text(t("Thank you ", "ధన్యవాదాలు ") + (if (rated == "up") "👍" else "👎"), 12f, k.sub)); return row }
+        fun chip(e: String, good: Boolean, say: String) = ui.text(e, 15f, k.txt).apply {
+            gravity = Gravity.CENTER; setPadding(dp(10), dp(3), dp(10), dp(3)); contentDescription = say
+            background = ChatTheme.round(Color.TRANSPARENT, dp(14).toFloat(), k.edge, dp(1))
+            setOnClickListener { rateAi(m, good) }
+        }
+        row.addView(chip("👍", true, t("Good answer", "మంచి జవాబు")), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+        row.addView(chip("👎", false, t("Wrong answer", "తప్పు జవాబు")), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+        return row
+    }
+    private val rater by lazy { Brain(store) }
+    private fun rateAi(m: ChatMsg, good: Boolean) {
+        val r = m.body.optJSONObject("_rate") ?: return
+        val send = { fix: String ->
+            rater.rate(r.optString("rid"), r.optString("q"), r.optString("r"), good, fix) { err ->
+                if (err != null) toast(err)
+                else { m.body.put("_rated", if (good) "up" else "down"); db.setBody(cid, m.id, m.body); render(); toast(t("Thank you! This helps Habit's own brain learn.", "ధన్యవాదాలు! దీంతో హ్యాబిట్ సొంత మెదడు నేర్చుకుంటుంది.")) }
+            }
+        }
+        val go = {
+            if (good) send("")
+            else askText(t("👎 What is the right answer?", "👎 సరైన జవాబు ఏమిటి?"), t("In your own words (you can leave it empty). No phone numbers or personal details.", "మీ మాటల్లో (ఖాళీగా వదిలేయొచ్చు). ఫోన్ నంబర్లు, వ్యక్తిగత వివరాలు వద్దు."), "", t("Send", "పంపు")) { send(it) }
+        }
+        if (db.kv("gemma:rateOk") == "1") { go(); return }
+        AlertDialog.Builder(this).setTitle(t("Teach Habit's own brain?", "హ్యాబిట్ సొంత మెదడుకి నేర్పించాలా?"))
+            .setMessage(t("Your 👍 or 👎 helps Habit's own AI learn. Your question, this answer and the right answer you write go to Habit's server. Phone numbers, e-mail addresses and long numbers are taken out, and the app's owner checks them before anything is used. Please don't write personal details. (You can turn this off in Settings: Help Habit learn.)",
+                "మీ 👍 లేదా 👎 హ్యాబిట్ సొంత AIకి నేర్పిస్తుంది. మీ ప్రశ్న, ఈ జవాబు, మీరు రాసే సరైన జవాబు హ్యాబిట్ సర్వర్‌కి వెళ్తాయి. ఫోన్ నంబర్లు, ఈమెయిల్స్, పెద్ద నంబర్లు తీసేస్తాం; వాడే ముందు యాప్ యజమాని చూస్తారు. వ్యక్తిగత వివరాలు రాయకండి. (సెట్టింగ్స్‌లో ఆపేయొచ్చు: Help Habit learn.)"))
+            .setPositiveButton(t("OK, send", "సరే, పంపు")) { _, _ -> db.setKv("gemma:rateOk", "1"); go() }
+            .setNegativeButton(t("Cancel", "వద్దు"), null).show()
     }
     /** The time, ⭐ starred, "Edited", ⏱ and the ticks (a clock while it is still being sent). */
     private fun footView(c: ChatConv, m: ChatMsg, mine: Boolean, bare: Boolean, k: ChatTheme.Ink): View {
