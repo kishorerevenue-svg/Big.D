@@ -25,8 +25,19 @@ shot() { # theme screen name [language] [app colour]
   adb exec-out screencap -p > "android/shots/$3.png"
 }
 snap() { sleep 2; adb exec-out screencap -p > "android/shots/$1.png"; }
+tapui() { # taps the first view whose description or text is $1 (found with uiautomator)
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  local b; b=$(adb shell cat /sdcard/ui.xml | tr '>' '\n' | grep -m1 -i -E "(content-desc|text)=\"$1\"" | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p')
+  echo "== tapui $1: $b" >> android/shots/focus.txt
+  [ -n "$b" ] && set -- $b && adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
+}
 for th in dark light; do
   for sc in list chat group settings info contact media starred ai devices; do shot $th $sc "$th-$sc"; done
+  # 👍 / 👎 under an answer from Habit's own brain: the first time it asks, then the right answer
+  shot $th ai "$th-ai"
+  tapui "Wrong answer"; snap "$th-ai-ask"
+  tapui "OK, send"; snap "$th-ai-fix"
+  adb shell input keyevent KEYCODE_BACK; sleep 1
   # the chat list's other tabs: Updates, Communities, Calls
   shot $th list "$th-list"
   adb shell input tap 418 396; snap "$th-updates"

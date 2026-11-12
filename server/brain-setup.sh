@@ -41,7 +41,11 @@ systemctl daemon-reload >/dev/null 2>&1; systemctl enable --now ollama >/dev/nul
 for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:11434/api/tags && break; sleep 1; done
 echo "Ollama $(ollama --version 2>/dev/null | grep -o '[0-9][0-9.]*' | head -1) is running."
 
-# 2. the model
+# 2. the model (Habit's own trained model, habit-gemma, stays when it is the one in use: brain-model.sh put it there)
+cur=$(sed -n 's/.*"model":"\([^"]*\)".*/\1/p' "$DATA/ownbrain.json" 2>/dev/null | head -1)
+if [ "$cur" = "habit-gemma" ] && ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qE '^habit-gemma(:latest)?$'; then
+  echo "INSTALLED: our own brain is habit-gemma, Habit's own trained model. (To go back to the plain Gemma: brain-model.sh --back)"; exit 0
+fi
 got=""
 for m in $models; do
   echo "Downloading $m (a few GB, this can take a while)..."

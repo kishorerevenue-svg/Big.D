@@ -525,21 +525,26 @@ object ChatSync {
         aiBusy = true; changed()
         main.post {
             val b = brain ?: Brain(Store(app)).also { brain = it }
-            b.ask(q, onReply = { json -> aiBusy = false; aiReply(app, json) }, onError = { err -> aiBusy = false; aiSay(app, "⚠️ $err") }, photo = photo, local = photo == null)
+            b.ask(q, onReply = { json -> aiBusy = false; aiReply(app, json, q) }, onError = { err -> aiBusy = false; aiSay(app, "⚠️ $err") }, photo = photo, local = photo == null)
         }
     }
-    /** The AI's answer goes into the chat; reminders, to-dos, notes and alarms it was asked for are done on the phone. */
-    private fun aiReply(ctx: Context, json: JSONObject) {
+    /** The AI's answer goes into the chat; reminders, to-dos, notes and alarms it was asked for are done on the phone.
+     *  An answer from Habit's own brain keeps its id, the question and its exact words, for 👍 / 👎 under it. */
+    private fun aiReply(ctx: Context, json: JSONObject, q: String) {
         val lines = ArrayList<String>()
         json.optJSONArray("actions")?.let { a ->
             val run = Actions(ctx) { title, text -> lines.add(if (title.isBlank()) text else "$title\n$text") }
             for (i in 0 until a.length()) a.optJSONObject(i)?.let { x -> if (x.optString("type") != "look") run.run(x)?.let { lines.add("✅ $it") } }
         }
-        aiSay(ctx, (json.optString("reply", "").ifBlank { "🐾" } + if (lines.isEmpty()) "" else "\n\n" + lines.joinToString("\n")).trim())
+        val rate = if (json.optString("rid").isNotEmpty()) JSONObject().put("rid", json.optString("rid")).put("q", q.take(600))
+            .put("r", json.optString("reply")).put("b", json.optString("brain")) else null
+        aiSay(ctx, (json.optString("reply", "").ifBlank { "🐾" } + if (lines.isEmpty()) "" else "\n\n" + lines.joinToString("\n")).trim(), rate)
     }
-    private fun aiSay(ctx: Context, text: String) {
+    private fun aiSay(ctx: Context, text: String, rate: JSONObject? = null) {
         val db = ChatDb.get(ctx)
-        val m = ChatMsg(ChatDb.AI, newId(), 0, "ai", System.currentTimeMillis(), "text", JSONObject().put("t", "text").put("text", text.take(8000)), 1)
+        val body = JSONObject().put("t", "text").put("text", text.take(8000))
+        if (rate != null) body.put("_rate", rate)
+        val m = ChatMsg(ChatDb.AI, newId(), 0, "ai", System.currentTimeMillis(), "text", body, 1)
         db.putMsg(m); db.touch(ChatDb.AI, m.at, "🐾 " + text.take(80), openCid != ChatDb.AI); changed()
         if (openCid != ChatDb.AI) notify(ctx, listOf(m))
     }

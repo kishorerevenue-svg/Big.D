@@ -33,6 +33,8 @@ const appUpdate = require("./appupdate.js")({ REPO_DIR: path.join(__dirname, "..
 const files = require("./files.js")({ DATA_DIR });
 // Habit's own file skills: learned from the files Claude makes, used when Claude can't (skills.js)
 const skills = require("./skills.js")({ DATA_DIR, learn, files, MODEL, ownBrain });
+// Habit's own model (habit-gemma): 👍 / 👎 from people, the owner's lessons, the training link and the exam (never Claude's words)
+const gemma = require("./gemma.js")({ DATA_DIR, SERVER_DIR: __dirname, ownBrain, learn });
 const voice = require("./voice.js")({ DATA_DIR });
 const baseUrl = req => (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
 // created after the helpers below exist (see "extras" near the web server)
@@ -291,7 +293,7 @@ async function askPet(messages, lang, ctx, ownOnly = false) {
   const strip = o => { delete o.everyone; return o; };
   if (hasImage) {
     if (ownBrain.quick().vision && await ownBrain.ready()) {
-      try { const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy); return strip({ ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true }); }
+      try { const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy); return strip({ ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true, clean: own.clean }); }
       catch (e) { console.error("Our own brain couldn't look:", e.message); }
     }
     // no AI can look now: an error with a kind message, so the phone reads the English letters in the photo by itself
@@ -302,7 +304,7 @@ async function askPet(messages, lang, ctx, ownOnly = false) {
   const fast = await selfBrain.answer(q, lang, sctx, { strong: true, info });
   if (fast) return fast;
   if (await ownBrain.ready()) {
-    try { const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy); return strip({ ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true }); }
+    try { const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy); return strip({ ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true, clean: own.clean }); }
     catch (e) { console.error("Our own brain couldn't answer:", e.message); }
   }
   return await selfBrain.answer(q, lang, sctx, { strong: false, info });
@@ -467,6 +469,7 @@ const server = http.createServer(async (req, res) => {
   if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills,
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
+  if (await gemma.handle(req, res, url, origin, { send, readBody, allowed, clientIp })) return;
   if (await media.handle(req, res, url, origin)) return;
   if (await youtube.handle(req, res, url, origin)) return;
   if (aiVideo.handle(req, res, url)) return;
@@ -560,6 +563,7 @@ const server = http.createServer(async (req, res) => {
         if (Array.isArray(last)) { const eyes = /^\[Your eyes/.test(String((last[1] && last[1].text) || "")); out.actions = (out.actions || []).filter(a => a.type !== "look" || (eyes && a.again === true)); }
       }
       out.actions = await makeFileActions(out.actions, req);
+      gemma.mark(out, messages);   // an answer from Habit's own brains: 👍 / 👎 under it on the phone
       if (SAVE_CHATS) { const u = messages[messages.length - 1].content; appendLine("chats.jsonl", { at: new Date().toISOString(), app: "pet", user: typeof u === "string" ? u : "[photo] " + u[1].text, ...out }); }
       return send(res, 200, out, origin);
     } catch (e) {
@@ -614,13 +618,16 @@ const server = http.createServer(async (req, res) => {
   // ---------- owner-only teaching (password in TEACH_PASSWORD) ----------
   if (url.pathname.startsWith("/api/teach/")) {
     if (!TEACH_PASSWORD) return send(res, 403, { error: "Teaching is off. Set TEACH_PASSWORD in the .env file and restart." });
-    if (!allowed("teach:" + clientIp(req))) return send(res, 429, { error: "Too many tries. Wait 10 minutes." });
-    if (!teachAllowed(req)) return send(res, 401, { error: "Wrong password." });
+    // only wrong passwords are counted (the page itself asks often, for example every few seconds while an exam or an install runs)
+    const tk = "teach:" + clientIp(req), tries = (hits.get(tk) || []).filter(t => Date.now() - t < 10 * 60 * 1000);
+    if (tries.length >= 10) return send(res, 429, { error: "Too many tries. Wait 10 minutes." });
+    if (!teachAllowed(req)) { hits.set(tk, [...tries, Date.now()]); return send(res, 401, { error: "Wrong password." }); }
     try {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
       // our own brain and the answers learned from common questions
       if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list(), claude: learn.claudeOut(), self: selfBrain.stats(), trends: trends.status(), skills: await skills.status() });
       if (req.method === "GET" && url.pathname === "/api/teach/skills") return send(res, 200, { status: await skills.status(), learned: skills.list() });
+      if (req.method === "GET" && url.pathname === "/api/teach/gemma") return send(res, 200, await gemma.info(baseUrl(req)));
       // Media: where the posts come from (news feeds), and how many came today
       if (req.method === "GET" && url.pathname === "/api/teach/media") return send(res, 200, media.teach.info());
       if (req.method === "GET" && url.pathname === "/api/teach/youtube") return send(res, 200, { sections: youtube.list(), stats: youtube.stats() });
@@ -636,6 +643,10 @@ const server = http.createServer(async (req, res) => {
         const body = await readBody(req, 30 * 1024 * 1024);
         if (url.pathname === "/api/teach/delete") return send(res, 200, { ok: learn.removeKnowledge(String(body.id || "")) });
         if (url.pathname === "/api/teach/brain/install") return send(res, 200, ownBrain.install());
+        if (url.pathname.startsWith("/api/teach/gemma/")) {
+          const out = await gemma.teach(url.pathname.slice("/api/teach/gemma/".length), body, baseUrl(req));
+          if (out) return send(res, out.status || 200, out.status ? { error: out.error } : out);
+        }
         if (url.pathname === "/api/teach/brain/test") {
           const q = String(body.q || "").trim().slice(0, 500);
           if (!q) return send(res, 400, { error: "Type a question first." });
@@ -671,17 +682,18 @@ const server = http.createServer(async (req, res) => {
         if (url.pathname === "/api/teach/text") {
           const text = String(body.text || "").trim();
           if (text.length < 10) return send(res, 400, { error: "Write or paste some text first." });
-          return send(res, 200, { item: learn.addKnowledge(body.title || text.slice(0, 60), "typed", text.slice(0, 500_000)) });
+          return send(res, 200, { item: learn.addKnowledge(body.title || text.slice(0, 60), "typed", text.slice(0, 500_000), "typed") });
         }
         if (url.pathname === "/api/teach/url") {
           const page = await learn.urlToText(String(body.url || ""));
-          return send(res, 200, { item: learn.addKnowledge(body.title || page.title, String(body.url), page.text) });
+          return send(res, 200, { item: learn.addKnowledge(body.title || page.title, String(body.url), page.text, page.via) });
         }
         if (url.pathname === "/api/teach/file") {
           if (!API_KEY) return send(res, 500, { error: "Server has no API key yet." });
           const text = await learn.fileToText(String(body.name || "file"), String(body.mediaType || ""), String(body.data || ""));
           if (!text.trim()) return send(res, 400, { error: "No text could be read from that file." });
-          return send(res, 200, { item: learn.addKnowledge(body.title || body.name, String(body.name || "upload"), text) });
+          return send(res, 200, { item: learn.addKnowledge(body.title || body.name, String(body.name || "upload"), text,
+            learn.readsItself(String(body.name || ""), String(body.mediaType || "")) ? "file" : "claude") });
         }
       }
       return send(res, 404, { error: "Not found" });

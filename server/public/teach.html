@@ -32,6 +32,9 @@ li:first-child{border-top:0}
 li div{flex:1;min-width:0}
 li b{display:block;overflow-wrap:anywhere}
 li small{color:var(--muted)}
+code{font-size:13px;background:var(--bg);border-radius:6px;padding:1px 5px;overflow-wrap:anywhere;word-break:break-all}
+ol li{display:list-item;border:0;padding:3px 0}
+ol li b,#gemmaCard .hint b{display:inline}
 [hidden]{display:none!important}
 pre{white-space:pre-wrap;font-size:12px;background:var(--bg);border-radius:10px;padding:10px;max-height:220px;overflow:auto;margin:10px 0 0}
 li .ans{font-size:14px;margin:2px 0}
@@ -119,6 +122,66 @@ summary{cursor:pointer;font-weight:600}
       <p id="skState" class="msg"></p>
       <ul id="skills"></ul>
       <p class="hint" id="skEmpty">Nothing learned yet: Habit learns when Claude makes files.</p>
+    </section>
+
+    <section class="card" id="gemmaCard">
+      <h2>🎓 Teach Gemma · జెమ్మాకి నేర్పించు</h2>
+      <p class="hint">Habit's own model, <b>habit-gemma</b>: Google's open Gemma 4 (Apache 2.0), taught to talk and help like Habit, in Telugu and English. Its teachers are Big Gemma (on a free Kaggle GPU), your lessons here, and people's 👍 / 👎. Claude's words never teach it (Anthropic's terms don't allow it): not Claude's answers, not the answers learned from Claude, not documents Claude read. హ్యాబిట్ సొంత మోడల్‌కి పెద్ద జెమ్మా, మీరు, ప్రజల 👍/👎 నేర్పిస్తారు. Claude మాటలు ఎప్పుడూ వాడము.</p>
+      <p id="gmState" class="msg"></p>
+      <details>
+        <summary>How to make habit-gemma (free, step by step) · ఎలా తయారు చేయాలి</summary>
+        <ol class="hint" style="padding-left:20px;margin:8px 0 0">
+          <li>Make two free accounts: <a href="https://www.kaggle.com" target="_blank" rel="noopener">Kaggle</a> (verify your phone number there) and <a href="https://huggingface.co/join" target="_blank" rel="noopener">Hugging Face</a>.</li>
+          <li>Hugging Face › Settings › <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">Access Tokens</a> › Create new token, type <b>Write</b>. Copy it. On the server run <code>bash /root/Big.D/server/set-key.sh HF_TOKEN hf_…</code> (paste your token at the end). Keep the token secret: never send it to anyone.</li>
+          <li>Here, in step 1 below: <b>Make a new link</b>, and copy it.</li>
+          <li>Kaggle › Create › New Notebook. In Settings: Accelerator <b>GPU T4 x2</b>, Internet <b>on</b>. In Add-ons › Secrets: add <b>HF_TOKEN</b> (your token) and <b>HABIT_LINK</b> (the link), and tick the box next to each.</li>
+          <li>Paste this in the first cell, then Save Version › Save &amp; Run All. It is a 1-hour test:<br><code id="gmCell">!curl -fsSL https://raw.githubusercontent.com/kishorerevenue-svg/Big.D/main/brain/habit_gemma.py -o habit_gemma.py &amp;&amp; python habit_gemma.py --test</code> <button type="button" class="ghost" id="gmCopyCell">Copy</button></li>
+          <li>When it says <b>THE TEST WORKED</b>: change <code>--test</code> to <code>--full</code> and Save &amp; Run All again (4 to 8 hours; you can close the phone).</li>
+          <li>When it says <b>habit-gemma IS READY</b>: come back here and press <b>Put habit-gemma on this server</b> (step 5).</li>
+        </ol>
+        <p class="hint">The whole guide, in English and Telugu: <a href="https://github.com/kishorerevenue-svg/Big.D/blob/main/brain/README.md" target="_blank" rel="noopener">brain/README.md</a>.</p>
+      </details>
+
+      <h2 style="margin-top:18px">1. The training link</h2>
+      <p class="hint">The Kaggle notebook reads your lessons and your library with this private link (it works for 14 days). Put it in Kaggle › Add-ons › Secrets as HABIT_LINK. Library documents that Claude read (PDFs, photos) are never in it.</p>
+      <p id="gmLink" class="msg"></p>
+      <button id="gmMakeLink" type="button" class="ghost">Make a new link</button>
+      <button id="gmStopLink" type="button" class="ghost" hidden>Stop the link</button>
+
+      <h2 style="margin-top:18px">2. Your lessons · మీ పాఠాలు</h2>
+      <p class="hint">A question people ask, and the right answer in your own words (Telugu or English). Your lessons count three times as much as Big Gemma's, and Big Gemma also learns other ways people ask the same question.</p>
+      <label for="gmQ">Question · ప్రశ్న</label>
+      <input id="gmQ" placeholder="e.g. ఆదాయ ధృవీకరణ పత్రం ఎక్కడ తీసుకోవాలి?">
+      <label for="gmA">Answer · జవాబు</label>
+      <textarea id="gmA" style="min-height:90px" placeholder="Short and correct, the way you would tell a person."></textarea>
+      <label for="gmTopic">Topic (optional)</label>
+      <input id="gmTopic" placeholder="e.g. certificates">
+      <button id="gmAdd" type="button">Add lesson</button>
+      <button id="gmCancel" type="button" class="ghost" hidden>Cancel</button>
+      <p id="gmMsg" class="msg" role="status"></p>
+      <ul id="gmLessons"></ul>
+
+      <h2 style="margin-top:18px">3. From people: 👍 / 👎</h2>
+      <p class="hint">When Habit's own brain answers (Claude is resting or down), people can tap 👍 or 👎 and write the right answer. Phone numbers, e-mails and long numbers are taken out. Make a lesson from the good ones, or skip them.</p>
+      <ul id="gmRatings"></ul>
+      <p class="hint" id="gmRatingsEmpty">No new ratings.</p>
+
+      <h2 style="margin-top:18px">4. The exam · పరీక్ష</h2>
+      <p class="hint"><span id="gmQn">157</span> questions with fixed rules: Telugu and English chat, money safety and scams, health, government services, office writing, honesty, emergency numbers, saying no to harmful things, small sums. It runs on our own brain here, slowly, and waits while people are using it. The Kaggle notebook gives the same exam.</p>
+      <label for="gmModel">Model</label>
+      <select id="gmModel"></select>
+      <button id="gmQuick" type="button">Quick exam (<span id="gmQq">44</span>)</button>
+      <button id="gmFull" type="button" class="ghost">Full exam</button>
+      <button id="gmStopExam" type="button" class="ghost" hidden>Stop</button>
+      <p id="gmExamMsg" class="msg"></p>
+      <table class="tbl" id="gmRuns"></table>
+      <details id="gmLast" hidden><summary>The last exam's answers</summary><ul id="gmLastList"></ul></details>
+
+      <h2 style="margin-top:18px">5. habit-gemma on this server</h2>
+      <p id="gmHf" class="msg"></p>
+      <button id="gmGet" type="button">Put habit-gemma on this server</button>
+      <button id="gmBack" type="button" class="ghost" hidden>Back to the plain Gemma</button>
+      <pre id="gmLog" hidden></pre>
     </section>
 
     <section class="card">
@@ -463,12 +526,115 @@ async function loadChat() {
   for (const r of reports.slice(0, 30)) ul.append(row(`⚠️ ${r.byName} reported ${r.whoName || (r.name ? "the group " + r.name : "a chat")}${r.whoHandle ? " (@" + r.whoHandle + ")" : ""}: ${r.reason || ""}`,
     (r.msgs || []).map(m => "• " + m.text).join("\n"), new Date(r.at).toLocaleString(), "", null));
 }
+// ---------- 🎓 Teach Gemma ----------
+let gm = null, gmTimer = 0, gmEdit = "";
+const GM_FROM = { owner: "your lesson", fix: "a person's correction", gemma: "Gemma's own answer" };
+const GM_CAT = { te_chat: "Telugu chat", en_chat: "English chat", te_latin: "Telugu in English letters", safety: "money safety", scam: "scam messages", health: "health",
+  govt: "government services", office: "office writing", honest: "honesty", emergency: "emergency numbers", refuse: "saying no", reason: "small sums", pet: "who it is" };
+const gmDate = t => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+function gmButton(text, onClick, ghost = true) { const b = document.createElement("button"); b.type = "button"; b.className = ghost ? "ghost" : ""; b.textContent = text; b.onclick = onClick; return b; }
+async function loadGemma() {
+  gm = await api("gemma");
+  const c = gm.counts;
+  say($("gmState"), `${c.lessons} lessons (yours ${c.owner}, people's corrections ${c.fixes}, Gemma's good answers ${c.gemma}) · library: ${c.docs} documents for training${c.docsSkipped ? `, ${c.docsSkipped} left out (Claude read them)` : ""} · ratings: ${c.up} 👍, ${c.down} 👎, ${c.ratingsNew} new`, true);
+  // 1. the link
+  if (gm.link) { $("gmLink").textContent = ""; const a = document.createElement("code"); a.textContent = gm.link.url; a.style.overflowWrap = "anywhere"; $("gmLink").append(a, ` (works until ${gmDate(gm.link.until)}) `, gmButton("Copy", () => navigator.clipboard.writeText(gm.link.url).then(() => say($("gmMsg"), "Link copied.", true)))); $("gmLink").className = "msg"; }
+  else say($("gmLink"), "No link now.", false);
+  $("gmStopLink").hidden = !gm.link;
+  // 2. lessons
+  const ul = $("gmLessons"); ul.textContent = "";
+  for (const l of gm.lessons) {
+    const li = document.createElement("li"), d = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = l.q;
+    const t = document.createElement("div"); t.className = "ans"; t.textContent = l.a;
+    const sm = document.createElement("small"); sm.textContent = `${GM_FROM[l.from] || l.from}${l.topic ? " · " + l.topic : ""} · ${l.lang === "te" ? "Telugu" : "English"} · ${gmDate(l.edited || l.at)}`;
+    d.append(b, t, sm);
+    const del = gmButton("Delete", async () => { if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "Tap again"; return; } await api("gemma/lesson/delete", { id: l.id }); loadGemma(); });
+    li.append(d, gmButton("Edit", () => { gmEdit = l.id; $("gmQ").value = l.q; $("gmA").value = l.a; $("gmTopic").value = l.topic || ""; $("gmAdd").textContent = "Save lesson"; $("gmCancel").hidden = false; $("gmQ").focus(); }), del);
+    ul.append(li);
+  }
+  if (c.lessons > gm.lessons.length) ul.append(row(`…and ${c.lessons - gm.lessons.length} more`, "", "the newest are shown", "", null));
+  // 3. ratings
+  const ru = $("gmRatings"); ru.textContent = ""; $("gmRatingsEmpty").hidden = gm.ratings.length > 0;
+  for (const r of gm.ratings) {
+    const li = document.createElement("li"), d = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = (r.good ? "👍 " : "👎 ") + (r.q || "(no question)");
+    const t = document.createElement("div"); t.className = "ans"; t.textContent = (r.brain === "self" ? "Self brain said: " : "Gemma said: ") + r.reply;
+    d.append(b, t);
+    if (r.fix) { const f = document.createElement("div"); f.className = "ans"; f.textContent = "✍️ The right answer, from the person: " + r.fix; d.append(f); }
+    const usable = r.brain === "own" && r.clean;
+    const sm = document.createElement("small"); sm.textContent = `${gmDate(r.at)} · ${r.brain === "own" ? r.model : "self brain"}${usable ? "" : " · its words can't teach Gemma as they are (" + (r.brain === "self" ? "a ready-made answer" : "Claude answered earlier in that chat, or its facts came from Claude") + ")"}`;
+    d.append(sm);
+    const make = gmButton("Make a lesson", () => {
+      const box = document.createElement("div");
+      const q = document.createElement("input"); q.value = r.q;
+      const a = document.createElement("textarea"); a.style.minHeight = "80px"; a.value = r.fix || (usable && r.good ? r.reply : ""); a.placeholder = "The right answer, in your own words";
+      const m = document.createElement("p"); m.className = "msg";
+      box.append(q, a, gmButton("Save lesson", async () => { try { await api("gemma/rating/lesson", { id: r.id, q: q.value.trim(), a: a.value.trim() }); loadGemma(); } catch (e) { say(m, e.message, false); } }, false), m);
+      d.append(box); make.disabled = true;
+    });
+    li.append(d, make, gmButton("Skip", async () => { await api("gemma/rating/skip", { id: r.id }); loadGemma(); }));
+    ru.append(li);
+  }
+  // 4. the exam
+  const ex = gm.exam;
+  $("gmQn").textContent = ex.questions; $("gmQq").textContent = ex.quick;
+  const sel = $("gmModel"), was = sel.value; sel.textContent = "";
+  for (const n of gm.model.installed.length ? gm.model.installed : [gm.model.now].filter(Boolean)) { const o = document.createElement("option"); o.value = n; o.textContent = n + (n === gm.model.now ? " (our own brain now)" : ""); sel.append(o); }
+  sel.value = was && [...sel.options].some(o => o.value === was) ? was : gm.model.now;
+  const st = ex.state;
+  if (st.running) say($("gmExamMsg"), `Exam on ${st.model}: ${st.done} of ${st.total} answered, ${st.ok} right so far… (it waits while people use our own brain)`, true);
+  else if (st.problem) say($("gmExamMsg"), "The exam stopped: " + st.problem, false);
+  else $("gmExamMsg").textContent = "";
+  $("gmQuick").disabled = $("gmFull").disabled = st.running || !ex.questions; $("gmStopExam").hidden = !st.running;
+  const tb = $("gmRuns"); tb.textContent = "";
+  if (ex.runs.length) {
+    const h = tb.insertRow(); for (const x of ["When", "Model", "Right", "Shape", "Questions"]) { const th = document.createElement("th"); th.textContent = x; h.append(th); }
+    for (const r of ex.runs) { const tr = tb.insertRow(); for (const x of [gmDate(r.at), r.model, r.score + "%", r.format + "%", `${r.n}${r.quick ? " (quick)" : ""}${r.stopped ? " · stopped" : ""}`]) tr.insertCell().textContent = x; }
+  }
+  const last = ex.last; $("gmLast").hidden = !last;
+  if (last) {
+    $("gmLast").querySelector("summary").textContent = `The last exam's answers (${last.model}, ${gmDate(last.at)}): ` + Object.entries(last.byCat).map(([k, v]) => `${GM_CAT[k] || k} ${v[0]}/${v[1]}`).join(", ");
+    const lu = $("gmLastList"); lu.textContent = "";
+    for (const it of last.items) lu.append(row((it.ok ? "✓ " : "✗ ") + it.q, it.reply, it.ok ? (GM_CAT[it.cat] || it.cat) : it.fails.join(" · "), "", null));
+  }
+  // 5. habit-gemma from Hugging Face
+  const hf = gm.hf, mo = gm.model, rep = hf && hf.report;
+  let text = mo.now === "habit-gemma" ? "✓ Our own brain is habit-gemma now. " : mo.now ? `Our own brain is ${mo.now} now. ` : "Our own brain isn't installed yet (see 🧠 Our own brain above). ";
+  if (!hf.set) text += "To bring habit-gemma here, save your Hugging Face token on the server: bash /root/Big.D/server/set-key.sh HF_TOKEN hf_…";
+  else if (hf.problem) text += "Hugging Face: " + hf.problem;
+  else if (!rep) text += `No habit-gemma in ${hf.repo} yet: make it on Kaggle (the steps above).`;
+  else text += `In ${hf.repo}: habit-gemma made ${gmDate(rep.made)} from Gemma 4 ${rep.size}, exam ${rep.exam.habit.score}% right (the plain Gemma ${rep.exam.base.score}%), ${Math.round(((rep.gguf || {}).bytes || 0) / 1048576)} MB. Lessons: Big Gemma ${rep.lessons.teacher}, yours ${rep.lessons.owner}, library ${rep.lessons.library}, Aya ${rep.lessons.aya}.`;
+  say($("gmHf"), text, mo.now === "habit-gemma" || !!rep);
+  $("gmGet").textContent = mo.now === "habit-gemma" ? "Get the newest habit-gemma" : "Put habit-gemma on this server";
+  $("gmGet").disabled = mo.getting || !hf.set || !rep; $("gmBack").hidden = !mo.base || mo.getting; $("gmBack").textContent = `Back to ${mo.base || "the plain Gemma"}`;
+  $("gmLog").hidden = !mo.log; $("gmLog").textContent = mo.log || "";
+  clearTimeout(gmTimer);
+  if (st.running || mo.getting) gmTimer = setTimeout(() => loadGemma().catch(() => {}), 6000);
+}
+$("gmCopyCell").onclick = () => navigator.clipboard.writeText($("gmCell").textContent).then(() => { $("gmCopyCell").textContent = "Copied"; });
+$("gmMakeLink").onclick = async () => { try { await api("gemma/link", {}); loadGemma(); } catch (e) { say($("gmLink"), e.message, false); } };
+$("gmStopLink").onclick = async () => { await api("gemma/link/stop", {}); loadGemma(); };
+$("gmCancel").onclick = () => { gmEdit = ""; $("gmQ").value = $("gmA").value = $("gmTopic").value = ""; $("gmAdd").textContent = "Add lesson"; $("gmCancel").hidden = true; };
+$("gmAdd").onclick = async () => {
+  try {
+    await api("gemma/lesson", { id: gmEdit || undefined, q: $("gmQ").value.trim(), a: $("gmA").value.trim(), topic: $("gmTopic").value.trim() });
+    say($("gmMsg"), gmEdit ? "Lesson saved." : "Lesson added. Thank you!", true); $("gmCancel").onclick(); loadGemma();
+  } catch (e) { say($("gmMsg"), e.message, false); }
+};
+const gmExam = quick => async () => { try { await api("gemma/exam", { quick, model: $("gmModel").value }); loadGemma(); } catch (e) { say($("gmExamMsg"), e.message, false); } };
+$("gmQuick").onclick = gmExam(true); $("gmFull").onclick = gmExam(false);
+$("gmStopExam").onclick = async () => { await api("gemma/exam/stop", {}); setTimeout(() => loadGemma().catch(() => {}), 1500); };
+$("gmGet").onclick = async () => { $("gmGet").disabled = true; try { await api("gemma/get", {}); } catch (e) { say($("gmHf"), e.message, false); } loadGemma().catch(() => {}); };
+$("gmBack").onclick = async () => { if ($("gmBack").dataset.sure !== "1") { $("gmBack").dataset.sure = "1"; $("gmBack").textContent = "Tap again"; return; } $("gmBack").dataset.sure = ""; await api("gemma/back", {}); loadGemma().catch(() => {}); };
+
 async function refresh() {
   loadChat().catch(() => {});
   loadFeedback().catch(() => {});
   loadCt().catch(() => {});
   loadAiv().catch(() => {});
   loadBrain().catch(() => {});
+  loadGemma().catch(() => {});
   loadMedia().catch(() => {});
   loadYt().catch(() => {});
   const { items } = await api("list");
