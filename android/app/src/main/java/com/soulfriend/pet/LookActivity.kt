@@ -85,7 +85,7 @@ class LookActivity : Activity() {
         val banner = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(ui.dp(14), ui.dp(12), ui.dp(10), ui.dp(12))
-            background = ui.round(Color.WHITE, 20, Ui.LINE); elevation = ui.dp(10).toFloat()
+            background = ui.round(Ui.SURFACE, 20, Ui.LINE); elevation = ui.dp(10).toFloat()
             addView(TextView(this@LookActivity).apply { text = "🐾"; textSize = 26f })
             note = ui.text(if (te) "👀 కెమెరా తెరుస్తున్నాను…" else "👀 Opening my eyes…", 15f, Ui.INK, bold = true)
             addView(note, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = ui.dp(10) })

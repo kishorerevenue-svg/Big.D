@@ -30,6 +30,14 @@
     <!-- The rest of the app (Home, Tasks, Files…): the light look, with the new font. -->
     <style name="Habit.App" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">@font/jakarta</item>
+        <!-- pop-up buttons and switches: Royal Purple, the app's first colour -->
+        <item name="android:colorAccent">#6D28D9</item>
+    </style>
+    <!-- The rest of the app in the dark look (the phone's dark mode, or Theme › Dark): dark pop-ups, the new font. -->
+    <style name="Habit.AppDark" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">@font/jakarta</item>
+        <item name="android:colorAccent">#B79CF2</item>
+        <item name="android:windowBackground">@color/habit_app_dark</item>
     </style>
     <!-- Full-screen dark screens (videos, stories, calls, status): the new font only. -->
     <style name="Habit.Black" parent="@android:style/Theme.Material.NoActionBar">

@@ -81,9 +81,9 @@ class FakeList(private val m: MainActivity) {
 
     private fun sortTab(title: String, sub: String, on: Boolean, onClick: () -> Unit) = LinearLayout(m).apply {
         orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(9), dp(12), dp(9))
-        background = if (on) ui.round(Ui.TEAL, 16) else ui.round(Color.WHITE, 16, Ui.LINE)
+        background = if (on) ui.round(Ui.TEAL, 16) else ui.round(Ui.SURFACE, 16, Ui.LINE)
         addView(ui.text(title, 14.5f, if (on) Color.WHITE else Ui.INK, bold = true))
-        addView(ui.text(sub, 12f, if (on) Color.parseColor("#D7EDEA") else Ui.MUTED))
+        addView(ui.text(sub, 12f, if (on) Color.parseColor("#DDFFFFFF") else Ui.MUTED))
         contentDescription = title
         setOnClickListener { onClick() }
     }
@@ -97,10 +97,10 @@ class FakeList(private val m: MainActivity) {
     private fun item(o: JSONObject): View {
         val id = o.optInt("id")
         val danger = o.optString("level") != "careful"
-        val col = if (danger) Ui.DANGER else Color.parseColor("#B7791F")
+        val col = if (danger) Ui.DANGER else AppLook.WARN
         return LinearLayout(m).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(12), dp(12), dp(10))
-            background = ui.round(if (danger) Color.parseColor("#FFF7F6") else Color.parseColor("#FFFAEF"), 16, Ui.LINE)
+            background = ui.round(if (danger) AppLook.lt(Color.parseColor("#FFF7F6"), AppLook.DANGER_SOFT) else AppLook.lt(Color.parseColor("#FFFAEF"), AppLook.WARN_SOFT), 16, Ui.LINE)
             // title + ⋮
             addView(ui.line(ui.text(o.optString("emoji", "⚠️") + " " + o.optString("title"), 15.5f, col, bold = true),
                 TextView(m).apply { text = "⋮"; textSize = 20f; setTextColor(Ui.MUTED); setPadding(dp(10), 0, dp(4), 0); contentDescription = t("More", "ఇంకా"); setOnClickListener { menu(o) } }))
@@ -111,7 +111,7 @@ class FakeList(private val m: MainActivity) {
             // the message itself
             val full = id in longText
             addView(ui.text("“" + o.optString("text") + "”", 14.5f, Ui.INK).apply {
-                setPadding(dp(10), dp(8), dp(10), dp(8)); background = ui.round(Color.WHITE, 12)
+                setPadding(dp(10), dp(8), dp(10), dp(8)); background = ui.round(Ui.SURFACE, 12)
                 if (!full) { maxLines = 6; ellipsize = TextUtils.TruncateAt.END }
                 setOnClickListener { if (full) longText.remove(id) else longText.add(id); redraw() }
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
@@ -131,7 +131,7 @@ class FakeList(private val m: MainActivity) {
 
     private fun votePill(emoji: String, n: Int, label: String, on: Boolean, warn: Boolean, onClick: () -> Unit) = LinearLayout(m).apply {
         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(4), dp(6), dp(4), dp(6))
-        val fill = when { !on -> Color.WHITE; warn -> Ui.DANGER; else -> Ui.GOOD }
+        val fill = when { !on -> Ui.SURFACE; warn -> Ui.DANGER; else -> Ui.GOOD }
         background = ui.round(fill, 14, if (on) null else Ui.LINE)
         addView(ui.text("$emoji $n", 15f, if (on) Color.WHITE else Ui.INK, bold = true).apply { gravity = Gravity.CENTER })
         addView(ui.text(label, 11.5f, if (on) Color.WHITE else Ui.MUTED).apply { gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
@@ -157,7 +157,7 @@ class FakeList(private val m: MainActivity) {
             !isOpen -> if (n == 0) t("💬 Write a comment", "💬 కామెంట్ రాయండి") else t("💬 Write a comment", "💬 కామెంట్ రాయండి")
             else -> t("Hide comments", "కామెంట్లు మూసివేయి")
         }
-        addView(ui.text(link, 13.5f, Ui.TEAL, bold = true).apply {
+        addView(ui.text(link, 13.5f, Ui.TEAL_DARK, bold = true).apply {
             setPadding(0, dp(4), 0, dp(4))
             setOnClickListener { if (isOpen) { open.remove(id); redraw() } else openComments(id) }
         })

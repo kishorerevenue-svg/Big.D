@@ -188,7 +188,7 @@ class MessagesPage(private val m: MainActivity) {
 
     private fun pictureRow(): View = LinearLayout(m).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        setPadding(m.dp(8), m.dp(8), m.dp(8), m.dp(8)); background = ui.round(Color.parseColor("#F5F8F7"), 14, Ui.LINE)
+        setPadding(m.dp(8), m.dp(8), m.dp(8), m.dp(8)); background = ui.round(Ui.FIELD, 14, Ui.LINE)
         val t = picThumb
         if (t != null) addView(ImageView(m).apply { setImageBitmap(t); scaleType = ImageView.ScaleType.CENTER_CROP; background = ui.round(Ui.LINE, 8); clipToOutline = true },
             LinearLayout.LayoutParams(m.dp(52), m.dp(52)))
@@ -261,7 +261,7 @@ class MessagesPage(private val m: MainActivity) {
         if (v.title.isNotBlank()) put(ui.text(v.title, 16f, Ui.INK, bold = true), 6)
         if (curSender.isNotBlank() || curApp.isNotBlank()) put(ui.text(listOf(curSender, curApp).filter { it.isNotBlank() }.joinToString(" · "), 12.5f, Ui.MUTED), 2)
         if (curText.isNotBlank()) put(ui.text("“" + curText.take(400) + (if (curText.length > 400) "…" else "") + "”", 13.5f, Ui.INK).apply {
-            setPadding(m.dp(10), m.dp(8), m.dp(10), m.dp(8)); background = ui.round(Color.WHITE, 12)
+            setPadding(m.dp(10), m.dp(8), m.dp(10), m.dp(8)); background = ui.round(Ui.SURFACE, 12)
         }, 8)
         if (v.reasons.isNotEmpty()) put(ui.text("Why · ఎందుకు\n" + v.reasons.joinToString("\n") { "• $it" }, 14f, Ui.INK), 8)
         if (v.advice.isNotEmpty()) put(ui.text("What to do · ఏం చేయాలి\n" + v.advice.joinToString("\n") { "✓ $it" }, 14f, Ui.INK), 8)
@@ -430,7 +430,7 @@ class MessagesPage(private val m: MainActivity) {
             for (i in 0 until items.length()) {
                 val o = items.optJSONObject(i) ?: continue
                 put(LinearLayout(m).apply {
-                    orientation = LinearLayout.VERTICAL; setPadding(m.dp(12), m.dp(10), m.dp(12), m.dp(10)); background = ui.round(Color.parseColor("#FFF7F3"), 14, Ui.LINE)
+                    orientation = LinearLayout.VERTICAL; setPadding(m.dp(12), m.dp(10), m.dp(12), m.dp(10)); background = ui.round(AppLook.lt(Color.parseColor("#FFF7F3"), Ui.FIELD), 14, Ui.LINE)
                     addView(ui.text("${i + 1}. " + o.optString("title"), 15f, Ui.INK, bold = true))
                     addView(ui.text(o.optString("how"), 14f, Ui.INK))
                     if (o.optString("do").isNotBlank()) addView(ui.text("✓ " + o.optString("do"), 14f, Ui.GOOD, bold = true))
@@ -494,7 +494,7 @@ class MessagesPage(private val m: MainActivity) {
         val at = Instant.ofEpochMilli(o.optLong("at")).atZone(ZoneId.systemDefault())
         return LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = ui.round(Color.WHITE, 16, Ui.LINE)
+            background = ui.round(Ui.SURFACE, 16, Ui.LINE)
             addView(View(m).apply { background = ui.round(ScamCheck.color(level), 3) }, LinearLayout.LayoutParams(m.dp(6), -1).apply { setMargins(m.dp(8), m.dp(10), 0, m.dp(10)) })
             addView(LinearLayout(m).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(m.dp(12), m.dp(10), m.dp(14), m.dp(10))

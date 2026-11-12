@@ -91,8 +91,8 @@ object ScamCheck {
     }
 
     // ---- how it looks ----
-    fun color(level: String) = when (level) { "danger" -> Color.parseColor("#C62828"); "careful" -> Color.parseColor("#B7791F"); "safe" -> Color.parseColor("#1D8A5B"); else -> Color.parseColor("#7A8A8C") }
-    fun soft(level: String) = when (level) { "danger" -> Color.parseColor("#FDE2E1"); "careful" -> Color.parseColor("#FFF3D6"); "safe" -> Color.parseColor("#DFF3E8"); else -> Color.parseColor("#EEF2F2") }
+    fun color(level: String) = when (level) { "danger" -> AppLook.lt(Color.parseColor("#C62828"), AppLook.DANGER); "careful" -> AppLook.WARN; "safe" -> AppLook.GOOD; else -> AppLook.SUB }
+    fun soft(level: String) = when (level) { "danger" -> AppLook.lt(Color.parseColor("#FDE2E1"), AppLook.DANGER_SOFT); "careful" -> AppLook.WARN_SOFT; "safe" -> AppLook.GOOD_SOFT; else -> AppLook.FIELD }
     fun label(level: String) = when (level) { "danger" -> "🔴 Danger · ప్రమాదం"; "careful" -> "🟡 Be careful · జాగ్రత్త"; "safe" -> "🟢 Safe · సురక్షితం"; else -> "⚪ Checking…" }
 
     // ---- the list of checked messages (only on this phone) ----

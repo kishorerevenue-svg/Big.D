@@ -14,23 +14,35 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
-/** Habit AI look: peacock teal + sunflower, soft mint-grey background, white cards. */
+/**
+ * Habit AI's pages (outside the chats): the colours come from [AppLook] (the colour the user chose), white cards,
+ * Plus Jakarta Sans letters. The old names (TEAL, SUN…) stay so every page follows the chosen colour.
+ */
 class Ui(private val ctx: Context) {
     companion object {
-        val BG = Color.parseColor("#EEF3F2")
-        val SURFACE = Color.WHITE
-        val INK = Color.parseColor("#132A2C")
-        val MUTED = Color.parseColor("#5B7073")
-        val TEAL = Color.parseColor("#0E6B6B")
-        val TEAL_DARK = Color.parseColor("#0A4F50")
-        val TEAL_SOFT = Color.parseColor("#D7EDEA")
-        val SUN = Color.parseColor("#F6B53D")
-        val SUN_SOFT = Color.parseColor("#FFF1D2")
-        val LINE = Color.parseColor("#DCE5E3")
-        val DANGER = Color.parseColor("#C63B3F")
-        val DANGER_SOFT = Color.parseColor("#FBE3E3")
-        val GOOD = Color.parseColor("#1D8A5B")
+        val BG get() = AppLook.BG
+        val SURFACE get() = AppLook.CARD
+        val INK get() = AppLook.TXT
+        val MUTED get() = AppLook.SUB
+        /** The main colour (buttons, chosen chips). */
+        val TEAL get() = AppLook.PRIMARY
+        /** The main colour as words. */
+        val TEAL_DARK get() = AppLook.PRIMARY_TXT
+        val TEAL_SOFT get() = AppLook.SOFT
+        /** The second colour (the "sun" button, highlights). */
+        val SUN get() = AppLook.ACCENT
+        val SUN_SOFT get() = AppLook.ACCENT_SOFT
+        val LINE get() = AppLook.LINE
+        val DANGER get() = AppLook.DANGER
+        val DANGER_SOFT get() = AppLook.DANGER_SOFT
+        val GOOD get() = AppLook.GOOD
+        /** Words on the main colour. */
+        val ON_TEAL get() = AppLook.ON_PRIMARY
+        /** Text boxes. */
+        val FIELD get() = AppLook.FIELD
     }
+
+    init { AppLook.refresh(ctx) }
 
     fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics).toInt()
     fun dpf(v: Int) = dp(v).toFloat()
@@ -54,9 +66,9 @@ class Ui(private val ctx: Context) {
         typeface = Fonts.semi(ctx)
         setPadding(dp(16), dp(10), dp(16), dp(10))
         val (bg, fg, line) = when (kind) {
-            "primary" -> Triple(TEAL, Color.WHITE, null)
-            "sun" -> Triple(SUN, INK, null)
-            "ghost" -> Triple(SURFACE, TEAL, LINE)
+            "primary" -> Triple(TEAL, ON_TEAL, null)
+            "sun" -> Triple(SUN, Color.parseColor("#1A1C24"), null)
+            "ghost" -> Triple(SURFACE, TEAL_DARK, LINE)
             "danger" -> Triple(DANGER_SOFT, DANGER, null)
             else -> Triple(TEAL_SOFT, TEAL_DARK, null)
         }
@@ -93,7 +105,7 @@ class Ui(private val ctx: Context) {
 
     fun input(hint: String, value: String = "", multi: Boolean = false, number: Boolean = false) = EditText(ctx).apply {
         this.hint = hint; setText(value); textSize = 15f; setTextColor(INK); setHintTextColor(MUTED)
-        background = round(Color.parseColor("#F5F8F7"), 14, LINE)
+        background = round(FIELD, 14, LINE)
         setPadding(dp(14), dp(12), dp(14), dp(12))
         inputType = when {
             number -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
@@ -112,7 +124,7 @@ class Ui(private val ctx: Context) {
     fun chip(label: String, selected: Boolean, onClick: () -> Unit) = TextView(ctx).apply {
         text = label; textSize = 14f; gravity = Gravity.CENTER
         setPadding(dp(14), dp(8), dp(14), dp(8))
-        setTextColor(if (selected) Color.WHITE else TEAL_DARK)
+        setTextColor(if (selected) ON_TEAL else TEAL_DARK)
         background = round(if (selected) TEAL else TEAL_SOFT, 18)
         setOnClickListener { onClick() }
     }

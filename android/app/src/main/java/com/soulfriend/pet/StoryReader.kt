@@ -73,7 +73,7 @@ class StoryReader : Activity() {
             "health" to "#14B8A6", "farming" to "#65A30D", "realestate" to "#10B981", "crypto" to "#F59E0B", "facts" to "#8B5CF6", "fun" to "#EC4899")
         private val PINK = Color.parseColor("#F91880")
         private val BLUE = Color.parseColor("#1D9BF0")
-        private val BOX = Color.parseColor("#F3F6F5")
+        private val BOX get() = AppLook.lt(Color.parseColor("#F3F6F5"), AppLook.FIELD)
     }
 
     /** The parts of one page that change after it is made. */
@@ -334,7 +334,7 @@ class StoryReader : Activity() {
         // ---- the card: who, headline, the text in its own scrolling box, buttons ----
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { setColor(Color.WHITE); val r = dp(22).toFloat(); cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f) }
+            background = GradientDrawable().apply { setColor(Ui.SURFACE); val r = dp(22).toFloat(); cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f) }
             setPadding(dp(16), dp(14), dp(16), insetBottom + dp(4))
         }
         pg.addView(card, FrameLayout.LayoutParams(-1, h - mediaH, Gravity.BOTTOM))
@@ -451,7 +451,7 @@ class StoryReader : Activity() {
     // ============================== small parts ==============================
     private fun avatar(u: SUser): View {
         val f = FrameLayout(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (u.official) Color.parseColor("#E6F0FF") else Ui.TEAL_SOFT) }
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (u.official) AppLook.lt(Color.parseColor("#E6F0FF"), AppLook.TINT3.first) else Ui.TEAL_SOFT) }
             clipToOutline = true
         }
         if (u.avatar.isNotBlank()) f.addView(ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load(host?.abs(u.avatar) ?: u.avatar, this, 160) },

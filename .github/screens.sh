@@ -15,9 +15,9 @@ adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
 adb shell input keyevent KEYCODE_HOME
 adb install -r "$apk"
 adb shell pm grant $pkg android.permission.POST_NOTIFICATIONS || true
-shot() { # theme screen name [language]
+shot() { # theme screen name [language] [app colour]
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
-  echo "== $3: $(adb shell am start -S -W -n $pkg/com.soulfriend.pet.DemoActivity --es theme "$1" --es screen "$2" --es lang "${4:-en}" 2>&1 | tr "\n" " ")" >> android/shots/starts.txt
+  echo "== $3: $(adb shell am start -S -W -n $pkg/com.soulfriend.pet.DemoActivity --es theme "$1" --es screen "$2" --es lang "${4:-en}" --es colour "${5:-purple}" 2>&1 | tr "\n" " ")" >> android/shots/starts.txt
   sleep 6
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
   sleep 1
@@ -55,6 +55,29 @@ for th in dark light; do
   adb shell input keyevent KEYCODE_BACK; sleep 1
   adb shell input keyevent KEYCODE_BACK; snap "$th-listpick-back"
 done
+# the sign-in screen, light and dark
+shot light login login-light
+shot dark login login-dark
+# the rest of the app: Home in each colour choice, Home scrolled, the colour sheet, then each page
+for col in teal purple orange green blue maroon; do shot light home "home-$col" en $col; done
+shot light home home-top
+adb shell input swipe 540 1700 540 700 400; snap home-mid
+adb shell input swipe 540 1700 540 500 400; adb shell input swipe 540 1700 540 500 400; snap home-bottom
+shot light home home-sheet0
+adb shell input tap 983 212; snap home-sheet
+adb shell input keyevent KEYCODE_BACK
+for sc in tasks files vault pet translate family govt feed; do shot light $sc "page-$sc"; done
+# the dark look of the rest of the app (the phone's dark mode, or Theme › Dark)
+for col in teal purple orange green blue maroon; do shot dark home "dark-home-$col" en $col; done
+shot dark home dark-home-top
+adb shell input swipe 540 1700 540 700 400; snap dark-home-mid
+adb shell input swipe 540 1700 540 500 400; adb shell input swipe 540 1700 540 500 400; snap dark-home-bottom
+shot dark home dark-home-sheet0
+adb shell input tap 983 212; snap dark-home-sheet
+adb shell input keyevent KEYCODE_BACK
+for sc in tasks files pet translate family govt feed; do shot dark $sc "dark-page-$sc"; done
+shot dark home te-dark-home te
+shot light home te-home te
 # Telugu words take more room: check they fit
 shot dark list te-dark-list te
 shot light chat te-light-chat te
