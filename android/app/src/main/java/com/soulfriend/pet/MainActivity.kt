@@ -33,6 +33,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -571,6 +572,9 @@ class MainActivity : Activity() {
             }, 10)
         }
 
+        // the Office box: letters, reports, memos and orders in government office format (Files › Office)
+        add(officeBox(), 14)
+
         // quick actions, and more for you: 3 tiles in a row
         fun action(icon: Int, tint: Pair<Int, Int>, label: String, hot: Boolean = false, onClick: () -> Unit) = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(6), dp(13), dp(6), dp(12))
@@ -629,6 +633,30 @@ class MainActivity : Activity() {
 
         // last on the page: this version, and a check for a newer one (Habit AI Lite; Play Store editions update by themselves)
         add(versionCard(), 14)
+    }
+
+    /** Office · కార్యాలయం on Home: opens the Office side of the letter helper; each chip starts that kind of paper. */
+    private fun officeBox(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(14), dp(14), dp(13)); background = ui.round(Ui.SURFACE, 20, Ui.LINE)
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(Ico.view(this@MainActivity, R.drawable.ic_briefcase, Ui.ON_TEAL, 22, 44, "", ui.round(Ui.TEAL, 14)), LinearLayout.LayoutParams(dp(44), dp(44)))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(ui.text("Office · కార్యాలయం", 16f, Ui.INK).apply { typeface = Fonts.heavy(context) })
+                addView(ui.text(t("Letters, reports, memos and orders in office format", "కార్యాలయ ఫార్మాట్‌లో లేఖలు, నివేదికలు, మెమోలు, ఉత్తర్వులు"), 12.5f, Ui.MUTED).apply { setPadding(0, dp(1), 0, 0) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(12) })
+            addView(Ico.view(this@MainActivity, R.drawable.ic_chevron_right, Ui.MUTED, 18, 28, ""), LinearLayout.LayoutParams(dp(28), dp(28)))
+            contentDescription = t("Office letters and reports", "కార్యాలయ లేఖలు, నివేదికలు")
+            setOnClickListener { letter.openOffice(""); go("files") }
+        })
+        // the kinds used most, one tap each (the rest are on the Office page)
+        val chips = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, 0) }
+        listOf("📨 Letter to higher office" to "Letter to higher office", "📋 Report" to "Report", "📝 Memo" to "Memo", "↩️ Endorsement" to "Endorsement",
+            "⚖️ Proceedings" to "Proceedings / Order", "📢 Notice" to "Notice", t("More…", "ఇంకా…") to "").forEach { (label, type) ->
+            chips.addView(ui.chip(label, false) { letter.openOffice(type); go("files") }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) })
+        }
+        addView(HorizontalScrollView(this@MainActivity).apply { isHorizontalScrollBarEnabled = false; addView(chips) })
     }
 
     /** My picture (profile photo, or my initials) with a ring of the second colour. */

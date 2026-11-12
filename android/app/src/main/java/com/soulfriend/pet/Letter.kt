@@ -131,6 +131,13 @@ class LetterHelper(private val m: MainActivity) {
         setOnClickListener { onClick() }
     }
 
+    /** Home's Office box: the Office side of the letter helper, with [type] already chosen ("" = let the AI decide). */
+    fun openOffice(type: String) {
+        m.stopListening(); listeningId = ""
+        store.letterMode = "office"; error = ""
+        if (stage == "start") officeType = type
+    }
+
     private fun setMode(mode: String) {
         if (store.letterMode == mode) return
         m.stopListening(); listeningId = ""
