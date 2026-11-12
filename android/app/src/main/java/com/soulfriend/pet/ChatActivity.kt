@@ -678,7 +678,7 @@ class ChatActivity : Activity() {
         if (rated.isNotEmpty()) { row.addView(ui.text(t("Thank you ", "ధన్యవాదాలు ") + (if (rated == "up") "👍" else "👎"), 12f, k.sub)); return row }
         fun chip(e: String, good: Boolean, say: String) = ui.text(e, 15f, k.txt).apply {
             gravity = Gravity.CENTER; setPadding(dp(10), dp(3), dp(10), dp(3)); contentDescription = say
-            background = ChatTheme.round(Color.TRANSPARENT, dp(14).toFloat(), k.edge, dp(1))
+            background = ChatTheme.round(AppLook.mix(k.bg, k.txt, 0.12f), dp(14).toFloat())
             setOnClickListener { rateAi(m, good) }
         }
         row.addView(chip("👍", true, t("Good answer", "మంచి జవాబు")), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
