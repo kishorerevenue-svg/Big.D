@@ -784,6 +784,7 @@ class MainActivity : Activity() {
             put(ui.text("Tap it to talk · hold it for the menu · drag it down to ✕ to close", 12.5f, Ui.MUTED), 8)
         }, 14)
 
+        add(brainCard(), 12)
         add(ui.section("Choose your pet").apply { petPicker(this) }, 12)
 
         add(ui.section("Language · భాష", "Auto: listens in Telugu and replies in the language you use.").apply {
@@ -862,6 +863,45 @@ class MainActivity : Activity() {
     }
 
     /** Natural voice on/off, its status on the server, and a test button. */
+    // ---------- Habit's own brain (on our server): what it has learned, and whether our own AI model runs ----------
+    private var brainStatus: JSONObject? = null
+    private var brainAt = 0L
+    private fun brainCard(): View = ui.section(t("🧠 Habit's own brain", "🧠 Habit సొంత మెదడు"),
+        t("It learns from Claude every day, and keeps making files and answering when Claude can't.",
+          "ఇది ప్రతిరోజూ Claude నుంచి నేర్చుకుంటుంది. Claude అందుబాటులో లేనప్పుడు సొంతంగా ఫైళ్లు చేస్తుంది, జవాబులు ఇస్తుంది.")).apply {
+        if (System.currentTimeMillis() - brainAt > 60_000) {
+            brainAt = System.currentTimeMillis()
+            io.execute {
+                val r = Net.get(store, "/api/brain/status")
+                if (r.ok) runOnUiThread { brainStatus = r.json; if (tab == "pet") render() }
+            }
+        }
+        val s = brainStatus
+        if (s == null) { put(ui.text(t("Checking…", "చూస్తోంది…"), 13.5f, Ui.MUTED), 8); return@apply }
+        fun row(icon: String, label: String, value: String) = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(ui.text("$icon  $label", 14f, Ui.INK), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(ui.text(value, 14f, Ui.TEAL_DARK, bold = true).apply { gravity = Gravity.END; maxWidth = dp(190) })
+        }
+        put(ui.text("● " + t("Active · learning", "యాక్టివ్ · నేర్చుకుంటోంది"), 14f, Ui.GOOD, bold = true), 8)
+        put(row("📄", t("File skills", "ఫైల్ నైపుణ్యాలు"), t("${s.optInt("skills")} kinds", "${s.optInt("skills")} రకాలు")), 10)
+        put(row("🎓", t("Learned from Claude", "Claude నుంచి నేర్చుకున్నవి"), s.optInt("learnedSkills").toString()), 6)
+        put(row("📝", t("Files it made by itself", "సొంతంగా చేసిన ఫైళ్లు"), s.optInt("filesMade").toString()), 6)
+        put(row("💬", t("Answers learned", "నేర్చుకున్న జవాబులు"), s.optInt("answers").toString()), 6)
+        put(row("📚", t("Things you taught", "మీరు నేర్పినవి"), s.optInt("knowledge").toString()), 6)
+        val md = s.optJSONObject("model")
+        put(row("🤖", t("Own AI model", "సొంత AI మోడల్"), when {
+            md?.optBoolean("running") == true -> t("running", "పని చేస్తోంది")
+            md?.optBoolean("installed") == true -> t("installed, starting", "ఇన్‌స్టాల్ అయింది")
+            else -> t("waiting for a bigger server", "పెద్ద సర్వర్ కోసం వేచి ఉంది")
+        }), 6)
+        put(row("✨", "Claude", when (s.optString("claude")) {
+            "on" -> t("helping", "సహాయం చేస్తోంది")
+            "resting" -> t("resting: Habit works by itself", "విశ్రాంతి: Habit సొంతంగా చేస్తోంది")
+            else -> t("not set up", "సెట్ చేయలేదు")
+        }), 6)
+    }
+
     private fun voiceCard() = ui.section("Voice 🔊", "A clear, grown-up voice that speeds up a little when your pet is excited and slows down when it's sad.").apply {
         val status = ui.text("Checking the natural voice…", 12.5f, Ui.MUTED)
         put(ui.check("Natural voice (sounds like a real person, Telugu and English)", store.naturalVoice) { store.naturalVoice = it }, 10)

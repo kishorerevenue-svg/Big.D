@@ -31,6 +31,8 @@ const answers = require("./answers.js")({ DATA_DIR, learn });
 const ownBrain = require("./ownbrain.js")({ DATA_DIR, SERVER_DIR: __dirname, learn, answers });
 const appUpdate = require("./appupdate.js")({ REPO_DIR: path.join(__dirname, "..") });
 const files = require("./files.js")({ DATA_DIR });
+// Habit's own file skills: learned from the files Claude makes, used when Claude can't (skills.js)
+const skills = require("./skills.js")({ DATA_DIR, learn, files, MODEL, ownBrain });
 const voice = require("./voice.js")({ DATA_DIR });
 const baseUrl = req => (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
 // created after the helpers below exist (see "extras" near the web server)
@@ -462,7 +464,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
 
-  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY,
+  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills,
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
   if (await media.handle(req, res, url, origin)) return;
@@ -486,6 +488,13 @@ const server = http.createServer(async (req, res) => {
     if (!to) return send(res, 404, { error: "No download is published yet." }, origin);
     res.writeHead(302, { location: to, "cache-control": "no-store" });
     return res.end();
+  }
+  // Habit's own brain, for the app's "Habit's own brain" card: is it on, what has it learned, is our own AI model running
+  if (req.method === "GET" && url.pathname === "/api/brain/status") {
+    const sk = await skills.status(), ans = answers.stats();
+    return send(res, 200, { active: true, learning: sk.learning && ans.on, skills: sk.skills, starterSkills: sk.starter, learnedSkills: sk.learned,
+      filesMade: sk.made, answers: ans.learned, knowledge: learn.listKnowledge().length, model: sk.model, claude: learn.claudeOut() ? "resting" : (API_KEY ? "on" : "off"),
+      lastLearned: sk.lastLearned }, origin);
   }
   // where Habit Brain (the tiny brain on the phone) downloads its model from; the owner can name another place
   if (req.method === "GET" && url.pathname === "/brain/phone") {
@@ -610,7 +619,8 @@ const server = http.createServer(async (req, res) => {
     try {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
       // our own brain and the answers learned from common questions
-      if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list(), claude: learn.claudeOut(), self: selfBrain.stats(), trends: trends.status() });
+      if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list(), claude: learn.claudeOut(), self: selfBrain.stats(), trends: trends.status(), skills: await skills.status() });
+      if (req.method === "GET" && url.pathname === "/api/teach/skills") return send(res, 200, { status: await skills.status(), learned: skills.list() });
       // Media: where the posts come from (news feeds), and how many came today
       if (req.method === "GET" && url.pathname === "/api/teach/media") return send(res, 200, media.teach.info());
       if (req.method === "GET" && url.pathname === "/api/teach/youtube") return send(res, 200, { sections: youtube.list(), stats: youtube.stats() });
@@ -634,6 +644,7 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, { ...parsePet(out.text), seconds: Math.round((Date.now() - t0) / 100) / 10 });
         }
         if (url.pathname === "/api/teach/learned/delete") return send(res, 200, { ok: answers.remove(String(body.id || "")) });
+        if (url.pathname === "/api/teach/skills/delete") return send(res, 200, { ok: skills.remove(String(body.id || "")) });
         if (url.pathname === "/api/teach/questions/forget") return send(res, 200, { ok: answers.forget(String(body.key || "")) });
         if (url.pathname === "/api/teach/learned/prepare") return send(res, 200, await answers.prepare());
         if (url.pathname === "/api/teach/media/feed/add") {

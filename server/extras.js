@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h }) {
+module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills }) {
   const { send, readBody, allowed, dailyCheck, clientIp, baseUrl } = h;
   const reads = new Map(); // reading the feed has its own, bigger limit (it costs nothing)
   setInterval(() => { const now = Date.now(); for (const [k, l] of reads) if (!l.some(t => now - t < 600000)) reads.delete(k); }, 600000).unref();
@@ -188,6 +188,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     const o = parseJson(out.text);
     if (!o || !o.content) throw new Error("empty_letter");
     const f = await files.create({ type: "make_file", format: o.format === "xlsx" ? "xlsx" : "docx", title: str(o.title, 80) || str(body.title, 80) || "Letter", content: o.content });
+    if (skills) skills.learnFrom(body, { title: str(o.title, 80), format: o.format, content: o.content });   // Habit learns this kind of file (in the background)
     return { url: baseUrl(req) + f.path, name: f.name, format: f.format, preview: str(o.preview, 8000), say: str(o.say, 300) };
   }
 
@@ -356,13 +357,24 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
 
     try {
       if (p === "/api/letter/plan" || p === "/api/letter/make") {
-        if (!API_KEY) { send(res, 500, { error: "Server has no API key yet." }, origin); return true; }
-        const hasPapers = p.endsWith("plan") && Array.isArray(body.docs) && body.docs.length > 0;
-        if (str(body.request, 2000).length < 3 && !hasPapers && !str(body.docType, 60)) { send(res, 400, { error: "Tell me what you need first." }, origin); return true; }
-        const lim = dailyCheck(req, "msg"); if (lim) { send(res, 429, { error: lim }, origin); return true; }
+        const plan = p.endsWith("plan");
+        const hasPapers = plan && Array.isArray(body.docs) && body.docs.length > 0;
+        if (str(body.request, 2000).length < 3 && !hasPapers && !str(body.docType, 60) && !(!plan && str(body.title, 80))) { send(res, 400, { error: "Tell me what you need first." }, origin); return true; }
+        // Habit's own brain makes the file when Claude can't: no key, Claude is resting (monthly limit, no credit),
+        // the person's free messages for today are used up, Claude fails, or the plan came from the own brain.
+        let why = !plan && str(body.skill, 60) ? "own" : !API_KEY ? "nokey" : learn.claudeOut() ? "resting" : "";
+        if (!why) { const lim = dailyCheck(req, "msg"); if (lim) { if (!skills) { send(res, 429, { error: lim }, origin); return true; } why = "limit"; } }
+        if (why && !skills) { send(res, 500, { error: "Server has no API key yet." }, origin); return true; }
+        const own = async w => send(res, 200, plan ? skills.ownPlan(body, w) : await skills.ownMake(body, req, baseUrl), origin);
+        if (why) { await own(why); return true; }
         if (hasPapers && !papersAllowed(req)) { send(res, 429, { error: "You've reached today's limit for reading papers. Please try again tomorrow." }, origin); return true; }
-        try { send(res, 200, p.endsWith("plan") ? await letterPlan(body) : await letterMake(body, req), origin); }
-        catch (e) { if (!e.user) throw e; send(res, 400, { error: e.message }, origin); }
+        try { send(res, 200, plan ? await letterPlan(body) : await letterMake(body, req), origin); }
+        catch (e) {
+          if (e.user) { send(res, 400, { error: e.message }, origin); return true; }
+          if (!skills) throw e;
+          console.error("Letter: Claude couldn't (" + (e.status || "") + " " + String(e.message || "").slice(0, 80) + "), our own brain makes it");
+          await own("busy");
+        }
         return true;
       }
       if (p === "/api/scan") {

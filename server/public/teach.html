@@ -114,6 +114,14 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
+      <h2>📄 File skills · ఫైల్ నైపుణ్యాలు</h2>
+      <p class="hint">How Habit makes letters and office papers by itself when Claude can't (this month's limit is used up, no credit, Claude is down, or a person's free messages for today are used up). It starts with <span id="skStarter">19</span> ready formats: leave letter, applications, complaints, certificates, bank and school letters; office letters, reports, memos, endorsements, notices, show-cause notices, proceedings, covering letters, replies to petitions, office orders, minutes and Excel statements. Every time Claude makes a Word file, Habit learns that kind of file as a clean template: the format and the wording, with the person's details taken out (a file that still has a name or a number in it is not kept). Delete any you don't want.</p>
+      <p id="skState" class="msg"></p>
+      <ul id="skills"></ul>
+      <p class="hint" id="skEmpty">Nothing learned yet: Habit learns when Claude makes files.</p>
+    </section>
+
+    <section class="card">
       <h2>📰 Media posts · మీడియా పోస్టులు</h2>
       <p class="hint">All day, new stories come from these news feeds. The server opens each story, and our own brain writes a short Telugu post from its facts with a link to it (Claude writes them when our own brain can't, up to a limit a day). Stories that many papers report come first. Every morning Claude also writes a few posts per section, and the server adds the panchangam (4 AM), weather warnings for farmers (6 AM and 6 PM) and mandi prices (2 PM, needs DATA_GOV_KEY).</p>
       <p id="mediaState" class="msg"></p>
@@ -283,6 +291,15 @@ async function loadBrain() {
   $("learnedEmpty").hidden = learning.learned.length > 0;
   for (const a of learning.learned) ul.append(row(a.q, a.answer, `used ${a.uses || 0} times · ${a.from === "chat" ? "learned from Claude in a chat" : "prepared"} ${new Date(a.at).toLocaleDateString()} · ${a.lang === "te" ? "Telugu" : "English"}`, "Delete", () => api("learned/delete", { id: a.id })));
   if (learning.total > learning.learned.length) ul.append(row(`…and ${learning.total - learning.learned.length} more`, "", "the most used are shown", "", null));
+  try {
+    const sk = await api("skills");
+    $("skStarter").textContent = sk.status.starter;
+    say($("skState"), `${sk.status.learning ? "✓ Learning" : "⏸ Learning is off (SKILLS_LEARN=false)"} · ${sk.status.skills} kinds of files · ${sk.status.learned} learned from Claude · ${sk.status.made} files made by Habit itself.`, true);
+    const su = $("skills"); su.textContent = "";
+    $("skEmpty").hidden = sk.learned.length > 0;
+    for (const s of sk.learned) su.append(row(`${s.kind} (${s.mode === "office" ? "office" : "public"}, ${s.lang === "te" ? "Telugu" : "English"})`, s.preview,
+      `asks: ${s.questions.join(" · ")} · learned ${new Date(s.at).toLocaleDateString()} · made by Habit ${s.made} times`, "Delete", () => api("skills/delete", { id: s.id })));
+  } catch (e) { }
   const qu = $("questions"); qu.textContent = "";
   $("qEmpty").hidden = learning.questions.length > 0;
   for (const q of learning.questions) qu.append(row(q.q, "", `${q.people} ${q.people === 1 ? "person" : "people"} · asked ${q.times} times${q.skipped ? " · no general answer (it depends on the person or the day)" : ""}`, "Forget", () => api("questions/forget", { key: q.key })));
