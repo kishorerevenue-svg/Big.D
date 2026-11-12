@@ -63,6 +63,8 @@ class LetterHelper(private val m: MainActivity) {
     private var title = ""
     private var format = "docx"
     private var say = ""
+    /** Set when Habit's own brain planned this file (Claude couldn't): its skill, sent back when making the file. */
+    private var ownSkill = ""
     private val questions = mutableListOf<Q>()
     private val extras = mutableListOf<Q>()
     private val answers = HashMap<String, String>()
@@ -388,6 +390,7 @@ class LetterHelper(private val m: MainActivity) {
                 if (!r.ok) { stage = "start"; error = r.error("Couldn't start. Please try again."); m.render(); return@runOnUiThread }
                 val j = r.json
                 title = j.optString("title", "Letter"); format = j.optString("format", "docx"); say = j.optString("say", "")
+                ownSkill = if (j.optBoolean("own")) j.optString("skill") else ""
                 summary = j.optString("summary"); notes = j.optString("notes"); docsId = j.optString("docsId"); showNotes = false
                 questions.clear(); extras.clear(); answers.clear(); chosen.clear(); misses = 0
                 j.optJSONArray("questions")?.let { a -> for (i in 0 until a.length()) a.optJSONObject(i)?.let { o ->
@@ -401,7 +404,20 @@ class LetterHelper(private val m: MainActivity) {
     }
 
     // ---------------- 2. the questions ----------------
+    /** A small note when Habit's own brain (not Claude) is making the file. */
+    private fun ownNote(done: Boolean) {
+        val te = store.lang == "te"
+        m.add(ui.card(Ui.TEAL_SOFT).apply {
+            addView(ui.text(if (te) "🧠 Habit సొంత మెదడు" else "🧠 Habit's own brain", 15f, Ui.TEAL_DARK, bold = true))
+            put(ui.text(if (done) (if (te) "ఈ ఫైల్‌ను Habit తను నేర్చుకున్న ఫార్మాట్‌తో సొంతంగా తయారు చేసింది. పంపే ముందు ఒకసారి చదవండి."
+                    else "Habit made this file by itself, from a format it has learned. Please read it once before you send it.")
+                else (if (te) "Claude ఇప్పుడు అందుబాటులో లేదు, అందుకే Habit తను నేర్చుకున్న ఫార్మాట్‌తో ఈ ఫైల్ తయారు చేస్తుంది."
+                    else "Claude can't help right now, so Habit makes this file by itself, from a format it has learned."), 13.5f, Ui.INK), 4)
+        }, 12)
+    }
+
     private fun buildQuestions() {
+        if (ownSkill.isNotBlank()) ownNote(false)
         m.add(ui.card(Ui.SUN_SOFT).apply {
             addView(ui.text("📝 $title", 19f, Ui.INK, bold = true))
             if (say.isNotBlank()) put(ui.text(say, 14f, Ui.MUTED), 4)
@@ -538,7 +554,7 @@ class LetterHelper(private val m: MainActivity) {
     private fun doMake() {
         voiceAll = false; m.stopListening(); m.stopTalking(); listeningId = ""
         stage = "making"; error = ""; m.render(); m.scrollTop()
-        val ans = JSONArray(); questions.forEach { q -> answers[q.id]?.takeIf { it.isNotBlank() }?.let { ans.put(JSONObject().put("q", q.q).put("a", Privacy.maybe(store, it))) } }
+        val ans = JSONArray(); questions.forEach { q -> answers[q.id]?.takeIf { it.isNotBlank() }?.let { ans.put(JSONObject().put("id", q.id).put("q", q.q).put("a", Privacy.maybe(store, it))) } }
         val ex = JSONArray(); extras.filter { it.id in chosen }.forEach { q -> answers[q.id]?.takeIf { it.isNotBlank() }?.let { ex.put(JSONObject().put("label", q.label).put("q", q.q).put("a", Privacy.maybe(store, it))) } }
         val body = JSONObject().put("request", Privacy.maybe(store, request.ifBlank { officeType })).put("title", title).put("format", format)
             .put("lang", letterLang.ifEmpty { store.lang }).put("answers", ans).put("extras", ex)
@@ -546,6 +562,7 @@ class LetterHelper(private val m: MainActivity) {
         if (office) { if (officeType.isNotEmpty()) body.put("docType", officeType); body.put("office", store.officeInfo) }
         if (notes.isNotBlank()) body.put("notes", notes)
         if (docsId.isNotBlank()) body.put("docsId", docsId)
+        if (ownSkill.isNotBlank()) body.put("skill", ownSkill)
         m.io.execute {
             val r = Net.post(store, "/api/letter/make", body, timeoutMs = 150_000)
             m.runOnUiThread {
@@ -580,6 +597,7 @@ class LetterHelper(private val m: MainActivity) {
         val r = result ?: run { stage = "start"; buildStart(); return }
         val name = r.optString("name", "Letter")
         val xl = r.optString("format") == "xlsx"
+        if (r.optBoolean("own")) ownNote(true)
         m.add(ui.card(Ui.TEAL_SOFT).apply {
             addView(ui.text("✅ Your ${if (xl) "Excel file" else "letter"} is ready!", 19f, Ui.TEAL_DARK, bold = true))
             put(ui.text("$name · saved in Downloads › Habit AI", 13f, Ui.MUTED), 4)
@@ -614,7 +632,7 @@ class LetterHelper(private val m: MainActivity) {
 
     private fun reset() {
         m.stopListening(); m.stopTalking()
-        stage = "start"; request = ""; result = null; error = ""; questions.clear(); extras.clear(); answers.clear(); chosen.clear()
+        stage = "start"; request = ""; result = null; error = ""; ownSkill = ""; questions.clear(); extras.clear(); answers.clear(); chosen.clear()
         voiceAll = false; listeningId = ""
         papers.clear(); docsId = ""; notes = ""; summary = ""; officeType = ""; showNotes = false
         m.render(); m.scrollTop()
