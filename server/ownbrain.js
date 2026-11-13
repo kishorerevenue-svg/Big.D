@@ -109,12 +109,49 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
     return "";
   }
 
-  /** Facts for the question: what was learned, the owner's library, and the internet. Each look-up gives up after a few seconds.
-   *  [used] (optional) gets claude: true when a fact came from Claude (an answer learned from Claude, or a document Claude read):
-   *  then this answer is never used to teach Habit's own model. */
+  // ---------- the owner's own lessons (Teach page › 🎓 Teach Gemma › 2): read before answering, straight away ----------
+  // They are the owner's words, people's corrections the owner approved, or Gemma's own clean answers: never Claude's.
+  const LESSONS = path.join(DATA_DIR, "gemma-lessons.json");
+  let lessonCache = { mtime: -1, items: [] };
+  const SMALL = new Set(("the a an is are was were be to of in on at for and or but my me i you your it its this that these those what how why when where who " +
+    "which do does did can could will would should shall may please tell about with from by as have has had get got any some much many there here " +
+    "ఏమిటి ఏంటి ఎలా ఎందుకు ఎప్పుడు ఎక్కడ ఎవరు నేను నా నాకు మీరు మీ మీకు ఇది అది ఒక కూడా చెప్పండి చెప్పు గురించి ఉంది ఉన్నాయి ఏం").split(" "));
+  const wordsOf = s => [...new Set((String(s).toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) || []).filter(w => w.length > 1 && !SMALL.has(w)))];
+  // the same word, or one with an ending added (card / cards, కార్డు / కార్డుకు)
+  const sameWord = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+  function ownerLessons() {
+    try {
+      const st = fs.statSync(LESSONS);
+      if (st.mtimeMs !== lessonCache.mtime) {
+        const list = JSON.parse(fs.readFileSync(LESSONS, "utf8"));
+        lessonCache = { mtime: st.mtimeMs, items: (Array.isArray(list) ? list : []).map(l => ({ q: String(l.q || ""), a: String(l.a || ""), w: wordsOf(l.q) })).filter(l => l.q && l.a && l.w.length) };
+      }
+    } catch (e) { lessonCache = { mtime: -1, items: [] }; }
+    return lessonCache.items;
+  }
+  /** The owner's lesson that asks the same thing as [q]: most of the lesson question's words are in it (at least 2), and
+   *  they are a fair part of [q]. null when none is close enough. */
+  function ownerLesson(q) {
+    const w = wordsOf(q);
+    if (w.length < 2) return null;
+    let best = null, bestScore = 0;
+    for (const l of ownerLessons()) {
+      const both = l.w.filter(x => w.some(y => sameWord(x, y))).length;
+      if (both < 2 || both / l.w.length < 0.6 || both / w.length < 0.25) continue;
+      const score = both / l.w.length + both / 100;
+      if (score > bestScore) { best = l; bestScore = score; }
+    }
+    return best;
+  }
+
+  /** Facts for the question: the owner's lessons, what was learned, the owner's library, and the internet. Each look-up gives
+   *  up after a few seconds. [used] (optional) gets claude: true when a fact came from Claude (an answer learned from Claude,
+   *  or a document Claude read): then this answer is never used to teach Habit's own model. */
   async function facts(q, lang, used) {
     const te = lang === "te" || isTe(q);
     const out = [];
+    const mine = ownerLesson(q);
+    if (mine) out.push(`Habit's own answer to this question, written by the app owner (give this answer in your own friendly words; no need to say where it came from):\nQ: ${mine.q.slice(0, 300)}\nA: ${mine.a.slice(0, 900)}`);
     const learned = answers ? answers.lookup(q) : null;
     if (learned) out.push(`A prepared answer to this common question (checked earlier with the internet):\n${learned.answer.slice(0, 1000)}`);
     const info = {};
@@ -158,7 +195,7 @@ Use the FACTS when they help and say where they came from ("the news says…", "
 Health, money and legal questions: general, safe guidance only, and suggest a doctor, the bank or an officer for decisions. Never ask for passwords, OTPs, PINs or card numbers. Refuse anything harmful, kindly.
 Answer only with JSON: {"emotion": "...", "reply": "...", "sound": ""}. Leave "sound" empty unless a fun sound really fits.
 ${photo ? "A photo is attached (from their camera or gallery): look at it carefully and answer what they ask. Read any writing exactly as written, then explain or translate it if needed. If it is blurry, dark or not in view, say so and ask them to hold the phone steady and closer and say \"look again\".\n" : ""}Now: ${ctx.now || new Date().toISOString()} ${ctx.tz || ""}.
-${memories.length ? "Things they told you before (use them kindly when they fit):\n- " + memories.join("\n- ") + "\n" : ""}FACTS:
+${memories.length ? "Things they told you before (use them kindly when they fit):\n- " + memories.join("\n- ") + "\n" + (ctx.speaker ? "" : "Family members may share this phone: don't call the person by a name from these unless they tell you who they are.\n") : ""}${ctx.speaker ? `The person talking to you now: ${String(ctx.speaker).slice(0, 40)}. If you use a name, use this one.\n` : ""}FACTS:
 ${found.length ? found.join("\n\n") : "(none)"}`;
   }
 
@@ -257,5 +294,5 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
   /** For /health: what we know right now, without waiting (it checks again in the background). */
   function quick() { ready().catch(() => {}); return { installed: !!model(), model: model() || "none", ready: seen.ok, vision: seen.ok && seen.vision, answered: stats.answered }; }
 
-  return { ready, pet, writeJson, canWrite, facts, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
+  return { ready, pet, writeJson, canWrite, facts, ownerLesson, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
 };

@@ -4,7 +4,7 @@
 // nothing Claude wrote or read goes into its lessons: not Claude's chat answers, not the answers learned from Claude,
 // not the files or templates Claude made, not the PDFs or photos Claude read for the library.
 // Its teachers:
-//   1. Big Gemma (Gemma 4 26B, also Apache 2.0) writes lessons on a free Kaggle GPU (brain/habit-gemma.ipynb);
+//   1. Big Gemma (Gemma 4 26B, also Apache 2.0) writes lessons on a free Kaggle GPU (brain/habit_gemma.py);
 //   2. the owner: lessons written on the Teach page, and the library's typed notes, text files and web pages;
 //   3. people: 👍 / 👎 on answers from Habit's own brains. The owner turns corrections and good answers into lessons.
 // The exam (brain/exam.json) checks a model with fixed rules, here and on Kaggle. Its questions are never lessons.

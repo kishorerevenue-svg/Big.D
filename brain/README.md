@@ -58,10 +58,11 @@ On a phone, open Kaggle in your browser with **Desktop site** turned on: the not
 
 **1. Hugging Face token.** In Hugging Face, go to Settings › [Access Tokens](https://huggingface.co/settings/tokens) ›
 *Create new token*. Choose type **Write**, then copy it. Keep it secret and never send it to anyone. Save it on our server
-(it stays in the server's `.env`):
+(it stays in the server's `.env`). Run this, then paste the token when it asks. It stays hidden, so it never shows on the
+screen or in a screenshot:
 
 ```
-bash /root/Big.D/server/set-key.sh HF_TOKEN hf_your_token_here
+bash /root/Big.D/server/set-key.sh HF_TOKEN
 ```
 
 **2. Training link.** On the Teach page, go to 🎓 Teach Gemma › 1. The training link › **Make a new link**, then copy it.
@@ -110,7 +111,7 @@ the next run mostly teaches your new lessons and takes less time. To make Big Ge
 | Add to the command | What it does |
 |---|---|
 | `--size E2B` | The default. About 3 GB, runs on a server with 6 GB memory (and later on phones). |
-| `--size E4B` | Smarter. Needs a server with about 10 GB memory. |
+| `--size E4B` | Smarter. About 5 GB, needs a server with about 8 GB memory. It learns one lesson at a time on the T4 and is saved as an 8-bit file first (Kaggle's disk is about 57 GB), so it takes a little longer. Try it with `--test --size E4B` first. |
 | `--teacher gemma4:31b` | A slower, slightly smarter teacher (the default is `gemma4:26b`). |
 | `--new-lessons yes` / `no` | Big Gemma writes new lessons / uses only the saved ones. |
 | `--hours 4` | At most 4 hours for writing lessons (the default is 6). Unfinished topics are done next time. |
@@ -175,7 +176,8 @@ The last lines say what to do:
 **దశలు:**
 
 1. **Hugging Face టోకెన్:** Hugging Face › Settings › Access Tokens › *Create new token*. రకం **Write** ఎంచుకుని
-   కాపీ చేయండి. ఎవరికీ పంపకండి. సర్వర్‌లో ఇలా సేవ్ చేయండి: `bash /root/Big.D/server/set-key.sh HF_TOKEN hf_మీ_టోకెన్`
+   కాపీ చేయండి. ఎవరికీ పంపకండి. సర్వర్‌లో `bash /root/Big.D/server/set-key.sh HF_TOKEN` అని రన్ చేసి, అడిగినప్పుడు
+   టోకెన్ పేస్ట్ చేయండి. అది స్క్రీన్ మీద కనిపించదు.
 2. **లింక్:** Teach పేజీ › 🎓 Teach Gemma › **Make a new link** నొక్కి లింక్ కాపీ చేయండి. ఇది 14 రోజులు పని చేస్తుంది.
 3. **Kaggle నోట్‌బుక్:** Kaggle › *Create › New Notebook* తెరిచి ఇవి చేయండి:
    - *Settings › Accelerator*: **GPU T4 x2**

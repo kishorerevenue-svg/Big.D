@@ -85,6 +85,17 @@ shot light home home-sheet0
 adb shell input tap 983 212; snap home-sheet
 adb shell input keyevent KEYCODE_BACK
 for sc in tasks files vault pet translate family govt feed; do shot light $sc "page-$sc"; done
+# the pet page further down: Voice, with "💬 Keep listening after answers" (English and Telugu)
+shot light pet page-pet-v
+for k in 1 2 3 4; do adb shell input swipe 540 1700 540 600 400; snap "page-pet-v$k"; done
+shot light pet te-page-pet-v te
+for k in 1 2 3 4; do adb shell input swipe 540 1700 540 600 400; snap "te-page-pet-v$k"; done
+# the games (opened by the pet or from the pet page): the list, then each game, in English and Telugu, light and dark
+for g in games games-quiz games-riddles games-memory games-tictactoe games-maths; do shot light $g "$g"; shot dark $g "dark-$g" te; done
+shot light games-quiz quiz-answered; adb shell input tap 540 1060; snap quiz-answered-1; adb shell input swipe 540 1800 540 900 300; snap quiz-answered-2
+shot light games-tictactoe ttt-play; tapui "Box 5"; sleep 2; snap ttt-play-1; tapui "Box 1"; sleep 2; snap ttt-play-2
+shot light games-memory mem-play; tapui "Card 1"; tapui "Card 2"; snap mem-play-1
+shot light games-riddles te-riddle te; tapui "జవాబు చూపించు"; snap te-riddle-answer
 # the dark look of the rest of the app (the phone's dark mode, or Theme › Dark)
 for col in teal purple orange green blue maroon; do shot dark home "dark-home-$col" en $col; done
 shot dark home dark-home-top

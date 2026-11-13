@@ -117,6 +117,36 @@ class Store(context: Context) {
         get() = p.getBoolean("funSounds", true)
         set(v) { p.edit().putBoolean("funSounds", v).apply() }
 
+    /** Conversation mode: after a spoken answer the pet listens a little longer for the next question (no tap needed).
+     *  "ask" (it asks the first time), "on" or "off". */
+    var convo: String
+        get() = p.getString("convo", "ask") ?: "ask"
+        set(v) { p.edit().putString("convo", v).apply() }
+    var convoAsked: Int
+        get() = p.getInt("convoAsked", 0)
+        set(v) { p.edit().putInt("convoAsked", v).apply() }
+    /** "Interesting talk": when a spoken conversation goes quiet, the pet may say one short fact, tip or riddle (Sparks). */
+    var sparks: Boolean
+        get() = p.getBoolean("sparks", true)
+        set(v) { p.edit().putBoolean("sparks", v).apply() }
+    fun sparksSeen(): Set<String> = (p.getString("sparksSeen", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
+    fun sparkTold(id: String) {
+        val l = (p.getString("sparksSeen", "") ?: "").split(",").filter { it.isNotBlank() && it != id } + id
+        p.edit().putString("sparksSeen", l.takeLast(15).joinToString(",")).apply()
+    }
+
+    /** Who is talking now, when they said who they are ("I'm Ravi"). Family members share a phone, so it lasts only for
+     *  this conversation: it ends with the conversation, or 10 minutes after they last talked. */
+    fun speakerNow(): String? {
+        val name = p.getString("speaker", "") ?: ""
+        return if (name.isNotBlank() && System.currentTimeMillis() - p.getLong("speakerAt", 0L) < 10 * 60_000L) name else null
+    }
+    fun setSpeaker(name: String) {
+        val n = (Regex("^[\\p{L}\\p{M} .'-]+").find(name.trim())?.value ?: "").trim().take(40)   // a name only
+        p.edit().putString("speaker", n).putLong("speakerAt", if (n.isEmpty()) 0L else System.currentTimeMillis()).apply()
+    }
+    fun touchSpeaker() { if (speakerNow() != null) p.edit().putLong("speakerAt", System.currentTimeMillis()).apply() }
+
     /** Show the Reels remote buttons on screen (Plus edition). */
     var remoteOn: Boolean
         get() = p.getBoolean("remoteOn", false)

@@ -44,6 +44,9 @@ class DemoActivity : Activity() {
             "office" -> { store.letterMode = "office"; Intent(this, MainActivity::class.java).putExtra("tab", "files") }
             "feed" -> Intent(this, MainActivity::class.java).putExtra("tab", "feedback")
             "login" -> Intent(this, LoginActivity::class.java)
+            "games" -> Intent(this, GamesActivity::class.java)
+            "games-quiz", "games-riddles", "games-memory", "games-tictactoe", "games-maths" ->
+                Intent(this, GamesActivity::class.java).putExtra("game", intent.getStringExtra("screen")!!.removePrefix("games-"))
             else -> Intent(this, MainActivity::class.java).putExtra("tab", "messages")
         }
         startActivity(go.addFlags(flags))

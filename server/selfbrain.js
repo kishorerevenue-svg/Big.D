@@ -426,5 +426,27 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     return { text: parts.join(" "), emotion: "happy", sources: [], self: true };
   }
 
-  return { answer, noEyes, briefing, stats: () => ({ ...stats, skills: { ...stats.skills } }), _test: { words, stem, same, useTe, placeIn, clip, searchPosts } };
+  /** Something short and interesting for a pause in a spoken conversation ("interesting talk"): a fact, a health tip, a
+   *  farming tip or a riddle from Habit's Media posts (in Telugu), told once per phone, or null. No AI is asked. */
+  function spark(lang, dev) {
+    if (lang === "en") return null;                       // Habit's Media posts are in Telugu (the phone has English ones itself)
+    const heads = { facts: "ఒక ఆసక్తికరమైన విషయం: ", health: "ఒక ఆరోగ్య చిట్కా: ", farming: "రైతుల కోసం ఒక మాట: ", fun: "కొంచెం సరదాగా: " };
+    const cats = Object.keys(heads).sort(() => Math.random() - 0.5);
+    const seen = served.get(dev) || [];
+    const lists = cats.map(cat => [cat, posts(cat, { days: 45 }).filter(i => String(i.title || "").length >= 6).slice(0, 40)]).filter(([, l]) => l.length);
+    // a category with something this phone wasn't told yet first; when all were told, the one told longest ago
+    lists.sort((a, b) => (a[1].some(i => !seen.includes(i.id)) ? 0 : 1) - (b[1].some(i => !seen.includes(i.id)) ? 0 : 1));
+    for (const [cat, list] of lists) {
+      const it = fresh(list, dev)[0];
+      if (!it) continue;
+      told(dev, it);
+      stats.skills.spark = (stats.skills.spark || 0) + 1;
+      const title = String(it.title).replace(/^[^\p{L}\p{N}]+/u, "").trim();
+      return { reply: `${heads[cat]}${title}. ${clip(it.body, 170)} ఇంకా చెప్పమంటారా?`, emotion: cat === "fun" ? "laughing" : "excited",
+        actions: [], sources: srcOf(it), brain: "self", own: true, self: true, spark: true };
+    }
+    return null;
+  }
+
+  return { answer, noEyes, briefing, spark, stats: () => ({ ...stats, skills: { ...stats.skills } }), _test: { words, stem, same, useTe, placeIn, clip, searchPosts } };
 };

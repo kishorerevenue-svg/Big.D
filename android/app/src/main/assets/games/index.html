@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="te">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Habit Games</title>
+<style>
+:root {
+  --bg: #F5F2FD; --card: #FFFFFF; --txt: #1D1238; --sub: #675F82; --line: #E6E0F7;
+  --pri: #6D28D9; --pri-txt: #5B21B6; --soft: #EAE2FD; --acc: #F59E0B; --acc-soft: #FFEFD0;
+  --g1: #5B21B6; --g2: #8B5CF6; --good: #1D8A5B; --good-soft: #DFF3E8; --bad: #C63B3F; --bad-soft: #FBE3E3;
+  --shadow: 0 6px 18px rgba(29, 18, 56, .08); --why-txt: #6B4400; --gold-txt: #8A5300;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--txt); }
+body { font-family: "Noto Sans Telugu", "Noto Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 16px; line-height: 1.45;
+  min-height: 100vh; padding-bottom: env(safe-area-inset-bottom); overflow-x: hidden; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+.hero { background: linear-gradient(135deg, var(--g1), var(--g2)); color: #fff; padding: calc(14px + env(safe-area-inset-top)) 16px 22px;
+  border-radius: 0 0 26px 26px; position: relative; }
+.bar { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.bar h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 700; letter-spacing: .2px; }
+.icon-btn { width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,.16); display: grid; place-items: center; font-size: 20px; flex: none; }
+.icon-btn:active { background: rgba(255,255,255,.28); }
+.pet { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.pet .face { font-size: 44px; width: 64px; height: 64px; border-radius: 20px; background: rgba(255,255,255,.18); display: grid; place-items: center; flex: none;
+  transition: transform .25s; }
+.pet .face.jump { animation: jump .5s; }
+@keyframes jump { 30% { transform: translateY(-10px) scale(1.06); } 60% { transform: translateY(0) scale(.98); } }
+.pet .face.shake { animation: shake .45s; }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+.pet .talk { background: var(--card); color: var(--txt); border-radius: 16px 16px 16px 4px; padding: 10px 14px; font-size: 15px; box-shadow: var(--shadow); flex: 1; min-height: 44px; }
+main { padding: 16px; max-width: 560px; margin: 0 auto; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 16px 14px; text-align: left; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 6px; min-height: 132px; }
+.tile:active { transform: scale(.98); }
+.tile .em { width: 48px; height: 48px; border-radius: 15px; background: var(--soft); display: grid; place-items: center; font-size: 26px; }
+.tile b { font-size: 17px; }
+.tile small { color: var(--sub); font-size: 13.5px; }
+.tile.wide { grid-column: 1 / -1; min-height: 0; flex-direction: row; align-items: center; gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 18px 16px; box-shadow: var(--shadow); }
+.meta { display: flex; justify-content: space-between; align-items: center; color: var(--sub); font-size: 14px; margin-bottom: 10px; gap: 8px; }
+.chip { background: var(--soft); color: var(--pri-txt); border-radius: 999px; padding: 4px 12px; font-weight: 600; font-size: 13.5px; white-space: nowrap; }
+.chip.gold { background: var(--acc-soft); color: var(--gold-txt); }
+.qtext { font-size: 19px; font-weight: 700; margin: 4px 0 14px; }
+.opts { display: grid; gap: 10px; }
+.opt { width: 100%; text-align: left; padding: 14px 16px; min-height: 52px; border-radius: 16px; background: var(--bg); border: 1.5px solid var(--line); font-size: 16.5px; }
+.opt:active { transform: scale(.99); }
+.opt.right { background: var(--good-soft); border-color: var(--good); color: var(--good); font-weight: 700; }
+.opt.wrong { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+.why { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: var(--acc-soft); color: var(--why-txt); font-size: 15px; }
+.row { display: flex; gap: 10px; margin-top: 14px; }
+.btn { flex: 1; min-height: 50px; border-radius: 16px; background: var(--pri); color: #fff; font-weight: 700; font-size: 16.5px; padding: 0 16px; }
+.btn.soft { background: var(--soft); color: var(--pri-txt); }
+.btn:active { filter: brightness(.95); transform: scale(.99); }
+.riddle { font-size: 20px; font-weight: 700; margin: 6px 0 4px; }
+.answer { margin-top: 14px; padding: 14px; border-radius: 16px; background: var(--good-soft); color: var(--good); font-size: 19px; font-weight: 700; text-align: center; }
+.hint { margin-top: 12px; color: var(--sub); font-size: 15px; }
+.mem { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.mc { aspect-ratio: 1 / 1; border-radius: 16px; background: linear-gradient(135deg, var(--g1), var(--g2)); color: #fff; font-size: 30px; display: grid; place-items: center;
+  box-shadow: var(--shadow); transition: transform .2s; }
+.mc .f { display: none; }
+.mc.open, .mc.done { background: var(--card); border: 1.5px solid var(--line); }
+.mc.open .f, .mc.done .f { display: block; }
+.mc.open .b, .mc.done .b { display: none; }
+.mc.done { opacity: .55; }
+.mc .b { font-size: 22px; opacity: .85; }
+.ttt { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 330px; margin: 6px auto 0; }
+.cell { aspect-ratio: 1 / 1; border-radius: 18px; background: var(--bg); border: 1.5px solid var(--line); font-size: 44px; font-weight: 800; display: grid; place-items: center; }
+.cell.x { color: var(--pri); }
+.cell.o { color: var(--acc); }
+.cell.win { background: var(--good-soft); border-color: var(--good); }
+.score { display: flex; justify-content: center; gap: 10px; margin: 2px 0 12px; flex-wrap: wrap; }
+.big { font-size: 40px; text-align: center; margin: 4px 0; }
+.center { text-align: center; }
+.result { font-size: 22px; font-weight: 800; text-align: center; margin: 8px 0 2px; }
+.sub { color: var(--sub); text-align: center; font-size: 15px; }
+.math { font-size: 40px; font-weight: 800; text-align: center; margin: 10px 0 16px; letter-spacing: 1px; }
+.opts.two { grid-template-columns: 1fr 1fr; }
+.opts.two .opt { text-align: center; font-size: 22px; font-weight: 700; }
+.foot { color: var(--sub); font-size: 13px; text-align: center; margin: 18px 0 8px; }
+.hidden { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="hero">
+  <div class="bar">
+    <button class="icon-btn" id="back" aria-label="Back">←</button>
+    <h1 id="title">Games</h1>
+    <button class="icon-btn" id="voice" aria-label="Voice on or off">🔊</button>
+  </div>
+  <div class="pet">
+    <div class="face" id="face">🐶</div>
+    <div class="talk" id="talk">…</div>
+  </div>
+</div>
+<main id="app"></main>
+
+<script>
+"use strict";
+// ---------- settings from the app (language, colours, the pet) ----------
+const Q = new URLSearchParams(location.search);
+const LANG = Q.get("lang") === "te" ? "te" : "en";
+const T = (en, te) => (LANG === "te" ? te : en);
+const PETS = { puppy: "🐶", kitten: "🐱", bunny: "🐰", panda: "🐼", bear: "🧸", fox: "🦊", robot: "🤖", parrot: "🦜", mochi: "🍡", kitty: "😺", chameleon: "🦎" };
+const PET = PETS[Q.get("pet")] || "🐶";
+document.documentElement.lang = LANG;
+const hex = v => (v && /^[0-9a-fA-F]{6}$/.test(v) ? "#" + v : null);
+for (const [k, css] of [["bg", "--bg"], ["card", "--card"], ["txt", "--txt"], ["sub", "--sub"], ["line", "--line"], ["pri", "--pri"], ["prit", "--pri-txt"],
+  ["soft", "--soft"], ["acc", "--acc"], ["g1", "--g1"], ["g2", "--g2"]]) { const c = hex(Q.get(k)); if (c) document.documentElement.style.setProperty(css, c); }
+if (Q.get("dark") === "1") {
+  const s = document.documentElement.style;
+  s.setProperty("--good-soft", "#16392A"); s.setProperty("--good", "#4CC38A"); s.setProperty("--bad-soft", "#3D1C22"); s.setProperty("--bad", "#FF7B7B");
+  s.setProperty("--acc-soft", "#3A2E14"); s.setProperty("--shadow", "0 6px 18px rgba(0,0,0,.35)");
+  s.setProperty("--why-txt", "#F2D49B"); s.setProperty("--gold-txt", "#F2B84B");
+}
+
+// ---------- the app's voice (the page asks the app to say things; nothing leaves the phone) ----------
+const app = window.HabitApp;
+let voiceOn = true;
+try { voiceOn = localStorage.getItem("games:voice") !== "0"; } catch (e) { }
+const voiceBtn = document.getElementById("voice");
+function showVoice() { voiceBtn.textContent = voiceOn ? "🔊" : "🔇"; }
+showVoice();
+voiceBtn.onclick = () => { voiceOn = !voiceOn; showVoice(); try { localStorage.setItem("games:voice", voiceOn ? "1" : "0"); } catch (e) { } if (!voiceOn) hush(); };
+function say(text) { if (voiceOn && app && app.say) { try { app.say(String(text).replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, ""), LANG); } catch (e) { } } }
+function hush() { if (app && app.hush) { try { app.hush(); } catch (e) { } } }
+
+// ---------- the pet on top ----------
+const face = document.getElementById("face"), talk = document.getElementById("talk");
+face.textContent = PET;
+function petSays(text, mood, speak = false) {
+  talk.textContent = text;
+  face.classList.remove("jump", "shake"); void face.offsetWidth;
+  if (mood === "happy") face.classList.add("jump");
+  if (mood === "oops") face.classList.add("shake");
+  if (speak) say(text);
+}
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const PRAISE = () => pick(T(["Super! 🎉", "Correct! 👏", "Wow, you know it! 🌟", "Well done! 💪"], ["సూపర్! 🎉", "సరైన జవాబు! 👏", "అబ్బా, భలే తెలుసు! 🌟", "శభాష్! 💪"]));
+const OOPS = () => pick(T(["Oops! 🙈", "Not this one!", "Almost! 😅"], ["అయ్యో! 🙈", "ఇది కాదు!", "కొంచెంలో తప్పింది! 😅"]));
+function best(key, value, more = true) {   // the best score is kept on this phone only
+  let b = null;
+  try { b = JSON.parse(localStorage.getItem("games:best:" + key)); } catch (e) { }
+  if (value != null && (b == null || (more ? value > b : value < b))) { b = value; try { localStorage.setItem("games:best:" + key, JSON.stringify(b)); } catch (e) { } }
+  return b;
+}
+const $ = (html) => { const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstElementChild; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const main = document.getElementById("app"), title = document.getElementById("title");
+let leave = null;   // what the back button does inside a game
+
+// ---------- 1. quiz ----------
+const QUIZ = [
+  { q: ["What is the capital of India?", "భారతదేశ రాజధాని ఏది?"], o: [["Mumbai", "ముంబై"], ["New Delhi", "న్యూఢిల్లీ"], ["Kolkata", "కోల్‌కతా"], ["Chennai", "చెన్నై"]], a: 1,
+    why: ["New Delhi is the capital of India.", "న్యూఢిల్లీ మన దేశ రాజధాని."] },
+  { q: ["What is India's national animal?", "భారతదేశ జాతీయ జంతువు ఏది?"], o: [["Lion", "సింహం"], ["Tiger", "పులి"], ["Elephant", "ఏనుగు"], ["Deer", "జింక"]], a: 1,
+    why: ["The tiger (Bengal tiger) is India's national animal.", "పులి (బెంగాల్ టైగర్) మన జాతీయ జంతువు."] },
+  { q: ["What is India's national bird?", "భారతదేశ జాతీయ పక్షి ఏది?"], o: [["Parrot", "చిలుక"], ["Crow", "కాకి"], ["Peacock", "నెమలి"], ["Pigeon", "పావురం"]], a: 2,
+    why: ["The peacock is India's national bird.", "నెమలి మన జాతీయ పక్షి."] },
+  { q: ["What is India's national fruit?", "భారతదేశ జాతీయ పండు ఏది?"], o: [["Banana", "అరటి"], ["Mango", "మామిడి"], ["Apple", "ఆపిల్"], ["Guava", "జామ"]], a: 1,
+    why: ["The mango is India's national fruit.", "మామిడి మన జాతీయ పండు."] },
+  { q: ["Who wrote India's national anthem, \"Jana Gana Mana\"?", "మన జాతీయ గీతం \"జన గణ మన\" ఎవరు రాశారు?"],
+    o: [["Rabindranath Tagore", "రవీంద్రనాథ్ ఠాగూర్"], ["Bankim Chandra Chatterjee", "బంకిం చంద్ర ఛటర్జీ"], ["Sarojini Naidu", "సరోజినీ నాయుడు"], ["Subramania Bharati", "సుబ్రహ్మణ్య భారతి"]], a: 0,
+    why: ["Rabindranath Tagore wrote \"Jana Gana Mana\".", "\"జన గణ మన\" రాసింది రవీంద్రనాథ్ ఠాగూర్."] },
+  { q: ["When is India's Independence Day?", "భారత స్వాతంత్ర్య దినోత్సవం ఎప్పుడు?"], o: [["January 26", "జనవరి 26"], ["August 15", "ఆగస్టు 15"], ["October 2", "అక్టోబర్ 2"], ["November 14", "నవంబర్ 14"]], a: 1,
+    why: ["India became independent on 15 August 1947.", "1947 ఆగస్టు 15న మన దేశానికి స్వాతంత్ర్యం వచ్చింది."] },
+  { q: ["When is Republic Day?", "గణతంత్ర దినోత్సవం ఎప్పుడు?"], o: [["January 26", "జనవరి 26"], ["August 15", "ఆగస్టు 15"], ["October 2", "అక్టోబర్ 2"], ["December 25", "డిసెంబర్ 25"]], a: 0,
+    why: ["India's Constitution came into force on 26 January 1950.", "1950 జనవరి 26న మన రాజ్యాంగం అమల్లోకి వచ్చింది."] },
+  { q: ["Gandhi Jayanti is on which day?", "గాంధీ జయంతి ఏ రోజు?"], o: [["October 2", "అక్టోబర్ 2"], ["November 14", "నవంబర్ 14"], ["January 30", "జనవరి 30"], ["September 5", "సెప్టెంబర్ 5"]], a: 0,
+    why: ["Mahatma Gandhi was born on 2 October 1869.", "మహాత్మా గాంధీ 1869 అక్టోబర్ 2న పుట్టారు."] },
+  { q: ["Children's Day in India is on…", "మన దేశంలో బాలల దినోత్సవం…"], o: [["November 14", "నవంబర్ 14"], ["June 1", "జూన్ 1"], ["September 5", "సెప్టెంబర్ 5"], ["August 29", "ఆగస్టు 29"]], a: 0,
+    why: ["November 14 is Jawaharlal Nehru's birthday.", "నవంబర్ 14 జవహర్‌లాల్ నెహ్రూ పుట్టినరోజు."] },
+  { q: ["Teachers' Day in India is on…", "మన దేశంలో ఉపాధ్యాయ దినోత్సవం…"], o: [["September 5", "సెప్టెంబర్ 5"], ["October 2", "అక్టోబర్ 2"], ["November 14", "నవంబర్ 14"], ["March 8", "మార్చి 8"]], a: 0,
+    why: ["September 5 is Dr. Sarvepalli Radhakrishnan's birthday.", "సెప్టెంబర్ 5 డా. సర్వేపల్లి రాధాకృష్ణన్ పుట్టినరోజు."] },
+  { q: ["Telugu Language Day is celebrated on…", "తెలుగు భాషా దినోత్సవం ఎప్పుడు జరుపుకుంటాం?"], o: [["August 29", "ఆగస్టు 29"], ["November 1", "నవంబర్ 1"], ["February 21", "ఫిబ్రవరి 21"], ["June 2", "జూన్ 2"]], a: 0,
+    why: ["It is Gidugu Venkata Ramamurthy's birthday, who worked for spoken Telugu.", "వ్యావహారిక భాష కోసం కృషి చేసిన గిడుగు వెంకట రామమూర్తి గారి పుట్టినరోజు."] },
+  { q: ["What is the capital of Telangana?", "తెలంగాణ రాజధాని ఏది?"], o: [["Warangal", "వరంగల్"], ["Hyderabad", "హైదరాబాద్"], ["Karimnagar", "కరీంనగర్"], ["Nizamabad", "నిజామాబాద్"]], a: 1,
+    why: ["Hyderabad is the capital of Telangana.", "హైదరాబాద్ తెలంగాణ రాజధాని."] },
+  { q: ["The Charminar is in which city?", "చార్మినార్ ఏ నగరంలో ఉంది?"], o: [["Vijayawada", "విజయవాడ"], ["Hyderabad", "హైదరాబాద్"], ["Visakhapatnam", "విశాఖపట్నం"], ["Warangal", "వరంగల్"]], a: 1,
+    why: ["The Charminar was built in Hyderabad in 1591.", "చార్మినార్‌ను 1591లో హైదరాబాద్‌లో కట్టారు."] },
+  { q: ["Which river is called \"Dakshina Ganga\" (the Ganga of the South)?", "\"దక్షిణ గంగ\" అని ఏ నదిని పిలుస్తారు?"], o: [["Krishna", "కృష్ణా"], ["Godavari", "గోదావరి"], ["Kaveri", "కావేరి"], ["Tungabhadra", "తుంగభద్ర"]], a: 1,
+    why: ["The Godavari is the longest river of South India.", "గోదావరి దక్షిణ భారతదేశంలో అతి పొడవైన నది."] },
+  { q: ["The Kuchipudi dance comes from which state?", "కూచిపూడి నృత్యం ఏ రాష్ట్రానికి చెందినది?"], o: [["Kerala", "కేరళ"], ["Tamil Nadu", "తమిళనాడు"], ["Andhra Pradesh", "ఆంధ్రప్రదేశ్"], ["Odisha", "ఒడిశా"]], a: 2,
+    why: ["It is named after Kuchipudi village in Krishna district, Andhra Pradesh.", "ఆంధ్రప్రదేశ్ కృష్ణా జిల్లాలోని కూచిపూడి గ్రామం పేరు మీద ఈ నృత్యం వచ్చింది."] },
+  { q: ["Which festival is the Telugu New Year?", "తెలుగు సంవత్సరాది ఏ పండుగ?"], o: [["Sankranti", "సంక్రాంతి"], ["Ugadi", "ఉగాది"], ["Dasara", "దసరా"], ["Deepavali", "దీపావళి"]], a: 1,
+    why: ["Ugadi starts the new year, with Ugadi pachadi of six tastes.", "ఉగాదితో కొత్త సంవత్సరం మొదలవుతుంది. షడ్రుచుల ఉగాది పచ్చడి తింటాం."] },
+  { q: ["Sankranti is mainly a festival of…", "సంక్రాంతి ముఖ్యంగా దేని పండుగ?"], o: [["Lights", "దీపాల"], ["Colours", "రంగుల"], ["Harvest", "పంటల"], ["Kites only", "గాలిపటాల మాత్రమే"]], a: 2,
+    why: ["Sankranti celebrates the harvest, with muggulu, gobbemmalu and kites.", "సంక్రాంతి పంటల పండుగ: ముగ్గులు, గొబ్బెమ్మలు, గాలిపటాలు."] },
+  { q: ["Which is the largest planet?", "అతి పెద్ద గ్రహం ఏది?"], o: [["Earth", "భూమి"], ["Saturn", "శని"], ["Jupiter", "బృహస్పతి (గురుడు)"], ["Mars", "అంగారకుడు"]], a: 2,
+    why: ["Jupiter is so big that more than 1,000 Earths could fit inside it.", "బృహస్పతిలో 1,000కి పైగా భూములు పడతాయి."] },
+  { q: ["Which planet is closest to the Sun?", "సూర్యుడికి అతి దగ్గరగా ఉండే గ్రహం ఏది?"], o: [["Venus", "శుక్రుడు"], ["Mercury", "బుధుడు"], ["Earth", "భూమి"], ["Mars", "అంగారకుడు"]], a: 1,
+    why: ["Mercury is the closest planet to the Sun.", "బుధుడు సూర్యుడికి అతి దగ్గరి గ్రహం."] },
+  { q: ["Which planet is called the Red Planet?", "\"ఎర్ర గ్రహం\" అని దేన్ని పిలుస్తారు?"], o: [["Mars", "అంగారకుడు"], ["Jupiter", "బృహస్పతి"], ["Venus", "శుక్రుడు"], ["Saturn", "శని"]], a: 0,
+    why: ["Mars looks red because of iron rust in its soil.", "అంగారకుడి మట్టిలో ఇనుప తుప్పు ఉండటం వల్ల ఎర్రగా కనిపిస్తుంది."] },
+  { q: ["Who was the first Indian to go to space?", "అంతరిక్షంలోకి వెళ్లిన మొదటి భారతీయుడు ఎవరు?"], o: [["Rakesh Sharma", "రాకేష్ శర్మ"], ["Kalpana Chawla", "కల్పనా చావ్లా"], ["A. P. J. Abdul Kalam", "ఏపీజే అబ్దుల్ కలాం"], ["C. V. Raman", "సి.వి. రామన్"]], a: 0,
+    why: ["Rakesh Sharma went to space in 1984.", "రాకేష్ శర్మ 1984లో అంతరిక్షంలోకి వెళ్ళారు."] },
+  { q: ["How many days are there in a leap year?", "లీప్ సంవత్సరంలో ఎన్ని రోజులు?"], o: [["364", "364"], ["365", "365"], ["366", "366"], ["367", "367"]], a: 2,
+    why: ["A leap year has 29 days in February, so 366 days.", "లీప్ సంవత్సరంలో ఫిబ్రవరికి 29 రోజులు, మొత్తం 366."] },
+  { q: ["At sea level, water boils at…", "సముద్ర మట్టం దగ్గర నీళ్ళు ఎన్ని డిగ్రీలకు మరుగుతాయి?"], o: [["50 °C", "50 °C"], ["80 °C", "80 °C"], ["100 °C", "100 °C"], ["150 °C", "150 °C"]], a: 2,
+    why: ["Water boils at 100 °C at sea level.", "సముద్ర మట్టం దగ్గర నీళ్ళు 100 °C వద్ద మరుగుతాయి."] },
+  { q: ["Which gas do plants take in to make their food?", "మొక్కలు ఆహారం తయారు చేసుకోవడానికి ఏ వాయువును తీసుకుంటాయి?"],
+    o: [["Oxygen", "ఆక్సిజన్"], ["Carbon dioxide", "కార్బన్ డయాక్సైడ్"], ["Nitrogen", "నైట్రోజన్"], ["Hydrogen", "హైడ్రోజన్"]], a: 1,
+    why: ["Plants use carbon dioxide and sunlight, and give out oxygen.", "మొక్కలు కార్బన్ డయాక్సైడ్, సూర్యరశ్మితో ఆహారం చేసుకుని ఆక్సిజన్ విడుదల చేస్తాయి."] },
+  { q: ["How many bones does an adult human have?", "పెద్దవాళ్ళ శరీరంలో ఎన్ని ఎముకలు ఉంటాయి?"], o: [["106", "106"], ["206", "206"], ["306", "306"], ["26", "26"]], a: 1,
+    why: ["An adult has 206 bones. A baby is born with about 300, and some join as we grow.", "పెద్దవాళ్ళకు 206 ఎముకలు. పుట్టినప్పుడు సుమారు 300 ఉంటాయి, పెరిగే కొద్దీ కొన్ని కలిసిపోతాయి."] },
+  { q: ["Which organ pumps blood around the body?", "శరీరమంతా రక్తాన్ని పంపేది ఏ అవయవం?"], o: [["Lungs", "ఊపిరితిత్తులు"], ["Liver", "కాలేయం"], ["Heart", "గుండె"], ["Kidneys", "మూత్రపిండాలు"]], a: 2,
+    why: ["The heart beats about 70 times a minute at rest.", "విశ్రాంతిలో గుండె నిమిషానికి సుమారు 70 సార్లు కొట్టుకుంటుంది."] },
+  { q: ["Our skin makes which vitamin in sunlight?", "సూర్యరశ్మిలో మన చర్మం ఏ విటమిన్‌ను తయారు చేస్తుంది?"], o: [["Vitamin A", "విటమిన్ A"], ["Vitamin C", "విటమిన్ C"], ["Vitamin D", "విటమిన్ D"], ["Vitamin K", "విటమిన్ K"]], a: 2,
+    why: ["Vitamin D keeps bones strong.", "విటమిన్ D ఎముకలను బలంగా ఉంచుతుంది."] },
+  { q: ["Which is the fastest land animal?", "నేల మీద అతి వేగంగా పరిగెత్తే జంతువు ఏది?"], o: [["Horse", "గుర్రం"], ["Cheetah", "చీతా"], ["Lion", "సింహం"], ["Deer", "జింక"]], a: 1,
+    why: ["A cheetah can run about 100 km an hour, for a short time.", "చీతా కొద్దిసేపు గంటకు సుమారు 100 కి.మీ. వేగంతో పరిగెత్తగలదు."] },
+  { q: ["Which is the largest ocean?", "అతి పెద్ద మహాసముద్రం ఏది?"], o: [["Indian Ocean", "హిందూ మహాసముద్రం"], ["Atlantic Ocean", "అట్లాంటిక్ మహాసముద్రం"], ["Pacific Ocean", "పసిఫిక్ మహాసముద్రం"], ["Arctic Ocean", "ఆర్కిటిక్ మహాసముద్రం"]], a: 2,
+    why: ["The Pacific is bigger than all the land on Earth put together.", "పసిఫిక్ మహాసముద్రం భూమి మీద ఉన్న నేలంతా కలిపినదానికంటే పెద్దది."] },
+  { q: ["Which is the highest mountain in the world?", "ప్రపంచంలో అతి ఎత్తైన పర్వతం ఏది?"], o: [["Kanchenjunga", "కాంచనజంగా"], ["Mount Everest", "ఎవరెస్ట్ శిఖరం"], ["K2", "K2"], ["Nanda Devi", "నందాదేవి"]], a: 1,
+    why: ["Mount Everest is about 8,849 metres high.", "ఎవరెస్ట్ ఎత్తు సుమారు 8,849 మీటర్లు."] },
+  { q: ["Which one number calls police, fire and ambulance in an emergency in India?", "అత్యవసరంలో పోలీసు, ఫైర్, అంబులెన్స్ అన్నింటికీ ఒకే నంబర్ ఏది?"], o: [["100", "100"], ["112", "112"], ["181", "181"], ["139", "139"]], a: 1,
+    why: ["112 is India's emergency number. Remember it!", "112 మన దేశ అత్యవసర నంబర్. గుర్తుంచుకోండి!"] },
+  { q: ["You lost money to an online fraud. Which helpline do you call quickly?", "ఆన్‌లైన్ మోసంలో డబ్బు పోయింది. వెంటనే ఏ హెల్ప్‌లైన్‌కు కాల్ చేయాలి?"], o: [["1098", "1098"], ["1930", "1930"], ["108", "108"], ["181", "181"]], a: 1,
+    why: ["Call 1930 (cyber crime helpline) as fast as you can; quick calls can stop the money.", "వీలైనంత త్వరగా 1930 (సైబర్ క్రైమ్ హెల్ప్‌లైన్)కి కాల్ చేయండి. త్వరగా చేస్తే డబ్బు ఆపగలరు."] },
+  { q: ["Which number is the Childline (help for children)?", "పిల్లల సహాయం కోసం (చైల్డ్‌లైన్) నంబర్ ఏది?"], o: [["1098", "1098"], ["1930", "1930"], ["104", "104"], ["139", "139"]], a: 0,
+    why: ["1098 helps children in trouble, any time.", "1098 కష్టంలో ఉన్న పిల్లలకు ఎప్పుడైనా సహాయం చేస్తుంది."] },
+  { q: ["Someone calls: \"I'm from your bank, tell me the OTP\". What do you do?", "\"బ్యాంక్ నుంచి మాట్లాడుతున్నాం, OTP చెప్పండి\" అని ఫోన్ వచ్చింది. ఏం చేయాలి?"],
+    o: [["Tell the OTP", "OTP చెప్పాలి"], ["Never tell it, cut the call", "ఎప్పుడూ చెప్పకూడదు, ఫోన్ పెట్టేయాలి"], ["Send it by SMS", "SMS లో పంపాలి"], ["Tell half of it", "సగం చెప్పాలి"]], a: 1,
+    why: ["Banks never ask for your OTP, PIN or password.", "బ్యాంకులు ఎప్పుడూ OTP, PIN, పాస్‌వర్డ్ అడగవు."] },
+  { q: ["A message says: \"You won a lottery! Pay ₹500 to get the prize.\" It is…", "\"మీకు లాటరీ తగిలింది! బహుమతి కోసం ₹500 కట్టండి\" అనే మెసేజ్…"],
+    o: [["Lucky news", "అదృష్టం"], ["A scam: don't pay", "మోసం: డబ్బు కట్టకూడదు"], ["From the government", "ప్రభుత్వం నుంచి"], ["Safe if small", "చిన్న మొత్తం అయితే పర్లేదు"]], a: 1,
+    why: ["No real prize asks you to pay first. Report such messages.", "నిజమైన బహుమతికి ముందుగా డబ్బు అడగరు. ఇలాంటి మెసేజ్‌లు రిపోర్ట్ చేయండి."] },
+  { q: ["How long should you wash your hands with soap?", "సబ్బుతో చేతులు ఎంతసేపు కడుక్కోవాలి?"], o: [["2 seconds", "2 సెకన్లు"], ["5 seconds", "5 సెకన్లు"], ["At least 20 seconds", "కనీసం 20 సెకన్లు"], ["5 minutes", "5 నిమిషాలు"]], a: 2,
+    why: ["Scrub for at least 20 seconds to wash away germs.", "క్రిములు పోవాలంటే కనీసం 20 సెకన్లు రుద్దుకోవాలి."] },
+  { q: ["ORS is mainly given for…", "ORS ముఖ్యంగా దేనికి ఇస్తారు?"], o: [["A headache", "తలనొప్పి"], ["Losing water in loose motions", "విరేచనాలతో శరీరంలో నీరు తగ్గినప్పుడు"], ["A cough", "దగ్గు"], ["Toothache", "పంటి నొప్పి"]], a: 1,
+    why: ["ORS gives back water and salts. See a doctor if it doesn't stop.", "ORS పోయిన నీటిని, లవణాలను తిరిగి ఇస్తుంది. తగ్గకపోతే డాక్టర్‌ను కలవండి."] },
+  { q: ["How many letters are in the English alphabet?", "ఇంగ్లీష్ వర్ణమాలలో ఎన్ని అక్షరాలు?"], o: [["24", "24"], ["25", "25"], ["26", "26"], ["28", "28"]], a: 2,
+    why: ["A to Z: 26 letters.", "A నుంచి Z వరకు 26 అక్షరాలు."] },
+  { q: ["Which is the smallest prime number?", "అతి చిన్న ప్రధాన సంఖ్య (prime) ఏది?"], o: [["0", "0"], ["1", "1"], ["2", "2"], ["3", "3"]], a: 2,
+    why: ["2 is the only even prime number.", "2 ఒక్కటే సరి ప్రధాన సంఖ్య."] },
+  { q: ["A light-year measures…", "కాంతి సంవత్సరం దేన్ని కొలుస్తుంది?"], o: [["Time", "కాలం"], ["Distance", "దూరం"], ["Weight", "బరువు"], ["Brightness", "వెలుగు"]], a: 1,
+    why: ["It is the distance light travels in one year.", "ఒక సంవత్సరంలో కాంతి ప్రయాణించే దూరం."] },
+  { q: ["How many sides does a hexagon have?", "షడ్భుజికి (hexagon) ఎన్ని భుజాలు?"], o: [["5", "5"], ["6", "6"], ["7", "7"], ["8", "8"]], a: 1,
+    why: ["\"Hexa\" means six, like the cells of a honeycomb.", "తేనెతుట్టె గదుల్లా ఆరు భుజాలు."] },
+  { q: ["Which animal is known as the \"ship of the desert\"?", "\"ఎడారి ఓడ\" అని ఏ జంతువును అంటారు?"], o: [["Horse", "గుర్రం"], ["Camel", "ఒంటె"], ["Donkey", "గాడిద"], ["Elephant", "ఏనుగు"]], a: 1,
+    why: ["Camels can walk many days in the desert with little water.", "ఒంటెలు తక్కువ నీళ్ళతో ఎడారిలో చాలా రోజులు నడవగలవు."] }
+];
+function quiz() {
+  title.textContent = T("Quiz", "క్విజ్");
+  const round = shuffle(QUIZ).slice(0, 10);
+  let i = 0, score = 0;
+  leave = home;
+  function show() {
+    if (i >= round.length) return done();
+    const it = round[i], L = LANG === "te" ? 1 : 0;
+    const order = shuffle([0, 1, 2, 3]);
+    const card = $(`<div class="card"><div class="meta"><span class="chip">${T("Question", "ప్రశ్న")} ${i + 1} / ${round.length}</span><span class="chip gold">⭐ ${score}</span></div>
+      <div class="qtext">${esc(it.q[L])}</div><div class="opts"></div></div>`);
+    const opts = card.querySelector(".opts");
+    let answered = false;
+    for (const k of order) {
+      const b = $(`<button class="opt">${esc(it.o[k][L])}</button>`);
+      b.onclick = () => {
+        if (answered) return;
+        answered = true;
+        const right = k === it.a;
+        if (right) { score++; b.classList.add("right"); petSays(PRAISE(), "happy", true); }
+        else {
+          b.classList.add("wrong");
+          [...opts.children][order.indexOf(it.a)].classList.add("right");
+          petSays(OOPS() + " " + T("The answer is: ", "సరైన జవాబు: ") + it.o[it.a][L], "oops", true);
+        }
+        card.querySelector(".meta .gold").textContent = "⭐ " + score;
+        card.appendChild($(`<div class="why">💡 ${esc(it.why[L])}</div>`));
+        const next = $(`<div class="row"><button class="btn">${i + 1 < round.length ? T("Next ➜", "తరువాత ➜") : T("See my score", "నా స్కోర్ చూడు")}</button></div>`);
+        next.querySelector("button").onclick = () => { i++; show(); };
+        card.appendChild(next);
+        next.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      };
+      opts.appendChild(b);
+    }
+    main.replaceChildren(card);
+    window.scrollTo(0, 0);
+    petSays(T("Choose the right answer!", "సరైన జవాబు ఎంచుకోండి!"), "", false);
+    say(it.q[L]);
+  }
+  function done() {
+    const b = best("quiz", score);
+    const msg = score >= 9 ? T("Champion! 🏆", "ఛాంపియన్! 🏆") : score >= 6 ? T("Very good! 🌟", "చాలా బాగుంది! 🌟") : score >= 3 ? T("Good try! 👍", "మంచి ప్రయత్నం! 👍") : T("Let's practise more! 💪", "ఇంకా ప్రాక్టీస్ చేద్దాం! 💪");
+    main.replaceChildren($(`<div class="card center"><div class="big">${score >= 6 ? "🏆" : "🌱"}</div>
+      <div class="result">${score} / ${round.length}</div><div class="sub">${msg}</div><div class="sub">${T("Best score", "అత్యుత్తమ స్కోర్")}: ${b}</div>
+      <div class="row"><button class="btn" id="again">${T("Play again", "మళ్ళీ ఆడదాం")}</button><button class="btn soft" id="other">${T("Other games", "ఇతర ఆటలు")}</button></div></div>`));
+    document.getElementById("again").onclick = quiz;
+    document.getElementById("other").onclick = home;
+    petSays(msg, "happy", true);
+  }
+  show();
+}
+
+// ---------- 2. riddles (Habit's own, written for this app) ----------
+const RIDDLES = {
+  en: [
+    ["What has hands but cannot clap?", "A clock", "It tells the time."],
+    ["What has keys but cannot open a lock?", "A piano (or a keyboard)", "You play music on it."],
+    ["What gets wetter the more it dries?", "A towel", "You use it after a bath."],
+    ["What has a neck but no head?", "A bottle", "Water goes in and out of it."],
+    ["What can you catch but not throw?", "A cold", "Achoo!"],
+    ["What has many teeth but never bites?", "A comb", "It is for your hair."],
+    ["What goes up but never comes down?", "Your age", "It grows every birthday."],
+    ["What has one eye but cannot see?", "A needle", "It sews clothes."],
+    ["What runs but never walks?", "Water (a river)", "It flows."],
+    ["I am tall when I am young and short when I am old. What am I?", "A candle", "I melt as I give light."],
+    ["What belongs to you, but other people use it more than you?", "Your name", "People call you with it."],
+    ["What has legs but cannot walk?", "A table (or a chair)", "You sit or eat at it."],
+    ["What can fill a room but takes up no space?", "Light", "Switch it on!"],
+    ["The more you take, the more you leave behind. What are they?", "Footsteps", "Walk on wet sand and look back."],
+    ["What comes down but never goes up?", "Rain", "Clouds send it."],
+    ["What is full of holes but still holds water?", "A sponge", "Used for washing dishes."],
+    ["What has words but never speaks?", "A book", "You read it."],
+    ["Which month has 28 days?", "All of them!", "Every month has at least 28 days."],
+    ["What can travel around the world while staying in a corner?", "A stamp", "It sits on an envelope."],
+    ["What has a bed but never sleeps?", "A river", "Its bed is under the water."]
+  ],
+  te: [
+    ["నీళ్ళలో పుడతాను, నీళ్ళలో పెరుగుతాను, నీళ్ళు తగిలితే కరిగిపోతాను. నేనెవరు?", "ఉప్పు", "వంటలో వేస్తారు."],
+    ["తల మీద కిరీటం, ఒంటి నిండా కళ్ళు. నేనెవరు?", "అనాస పండు", "పుల్లగా, తియ్యగా ఉంటుంది."],
+    ["కొడితే ఏడవను, మోగుతాను. గుడిలో ఉంటాను. నేనెవరు?", "గంట", "పూజలో మోగిస్తారు."],
+    ["నాకు పళ్ళు ఉన్నాయి కానీ కొరకను. జుట్టు సరిచేస్తాను. నేనెవరు?", "దువ్వెన", "రోజూ వాడతారు."],
+    ["ఎంత తీస్తే అంత పెద్దదవుతుంది. ఏమిటది?", "గొయ్యి", "మట్టి తవ్వితే వస్తుంది."],
+    ["నోరు ఉంది కానీ మాట్లాడను, ప్రవహిస్తాను కానీ నడవను. నేనెవరు?", "నది", "సముద్రంలో కలుస్తాను."],
+    ["పొద్దున నాలుగు కాళ్ళు, మధ్యాహ్నం రెండు కాళ్ళు, సాయంత్రం మూడు కాళ్ళు. ఎవరు?", "మనిషి", "పాపాయి పాకుతుంది, పెద్దవాళ్ళు నడుస్తారు, తాతయ్య కర్ర పట్టుకుంటారు."],
+    ["ఎండలో నీతోనే ఉంటాను, చీకట్లో మాయమవుతాను. నేనెవరు?", "నీడ", "నువ్వు నడిస్తే నేనూ నడుస్తాను."],
+    ["తెల్లని పొలంలో నల్లని విత్తనాలు; చేతితో చల్లుతారు, నోటితో పండిస్తారు. ఏమిటి?", "రాసిన కాగితం (అక్షరాలు)", "రాస్తారు, తర్వాత చదువుతారు."],
+    ["కాళ్ళు ఉన్నా నడవను, వీపు ఉన్నా వంగను, మీరు కూర్చుంటే మోస్తాను. నేనెవరు?", "కుర్చీ", "ఇంట్లో, బడిలో ఉంటాను."],
+    ["రెక్కలు లేకుండా ఎగురుతాను, కళ్ళు లేకుండా ఏడుస్తాను. నేనెవరు?", "మేఘం", "నా కన్నీళ్ళే వాన."],
+    ["నాకు ఒక కన్ను ఉంది కానీ చూడలేను. బట్టలు కుడతాను. నేనెవరు?", "సూది", "దారం నా కంట్లోంచి వెళ్తుంది."],
+    ["నేను వస్తే చెట్లు ఊగుతాయి, కానీ నన్ను ఎవరూ చూడలేరు. నేనెవరు?", "గాలి", "ఊపిరిలో నేనే."],
+    ["దీపం లేకుండా వెలుగుతాను, రాత్రి పొలాల్లో ఎగురుతాను. నేనెవరు?", "మిణుగురు పురుగు", "చిన్న పురుగును."],
+    ["నెలకు ఒకసారి నిండుగా వస్తాను, మళ్ళీ కొంచెం కొంచెం తగ్గుతాను. నేనెవరు?", "చంద్రుడు", "పౌర్ణమి నాడు నిండుగా ఉంటాను."],
+    ["ఇంటికి కాపలా, తోక ఊపుతాను, భౌ భౌ అంటాను. నేనెవరు?", "కుక్క", "హ్యాబిట్ పప్పీ లాగా!"],
+    ["పచ్చని ఇల్లు, ఎర్రని గదులు, నల్లని పిల్లలు. ఏమిటది?", "పుచ్చకాయ", "వేసవిలో తింటారు."],
+    ["నాకు అడుగులు లేవు, కానీ ఎప్పుడూ ముందుకే వెళ్తాను. ఆపలేరు. నేనెవరు?", "కాలం (సమయం)", "గడియారం నన్ను చూపిస్తుంది."],
+    ["నేను ఉంటే చీకటి పోతుంది, గాలి వస్తే నేను పోతాను. నేనెవరు?", "దీపం", "నూనె, వత్తితో వెలుగుతాను."],
+    ["కాళ్ళు లేకుండా ఇల్లంతా తిరుగుతాను, చెత్తంతా ఊడుస్తాను. నేనెవరు?", "చీపురు", "ప్రతి ఇంట్లో ఉంటాను."]
+  ]
+};
+function riddles() {
+  title.textContent = T("Riddles", "పొడుపు కథలు");
+  const list = shuffle(RIDDLES[LANG]);
+  let i = 0, got = 0;
+  leave = home;
+  function show() {
+    if (i >= list.length) i = 0;
+    const [q, a, hint] = list[i];
+    const card = $(`<div class="card"><div class="meta"><span class="chip">${T("Riddle", "పొడుపు కథ")} ${i + 1} / ${list.length}</span><span class="chip gold">✅ ${got}</span></div>
+      <div class="riddle">${esc(q)}</div><div class="hint hidden">💡 ${esc(hint)}</div><div class="answer hidden">${esc(a)}</div>
+      <div class="row"><button class="btn soft" id="hint">${T("Give a hint", "చిన్న క్లూ")}</button><button class="btn" id="show">${T("Show answer", "జవాబు చూపించు")}</button></div></div>`);
+    card.querySelector("#hint").onclick = e => { card.querySelector(".hint").classList.remove("hidden"); e.target.disabled = true; e.target.style.opacity = .5; say(hint); };
+    card.querySelector("#show").onclick = () => {
+      card.querySelector(".answer").classList.remove("hidden");
+      const row = card.querySelector(".row");
+      row.replaceChildren($(`<button class="btn soft">${T("I didn't get it", "నాకు తెలియలేదు")}</button>`), $(`<button class="btn">${T("I got it! ✅", "నాకు తెలిసింది! ✅")}</button>`));
+      row.children[0].onclick = () => { petSays(T("No problem, next one! 😊", "పర్లేదు, తర్వాతది! 😊"), "", false); i++; show(); };
+      row.children[1].onclick = () => { got++; best("riddles", got); petSays(PRAISE(), "happy", true); i++; setTimeout(show, 700); };
+      petSays(a, "happy", true);
+    };
+    main.replaceChildren(card);
+    window.scrollTo(0, 0);
+    petSays(T("Think, think… 🤔", "ఆలోచించండి… 🤔"), "", false);
+    say(q);
+  }
+  show();
+}
+
+// ---------- 3. memory cards ----------
+function memory() {
+  title.textContent = T("Memory cards", "జ్ఞాపకశక్తి ఆట");
+  const faces = shuffle(["🍎", "🍌", "🍇", "🥭", "🐶", "🐱", "🐘", "🦜", "🌻", "⭐"]).slice(0, 8);
+  const deck = shuffle([...faces, ...faces]);
+  let open = [], moves = 0, pairs = 0, lock = false;
+  leave = home;
+  const card = $(`<div class="card"><div class="meta"><span class="chip">${T("Moves", "ప్రయత్నాలు")}: <b id="mv">0</b></span><span class="chip gold">🃏 <b id="pr">0</b> / 8</span></div><div class="mem"></div></div>`);
+  const grid = card.querySelector(".mem");
+  deck.forEach((f, n) => {
+    const c = $(`<button class="mc" aria-label="${T("Card", "కార్డు")} ${n + 1}"><span class="b">?</span><span class="f">${f}</span></button>`);
+    c.onclick = () => {
+      if (lock || c.classList.contains("open") || c.classList.contains("done")) return;
+      c.classList.add("open"); open.push(c);
+      if (open.length < 2) return;
+      moves++; card.querySelector("#mv").textContent = moves;
+      const [a, b] = open;
+      if (a.querySelector(".f").textContent === b.querySelector(".f").textContent) {
+        a.classList.add("done"); b.classList.add("done"); open = []; pairs++;
+        card.querySelector("#pr").textContent = pairs;
+        if (pairs === 8) setTimeout(won, 500); else petSays(PRAISE(), "happy", false);
+      } else {
+        lock = true;
+        setTimeout(() => { a.classList.remove("open"); b.classList.remove("open"); open = []; lock = false; }, 800);
+      }
+    };
+    grid.appendChild(c);
+  });
+  main.replaceChildren(card);
+  window.scrollTo(0, 0);
+  petSays(T("Find the matching pairs!", "ఒకేలాంటి జతలను కనిపెట్టండి!"), "", true);
+  function won() {
+    const b = best("memory", moves, false);
+    main.replaceChildren($(`<div class="card center"><div class="big">🧠</div><div class="result">${T("All pairs found!", "అన్ని జతలూ దొరికాయి!")}</div>
+      <div class="sub">${T("Moves", "ప్రయత్నాలు")}: ${moves} · ${T("Best", "అత్యుత్తమం")}: ${b}</div>
+      <div class="row"><button class="btn" id="again">${T("Play again", "మళ్ళీ ఆడదాం")}</button><button class="btn soft" id="other">${T("Other games", "ఇతర ఆటలు")}</button></div></div>`));
+    document.getElementById("again").onclick = memory;
+    document.getElementById("other").onclick = home;
+    petSays(T("Super memory! 🎉", "భలే జ్ఞాపకశక్తి! 🎉"), "happy", true);
+  }
+}
+
+// ---------- 4. tic-tac-toe: you (X) against the pet (O) ----------
+const tally = { you: 0, pet: 0, draw: 0 };
+function tictactoe() {
+  title.textContent = T("Tic-tac-toe", "X - O ఆట");
+  const b = Array(9).fill(""), LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+  let over = false;
+  leave = home;
+  const card = $(`<div class="card"><div class="score"><span class="chip">${T("You", "మీరు")} ✖ ${tally.you}</span><span class="chip gold">${PET} ⭕ ${tally.pet}</span><span class="chip">${T("Draw", "డ్రా")} ${tally.draw}</span></div>
+    <div class="ttt"></div><div class="result" id="res"></div><div class="row hidden" id="again"><button class="btn">${T("Play again", "మళ్ళీ ఆడదాం")}</button></div></div>`);
+  const cells = [];
+  for (let n = 0; n < 9; n++) {
+    const c = $(`<button class="cell" aria-label="${T("Box", "గడి")} ${n + 1}"></button>`);
+    c.onclick = () => { if (over || b[n]) return; put(n, "X"); if (!end()) { lockBoard(true); setTimeout(() => { put(petMove(), "O"); end(); lockBoard(false); }, 450); } };
+    cells.push(c); card.querySelector(".ttt").appendChild(c);
+  }
+  let thinking = false;
+  function lockBoard(v) { thinking = v; cells.forEach(c => c.disabled = v); }
+  card.querySelector("#again button").onclick = tictactoe;
+  function put(n, who) { b[n] = who; cells[n].textContent = who === "X" ? "✖" : "⭕"; cells[n].classList.add(who === "X" ? "x" : "o"); }
+  function winner(bd) { for (const l of LINES) if (bd[l[0]] && bd[l[0]] === bd[l[1]] && bd[l[1]] === bd[l[2]]) return l; return null; }
+  function free(bd) { return bd.map((v, i) => v ? -1 : i).filter(i => i >= 0); }
+  function petMove() {
+    const f = free(b);
+    if (Math.random() < 0.22) return pick(f);        // sometimes the pet makes a mistake, so children can win too
+    for (const who of ["O", "X"]) for (const n of f) { const t = b.slice(); t[n] = who; if (winner(t)) return n; }   // win, or stop you winning
+    if (!b[4]) return 4;
+    const corners = [0, 2, 6, 8].filter(n => !b[n]);
+    return corners.length ? pick(corners) : pick(f);
+  }
+  function end() {
+    const w = winner(b);
+    if (w) {
+      over = true; w.forEach(n => cells[n].classList.add("win"));
+      const you = b[w[0]] === "X";
+      if (you) { tally.you++; petSays(T("You won! 🎉 Well played!", "మీరు గెలిచారు! 🎉 బాగా ఆడారు!"), "happy", true); }
+      else { tally.pet++; petSays(T("I won! 😜 One more?", "నేను గెలిచాను! 😜 ఇంకోసారి?"), "happy", true); }
+    } else if (!free(b).length) { over = true; tally.draw++; petSays(T("It's a draw! 🤝", "డ్రా అయింది! 🤝"), "", true); }
+    if (over) { card.querySelector("#again").classList.remove("hidden"); card.querySelector("#res").textContent = ""; }
+    return over;
+  }
+  main.replaceChildren(card);
+  window.scrollTo(0, 0);
+  petSays(T("You are ✖. Your turn first!", "మీరు ✖. ముందు మీ వంతు!"), "", true);
+}
+
+// ---------- 5. quick maths ----------
+function maths() {
+  title.textContent = T("Quick maths", "లెక్కల ఆట");
+  let i = 0, score = 0;
+  const total = 10;
+  leave = home;
+  function sum(level) {
+    const r = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+    if (level < 4) { const a = r(1, 20), b = r(1, 20); return [`${a} + ${b}`, a + b]; }
+    if (level < 7) { const a = r(10, 50), b = r(1, a); return [`${a} − ${b}`, a - b]; }
+    const a = r(2, 10), b = r(2, 10); return [`${a} × ${b}`, a * b];
+  }
+  function show() {
+    if (i >= total) return done();
+    const [text, ans] = sum(i);
+    const wrongs = new Set();
+    while (wrongs.size < 3) { const w = ans + (Math.floor(Math.random() * 9) - 4); if (w !== ans && w >= 0) wrongs.add(w); }
+    const opts = shuffle([ans, ...wrongs]);
+    const card = $(`<div class="card"><div class="meta"><span class="chip">${i + 1} / ${total}</span><span class="chip gold">⭐ ${score}</span></div>
+      <div class="math">${text} = ?</div><div class="opts two"></div></div>`);
+    let answered = false;
+    for (const o of opts) {
+      const btn = $(`<button class="opt">${o}</button>`);
+      btn.onclick = () => {
+        if (answered) return;
+        answered = true;
+        if (o === ans) { score++; btn.classList.add("right"); petSays(PRAISE(), "happy", false); }
+        else { btn.classList.add("wrong"); [...card.querySelectorAll(".opt")].find(x => Number(x.textContent) === ans).classList.add("right"); petSays(OOPS() + " " + text + " = " + ans, "oops", false); }
+        card.querySelector(".gold").textContent = "⭐ " + score;
+        setTimeout(() => { i++; show(); }, 900);
+      };
+      card.querySelector(".opts").appendChild(btn);
+    }
+    main.replaceChildren(card);
+    window.scrollTo(0, 0);
+  }
+  function done() {
+    const b = best("maths", score);
+    const msg = score >= 9 ? T("Maths star! ⭐", "లెక్కల స్టార్! ⭐") : score >= 6 ? T("Very good! 🌟", "చాలా బాగుంది! 🌟") : T("Practice makes perfect! 💪", "ప్రాక్టీస్‌తో పర్ఫెక్ట్! 💪");
+    main.replaceChildren($(`<div class="card center"><div class="big">🔢</div><div class="result">${score} / ${total}</div><div class="sub">${msg}</div>
+      <div class="sub">${T("Best score", "అత్యుత్తమ స్కోర్")}: ${b}</div>
+      <div class="row"><button class="btn" id="again">${T("Play again", "మళ్ళీ ఆడదాం")}</button><button class="btn soft" id="other">${T("Other games", "ఇతర ఆటలు")}</button></div></div>`));
+    document.getElementById("again").onclick = maths;
+    document.getElementById("other").onclick = home;
+    petSays(msg, "happy", true);
+  }
+  petSays(T("Pick the right answer, fast!", "త్వరగా సరైన జవాబు ఎంచుకోండి!"), "", true);
+  show();
+}
+
+// ---------- the games list ----------
+const GAMES = {
+  quiz: { run: quiz, em: "🧠", en: ["Quiz", "10 questions: India, science, safety"], te: ["క్విజ్", "10 ప్రశ్నలు: దేశం, సైన్స్, జాగ్రత్తలు"] },
+  riddles: { run: riddles, em: "🤔", en: ["Riddles", "Think and guess"], te: ["పొడుపు కథలు", "ఆలోచించి చెప్పండి"] },
+  memory: { run: memory, em: "🃏", en: ["Memory cards", "Find the pairs"], te: ["జ్ఞాపకశక్తి ఆట", "జతలను కనిపెట్టండి"] },
+  tictactoe: { run: tictactoe, em: "⭕", en: ["Tic-tac-toe", "Play against me"], te: ["X - O ఆట", "నాతో ఆడండి"] },
+  maths: { run: maths, em: "🔢", en: ["Quick maths", "Add, take away, multiply"], te: ["లెక్కల ఆట", "కూడిక, తీసివేత, గుణకారం"] }
+};
+function home() {
+  hush();
+  title.textContent = T("Games", "ఆటలు");
+  leave = null;
+  const grid = $(`<div class="grid"></div>`);
+  for (const [key, g] of Object.entries(GAMES)) {
+    const [name, line] = g[LANG];
+    const tile = $(`<button class="tile${key === "maths" ? " wide" : ""}" data-game="${key}"><span class="em">${g.em}</span><span><b>${esc(name)}</b><br><small>${esc(line)}</small></span></button>`);
+    tile.onclick = () => g.run();
+    grid.appendChild(tile);
+  }
+  main.replaceChildren(grid, $(`<div class="foot">${T("Everything stays on this phone. No internet needed.", "అంతా ఈ ఫోన్‌లోనే. ఇంటర్నెట్ అవసరం లేదు.")}</div>`));
+  window.scrollTo(0, 0);
+  petSays(T("Let's play! Pick a game 🎮", "ఆట ఆడదాం! ఒక ఆట ఎంచుకోండి 🎮"), "happy", false);
+}
+document.getElementById("back").onclick = () => {
+  if (leave) { const f = leave; f(); return; }
+  if (app && app.close) app.close(); else history.back();
+};
+window.goBack = () => document.getElementById("back").click();   // the phone's back button
+const start = Q.get("game");
+if (start === "any") { const keys = Object.keys(GAMES); GAMES[pick(keys)].run(); }
+else if (GAMES[start]) GAMES[start].run();
+else home();
+</script>
+</body>
+</html>

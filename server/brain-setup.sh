@@ -16,10 +16,13 @@ disk=$(df -Pk "$DATA" | awk 'NR==2 {printf "%d", $4/1024/1024}')
 cpus=$(nproc)
 echo "This server: ${ram} GB memory, ${cpus} CPUs, ${disk} GB free disk."
 
-# the biggest model that fits (bigger = smarter but slower); each one is tried in turn if a download fails
+# the biggest model that fits (bigger = smarter but slower); each one is tried in turn if a download fails.
+# 30 GB or more: Big Gemma 26B. It is a "mixture of experts": only about 4B of it works on each word, so it answers about
+# as quickly as the 4B one, and it is much smarter (16 GB of memory).
 if [ -n "${OWN_BRAIN_MODEL:-}" ]; then models="$OWN_BRAIN_MODEL"; need=6
-elif [ "$ram" -ge 15 ]; then models="gemma4:e4b-it-qat gemma4:e2b gemma3:4b"; need=10
-elif [ "$ram" -ge 7 ];  then models="gemma4:e2b-it-qat gemma3:4b gemma3:1b"; need=7
+elif [ "$ram" -ge 30 ]; then models="gemma4:26b-a4b-it-qat gemma4:26b gemma4:e4b-it-qat gemma4:e4b"; need=22
+elif [ "$ram" -ge 15 ]; then models="gemma4:e4b-it-qat gemma4:e4b gemma4:e2b gemma3:4b"; need=10
+elif [ "$ram" -ge 7 ];  then models="gemma4:e2b-it-qat gemma4:e2b gemma3:4b gemma3:1b"; need=7
 elif [ "$ram" -ge 3 ];  then models="gemma3:1b"; need=3
 else echo "NOT INSTALLED: this server has only ${ram} GB memory; the own brain needs at least 4 GB."; exit 1; fi
 if [ "$disk" -lt "$need" ]; then echo "NOT INSTALLED: needs about ${need} GB free disk, only ${disk} GB free."; exit 1; fi

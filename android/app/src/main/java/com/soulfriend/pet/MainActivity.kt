@@ -784,6 +784,11 @@ class MainActivity : Activity() {
             put(ui.text("Tap it to talk · hold it for the menu · drag it down to ✕ to close", 12.5f, Ui.MUTED), 8)
         }, 14)
 
+        add(ui.section(t("🎮 Play with your pet", "🎮 మీ పెట్‌తో ఆడుకోండి"),
+            t("Quiz, riddles, memory cards, tic-tac-toe and quick maths. Or just tell your pet \"let's play\". No internet needed.",
+              "క్విజ్, పొడుపు కథలు, జ్ఞాపకశక్తి ఆట, X - O ఆట, లెక్కల ఆట. లేదా మీ పెట్‌తో \"ఆట ఆడదాం\" అనండి. ఇంటర్నెట్ అవసరం లేదు.")).apply {
+            put(ui.button(t("🎮  Play games", "🎮  ఆటలు ఆడండి"), "primary") { GamesActivity.open(this@MainActivity) }, 12)
+        }, 12)
         add(brainCard(), 12)
         add(ui.section("Choose your pet").apply { petPicker(this) }, 12)
 
@@ -796,6 +801,7 @@ class MainActivity : Activity() {
             }, 12)
         }, 12)
         add(voiceCard(), 12)
+        add(voiceIdCard(), 12)
         add(ui.section("👀 Pet's eyes · కళ్ళు", "Just ask your pet to look, and it looks through the camera by itself (no camera window, no photo to send):\n" +
             "• \"Look at this shirt, is it available online?\" · \"ఈ షర్ట్ ఆన్‌లైన్‌లో దొరుకుతుందా?\"\n" +
             "• \"What's written on this board?\" · \"ఈ బోర్డు మీద ఏం రాసి ఉంది?\"\n" +
@@ -903,12 +909,46 @@ class MainActivity : Activity() {
         }), 6)
     }
 
+    /** Knowing who in the family is talking: first a check that this phone lets Habit hear the voice (VoiceCheck). */
+    private fun voiceIdCard() = ui.section(t("🎙 Knowing voices", "🎙 గొంతు గుర్తింపు"),
+        t("Soon your pet will know who in the family is talking. First, check if this phone lets Habit hear voices. Nothing is recorded or sent.",
+          "త్వరలో కుటుంబంలో ఎవరు మాట్లాడుతున్నారో మీ పెట్ గుర్తిస్తుంది. ముందుగా ఈ ఫోన్ అందుకు అనుమతిస్తుందో చూద్దాం. ఏదీ రికార్డ్ చేయదు, ఎక్కడికీ పంపదు.")).apply {
+        val status = ui.text(when (VoiceCheck.state(this@MainActivity)) {
+            "ok" -> t("✅ This phone can do it.", "✅ ఈ ఫోన్‌లో పని చేస్తుంది.")
+            "no" -> t("❌ It didn't work on this phone last time. You can check again.", "❌ పోయినసారి ఈ ఫోన్‌లో పని చేయలేదు. మళ్ళీ చెక్ చేయవచ్చు.")
+            else -> ""
+        }, 14f, Ui.INK)
+        put(status, 6)
+        put(ui.button(t("🎙 Voice check", "🎙 గొంతు చెక్"), "primary") {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                toast(t("Allow the microphone first, then tap again.", "ముందు మైక్రోఫోన్ అనుమతి ఇవ్వండి, తర్వాత మళ్ళీ నొక్కండి."))
+                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
+                return@button
+            }
+            status.text = t("Getting ready…", "సిద్ధమవుతోంది…")
+            VoiceCheck.run(this@MainActivity, if (store.lang == "te") "te" else "en", onStatus = { status.text = it }) { r ->
+                status.text = when {
+                    r.ok -> t("✅ Yes! This phone can let Habit hear voices. I heard: \"${r.heard}\". The next update can teach your pet your family's voices.",
+                              "✅ అవును! ఈ ఫోన్‌లో పని చేస్తుంది. నేను విన్నది: \"${r.heard}\". తర్వాతి అప్‌డేట్‌లో మీ కుటుంబం గొంతులు మీ పెట్‌కు నేర్పవచ్చు.")
+                    Build.VERSION.SDK_INT < 33 -> t("❌ This needs Android 13 or newer.", "❌ దీనికి Android 13 లేదా కొత్తది కావాలి.")
+                    else -> t("❌ This phone's voice typing doesn't share the sound with Habit. Your pet still knows you when you say \"I'm ___\".",
+                              "❌ ఈ ఫోన్ వాయిస్ టైపింగ్ శబ్దాన్ని హ్యాబిట్‌తో పంచుకోదు. \"నేను ___\" అని చెబితే మీ పెట్ మిమ్మల్ని గుర్తిస్తుంది.") +
+                        "\n(${r.service.ifBlank { "?" }} · ${r.which} · ${r.error} · ${r.peak})"
+                }
+            }
+        }, 10)
+    }
+
     private fun voiceCard() = ui.section("Voice 🔊", "A clear, grown-up voice that speeds up a little when your pet is excited and slows down when it's sad.").apply {
         val status = ui.text("Checking the natural voice…", 12.5f, Ui.MUTED)
         put(ui.check("Natural voice (sounds like a real person, Telugu and English)", store.naturalVoice) { store.naturalVoice = it }, 10)
         put(status, 4)
         put(ui.check("🧸 Cute cartoon voice (higher, like a cartoon character)", store.cuteVoice) { store.cuteVoice = it }, 8)
         put(ui.check("🎉 Fun sounds when they fit (tada, laugh, wow, applause…)", store.funSounds) { store.funSounds = it; if (it) SoundFx.play(this@MainActivity, "tada") }, 8)
+        put(ui.check(t("💬 Keep listening after answers (talk without tapping every time; say \"bye\" to stop)",
+            "💬 జవాబు తర్వాత కాసేపు వింటూ ఉండు (ప్రతిసారీ తట్టనక్కర్లేదు; ఆపడానికి \"చాలు\" అనండి)"), store.convo == "on") { store.convo = if (it) "on" else "off" }, 8)
+        put(ui.check(t("💡 Interesting talk when we pause (a fact, a tip or a riddle, once)",
+            "💡 మాట ఆగినప్పుడు ఒక ఆసక్తికరమైన విషయం (ఒక సంగతి, చిట్కా లేదా పొడుపు కథ, ఒకసారి)"), store.sparks) { store.sparks = it }, 8)
         put(ui.row(ui.button("▶ Test voice", "primary") {
             if (!Settings.canDrawOverlays(this@MainActivity)) { toast("First allow \"Show over other apps\" below."); return@button }
             if (!PetService.running) startForegroundService(Intent(this@MainActivity, PetService::class.java))

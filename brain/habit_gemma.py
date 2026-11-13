@@ -74,6 +74,26 @@ def hours():
     return (time.time() - T0) / 3600
 
 
+def free_space(*more):
+    """Deletes download caches that are no longer needed (a Kaggle notebook may use about 57 GB of disk)."""
+    home = os.path.expanduser("~")
+    for p in [os.path.join(home, ".cache", "pip"), os.path.join(home, ".cache", "uv"), os.path.join(home, ".cache", "huggingface", "datasets"), *more]:
+        shutil.rmtree(p, ignore_errors=True)
+
+
+def disk_note(when):
+    """How much disk the big folders use (shown in the log, to see how close it gets to Kaggle's limit)."""
+    home = os.path.expanduser("~")
+    total = 0
+    for p in [BIG, WORK, os.path.join(home, ".cache"), os.path.join(home, ".ollama")]:
+        r = subprocess.run(["du", "-sk", p], text=True, capture_output=True)
+        try:
+            total += int((r.stdout or "0").split()[0])
+        except (ValueError, IndexError):
+            pass
+    say(f"Disk used by our files {when}: {total / 2 ** 20:.1f} GB")
+
+
 # ------------------------------------------------------------------ settings
 def settings():
     p = argparse.ArgumentParser(description="Makes habit-gemma, Habit AI's own model.")
@@ -676,7 +696,9 @@ def stage_train(cfg):
     tok = get_chat_template(tok, chat_template="gemma-4")
     texts = [tok.apply_chat_template(r["messages"], tokenize=False, add_generation_prompt=False) for r in rows]
     ds = Dataset.from_dict({"text": texts})
-    args = dict(dataset_text_field="text", per_device_train_batch_size=2, gradient_accumulation_steps=4, warmup_steps=10, learning_rate=1e-4,
+    # E4B is bigger: one lesson at a time on the T4 (Unsloth's own Kaggle notebook does the same), 8 per step like E2B
+    batch, accum = (2, 4) if cfg.size == "E2B" else (1, 8)
+    args = dict(dataset_text_field="text", per_device_train_batch_size=batch, gradient_accumulation_steps=accum, warmup_steps=10, learning_rate=1e-4,
                 logging_steps=10, optim="adamw_8bit", weight_decay=0.001, lr_scheduler_type="linear", seed=3407, report_to="none",
                 output_dir=os.path.join(BIG, "train"), save_strategy="no")
     if cfg.mode == "test":
@@ -698,8 +720,13 @@ def stage_train(cfg):
     say(f"Taught in {st.metrics.get('train_runtime', 0) / 60:.0f} minutes (loss {st.metrics.get('train_loss', 0):.2f}).")
     out = os.path.join(BIG, "gguf")
     shutil.rmtree(out, ignore_errors=True)
-    say("Saving it as a GGUF file (10 to 20 minutes)...")
-    model.save_pretrained_gguf(out, tok, quantization_method="f16")
+    shutil.rmtree(os.path.join(BIG, "train"), ignore_errors=True)
+    free_space()
+    disk_note("before saving")
+    # E2B: a 16-bit file. E4B: 8-bit (Q8_0, almost the same quality), so the merge and the file fit in Kaggle's disk
+    kind = "f16" if cfg.size == "E2B" else "q8_0"
+    say(f"Saving it as a GGUF file ({kind.upper()}, 10 to 20 minutes)...")
+    model.save_pretrained_gguf(out, tok, quantization_method=kind)
     # where Unsloth put it (the folder, or next to it): the newest big .gguf that isn't the picture part (mmproj)
     found = set()
     for d in [out, BIG, os.getcwd(), WORK]:
@@ -708,12 +735,16 @@ def stage_train(cfg):
     if not ggufs:
         stop("no GGUF file was made.")
     g = max(ggufs, key=os.path.getsize)
-    keep_at = os.path.join(BIG, "habit-gemma-f16.gguf")
+    keep_at = os.path.join(BIG, f"habit-gemma-{kind}.gguf")
     shutil.move(g, keep_at)
     shutil.rmtree(out, ignore_errors=True)   # the merged model Unsloth made on the way (many GB)
-    shutil.rmtree(os.path.expanduser("~/.cache/huggingface/hub/models--" + STUDENT[cfg.size].replace("/", "--")), ignore_errors=True)
-    json.dump({"gguf": keep_at, "loss": st.metrics.get("train_loss"), "minutes": round(st.metrics.get("train_runtime", 0) / 60)}, open(os.path.join(BIG, "trained.json"), "w"))
-    say(f"GGUF ✓ ({os.path.getsize(keep_at) // 2 ** 20} MB)")
+    # the downloaded Gemma (16-bit and 4-bit copies): not needed any more
+    for c in glob.glob(os.path.expanduser("~/.cache/huggingface/hub/models--" + STUDENT[cfg.size].replace("/", "--") + "*")):
+        shutil.rmtree(c, ignore_errors=True)
+    disk_note("after saving")
+    json.dump({"gguf": keep_at, "type": kind, "loss": st.metrics.get("train_loss"), "minutes": round(st.metrics.get("train_runtime", 0) / 60)},
+              open(os.path.join(BIG, "trained.json"), "w"))
+    say(f"GGUF ✓ ({os.path.getsize(keep_at) // 2 ** 20} MB, {kind.upper()})")
 
 
 def train(cfg):
@@ -770,9 +801,11 @@ def ollama_model(cfg, trained):
     blocks = modelfile_blocks(ollama(f"show --modelfile {plain}").stdout)
     d = os.path.join(BIG, "model")
     os.makedirs(d, exist_ok=True)
-    f16 = os.path.join(d, "habit-gemma-f16.gguf")
-    if not os.path.exists(f16):
-        shutil.move(trained["gguf"], f16)
+    kind = trained.get("type") or "f16"           # f16 (E2B) or q8_0 (E4B)
+    src_name = f"habit-gemma-{kind}.gguf"
+    src = os.path.join(d, src_name)
+    if not os.path.exists(src):
+        shutil.move(trained["gguf"], src)
 
     def make(src, quant, bl):
         """ollama create habit-gemma from [src] (a file in d), quantized to [quant] ("" = as it is); True if it answers."""
@@ -788,28 +821,31 @@ def ollama_model(cfg, trained):
             say(f"⚠️ habit-gemma didn't answer: {str(e)[:200]}")
             return False
 
-    # 1. Ollama makes it Q4_K_M itself (with the plain Gemma's template, or with the template inside the file)
+    # 1. Ollama makes it Q4_K_M itself (with the plain Gemma's template, or with the template inside the file).
+    #    Ollama only does this from a 16-bit file.
     quant, used = "Q4_K_M", None
-    for bl in (blocks, []):
-        if make("habit-gemma-f16.gguf", "q4_K_M", bl):
-            used = bl
-            break
-    # 2. llama.cpp makes it Q4_K_M, then Ollama takes it as it is
+    if kind == "f16":
+        for bl in (blocks, []):
+            if make(src_name, "q4_K_M", bl):
+                used = bl
+                break
+    # 2. llama.cpp makes it Q4_K_M (from the 8-bit file too), then Ollama takes it as it is
     if used is None:
-        say("Making Q4_K_M with llama.cpp instead...")
+        say("Making Q4_K_M with llama.cpp" + (" instead..." if kind == "f16" else "..."))
         q = llama_quantize()
         q4 = os.path.join(d, "habit-gemma-q4.gguf")
-        if q and sh(f"{q} {f16} {q4} Q4_K_M", check=False, quiet=True).returncode == 0:
+        again = "" if kind == "f16" else "--allow-requantize "
+        if q and sh(f"{q} {again}{src} {q4} Q4_K_M", check=False, quiet=True).returncode == 0:
             for bl in (blocks, []):
                 if make("habit-gemma-q4.gguf", "", bl):
                     used = bl
                     break
-    # 3. as it is (big: 16-bit; for a big server only)
+    # 3. as it is (bigger; for a big server only)
     if used is None:
-        say("⚠️ Couldn't make it smaller: keeping it in 16-bit (about 3 times bigger).")
-        quant = "F16"
+        quant = kind.upper()
+        say(f"⚠️ Couldn't make it smaller: keeping it as {quant} (about {3 if kind == 'f16' else 2} times bigger).")
         for bl in (blocks, []):
-            if make("habit-gemma-f16.gguf", "", bl):
+            if make(src_name, "", bl):
                 used = bl
                 break
     if used is None:
@@ -916,6 +952,8 @@ def main():
     people = aya(cfg)
     counts = mix(cfg, teacher, own, asked, lib, people)
     ollama("rm " + cfg.teacher, check=False)   # room on the disk
+    free_space()
+    disk_note("before teaching")
     trained = train(cfg)
     blob, blocks, quant = ollama_model(cfg, trained)
     step("6. The exam")

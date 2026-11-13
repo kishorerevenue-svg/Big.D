@@ -46,6 +46,7 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
             "download" -> download(a.optString("url"), a.optString("name", "Habit-file"))
             "letter" -> openLetterHelper(a.optString("request"))
             "open_page" -> openPage(a.optString("page"))
+            "game" -> if (GamesActivity.open(ctx, a.optString("name"))) null else "Open the Habit AI app to play"
             else -> null
         }
     } catch (e: Exception) { "Sorry, I couldn't do that on this phone" }

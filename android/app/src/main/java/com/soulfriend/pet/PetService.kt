@@ -243,7 +243,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                         if (close) { stopSelf(); return@setOnTouchListener true }
                         store.petX = petParams.x; store.petY = petParams.y
                     }
-                    else if (!longDone && e.actionMasked == MotionEvent.ACTION_UP) { wake(); if (voiceMode) stopVoiceMode() else if (listening) stopListening() else startListening() }
+                    else if (!longDone && e.actionMasked == MotionEvent.ACTION_UP) {
+                        wake()
+                        if (voiceMode) stopVoiceMode()
+                        else if (listening) { if (convoOn) { tapStopped = true; endConvo() }; stopListening() }   // a tap ends the conversation
+                        else startListening()
+                    }
                 }
             }
             true
@@ -356,9 +361,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 if (id != lastUtter) return@post
                 pet.talking = false
                 if (synchronized(spoken) { spoken.isNotEmpty() }) main.postDelayed(hideBubble, 6000)
+                spokenDone()
             } }
             @Deprecated("Deprecated in Java")
-            override fun onError(id: String?) { main.post { if (id == lastUtter) pet.talking = false } }
+            override fun onError(id: String?) { main.post { if (id == lastUtter) { pet.talking = false; spokenDone() } } }
         })
     }
 
@@ -395,7 +401,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     try { tts?.stop() } catch (e: Exception) { }
                     natural.play(f, PetVoice.naturalPitch(kind, mood, store.cuteVoice),
                         onStart = { pet.talking = true },
-                        onDone = { if (seq == speakSeq) pet.talking = false },
+                        onDone = { if (seq == speakSeq) { pet.talking = false; spokenDone() } },
                         onFail = { if (seq == speakSeq) speakPhone(text) })
                 }
             }
@@ -437,10 +443,108 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     private fun fakeTalk(text: String) {
         pet.talking = true
-        main.postDelayed({ pet.talking = false }, (400 + text.length * 45L).coerceAtMost(6000))
+        val seq = speakSeq
+        main.postDelayed({ pet.talking = false; if (seq == speakSeq) spokenDone() }, (400 + text.length * 45L).coerceAtMost(6000))
     }
 
-    private fun hush() { speakSeq++; natural.stop(); try { tts?.stop() } catch (e: Exception) { }; pet.talking = false }
+    private fun hush() { speakSeq++; afterSpeech = null; natural.stop(); try { tts?.stop() } catch (e: Exception) { }; pet.talking = false }
+
+    // ---------------- conversation mode: after a spoken answer it listens again, so they don't tap for every question ----------------
+    // It asks once if they want it. Silence: it relaxes. "bye", "చాలు", "ok ok", or a tap: it stops. "stay with me", "ఉండు": it
+    // keeps listening for a few minutes. Low battery: it says so and rests.
+    private var afterSpeech: (() -> Unit)? = null   // what to do when the pet has finished saying its answer
+    private var convoOn = false                      // listening for the next question in a conversation
+    private var convoStay = false                    // "stay with me": keeps listening through short silences
+    private var convoHeardAt = 0L
+    private var convoAsking = false                  // waiting for yes / no to "Shall I keep listening?"
+    private var tapStopped = false
+    private var voiceAsk = false                     // the question now being answered was spoken (not typed)
+
+    private fun spokenDone() {
+        val next = afterSpeech ?: return
+        afterSpeech = null
+        main.postDelayed({ next() }, 350)
+    }
+
+    private fun te() = store.lang == "te" || (store.lang != "en" && isTelugu(lastReply))
+
+    private fun batteryLow(): Boolean = try {
+        val bm = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
+        bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) in 1..15 && !bm.isCharging
+    } catch (e: Exception) { false }
+
+    /** After an answer to a spoken question: listen for the next one (or ask once whether they want that). */
+    private fun convoNext() {
+        if (listening || voiceMode || CallManager.active != null || msgCard != null) return
+        if (batteryLow()) {
+            endConvo(quiet = true)
+            say(if (te()) "బ్యాటరీ తక్కువగా ఉంది, అందుకే కాసేపు విశ్రాంతి తీసుకుంటాను. అవసరమైతే నన్ను తట్టండి." else "My battery is low, so I'll rest now. Tap me when you need me.",
+                PuppyView.Mood.SLEEPY, local = true)
+            return
+        }
+        when {
+            convoStay || store.convo == "on" -> { convoOn = true; startListening() }
+            store.convo == "ask" && store.convoAsked < 2 -> askConvo()
+        }
+    }
+
+    private fun askConvo() {
+        store.convoAsked = store.convoAsked + 1
+        say(if (te()) "ప్రతి ప్రశ్నకు నన్ను తట్టకుండా, నేను జవాబు చెప్పాక కాసేపు వింటూ ఉండనా? అవును లేదా వద్దు అని చెప్పండి."
+            else "Shall I keep listening for a moment after I answer, so you don't have to tap me every time? Say yes or no.", PuppyView.Mood.THINKING, local = true)
+        afterSpeech = { convoAsking = true; startListening() }
+    }
+
+    /** Their answer to "Shall I keep listening?": true if it was handled. */
+    private fun convoAnswer(heard: String): Boolean {
+        convoAsking = false
+        val yes = Talk.yesNo(heard) ?: return false
+        store.convo = if (yes) "on" else "off"
+        if (yes) {
+            say(if (te()) "సరే! జవాబు చెప్పాక కాసేపు వింటాను. ఇక చాలు అనుకుంటే \"చాలు\" లేదా \"బై\" అనండి. ఇప్పుడు ఏం అడుగుతారు?"
+                else "Great! I'll listen for a moment after each answer. Say \"bye\" or \"enough\" when you're done. What's next?", PuppyView.Mood.HAPPY, local = true)
+            afterSpeech = { convoOn = true; startListening() }
+        } else {
+            say(if (te()) "సరే, అవసరమైనప్పుడు నన్ను తట్టండి. (యాప్ › Voice లో ఎప్పుడైనా మార్చుకోవచ్చు.)" else "Okay, just tap me when you need me. (You can change this any time in the app › Voice.)",
+                PuppyView.Mood.HAPPY, local = true)
+        }
+        return true
+    }
+
+    /** "Interesting talk": the conversation went quiet, so once per conversation (in the daytime) the pet says one short fact,
+     *  tip or riddle, then listens once more. False when it doesn't (then the conversation ends). */
+    private var sparkUsed = false
+    private fun trySpark(): Boolean {
+        val hour = java.time.LocalTime.now().hour
+        if (!convoOn || sparkUsed || !store.sparks || hour < 7 || hour >= 22 || batteryLow()) return false
+        sparkUsed = true
+        val te = te()
+        pet.mood = PuppyView.Mood.THINKING
+        Thread {
+            val j = if (te) Sparks.fromServer(store, "te") else null      // Habit Media's posts are in Telugu
+            val (text, mood) = if (j != null) j.optString("reply") to PuppyView.moodOf(j.optString("emotion")) else Sparks.local(store, te)
+            main.post {
+                if (!convoOn || listening) return@post                   // they tapped or started talking meanwhile
+                say(text, mood)
+                brain.noteSaid(text)
+                afterSpeech = { if (convoOn) startListening() }
+            }
+        }.start()
+        return true
+    }
+
+    /** The conversation is over: the pet relaxes (and forgets who was talking: the next person may be someone else). */
+    private fun endConvo(quiet: Boolean = false, bye: Boolean = false) {
+        val was = convoOn || convoStay
+        convoOn = false; convoStay = false; convoAsking = false; afterSpeech = null; sparkUsed = false
+        if (quiet) return
+        store.setSpeaker("")
+        if (bye || was) {
+            pet.mood = if (bye) PuppyView.Mood.HAPPY else PuppyView.Mood.SLEEPY
+            showBubble(if (bye) (if (te()) "👋 సరే! అవసరమైతే నన్ను తట్టండి." else "👋 Okay! Tap me when you need me.")
+                       else (if (te()) "😴 అవసరమైతే నన్ను తట్టండి." else "😴 Tap me when you need me."), 4000)
+        }
+    }
 
     // ---------------- listening ----------------
     private fun startListening() {
@@ -452,11 +556,18 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             say("Voice typing isn't available on this phone. Hold me to type instead.", PuppyView.Mood.CONFUSED); return
         }
         hush()
+        tapStopped = false
         lookToken++
         val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
         rec.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
-                showBubble(if (voiceMode) "🎙 Say: next · previous · pause · like\n(tap me to stop)" else if (store.lang == "en") "Listening…" else "వింటున్నాను… Listening…", 0)
+                showBubble(when {
+                    voiceMode -> "🎙 Say: next · previous · pause · like\n(tap me to stop)"
+                    convoAsking -> if (te()) "🎙 అవును / వద్దు?" else "🎙 Yes or no?"
+                    convoOn -> if (te()) "🎙 ఇంకా అడగండి… (\"చాలు\" అంటే ఆపుతాను)" else "🎙 Ask more… (say \"bye\" to stop)"
+                    store.lang == "en" -> "Listening…"
+                    else -> "వింటున్నాను… Listening…"
+                }, 0)
             }
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
@@ -465,6 +576,17 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             override fun onError(error: Int) {
                 setListening(false); replyVoice = false
                 if (voiceMode) { voiceModeNext(error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT); return }
+                if (tapStopped) { tapStopped = false; return }                  // they tapped to end the conversation
+                val silent = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                if (convoAsking) { convoAsking = false; if (silent) { removeBubble(); return } }   // no answer: it asks again another time
+                if (convoOn) {
+                    // "stay with me": keeps listening through short silences (a few minutes); otherwise silence ends the conversation
+                    if (silent && convoStay && System.currentTimeMillis() - convoHeardAt < 3 * 60_000L && !batteryLow()) {
+                        main.postDelayed({ if (convoOn && !listening) startListening() }, 250); return
+                    }
+                    if (silent) { if (!trySpark()) endConvo(); return }
+                    endConvo(quiet = true)
+                }
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap me and speak again."
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "No internet for voice. Check your connection."
@@ -481,8 +603,27 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 setListening(false)
                 val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 if (voiceMode) { onVoiceModeHeard(heard.orEmpty()); return }
-                if (heard.isNullOrBlank()) { replyVoice = false; showBubble("I didn't catch that. Tap me and speak again.", 5000); return }
-                if (replyVoice) { replyVoice = false; replyByVoice(heard) } else send(heard)
+                if (tapStopped) { tapStopped = false; return }
+                if (heard.isNullOrBlank()) {
+                    replyVoice = false
+                    if (convoAsking) { convoAsking = false; removeBubble(); return }
+                    if (convoOn) { if (!trySpark()) endConvo(); return }
+                    showBubble("I didn't catch that. Tap me and speak again.", 5000); return
+                }
+                if (replyVoice) { replyVoice = false; replyByVoice(heard); return }
+                if (convoAsking && convoAnswer(heard)) return
+                convoHeardAt = System.currentTimeMillis()
+                // "bye", "enough", "ok ok", "చాలు": the pet stops (no question for the brain)
+                if (Talk.isStop(heard)) { endConvo(bye = true); return }
+                // "stay with me", "ఇక్కడే ఉండు": it keeps listening for a few minutes
+                if (Talk.isStay(heard)) {
+                    convoStay = true; convoOn = true
+                    say(if (te()) "సరే, నేను ఇక్కడే ఉన్నాను! ఎప్పుడైనా మాట్లాడండి." else "Okay, I'm right here! Talk to me any time.", PuppyView.Mood.HAPPY, local = true)
+                    afterSpeech = { convoNext() }
+                    return
+                }
+                voiceAsk = true
+                send(heard)
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
@@ -504,6 +645,15 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     // ---------------- asking the brain ----------------
     private fun send(text: String) {
+        val byVoice = voiceAsk; voiceAsk = false
+        // "let's play", "ఆట ఆడదాం": the games open straight away (no need to ask the brain, works without internet)
+        Talk.game(text)?.let { g ->
+            if (convoOn) endConvo(quiet = true)
+            if (GamesActivity.open(this, g)) {
+                say(if (te() || isTelugu(text)) "ఆట ఆడదాం! 🎮" else "Let's play! 🎮", PuppyView.Mood.EXCITED, local = true)
+                return
+            }
+        }
         HandsFree.match(text)?.let { if (handsFree(it)) return }
         if (BuildConfig.HANDS_FREE && Regex("^(reels? mode|hands ?free( mode)?|రీల్స్ మోడ్|హ్యాండ్స్ ఫ్రీ)$", RegexOption.IGNORE_CASE).matches(text.trim().trimEnd('.', '!'))) { startVoiceMode(); return }
         if (ScreenCaptureService.wantsScreen(text)) { readScreen(text); return }
@@ -513,8 +663,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
         showBubble("“$text”\n…", 0)
-        brain.ask(text, onReply = { json -> handleReply(json) }, onError = { err ->
+        brain.ask(text, onReply = { json -> handleReply(json, byVoice = byVoice) }, onError = { err ->
             pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000)
+            if (convoOn) endConvo(quiet = true)
         })
     }
 
@@ -606,7 +757,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     /** [fromPhoto]: the answer is about a photo, so it doesn't open the eyes again, except [eyes] (a photo the pet took itself):
      *  then "move a little to the left… looking again" takes another photo by itself, at most twice. */
-    private fun handleReply(json: JSONObject, fromPhoto: Boolean = false, eyes: Boolean = false) {
+    private fun handleReply(json: JSONObject, fromPhoto: Boolean = false, eyes: Boolean = false, byVoice: Boolean = false) {
         val reply = json.optString("reply", "Woof!")
         lastReply = reply
         lastRate = if (!fromPhoto && json.optString("rid").isNotEmpty()) JSONObject().put("rid", json.optString("rid")).put("q", lastQuestion.take(600))
@@ -629,6 +780,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 }
                 continue
             }
+            // they said who they are ("I'm Ravi"): the pet uses that name for this conversation only
+            if (a.optString("type") == "speaker") { a.optString("name").takeIf { it.isNotBlank() }?.let { store.setSpeaker(it) }; continue }
             // "send Ravi …": if Ravi just messaged, answer right here with one tap (no need to open WhatsApp)
             if (a.optString("type") == "whatsapp" && a.optString("number").isBlank() && replyTo == null) {
                 val m = MessageHub.recentFrom(a.optString("contact"))
@@ -659,6 +812,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         replyTo?.let { (m, text) -> openMsgCard(m); msgInput?.setText(text); msgInput?.setSelection(text.length) }
         panelText?.let { if (panel != null && panelContent.isEmpty()) { it.text = reply + extra; panelTools?.visibility = View.VISIBLE } }
         showRate()
+        // a spoken question: when the answer has been said, listen for the next one (conversation mode), unless the answer
+        // took them somewhere else (a game, another app, a call, the letter helper)
+        val away = arr != null && (0 until arr.length()).any { arr.optJSONObject(it)?.optString("type") in setOf("game", "open_app", "open_page", "call", "whatsapp", "letter") }
+        if (byVoice && store.voiceOn && !away && lookAt == null && lookAgain == null && screenAsk == null && replyTo == null && !voiceMode &&
+            (convoStay || store.convo != "off")) afterSpeech = { convoNext() }
+        else if (convoOn) endConvo(quiet = true)
     }
 
     private fun endFix() { if (fixing == null) return; fixing = null; panelSend?.text = "Send"; panelInput?.hint = "Type, or ask about a photo 📷 or your screen 📱…" }

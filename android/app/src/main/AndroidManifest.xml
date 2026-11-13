@@ -150,6 +150,13 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Habit.Black" />
 
+        <!-- Habit's games (assets/games: quiz, riddles, memory cards, tic-tac-toe, maths), opened by the pet or from the app -->
+        <activity
+            android:name=".GamesActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Habit.Chat" />
+
         <!-- The pet's eyes: a see-through screen with a small note at the top (the app you were in stays behind it) -->
         <activity
             android:name=".LookActivity"
