@@ -90,7 +90,12 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
         catch (e: Exception) { done(false) }
     }
 
-    override fun onResume() { super.onResume(); shown = this }
+    override fun onResume() { super.onResume(); shown = this; petGame(true) }
+
+    /** The floating pet sits small in the corner while the games are on the screen. */
+    private fun petGame(on: Boolean) {
+        if (PetService.running) try { startService(Intent(this, PetService::class.java).setAction(PetService.ACTION_GAME).putExtra("on", on)) } catch (e: Exception) { }
+    }
 
     private fun speak(text: String, lang: String) {
         val t = tts ?: return
@@ -109,7 +114,7 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
         @JavascriptInterface fun say(text: String, lang: String) { runOnUiThread {
             if (PetService.running) try {
                 startService(Intent(this@GamesActivity, PetService::class.java).setAction(PetService.ACTION_SAY)
-                    .putExtra("text", text).putExtra("mood", "happy").putExtra("prefix", "").putExtra("local", true))
+                    .putExtra("text", text).putExtra("mood", "happy").putExtra("prefix", "").putExtra("local", true).putExtra("game", true))
                 return@runOnUiThread
             } catch (e: Exception) { }
             speak(text, lang)
@@ -128,7 +133,7 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
         web.evaluateJavascript("window.goBack ? (window.goBack(), 1) : 0") { if (it != "1") runOnUiThread { finish() } }
     }
 
-    override fun onPause() { super.onPause(); if (shown === this) shown = null; try { tts?.stop() } catch (e: Exception) { } }
+    override fun onPause() { super.onPause(); if (shown === this) shown = null; petGame(false); try { tts?.stop() } catch (e: Exception) { } }
 
     override fun onDestroy() {
         try { tts?.shutdown() } catch (e: Exception) { }

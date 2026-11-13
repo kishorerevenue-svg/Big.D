@@ -50,6 +50,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         @Volatile var running = false
         const val ACTION_SAY = "com.soulfriend.pet.SAY"
         const val ACTION_HUSH = "com.soulfriend.pet.HUSH"
+        /** Habit's games came on the screen ("on" true) or went away: the pet sits small in the corner meanwhile. */
+        const val ACTION_GAME = "com.soulfriend.pet.GAME"
         const val ACTION_STOP = "com.soulfriend.pet.STOP"
         const val ACTION_LISTEN = "com.soulfriend.pet.LISTEN"
         const val ACTION_PHOTO = "com.soulfriend.pet.PHOTO"
@@ -130,7 +132,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
-            ACTION_SAY -> {
+            ACTION_GAME -> gameMode(intent.getBooleanExtra("on", false))
+            ACTION_SAY -> if (intent.getBooleanExtra("game", false)) gameSay(intent.getStringExtra("text") ?: "") else {
                 if (intent.getBooleanExtra("test", false)) naturalNotSetUp = false // "Test voice" asks the server again
                 say(intent.getStringExtra("text") ?: "",
                     intent.getStringExtra("mood")?.let { PuppyView.moodOf(it) } ?: PuppyView.Mood.SURPRISED,
@@ -246,7 +249,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                         val close = overClose()
                         hideCloseTarget()
                         if (close) { stopSelf(); return@setOnTouchListener true }
-                        store.petX = petParams.x; store.petY = petParams.y
+                        if (!gameSmall) { store.petX = petParams.x; store.petY = petParams.y }
                     }
                     else if (!longDone && e.actionMasked == MotionEvent.ACTION_UP) {
                         wake()
@@ -555,13 +558,52 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val was = convoOn || convoStay
         convoOn = false; convoStay = false; convoAsking = false; afterSpeech = null; sparkUsed = false
         if (was) Diary.tidy(this, afterTalk = true)          // the conversation is over: what mattered goes into the memory
-        if (quiet) return
+        if (quiet || GamesActivity.shown != null) return     // (over a game: no sleepy bubble on the board)
         store.setSpeaker("")
         if (bye || was) {
             pet.mood = if (bye) PuppyView.Mood.HAPPY else PuppyView.Mood.SLEEPY
             showBubble(if (bye) (if (te()) "👋 సరే! అవసరమైతే నన్ను తట్టండి." else "👋 Okay! Tap me when you need me.")
                        else (if (te()) "😴 అవసరమైతే నన్ను తట్టండి." else "😴 Tap me when you need me."), 4000)
         }
+    }
+
+    // ---------------- playing Habit's games by voice ----------------
+    // While a game is on the screen the pet sits small in the bottom corner (it doesn't cover the game), says the game's
+    // lines (the page shows the words itself) and, after each one, listens for the answer or the move, without a tap.
+    private var gameSmall = false
+
+    private fun gameMode(on: Boolean) {
+        if (!::petParams.isInitialized || on == gameSmall) return
+        gameSmall = on
+        val s = dp(if (on) 76 else 112)
+        petParams.width = s; petParams.height = s
+        if (on) { petParams.x = screenW - s - dp(4); petParams.y = screenH - s - dp(96) }
+        else {
+            petParams.x = if (store.petX >= 0) store.petX.coerceIn(0, maxOf(0, screenW - s)) else screenW - s - dp(8)
+            petParams.y = if (store.petY >= 0) store.petY.coerceIn(0, maxOf(0, screenH - s)) else screenH / 2
+            if (listening) quietStop()
+            endConvo(quiet = true)                                     // the game is closed: its conversation ends quietly
+        }
+        try { wm.updateViewLayout(pet, petParams) } catch (e: Exception) { }
+        removeBubble()
+    }
+
+    /** Stops listening without any message (a new line is coming, or the game closed). */
+    private fun quietStop() {
+        tapStopped = true; noMore = true
+        try { recognizer?.cancel() } catch (e: Exception) { }
+        setListening(false)
+    }
+
+    /** A line from the games page: the pet says it, then listens for the answer or the next move. */
+    private fun gameSay(line: String) {
+        val text = Talk.plain(line)
+        if (text.isBlank()) return
+        if (listening) quietStop()                                    // it must not hear its own voice
+        pet.mood = PuppyView.Mood.HAPPY
+        if (!gameSmall) showBubble(text, keepMs = (6000 + text.length * 80L).coerceAtMost(30_000))
+        ++speakSeq; speakPhone(text)
+        if (store.convo != "off") afterSpeech = { if (GamesActivity.shown != null && !listening && !onPhone()) { convoOn = true; startListening() } }
     }
 
     // ---------------- listening ----------------
@@ -638,6 +680,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 readyAt = System.currentTimeMillis()
                 showBubble(when {
+                    gameSmall && unclearTries == 0 -> "🎙"
                     voiceMode -> "🎙 Say: next · previous · pause · like\n(tap me to stop)"
                     unclearTries > 0 && !heardSpeech -> sayAgainText()
                     convoAsking -> if (te()) "🎙 అవును / వద్దు?" else "🎙 Yes or no?"
