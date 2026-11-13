@@ -111,6 +111,7 @@ class MainActivity : Activity() {
         const val REQ_CAM_MIRROR = 25
         const val REQ_CARD_PERM = 26
         const val REQ_CHAT_CONTACTS = 27
+        const val REQ_PET_CALL = 28
         const val REQ_LOCATION = 21
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
@@ -998,7 +999,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Overlay, microphone, notifications, exact alarms, contacts and Telugu voice. */
+    /** Overlay, microphone, notifications, exact alarms, contacts, phone calls and Telugu voice. */
     private fun permissionRows(box: LinearLayout) {
         fun step(done: Boolean, label: String, why: String, action: () -> Unit) {
             box.put(ui.line(ui.stack(ui.text((if (done) "✅  " else "◻️  ") + label, 15f, Ui.INK, bold = true), ui.text(why, 12.5f, Ui.MUTED)),
@@ -1021,6 +1022,10 @@ class MainActivity : Activity() {
         }
         step(granted(Manifest.permission.READ_CONTACTS), "Contacts (optional)", "Only to find a number when you say \"call Ravi\". Never sent to the server.") {
             requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 3)
+        }
+        step(granted(Manifest.permission.CALL_PHONE), "Phone calls (optional)",
+            "So your pet can call when you say \"call Ravi\": it waits 3 seconds (tap it to stop), then calls. Without this, the phone app opens and you tap Call.") {
+            requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), REQ_PET_CALL)
         }
         box.put(ui.line(ui.stack(ui.text("🔊  Telugu voice", 15f, Ui.INK, bold = true), ui.text("Install once so your pet can speak Telugu.", 12.5f, Ui.MUTED)),
             ui.button("Install") {
@@ -1960,6 +1965,8 @@ class MainActivity : Activity() {
         if (requestCode == REQ_LOCATION) family.onLocationAnswer()
         if (requestCode == REQ_CALL && grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED)
             toast("OK. SOS will open the phone app with the number ready, and you tap Call.")
+        if (requestCode == REQ_PET_CALL && grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED)
+            toast("OK. When you ask your pet to call, the phone app opens with the number ready, and you tap Call.")
         if (requestCode == 1 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && PetService.running) {
             stopService(Intent(this, PetService::class.java))
             content.postDelayed({ startForegroundService(Intent(this, PetService::class.java)) }, 500)

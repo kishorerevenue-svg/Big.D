@@ -910,8 +910,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
             // without the "Phone calls" permission the dialer opens with the number (one tap on Call)
             try { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$tel")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
-            showBubble(if (te) "📞 $name నంబర్ తెరిచాను, Call నొక్కండి. నేనే నేరుగా కాల్ చేయాలంటే యాప్ › Family & SOS లో \"Phone calls\" అనుమతి ఇవ్వండి."
-                       else "📞 $name's number is ready: tap Call. To let me call by myself, allow \"Phone calls\" in the app › Family & SOS.", 9000)
+            showBubble(if (te) "📞 $name నంబర్ తెరిచాను, Call నొక్కండి. నేనే నేరుగా కాల్ చేయాలంటే: యాప్ › Your pet › Permissions › \"Phone calls\" › Allow."
+                       else "📞 $name's number is ready: tap Call. To let me call by myself: the app › Your pet › Permissions › \"Phone calls\" › Allow.", 9000)
             return
         }
         cancelCall(quiet = true)
