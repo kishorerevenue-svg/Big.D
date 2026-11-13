@@ -120,7 +120,11 @@ class Store(context: Context) {
     /** Conversation mode: after a spoken answer the pet listens a little longer for the next question (no tap needed).
      *  "on" (the default: people asked to talk without tapping every time) or "off" ("ask" was the old default). */
     var convo: String
-        get() = (p.getString("convo", "on") ?: "on").let { if (it == "ask") "on" else it }
+        get() {
+            // once, with this version: on for everyone (the old yes/no question often didn't hear the answer and left it off)
+            if (!p.getBoolean("convoOn2", false)) { p.edit().putString("convo", "on").putBoolean("convoOn2", true).apply(); return "on" }
+            return (p.getString("convo", "on") ?: "on").let { if (it == "ask") "on" else it }
+        }
         set(v) { p.edit().putString("convo", v).apply() }
     /** Habit push ([Push]): the app's Firebase ids from the server, the push address the server has, and when. */
     var pushCfg: String
@@ -356,7 +360,17 @@ class Store(context: Context) {
     fun memories(): List<String> {
         val a = JSONArray(p.getString("memories", "[]")); return (0 until a.length()).map { a.getString(it) }
     }
-    private fun saveMemories(l: List<String>) { val a = JSONArray(); l.takeLast(60).forEach { a.put(it) }; p.edit().putString("memories", a.toString()).apply() }
+    private fun saveMemories(l: List<String>) { val a = JSONArray(); l.takeLast(80).forEach { a.put(it) }; p.edit().putString("memories", a.toString()).apply() }
+    /** The whole memory, as the diary tidy wrote it ([Diary]). */
+    fun setMemories(l: List<String>) = saveMemories(l.map { it.trim() }.filter { it.isNotEmpty() }.distinct())
+
+    // ---- the pet's diary: its talks, kept only on this phone, and up to when they went into its memory ----
+    var diary: String
+        get() = p.getString("diary", "[]") ?: "[]"
+        set(v) { p.edit().putString("diary", v).apply() }
+    var diaryTidyAt: Long
+        get() = p.getLong("diaryTidyAt", 0L)
+        set(v) { p.edit().putLong("diaryTidyAt", v).apply() }
     fun remember(text: String) { val t = text.trim(); if (t.isNotEmpty() && memories().none { it.equals(t, true) }) saveMemories(memories() + t) }
     fun forget(text: String): Boolean {
         val q = text.trim().lowercase(); val l = memories()

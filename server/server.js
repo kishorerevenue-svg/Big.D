@@ -112,6 +112,7 @@ User's saved notes:
 ${notes}
 What you remember about the people who use this phone (from earlier chats):
 ${mem}
+Use these memories like a good friend would, when they fit: ask how a routine or plan went, gently remind them of their schedule, wish them on their important days, and use what you know about their family and friends. Never read the list out.
 ${ctx.speaker ? `The person talking to you now: ${ctx.speaker} (they told you). If you use a name, use this one, never another name from your memories.` : `Family members may share this phone, so the person talking now may not be the one your memories are about: don't call them by a name from your memories. Use a name only when they tell you who they are.`}
 
 You can do these actions. Only add an action when the user clearly asked for it:
@@ -269,6 +270,29 @@ function personalWords(messages, ctx, q) {
 /** The pet's answer: a prepared or learned answer, else Claude (with its backups), else our self brain (no AI, at
  *  once: news, panchangam, festivals, stories, jokes, learned answers…), else our own brain (an AI model on this
  *  server), else the self brain's best try (it always answers). [ctx.why]: why Claude isn't asked (ownOnly). */
+// ---------- the pet's diary memory (POST /api/pet/memory) ----------
+const MEMORY_PROMPT = `You keep the memory of Habit AI, a friendly pet assistant on a family's phone. You get what it remembers now and its recent talks on this phone (when, who spoke, what they said, what Habit answered). Write the updated memory.
+Rules:
+- One short fact per line, at most 60 lines, in the language the person used (Telugu in Telugu script, or English).
+- Start every line with whose fact it is: "Owner:" when "who" is empty (the phone's owner, or someone who didn't say who they are), otherwise their name and relation if known, like "Ravi (son):" or "Lakshmi (friend):".
+- Keep what helps Habit be a good friend later: names and relations, family and friends, likes and dislikes, habits and daily routines (walks, prayers, tea, sleep, exercise), schedules (office hours, school times, weekly plans, trips), important dates (birthdays, anniversaries, exams, festivals they keep), their work, goals and worries they shared, medicines or health routines they mentioned (only what they said; never guess an illness).
+- Merge repeats into one line. When something changed, keep only the newest. Keep older facts that are still true.
+- Drop small talk, greetings, one-time questions, news, weather, general knowledge, jokes, games, and anything about Habit itself.
+- Never keep passwords, OTPs, PINs, or bank, card, Aadhaar or other ID numbers. Don't invent anything that wasn't said.
+Answer with JSON only: {"memories": ["...", "..."]}`;
+function memoryInput(mems, talk) {
+  return "What Habit remembers now:\n" + (mems.length ? mems.map(m => "- " + m).join("\n") : "(nothing yet)") +
+    "\n\nRecent talks on this phone (oldest first):\n" + talk.map(t => `[${t.at}] ${t.who ? "(" + t.who + ") " : ""}Said: ${t.q}\nHabit: ${t.a}`).join("\n");
+}
+/** The new memory list from Claude's answer, without secrets (long numbers, passwords, OTPs); null when it isn't one. */
+function parseMemories(text) {
+  let obj = null;
+  try { obj = JSON.parse(text); } catch (e) { const a = text.indexOf("{"), b = text.lastIndexOf("}"); if (a >= 0 && b > a) { try { obj = JSON.parse(text.slice(a, b + 1)); } catch (e2) { } } }
+  if (!obj || !Array.isArray(obj.memories)) return null;
+  return obj.memories.map(m => learn.noCites(String(m || "")).replace(/\s+/g, " ").trim().slice(0, 300))
+    .filter(m => m && !/\d[\d\s-]{10,}\d/.test(m) && !/\b(password|passcode|otp|pin|cvv)\b|పాస్‌వర్డ్|ఓటీపీ/i.test(m)).slice(0, 60);
+}
+
 async function askPet(messages, lang, ctx, ownOnly = false) {
   const last = messages[messages.length - 1];
   const hasImage = Array.isArray(last.content);
@@ -327,7 +351,7 @@ function allowed(ip, map = hits, limit = LIMIT_PER_10_MIN) {
   list.push(now); map.set(ip, list); return true;
 }
 // ---------- daily limits (protect your API bill) ----------
-const PER_DEVICE_DAILY = Number(process.env.PER_DEVICE_DAILY || 80);
+const PER_DEVICE_DAILY = Number(process.env.PER_DEVICE_DAILY || 200);   // (talking without tapping uses more)
 const PER_IP_DAILY = Number(process.env.PER_IP_DAILY || 250);
 const DAILY_TOTAL = Number(process.env.DAILY_TOTAL || 4000);
 const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10); // India date
@@ -534,6 +558,29 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // The pet's diary memory: from a phone's recent talks with the pet, Claude rewrites its memory list (each person and
+  // friend, habits, schedule, likes, important dates) and drops small talk. Nothing is kept on this server: the phone keeps
+  // its own diary and memory.
+  if (req.method === "POST" && url.pathname === "/api/pet/memory") {
+    if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin);
+    if (!API_KEY || learn.claudeOut()) return send(res, 503, { error: "The AI is resting. The memory is updated later." }, origin);
+    let body;
+    try { body = await readBody(req, 512 * 1024); } catch (e) { return send(res, 400, { error: "Bad request." }, origin); }
+    const mems = (Array.isArray(body.memories) ? body.memories : []).slice(-100).map(m => learn.noCites(String(m || "")).trim().slice(0, 300)).filter(Boolean);
+    const talk = (Array.isArray(body.talk) ? body.talk : []).slice(-80).map(t => ({ at: String((t && t.at) || "").slice(0, 25), who: String((t && t.who) || "").slice(0, 40),
+      q: String((t && t.q) || "").slice(0, 500), a: learn.noCites(String((t && t.a) || "")).slice(0, 500) })).filter(t => t.q.trim());
+    if (!talk.length) return send(res, 200, { memories: mems, changed: false }, origin);
+    { const lim = dailyCheck(req, "msg"); if (lim) return send(res, 429, { error: lim }, origin); }
+    try {
+      const out = await learn.callClaude({ system: MEMORY_PROMPT, messages: [{ role: "user", content: memoryInput(mems, talk) }], maxTokens: 3000, model: MODEL, search: false });
+      const list = parseMemories(out.text);
+      if (!list) return send(res, 502, { error: "Couldn't update the memory now." }, origin);
+      return send(res, 200, { memories: list, changed: true }, origin);
+    } catch (e) {
+      console.error("Memory update failed:", e.status || "", e.message);
+      return send(res, 502, { error: "Couldn't update the memory now." }, origin);
+    }
+  }
   // the app's Firebase ids for Habit push (ids every Firebase app carries; the secret key stays on this server), once the
   // owner has set it up on the Teach page: the phone starts Firebase with them so a call can ring while Habit is closed
   if (req.method === "GET" && url.pathname === "/api/push/config") {
@@ -568,7 +615,7 @@ const server = http.createServer(async (req, res) => {
       now: String(body.now || "").slice(0, 40), tz: String(body.tz || "").slice(0, 40),
       todos: (Array.isArray(body.todos) ? body.todos : []).slice(0, 50).map(t => ({ text: String((t && t.text) || "").slice(0, 200), done: !!(t && t.done) })),
       notes: (Array.isArray(body.notes) ? body.notes : []).slice(-10).map(n => String(n).slice(0, 300)),
-      memories: (Array.isArray(body.memories) ? body.memories : []).slice(-40).map(n => String(n).slice(0, 300)),
+      memories: (Array.isArray(body.memories) ? body.memories : []).slice(-80).map(n => String(n).slice(0, 300)),
       // who is talking now (they said their name in this conversation): a name only, nothing else
       speaker: ((String(body.speaker || "").match(/^[\p{L}\p{M} .'-]+/u) || [""])[0]).trim().slice(0, 40),
       knowledge: learn.knowledgeBlock(messages[messages.length - 1].content),
@@ -612,7 +659,7 @@ const server = http.createServer(async (req, res) => {
     const ctx = {
       app: String(body.app || "").slice(0, 40), chat: String(body.chat || "").slice(0, 100), sender: String(body.sender || "Someone").slice(0, 100),
       group: !!body.group, text: text.slice(0, 3000), instruction: String(body.instruction || "").slice(0, 500), auto: !!body.auto,
-      memories: (Array.isArray(body.memories) ? body.memories : []).slice(-40).map(n => String(n).slice(0, 300))
+      memories: (Array.isArray(body.memories) ? body.memories : []).slice(-80).map(n => String(n).slice(0, 300))
     };
     try {
       return send(res, 200, await draftReply(ctx), origin);

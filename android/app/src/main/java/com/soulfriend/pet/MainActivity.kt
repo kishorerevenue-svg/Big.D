@@ -844,6 +844,9 @@ class MainActivity : Activity() {
 
         add(ui.section("What your pet remembers", "Saved only on this phone. Say \"forget that\" or tap ✕.").apply {
             val mems = store.memories()
+            // the diary: talks are kept on this phone, and after each conversation the important things go into this memory
+            put(ui.text("📓 " + (if (store.lang == "te") "డైరీ: ${Diary.size(store)} మాటలు ఈ ఫోన్‌లోనే ఉన్నాయి. ప్రతి సంభాషణ తర్వాత ముఖ్యమైనవి (ప్రతి వ్యక్తి, స్నేహితులు, అలవాట్లు, షెడ్యూల్) ఇక్కడ గుర్తుంటాయి; చిన్న మాటలు మర్చిపోతుంది."
+                else "Diary: ${Diary.size(store)} talks kept on this phone. After each conversation the important things (each person, friends, habits, schedule) are remembered here; small talk is forgotten."), 12.5f, Ui.MUTED), 6)
             if (mems.isEmpty()) put(ui.text("Nothing yet. Tell it about yourself, for example \"My daughter's name is Sita\".", 13.5f, Ui.MUTED))
             mems.forEachIndexed { i, m -> put(ui.line(ui.text(m, 15f), ui.button("✕", "ghost") { store.removeMemory(i); render() }), 8) }
         }, 12)
