@@ -473,7 +473,14 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun spokenDone() {
         val next = afterSpeech ?: return
         afterSpeech = null
-        main.postDelayed({ next() }, 350)
+        // its own voice must be over in the room before it listens (a Bluetooth speaker plays a little later), or the
+        // voice typing hears the pet instead of the person
+        val bt = try {
+            (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).any {
+                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || it.type == android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET }
+        } catch (e: Exception) { false }
+        main.postDelayed({ next() }, if (bt) 1_100L else 700L)
     }
 
     private fun te() = store.lang == "te" || (store.lang != "en" && isTelugu(lastReply))
@@ -563,7 +570,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     // the phone's usual one keeps giving up at once (or can't work at all), the Google app's voice typing is tried ([Ears]).
     private var listenSince = 0L                     // when this turn of listening began (the quiet restarts keep it)
     private var readyAt = 0L
-    private var heardSpeech = false                  // they started talking in this turn
+    private var heardSpeech = false                  // something like talking was heard in this turn
+    private var heardNow = false                     // ...in this try
     private var quickMisses = 0
     private var restarts = 0
     private var unclearTries = 0
@@ -571,14 +579,14 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private var ears: android.content.ComponentName? = null
 
     /** How long one turn listens for someone to start talking. */
-    private fun patienceMs(): Long = when { convoAsking -> 7_000L; convoOn -> 8_000L; else -> 9_000L }
+    private fun patienceMs(): Long = when { convoAsking -> 7_000L; else -> 10_000L }
 
     /** Nothing heard yet (or this voice typing can't work): listen again quietly while this turn lasts. */
     private fun listenMore(broken: Boolean): Boolean {
         if (noMore || tapStopped || voiceMode || onPhone() || CallManager.active != null) return false
         val now = System.currentTimeMillis()
-        if (now - listenSince > patienceMs() || restarts >= 12) return false
-        if (broken || now - readyAt < 2_500L) quickMisses++
+        if (now - listenSince > patienceMs() || restarts >= 25) return false
+        if (broken || (!heardNow && now - readyAt < 2_500L)) quickMisses++
         if (broken || quickMisses >= 2) {
             val other = Ears.other(this, ears, anyKind = broken)
             if (other != null) { ears = other; quickMisses = 0 } else if (broken) return false
@@ -592,7 +600,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun askAgain(): Boolean {
         if (unclearTries >= 1 || noMore || tapStopped || convoAsking || voiceMode || onPhone()) return false
         unclearTries++
-        heardSpeech = false; quickMisses = 0; listenSince = System.currentTimeMillis()
+        heardSpeech = false; quickMisses = 0; restarts = 0; listenSince = System.currentTimeMillis()
         showBubble(sayAgainText(), 0)
         main.postDelayed({ if (!listening && !tapStopped && !onPhone()) startListening(again = true) }, 150)
         return true
@@ -622,7 +630,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             ears = Ears.start(this)
         }
         lookToken++
-        readyAt = System.currentTimeMillis()
+        readyAt = System.currentTimeMillis(); heardNow = false
         // a fresh voice typing for each try: a used one gets stuck on some phones
         recognizer?.let { try { it.destroy() } catch (e: Exception) { } }
         val rec = Ears.create(this, ears).also { recognizer = it }
@@ -638,7 +646,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     else -> "వింటున్నాను… Listening…"
                 }, 0)
             }
-            override fun onBeginningOfSpeech() { heardSpeech = true }
+            override fun onBeginningOfSpeech() { heardSpeech = true; heardNow = true }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { setListening(false) }
@@ -650,7 +658,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 // busy, broken, or doesn't know the language: another voice typing, if the phone has one
                 val broken = error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_SERVER || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
                     error == 11 || error == 12 || error == 13 || error == 14   // server disconnected, language not supported / unavailable, can't check
-                if ((silent && !heardSpeech) || broken) { if (listenMore(broken)) return }
+                if (silent || broken) { if (listenMore(broken)) return }   // a pause, noise, its own voice's echo: keep listening
                 if (silent && heardSpeech && askAgain()) return
                 replyVoice = false
                 if (convoAsking) { convoAsking = false; if (silent) { removeBubble(); return } }   // no answer: it asks again another time
@@ -673,7 +681,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             override fun onPartialResults(partial: Bundle?) {
                 if (voiceMode) return
-                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) { heardSpeech = true; showBubble("“$it”", 0) } }
+                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) { heardSpeech = true; heardNow = true; showBubble("“$it”", 0) } }
             }
             override fun onResults(results: Bundle?) {
                 setListening(false)
@@ -681,7 +689,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 if (voiceMode) { onVoiceModeHeard(heard.orEmpty()); return }
                 if (tapStopped) { tapStopped = false; replyVoice = false; return }
                 if (heard.isNullOrBlank()) {
-                    if (!heardSpeech && listenMore(false)) return
+                    if (listenMore(false)) return
                     if (heardSpeech && askAgain()) return
                     replyVoice = false
                     if (convoAsking) { convoAsking = false; removeBubble(); return }
