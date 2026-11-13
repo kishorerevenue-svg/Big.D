@@ -396,8 +396,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private var speakSeq = 0
     private val voicePool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
-    private fun speak(text: String) {
+    private fun speak(said: String) {
         if (onPhone()) { ++speakSeq; return }                         // a phone call: quiet (the words stay in the bubble)
+        val text = Talk.speakable(said)                              // no marks or web addresses read aloud
         val seq = ++speakSeq
         if (store.voiceOn && store.naturalVoice && !naturalNotSetUp && text.length <= 700) {   // long answers: the phone's voice reads them in parts
             val kind = pet.kind; val mood = pet.mood
@@ -421,7 +422,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private val emoji = Regex("\\p{So}|\uFE0F")
     private fun speakPhone(said: String) {
         if (onPhone()) return
-        val text = emoji.replace(said) { if (it.value == "°") it.value else "" }.trim()
+        val text = emoji.replace(Talk.speakable(said)) { if (it.value == "°") it.value else "" }.trim()
         natural.stop()
         val t = tts
         if (!store.voiceOn || t == null || !ttsReady) { fakeTalk(text); return }

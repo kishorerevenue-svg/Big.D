@@ -56,6 +56,8 @@ object CallManager {
     }
 
     @Volatile var active: Call? = null
+    /** Calls that ended here (a ring's old details never bring one back). */
+    private val endedIds: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     /** Server time minus phone time (from Habit Chat's sync), to tell how old a ring is. */
     @Volatile var skew = 0L
     val listeners = CopyOnWriteArraySet<() -> Unit>()
@@ -132,15 +134,17 @@ object CallManager {
         val name = conv?.name ?: "Habit"
         val te = te(ctx)
         val pf = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        val screen = Intent(ctx, CallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // the ring carries the call's details, so Answer and Decline still work if Android closed Habit while it rang
+        val screen = details(Intent(ctx, CallActivity::class.java), call).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val open = PendingIntent.getActivity(ctx, 4701, screen, pf)
-        val answer = PendingIntent.getActivity(ctx, 4702, Intent(ctx, CallActivity::class.java).putExtra("answer", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), pf)
-        val decline = PendingIntent.getBroadcast(ctx, 4703, Intent(ctx, CallActionReceiver::class.java).setAction("decline"), pf)
+        val answer = PendingIntent.getActivity(ctx, 4702, details(Intent(ctx, CallActivity::class.java), call).putExtra("answer", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), pf)
+        val decline = PendingIntent.getBroadcast(ctx, 4703, details(Intent(ctx, CallActionReceiver::class.java).setAction("decline"), call), pf)
         val what = if (call.video) (if (te) "వీడియో కాల్ వస్తోంది" else "Incoming video call") else (if (te) "వాయిస్ కాల్ వస్తోంది" else "Incoming voice call")
         val n = Notification.Builder(ctx, RING)
             .setSmallIcon(android.R.drawable.sym_call_incoming)
             .setContentTitle((conv?.emoji?.let { "$it " } ?: "") + name).setContentText("Habit · $what")
             .setCategory(Notification.CATEGORY_CALL).setOngoing(true).setAutoCancel(false)
+            .setTimeoutAfter(RING_MS)                    // it stops ringing by itself, even if Habit was closed meanwhile
             .setFullScreenIntent(open, true).setContentIntent(open)
             .addAction(Notification.Action.Builder(Icon.createWithResource(ctx, android.R.drawable.ic_menu_close_clear_cancel), if (te) "తిరస్కరించు" else "Decline", decline).build())
             .addAction(Notification.Action.Builder(Icon.createWithResource(ctx, android.R.drawable.sym_action_call), if (te) "ఎత్తండి" else "Answer", answer).build())
@@ -154,6 +158,27 @@ object CallManager {
     }
 
     fun stopRinging(ctx: Context) { try { ctx.getSystemService(NotificationManager::class.java)?.cancel(RING_ID) } catch (e: Exception) { } }
+
+    private fun details(i: Intent, call: Call): Intent = i.putExtra("callId", call.id).putExtra("cid", call.cid).putExtra("peer", call.peer)
+        .putExtra("video", call.video).putExtra("offer", call.offer).putExtra("ringAt", call.startedAt)
+
+    /** The ringing call again from the ring's own details, when Android closed Habit while it rang (a push had woken it). */
+    fun restore(ctx: Context, i: Intent?): Call? {
+        active?.let { return it }
+        if (i == null) return null
+        val id = i.getStringExtra("callId") ?: return null
+        val cid = i.getStringExtra("cid") ?: return null
+        val peer = i.getStringExtra("peer") ?: return null
+        val offer = i.getStringExtra("offer") ?: return null
+        val at = i.getLongExtra("ringAt", 0L)
+        if (offer.isEmpty() || id in endedIds || System.currentTimeMillis() - at > RING_MS + 5_000) return null   // it stopped ringing already
+        val call = Call(id, cid, peer, i.getBooleanExtra("video", false), true).apply { this.offer = offer; startedAt = at }
+        active = call
+        val app = ctx.applicationContext
+        ChatSync.hold(app, "ring")
+        main.postDelayed({ if (active === call && call.state == "ringing") end(app, call, "timeout", true) }, maxOf(1_000L, RING_MS - (System.currentTimeMillis() - at)))
+        return call
+    }
 
     fun channels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
@@ -186,6 +211,7 @@ object CallManager {
     fun end(ctx: Context, call: Call, reason: String, tell: Boolean) {
         if (call.state == "ended") return
         call.state = "ended"; call.reason = reason
+        endedIds.add(call.id)
         if (tell) send(ctx, call, "end", JSONObject().put("reason", reason))
         stopRinging(ctx)
         ChatSync.release("ring")
@@ -243,7 +269,8 @@ object CallManager {
 /** "Decline" on the ringing notification. */
 class CallActionReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
-        val call = CallManager.active ?: return
+        val call = CallManager.active ?: CallManager.restore(ctx, intent)
+        if (call == null) { CallManager.stopRinging(ctx); return }
         if (intent.action == "decline" && call.incoming && call.state == "ringing") CallManager.end(ctx.applicationContext, call, "decline", true)
     }
 }
