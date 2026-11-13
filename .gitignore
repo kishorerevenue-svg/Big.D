@@ -6,3 +6,7 @@ server/.env
 # brand pictures made by brand/src/render.js
 brand/src/out/
 brand/src/*.html
+
+# Python caches
+__pycache__/
+*.pyc

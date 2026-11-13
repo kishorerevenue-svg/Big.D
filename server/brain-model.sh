@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Puts Habit's own trained model, habit-gemma, on this server as our own brain. It is made for free on Kaggle with
-# brain/habit-gemma.ipynb and kept in your private Hugging Face repo (<your Hugging Face name>/habit-gemma).
+# brain/habit_gemma.py and kept in your private Hugging Face repo (<your Hugging Face name>/habit-gemma).
 # First save your Hugging Face token (it stays in .env on this server):
-#   bash /root/Big.D/server/set-key.sh HF_TOKEN hf_...
+#   bash /root/Big.D/server/set-key.sh HF_TOKEN      (then paste the token: it stays hidden)
 # Then:                       true; /root/Big.D/server/brain-model.sh         (or the button on the Teach page)
 # Back to the plain Gemma:    true; /root/Big.D/server/brain-model.sh --back
 # Safe to run again: a stopped download continues where it stopped, and nothing changes unless habit-gemma answers.
@@ -49,7 +49,7 @@ if [ "${1:-}" = "--back" ]; then
   exit 0
 fi
 
-[ -z "$TOKEN" ] && { echo "NOT DONE: save your Hugging Face token first:  bash $SERVER_DIR/set-key.sh HF_TOKEN hf_..."; exit 1; }
+[ -z "$TOKEN" ] && { echo "NOT DONE: save your Hugging Face token first:  bash $SERVER_DIR/set-key.sh HF_TOKEN  (then paste it)"; exit 1; }
 command -v ollama >/dev/null 2>&1 || { echo "NOT DONE: our own brain (Ollama) isn't installed yet. Press 'Install our own brain' on the Teach page first."; exit 1; }
 AUTH="Authorization: Bearer $TOKEN"
 if [ -z "$REPO" ]; then
@@ -69,7 +69,8 @@ echo "Found: made $(printf '%s' "$report" | jget made | cut -c1-10), from Gemma 
 ram=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
 need=$(( mb + 1500 ))
 if [ "$mb" -gt 0 ] && [ "$ram" -lt "$need" ]; then
-  echo "NOT DONE: habit-gemma needs about $(( (need + 1023) / 1024 )) GB memory, and this server has $(( ram / 1024 )) GB. It will work on a bigger server (or train the smaller E2B size)."; exit 1
+  smaller=""; [ "$(printf '%s' "$report" | jget size)" != "E2B" ] && smaller=" (or train the smaller E2B size)"
+  echo "NOT DONE: habit-gemma needs about $(( (need + 1023) / 1024 )) GB memory, and this server has $(( (ram + 512) / 1024 )) GB. It will work on a bigger server${smaller}."; exit 1
 fi
 dir="$DATA/habit-gemma"; mkdir -p "$dir"
 part="$dir/habit-gemma.gguf.part"

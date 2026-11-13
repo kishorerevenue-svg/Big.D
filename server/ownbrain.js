@@ -109,12 +109,49 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
     return "";
   }
 
-  /** Facts for the question: what was learned, the owner's library, and the internet. Each look-up gives up after a few seconds.
-   *  [used] (optional) gets claude: true when a fact came from Claude (an answer learned from Claude, or a document Claude read):
-   *  then this answer is never used to teach Habit's own model. */
+  // ---------- the owner's own lessons (Teach page › 🎓 Teach Gemma › 2): read before answering, straight away ----------
+  // They are the owner's words, people's corrections the owner approved, or Gemma's own clean answers: never Claude's.
+  const LESSONS = path.join(DATA_DIR, "gemma-lessons.json");
+  let lessonCache = { mtime: -1, items: [] };
+  const SMALL = new Set(("the a an is are was were be to of in on at for and or but my me i you your it its this that these those what how why when where who " +
+    "which do does did can could will would should shall may please tell about with from by as have has had get got any some much many there here " +
+    "ఏమిటి ఏంటి ఎలా ఎందుకు ఎప్పుడు ఎక్కడ ఎవరు నేను నా నాకు మీరు మీ మీకు ఇది అది ఒక కూడా చెప్పండి చెప్పు గురించి ఉంది ఉన్నాయి ఏం").split(" "));
+  const wordsOf = s => [...new Set((String(s).toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) || []).filter(w => w.length > 1 && !SMALL.has(w)))];
+  // the same word, or one with an ending added (card / cards, కార్డు / కార్డుకు)
+  const sameWord = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+  function ownerLessons() {
+    try {
+      const st = fs.statSync(LESSONS);
+      if (st.mtimeMs !== lessonCache.mtime) {
+        const list = JSON.parse(fs.readFileSync(LESSONS, "utf8"));
+        lessonCache = { mtime: st.mtimeMs, items: (Array.isArray(list) ? list : []).map(l => ({ q: String(l.q || ""), a: String(l.a || ""), w: wordsOf(l.q) })).filter(l => l.q && l.a && l.w.length) };
+      }
+    } catch (e) { lessonCache = { mtime: -1, items: [] }; }
+    return lessonCache.items;
+  }
+  /** The owner's lesson that asks the same thing as [q]: most of the lesson question's words are in it (at least 2), and
+   *  they are a fair part of [q]. null when none is close enough. */
+  function ownerLesson(q) {
+    const w = wordsOf(q);
+    if (w.length < 2) return null;
+    let best = null, bestScore = 0;
+    for (const l of ownerLessons()) {
+      const both = l.w.filter(x => w.some(y => sameWord(x, y))).length;
+      if (both < 2 || both / l.w.length < 0.6 || both / w.length < 0.25) continue;
+      const score = both / l.w.length + both / 100;
+      if (score > bestScore) { best = l; bestScore = score; }
+    }
+    return best;
+  }
+
+  /** Facts for the question: the owner's lessons, what was learned, the owner's library, and the internet. Each look-up gives
+   *  up after a few seconds. [used] (optional) gets claude: true when a fact came from Claude (an answer learned from Claude,
+   *  or a document Claude read): then this answer is never used to teach Habit's own model. */
   async function facts(q, lang, used) {
     const te = lang === "te" || isTe(q);
     const out = [];
+    const mine = ownerLesson(q);
+    if (mine) out.push(`Habit's own answer to this question, written by the app owner (give this answer in your own friendly words; no need to say where it came from):\nQ: ${mine.q.slice(0, 300)}\nA: ${mine.a.slice(0, 900)}`);
     const learned = answers ? answers.lookup(q) : null;
     if (learned) out.push(`A prepared answer to this common question (checked earlier with the internet):\n${learned.answer.slice(0, 1000)}`);
     const info = {};
@@ -257,5 +294,5 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
   /** For /health: what we know right now, without waiting (it checks again in the background). */
   function quick() { ready().catch(() => {}); return { installed: !!model(), model: model() || "none", ready: seen.ok, vision: seen.ok && seen.vision, answered: stats.answered }; }
 
-  return { ready, pet, writeJson, canWrite, facts, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
+  return { ready, pet, writeJson, canWrite, facts, ownerLesson, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
 };

@@ -5,14 +5,22 @@
 #   bash /root/Big.D/server/set-key.sh GEMINI_API_KEY AIza...         (the backup AI, optional)
 #   bash /root/Big.D/server/set-key.sh HF_TOKEN hf_...                (Hugging Face: brings Habit's own trained model)
 #   bash /root/Big.D/server/set-key.sh GEMINI_API_KEY --remove        (takes a setting out again)
+# Safest: give only the name, then paste the key when it asks. It isn't shown on the screen, so a screenshot can't show it:
+#   bash /root/Big.D/server/set-key.sh HF_TOKEN
 # A Claude or Gemini key is tested with the company first. A key they say is wrong is NOT saved,
 # so the key that is already there keeps working.
 export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
 cd "$(dirname "$0")" || exit 1
-name="$1"
-value="$(printf '%s' "$2" | tr -d '[:space:]"'"'"'')"   # drop spaces and quotes that sneak in when pasting
+name="${1:-}"
+raw="${2:-}"
+if [ -z "$raw" ] && [ -t 0 ] && [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+  printf 'Paste %s now and press Enter (it stays hidden): ' "$name"
+  IFS= read -rs raw; echo
+fi
+value="$(printf '%s' "$raw" | tr -d '[:space:]"'"'"'')"   # drop spaces and quotes that sneak in when pasting
 if ! [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]] || [ -z "$value" ]; then
-  echo "Usage: set-key.sh NAME VALUE    (for example: set-key.sh GOOGLE_TTS_KEY AIzaSy...)"
+  echo "Usage: set-key.sh NAME          (then paste the key: it stays hidden)"
+  echo "       set-key.sh NAME VALUE    (for example: set-key.sh GOOGLE_TTS_KEY AIzaSy...)"
   echo "       set-key.sh NAME --remove (takes the setting out)"
   exit 1
 fi
@@ -55,5 +63,8 @@ case "$code" in
 esac
 
 { grep -v "^$name=" .env || true; printf '%s=%s\n' "$name" "$value"; } > .env.new && mv .env.new .env && chmod 600 .env
-if [ ${#value} -le 6 ]; then echo "SAVED $name = $value"; else echo "SAVED $name (ends with ...${value: -4})"; fi
+# passwords are never shown; keys only by their last 4 letters; other settings (a model name, on/off) in full
+if [[ "$name" =~ (PASSWORD|PASS|SECRET) ]] || { [[ "$name" =~ (KEY|TOKEN) ]] && [ ${#value} -le 12 ]; }; then echo "SAVED $name (${#value} letters)"
+elif [[ "$name" =~ (KEY|TOKEN) ]] || [ ${#value} -gt 40 ]; then echo "SAVED $name (ends with ...${value: -4})"
+else echo "SAVED $name = $value"; fi
 restart
