@@ -30,11 +30,22 @@ cd "$REPO_DIR" || exit 1
 old="$(git rev-parse HEAD)"
 git pull -q || { echo "git pull failed"; exit 1; }
 new="$(git rev-parse HEAD)"
-if [ "$old" != "$new" ]; then
-  if ! git diff --quiet "$old" "$new" -- server/package.json server/package-lock.json; then
-    (cd "$SERVER_DIR" && npm install --omit=dev --no-audit --no-fund) && echo "libraries updated"
-  fi
+if [ "$old" != "$new" ] && ! git diff --quiet "$old" "$new" -- server/package.json server/package-lock.json; then
+  (cd "$SERVER_DIR" && npm install --omit=dev --no-audit --no-fund) && echo "libraries updated"
+fi
+# The Habit server must always run, also after the server itself restarted: PM2 brings back its saved list, or starts it.
+if ! pm2 describe soul-friend >/dev/null 2>&1; then
+  pm2 resurrect >/dev/null 2>&1
+  pm2 describe soul-friend >/dev/null 2>&1 || (cd "$SERVER_DIR" && pm2 start server.js --name soul-friend >/dev/null 2>&1)
+  pm2 save >/dev/null 2>&1
+  if pm2 describe soul-friend >/dev/null 2>&1; then echo "✅ the Habit server was stopped: it is running again"
+  else echo "⚠️ couldn't start the Habit server. Send a screenshot of: pm2 logs soul-friend --lines 30"; fi
+elif [ "$old" != "$new" ]; then
   pm2 restart soul-friend --update-env && echo "updated $old -> $new"
 else
   echo "already up to date"
+fi
+# ...and it starts by itself whenever the server restarts
+if command -v systemctl >/dev/null 2>&1 && ! systemctl is-enabled pm2-root >/dev/null 2>&1; then
+  pm2 startup systemd -u root --hp /root >/dev/null 2>&1 && pm2 save >/dev/null 2>&1 && echo "✅ the Habit server now starts by itself after a server restart"
 fi

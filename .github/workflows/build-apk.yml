@@ -2,6 +2,10 @@ name: Build APK
 
 on:
   push:
+    # a change only to the server (or notes) needs no new app: the server gets it with update.sh
+    paths-ignore:
+      - "server/**"
+      - "**.md"
   workflow_dispatch:
 
 jobs:
