@@ -547,6 +547,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun endConvo(quiet: Boolean = false, bye: Boolean = false) {
         val was = convoOn || convoStay
         convoOn = false; convoStay = false; convoAsking = false; afterSpeech = null; sparkUsed = false
+        if (was) Diary.tidy(this, afterTalk = true)          // the conversation is over: what mattered goes into the memory
         if (quiet) return
         store.setSpeaker("")
         if (bye || was) {
@@ -853,6 +854,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun handleReply(json: JSONObject, fromPhoto: Boolean = false, eyes: Boolean = false, byVoice: Boolean = false) {
         val reply = json.optString("reply", "Woof!")
         lastReply = reply
+        // the diary (on this phone): what was said and answered; the important things go into the pet's memory later
+        if (!fromPhoto && lastQuestion.isNotBlank()) { Diary.add(store, store.speakerNow() ?: "", lastQuestion, reply); Diary.tidy(this) }
         lastRate = if (!fromPhoto && json.optString("rid").isNotEmpty()) JSONObject().put("rid", json.optString("rid")).put("q", lastQuestion.take(600))
             .put("r", reply).put("b", json.optString("brain")) else null
         endFix()
