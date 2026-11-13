@@ -22,8 +22,9 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Turns the AI's "actions" into real things on the phone. Each returns a short line to show the user. */
-class Actions(private val ctx: Context, private val showText: (String, String) -> Unit) {
+/** Turns the AI's "actions" into real things on the phone. Each returns a short line to show the user.
+ *  [onCall]: the floating pet places calls itself (one person: it calls; several: it asks which). Without it, the dialer opens. */
+class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, String>>) -> Unit)? = null, private val showText: (String, String) -> Unit) {
     private val store = Store(ctx)
     private val timeFmt = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
 
@@ -80,8 +81,21 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
     }
 
     /** Opens a page of the Habit AI app (tasks, family, translate, files, vault, feedback, govt, messages). */
+    /** Opens a part of the Habit AI app (the pet can take you anywhere in it). */
     private fun openPage(page: String): String? {
-        val p = page.takeIf { it in setOf("tasks", "family", "translate", "files", "vault", "feedback", "govt", "messages", "safety", "home") } ?: "home"
+        var p = when (page.trim().lowercase()) {
+            "chats", "chat", "habit chat" -> "messages"
+            "media", "videos", "news" -> "feedback"
+            "reminders", "notes", "todo", "to-do", "lists" -> "tasks"
+            "settings", "pet", "my pet", "voice" -> "pet"
+            "sos" -> "family"
+            "letters", "papers", "documents" -> "files"
+            else -> page.trim().lowercase()
+        }
+        if (p == "games") return if (GamesActivity.open(ctx)) null else "Open the Habit AI app"
+        if (p == "office") { store.letterMode = "office"; p = "files" }
+        else if (p == "files") store.letterMode = "public"
+        if (p !in setOf("tasks", "family", "translate", "files", "vault", "feedback", "govt", "messages", "safety", "home", "pet")) p = "home"
         return if (start(Intent(ctx, MainActivity::class.java).putExtra("tab", p))) null else "Open the Habit AI app"
     }
 
@@ -134,14 +148,36 @@ class Actions(private val ctx: Context, private val showText: (String, String) -
 
     private fun digits(s: String) = s.filter { it.isDigit() || it == '+' }
 
-    private fun call(number: String, contact: String): String {
-        val n = digits(number).ifBlank { lookup(contact)?.let { digits(it) } ?: "" }
-        if (n.isBlank()) {
+    /** Every contact whose name matches [name], with each number once (name, number), at most 6. */
+    fun lookupAll(name: String): List<Pair<String, String>> {
+        if (name.isBlank() || ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return emptyList()
+        val out = mutableListOf<Pair<String, String>>(); val seen = HashSet<String>()
+        val uri = Uri.withAppendedPath(ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI, Uri.encode(name))
+        try {
+            ctx.contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use { c ->
+                while (c.moveToNext() && out.size < 6) {
+                    val num = c.getString(1) ?: continue
+                    val key = digits(num).takeLast(10)
+                    if (key.length < 5 || !seen.add(key)) continue
+                    out.add((c.getString(0) ?: name) to num)
+                }
+            }
+        } catch (e: Exception) { }
+        return out
+    }
+
+    private fun call(number: String, contact: String): String? {
+        val given = digits(number)
+        val found = if (given.isBlank()) lookupAll(contact) else listOf(contact.ifBlank { given } to given)
+        if (found.isEmpty()) {
             return if (contact.isNotBlank() && ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
                 "Allow Contacts in the Habit AI app so I can find $contact"
             else if (contact.isNotBlank()) "I couldn't find $contact in your contacts" else "Which number should I call?"
         }
-        return if (start(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$n")))) "Opening the dialer for ${contact.ifBlank { n }}. Tap Call." else "No phone app found"
+        // the floating pet calls by itself (and asks which one when several match)
+        onCall?.let { it(found); return null }
+        val (who, n) = found.first()
+        return if (start(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + digits(n))))) "Opening the dialer for $who. Tap Call." else "No phone app found"
     }
 
     private fun whatsapp(number: String, contact: String, message: String): String {

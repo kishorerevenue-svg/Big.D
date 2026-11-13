@@ -12,6 +12,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.util.Locale
 
@@ -28,6 +29,8 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
 
     companion object {
         val NAMES = setOf("quiz", "riddles", "memory", "tictactoe", "maths", "any")
+        /** The games page while it is on the screen (the floating pet plays along by voice). */
+        @Volatile var shown: GamesActivity? = null
         /** Opens the games ([game]: one of [NAMES], or "" for the list). */
         fun open(ctx: Context, game: String = ""): Boolean = try {
             ctx.startActivity(Intent(ctx, GamesActivity::class.java).putExtra("game", game.takeIf { it in NAMES } ?: "")
@@ -77,6 +80,18 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) { ttsReady = status == TextToSpeech.SUCCESS }
 
+    @Volatile private var state = ""
+    /** What is on the game's screen now, for the pet's brain ("Habit's riddles game, riddle 3: … The answer is …"). */
+    fun context(): String = state.ifBlank { "Habit's games page is open" }.let { "On Habit's games page now: $it" }
+
+    /** The pet heard [text] while the games are on the screen: the page answers, picks, goes next… [done]: whether it used it. */
+    fun voice(text: String, done: (Boolean) -> Unit) {
+        try { web.evaluateJavascript("window.voice ? window.voice(${JSONObject.quote(text)}) : false") { r -> done(r == "true") } }
+        catch (e: Exception) { done(false) }
+    }
+
+    override fun onResume() { super.onResume(); shown = this }
+
     private fun speak(text: String, lang: String) {
         val t = tts ?: return
         if (!ttsReady || !store.voiceOn || text.isBlank()) return
@@ -88,11 +103,23 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
         t.speak(text.take(3500), TextToSpeech.QUEUE_FLUSH, null, "game")
     }
 
-    /** What the page may ask: say something aloud, stop talking, close. */
+    /** What the page may ask: say something aloud (the floating pet says it when it's on the screen), stop talking, close,
+     *  and what is on the screen now (for the pet). */
     inner class Bridge {
-        @JavascriptInterface fun say(text: String, lang: String) { runOnUiThread { speak(text, lang) } }
-        @JavascriptInterface fun hush() { runOnUiThread { try { tts?.stop() } catch (e: Exception) { } } }
+        @JavascriptInterface fun say(text: String, lang: String) { runOnUiThread {
+            if (PetService.running) try {
+                startService(Intent(this@GamesActivity, PetService::class.java).setAction(PetService.ACTION_SAY)
+                    .putExtra("text", text).putExtra("mood", "happy").putExtra("prefix", "").putExtra("local", true))
+                return@runOnUiThread
+            } catch (e: Exception) { }
+            speak(text, lang)
+        } }
+        @JavascriptInterface fun hush() { runOnUiThread {
+            try { tts?.stop() } catch (e: Exception) { }
+            if (PetService.running) try { startService(Intent(this@GamesActivity, PetService::class.java).setAction(PetService.ACTION_HUSH)) } catch (e: Exception) { }
+        } }
         @JavascriptInterface fun close() { runOnUiThread { finish() } }
+        @JavascriptInterface fun state(text: String) { state = text.take(1500) }
     }
 
     @Deprecated("Deprecated in Java")
@@ -101,7 +128,7 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
         web.evaluateJavascript("window.goBack ? (window.goBack(), 1) : 0") { if (it != "1") runOnUiThread { finish() } }
     }
 
-    override fun onPause() { super.onPause(); try { tts?.stop() } catch (e: Exception) { } }
+    override fun onPause() { super.onPause(); if (shown === this) shown = null; try { tts?.stop() } catch (e: Exception) { } }
 
     override fun onDestroy() {
         try { tts?.shutdown() } catch (e: Exception) { }

@@ -23,8 +23,32 @@ function state(s) { if (s === last) return; last = s; try { H.state(s); } catch 
 
 function media(video) {
   return navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
     video: video ? { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } } : false,
+  });
+}
+
+// a clearer voice: Opus (the voice codec) up to 40 kb/s, with loss protection (FEC, so a lost bit of sound is rebuilt
+// instead of cut), mono. Each phone asks this of the other in its own offer / answer.
+function tuneOpus(sdp) {
+  return sdp.replace(/a=fmtp:(\d+) ([^\r\n]*)\r\n/g, (line, pt, params) => {
+    if (!new RegExp("a=rtpmap:" + pt + " opus/48000", "i").test(sdp)) return line;
+    const p = {};
+    params.split(";").map(x => x.trim()).filter(Boolean).forEach(x => { const [k, v] = x.split("="); p[k] = v; });
+    Object.assign(p, { minptime: "10", useinbandfec: "1", usedtx: "0", stereo: "0", "sprop-stereo": "0", maxaveragebitrate: "40000", maxplaybackrate: "48000" });
+    return "a=fmtp:" + pt + " " + Object.entries(p).map(([k, v]) => k + "=" + v).join(";") + "\r\n";
+  });
+}
+// the voice goes first on a busy network
+function voiceFirst() {
+  pc.getSenders().forEach(snd => {
+    if (!snd.track || snd.track.kind !== "audio") return;
+    try {
+      const p = snd.getParameters();
+      if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+      p.encodings[0].maxBitrate = 40000; p.encodings[0].priority = "high"; p.encodings[0].networkPriority = "high";
+      snd.setParameters(p).catch(e => log("voiceFirst: " + e));
+    } catch (e) { log("voiceFirst: " + e); }
   });
 }
 
@@ -43,6 +67,8 @@ async function start(c) {
   try {
     pc = new RTCPeerConnection({ iceServers: c.ice || [], iceCandidatePoolSize: 2, bundlePolicy: "max-bundle" });
     pc.ontrack = e => {
+      // a little more sound kept ready (about 0.1 s), so a jumpy mobile network doesn't cut the voice
+      try { if (e.receiver && "jitterBufferTarget" in e.receiver) e.receiver.jitterBufferTarget = 100; else if (e.receiver) e.receiver.playoutDelayHint = 0.1; } catch (x) { }
       const s = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
       if (cfg.video) { const v = $("remote"); if (v.srcObject !== s) v.srcObject = s; v.style.display = "block"; }
       else { const a = $("sound"); if (a.srcObject !== s) a.srcObject = s; }
@@ -60,12 +86,16 @@ async function start(c) {
     if (c.video) { const l = $("local"); l.srcObject = stream; l.style.display = "block"; }
     state("media");
     if (c.role === "caller") {
-      await pc.setLocalDescription(await pc.createOffer());
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription({ type: "offer", sdp: tuneOpus(offer.sdp) });
+      voiceFirst();
       await gathered(c.wait || 4000);
       H.local("offer", pc.localDescription.sdp);
     } else {
       await pc.setRemoteDescription({ type: "offer", sdp: c.offer });
-      await pc.setLocalDescription(await pc.createAnswer());
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription({ type: "answer", sdp: tuneOpus(answer.sdp) });
+      voiceFirst();
       await gathered(c.wait || 4000);
       H.local("answer", pc.localDescription.sdp);
     }

@@ -9,6 +9,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -48,6 +49,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     companion object {
         @Volatile var running = false
         const val ACTION_SAY = "com.soulfriend.pet.SAY"
+        const val ACTION_HUSH = "com.soulfriend.pet.HUSH"
         const val ACTION_STOP = "com.soulfriend.pet.STOP"
         const val ACTION_LISTEN = "com.soulfriend.pet.LISTEN"
         const val ACTION_PHOTO = "com.soulfriend.pet.PHOTO"
@@ -112,7 +114,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         running = true
         store = Store(this)
         brain = Brain(store)
-        actions = Actions(this) { title, text -> openPanel(title, text) }
+        actions = Actions(this, onCall = { found -> callChoices(found) }) { title, text -> openPanel(title, text) }
+        watchCalls()
         wm = getSystemService(WindowManager::class.java)
         goForeground()
         addPet()
@@ -133,6 +136,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     intent.getStringExtra("mood")?.let { PuppyView.moodOf(it) } ?: PuppyView.Mood.SURPRISED,
                     prefix = intent.getStringExtra("prefix") ?: "⏰ ", local = intent.getBooleanExtra("local", false))
             }
+            ACTION_HUSH -> hush()
             ACTION_LISTEN -> startListening()
             ACTION_PHOTO -> { showPetAgain(); intent.getStringExtra("path")?.let { sendPhoto(it, intent.getBooleanExtra("screen", false)) } }
             ACTION_REMOTE -> { if (store.remoteOn) showRemote() else hideRemote() }
@@ -156,6 +160,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         running = false
+        unwatchCalls(); closeChoices(); closeAskBox()
         ChatSync.release("pet")
         natural.stop(); voicePool.shutdownNow()
         MessageHub.listener = null
@@ -206,7 +211,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun addPet() {
         pet = PuppyView(this)
         pet.kind = PuppyView.kindOf(store.petKind)
-        pet.contentDescription = "Habit AI pet. Tap to talk, hold for menu, drag to the X at the bottom to close."
+        pet.contentDescription = "Habit AI pet. Tap to talk, hold to type, drag to the X at the bottom to close."
         val size = dp(112)
         petParams = overlayParams(size, size).apply {
             x = if (store.petX >= 0) store.petX else screenW - size - dp(8)
@@ -217,7 +222,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0
         var moved = false; var longDone = false
-        val longPress = Runnable { longDone = true; wake(); togglePanel() }
+        val longPress = Runnable { longDone = true; wake(); toggleAskBox() }
         pet.setOnTouchListener { _, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -245,6 +250,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     }
                     else if (!longDone && e.actionMasked == MotionEvent.ACTION_UP) {
                         wake()
+                        if (pendingCall != null) { cancelCall(); return@setOnTouchListener true }
                         if (voiceMode) stopVoiceMode()
                         else if (listening) { if (convoOn) { tapStopped = true; endConvo() }; stopListening() }   // a tap ends the conversation
                         else startListening()
@@ -390,6 +396,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private val voicePool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private fun speak(text: String) {
+        if (onPhone()) { ++speakSeq; return }                         // a phone call: quiet (the words stay in the bubble)
         val seq = ++speakSeq
         if (store.voiceOn && store.naturalVoice && !naturalNotSetUp && text.length <= 700) {   // long answers: the phone's voice reads them in parts
             val kind = pet.kind; val mood = pet.mood
@@ -412,6 +419,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     private val emoji = Regex("\\p{So}|\uFE0F")
     private fun speakPhone(said: String) {
+        if (onPhone()) return
         val text = emoji.replace(said) { if (it.value == "°") it.value else "" }.trim()
         natural.stop()
         val t = tts
@@ -516,7 +524,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private var sparkUsed = false
     private fun trySpark(): Boolean {
         val hour = java.time.LocalTime.now().hour
-        if (!convoOn || sparkUsed || !store.sparks || hour < 7 || hour >= 22 || batteryLow()) return false
+        if (!convoOn || sparkUsed || !store.sparks || hour < 7 || hour >= 22 || batteryLow() || GamesActivity.shown != null) return false
         sparkUsed = true
         val te = te()
         pet.mood = PuppyView.Mood.THINKING
@@ -548,7 +556,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     // ---------------- listening ----------------
     private fun startListening() {
-        if (CallManager.active != null) { showBubble(if (store.lang == "en") "📞 You're on a call. I'll listen after it." else "📞 మీరు కాల్‌లో ఉన్నారు. కాల్ తర్వాత వింటాను."); return }
+        if (CallManager.active != null || onPhone()) { showBubble(if (store.lang == "en") "📞 You're on a call. I'll listen after it." else "📞 మీరు కాల్‌లో ఉన్నారు. కాల్ తర్వాత వింటాను."); return }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             say("I need the microphone. Open the Habit AI app and tap 'Allow microphone'.", PuppyView.Mood.SAD); openApp(); return
         }
@@ -646,6 +654,16 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     // ---------------- asking the brain ----------------
     private fun send(text: String) {
         val byVoice = voiceAsk; voiceAsk = false
+        // a game is on the screen: the pet plays it with them ("కుర్చీ", "the second one", "next", "show the answer"…);
+        // anything else goes to the brain with what's on the game's screen, so it knows what they mean
+        GamesActivity.shown?.let { g ->
+            g.voice(text) { handled ->
+                if (!handled) askBrain(text, byVoice, g.context())
+                // playing by voice: when the pet has said how it went, it listens for the next answer
+                else if (byVoice && store.convo != "off") afterSpeech = { if (GamesActivity.shown != null && !listening && !onPhone()) { convoOn = true; startListening() } }
+            }
+            return
+        }
         // "let's play", "ఆట ఆడదాం": the games open straight away (no need to ask the brain, works without internet)
         Talk.game(text)?.let { g ->
             if (convoOn) endConvo(quiet = true)
@@ -660,10 +678,15 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         lookToken++; autoLooks = 0
         // "look at this shirt", "what's written on this board?", "what colour is my shirt?": the pet looks with the camera itself
         Eyes.wants(text, lastLook)?.let { l -> lastQuestion = l.ask; look(l); return }
+        askBrain(text, byVoice)
+    }
+
+    /** Asks the brain. [context]: what is on Habit's own screen now (a game's question), told to the brain with the question. */
+    private fun askBrain(text: String, byVoice: Boolean, context: String = "") {
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
         showBubble("“$text”\n…", 0)
-        brain.ask(text, onReply = { json -> handleReply(json, byVoice = byVoice) }, onError = { err ->
+        brain.ask(if (context.isBlank()) text else "[$context]\n$text", onReply = { json -> handleReply(json, byVoice = byVoice) }, onError = { err ->
             pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000)
             if (convoOn) endConvo(quiet = true)
         })
@@ -847,6 +870,134 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             } else { panelNote?.text = if (te) "ధన్యవాదాలు! దీంతో హ్యాబిట్ సొంత మెదడు నేర్చుకుంటుంది." else "Thank you! This helps Habit's own brain learn."; lastRate = null; showRate() }
         }
     }
+
+    // ---------------- phone calls: the pet is quiet while the phone rings or a call is on ----------------
+    private val audioMgr by lazy { getSystemService(AUDIO_SERVICE) as android.media.AudioManager }
+    /** Ringing, or on a call (phone, WhatsApp, Habit Chat): no talking, no listening. Needs no permission. */
+    private fun onPhone(): Boolean = try {
+        val m = audioMgr.mode
+        m == android.media.AudioManager.MODE_RINGTONE || m == android.media.AudioManager.MODE_IN_CALL || m == android.media.AudioManager.MODE_IN_COMMUNICATION ||
+            (Build.VERSION.SDK_INT >= 30 && m == android.media.AudioManager.MODE_CALL_SCREENING)
+    } catch (e: Exception) { false }
+    private var modeWatch: Any? = null
+    private fun watchCalls() {
+        if (Build.VERSION.SDK_INT < 31) return
+        try {
+            val l = android.media.AudioManager.OnModeChangedListener { main.post { if (onPhone()) quietForCall() } }
+            audioMgr.addOnModeChangedListener(mainExecutor, l); modeWatch = l
+        } catch (e: Exception) { }
+    }
+    private fun unwatchCalls() {
+        if (Build.VERSION.SDK_INT < 31) return
+        try { (modeWatch as? android.media.AudioManager.OnModeChangedListener)?.let { audioMgr.removeOnModeChangedListener(it) } } catch (e: Exception) { }
+    }
+    private fun quietForCall() {
+        val busy = pet.talking || listening || convoOn
+        hush(); if (listening) stopListening(); endConvo(quiet = true); cancelCall(quiet = true)
+        if (busy) showBubble(if (te()) "📞 కాల్ వచ్చింది, నేను నిశ్శబ్దంగా ఉంటాను." else "📞 A call! I'll be quiet.", 4000)
+    }
+
+    // ---------------- calling by the pet: one person: a call after 3 seconds (tap me to stop it); several: pick one ----------------
+    private var pendingCall: Runnable? = null
+    private fun callChoices(found: List<Pair<String, String>>) {
+        if (found.size == 1) { callSoon(found[0].first, found[0].second); return }
+        val te = te()
+        showChoices(if (te) "📞 ఎవరికి కాల్ చేయాలి?" else "📞 Who should I call?", found.map { (n, num) -> "$n · $num" }) { i -> callSoon(found[i].first, found[i].second) }
+    }
+    private fun callSoon(name: String, number: String) {
+        val te = te()
+        val tel = number.filter { it.isDigit() || it == '+' }
+        if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+            // without the "Phone calls" permission the dialer opens with the number (one tap on Call)
+            try { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$tel")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+            showBubble(if (te) "📞 $name నంబర్ తెరిచాను, Call నొక్కండి. నేనే నేరుగా కాల్ చేయాలంటే యాప్ › Family & SOS లో \"Phone calls\" అనుమతి ఇవ్వండి."
+                       else "📞 $name's number is ready: tap Call. To let me call by myself, allow \"Phone calls\" in the app › Family & SOS.", 9000)
+            return
+        }
+        cancelCall(quiet = true)
+        pet.mood = PuppyView.Mood.EXCITED
+        showBubble(if (te) "📞 $name కి కాల్ చేస్తున్నాను… ($number)\nఆపాలంటే నన్ను తట్టండి" else "📞 Calling $name… ($number)\nTap me to stop", 4000)
+        speakPhone(if (te) "$name కి కాల్ చేస్తున్నాను" else "Calling $name")
+        val go = Runnable {
+            pendingCall = null
+            try { startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(tel))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            catch (e: Exception) { showBubble(if (te) "కాల్ చేయలేకపోయాను." else "I couldn't place the call.", 5000) }
+        }
+        pendingCall = go
+        main.postDelayed(go, 3000)
+    }
+    private fun cancelCall(quiet: Boolean = false) {
+        val p = pendingCall ?: return
+        main.removeCallbacks(p); pendingCall = null
+        hush()
+        if (!quiet) { pet.mood = PuppyView.Mood.HAPPY; showBubble(if (te()) "సరే, కాల్ ఆపాను." else "Okay, I stopped the call.", 3000) }
+    }
+
+    /** A small box under the pet with choices (tap one). */
+    private var choices: View? = null
+    private fun showChoices(title: String, items: List<String>, pick: (Int) -> Unit) {
+        closeChoices()
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(18).toFloat(); setStroke(dp(1), Color.parseColor("#D8DDF0")) }
+            elevation = dp(8).toFloat()
+        }
+        card.addView(TextView(this).apply { text = title; textSize = 15f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.parseColor("#1C2140")) })
+        items.forEachIndexed { i, label ->
+            card.addView(TextView(this).apply {
+                text = label; textSize = 15f; setTextColor(Color.parseColor("#1C2140")); setPadding(dp(12), dp(11), dp(12), dp(11))
+                background = GradientDrawable().apply { setColor(Color.parseColor("#F1F3FB")); cornerRadius = dp(14).toFloat() }
+                setOnClickListener { closeChoices(); pick(i) }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        }
+        card.addView(pill(if (te()) "✕ వద్దు" else "✕ Cancel") { closeChoices() }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+        val w = minOf(screenW - dp(24), dp(320))
+        val p = overlayParams(w, WindowManager.LayoutParams.WRAP_CONTENT)
+        wm.addView(card, p); choices = card
+        card.post { placeNearPet(card, p, w) }
+        main.postDelayed({ if (choices === card) closeChoices() }, 60_000)
+    }
+    private fun closeChoices() { choices?.let { try { wm.removeView(it) } catch (e: Exception) { } }; choices = null }
+
+    /** Puts [v] just under the pet (or just above it when the pet is low on the screen). */
+    private fun placeNearPet(v: View, p: WindowManager.LayoutParams, w: Int) {
+        val h = v.height.takeIf { it > 0 } ?: dp(120)
+        p.x = (petParams.x + pet.width / 2 - w / 2).coerceIn(dp(8), maxOf(dp(8), screenW - w - dp(8)))
+        p.y = if (petParams.y + pet.height + h + dp(8) < screenH * 0.62f) petParams.y + pet.height + dp(4) else maxOf(dp(24), petParams.y - h - dp(4))
+        try { wm.updateViewLayout(v, p) } catch (e: Exception) { }
+    }
+
+    // ---------------- the question box: hold the pet, type under it ----------------
+    private var askBox: View? = null
+    private fun toggleAskBox() { if (askBox != null) closeAskBox() else openAskBox() }
+    private fun openAskBox() {
+        closePanel(); closeChoices()
+        val te = te()
+        val input = EditText(this).apply {
+            hint = if (te) "నన్ను అడగండి…" else "Ask me anything…"; textSize = 15f; setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES; imeOptions = EditorInfo.IME_ACTION_SEND
+            setTextColor(Color.parseColor("#1C2140")); setHintTextColor(Color.parseColor("#8A90B0"))
+            background = GradientDrawable().apply { setColor(Color.parseColor("#F1F3FB")); cornerRadius = dp(18).toFloat() }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        val go = { val q = input.text.toString().trim(); if (q.isNotEmpty()) { hideKeyboard(input); closeAskBox(); send(q) } }
+        input.setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { go(); true } else false }
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(24).toFloat(); setStroke(dp(1), Color.parseColor("#D8DDF0")) }
+            elevation = dp(8).toFloat()
+            addView(input, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(pill("➤", primary = true) { go() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+            addView(pill("⋯") { hideKeyboard(input); closeAskBox(); openPanel(null, lastReply) }.apply { contentDescription = if (te) "మెనూ" else "Menu" },
+                LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(4) })
+            addView(pill("✕") { hideKeyboard(input); closeAskBox() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(4) })
+        }
+        val w = minOf(screenW - dp(16), dp(380))
+        val p = overlayParams(w, WindowManager.LayoutParams.WRAP_CONTENT, focusable = true).apply { softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE }
+        wm.addView(card, p); askBox = card
+        card.post { placeNearPet(card, p, w); input.requestFocus(); getSystemService(InputMethodManager::class.java).showSoftInput(input, 0) }
+    }
+    private fun closeAskBox() { askBox?.let { try { wm.removeView(it) } catch (e: Exception) { } }; askBox = null }
 
     // ---------------- menu panel (hold the puppy) ----------------
     private fun togglePanel() { if (panel == null) openPanel(null, lastReply) else closePanel() }
