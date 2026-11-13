@@ -153,6 +153,58 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 const main = document.getElementById("app"), title = document.getElementById("title");
 let leave = null;   // what the back button does inside a game
 
+// ---------- playing by voice: the floating pet passes on what it heard (window.voice), and the page tells the pet what is
+// on the screen (app.state), so the pet's brain knows the question too ----------
+let CUR = { game: "home" };
+function setState(text) { if (app && app.state) { try { app.state(String(text).slice(0, 1400)); } catch (e) { } } }
+const norm = s => String(s).toLowerCase().replace(/[“”"'’`.,!?;:()\[\]\-–—…/]/g, " ").replace(/\s+/g, " ").trim();
+const SMALL = new Set(["a", "an", "the", "of", "or", "and", "it", "is", "its", "your", "my", "to", "ఒక", "లేదా", "అది", "ఇది"]);
+const sameW = (a, b) => a === b || (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a)));
+/** How much of [target]'s main words are in what they said (0 to 1). */
+function fit(heard, target) {
+  const t = norm(target).split(" ").filter(w => w && !SMALL.has(w) && (w.length > 1 || /\d/.test(w)));
+  const h = norm(heard).split(" ").filter(Boolean);
+  if (!t.length || !h.length) return 0;
+  return t.filter(w => h.some(x => sameW(x, w))).length / t.length;
+}
+/** Like fit(), counting every word (for choices that differ only by a short word: "Vitamin A" / "Vitamin D"). */
+function fitAll(heard, target) {
+  const t = norm(target).split(" ").filter(Boolean), h = norm(heard).split(" ").filter(Boolean);
+  if (!t.length || !h.length) return 0;
+  return t.filter(w => h.some(x => x === w || (Math.min(x.length, w.length) >= 3 && sameW(x, w)))).length / t.length;
+}
+/** True when what they said has at least half of the main words of [target]. */
+const says = (heard, target) => fit(heard, target) >= 0.5;
+const ORD = [[/\b(first|one|1|a)\b|మొదటి|మొదటిది|ఒకటి|ఒకటో/, 0], [/\b(second|two|2|b)\b|రెండో|రెండవ|రెండు/, 1], [/\b(third|three|3|c)\b|మూడో|మూడవ|మూడు/, 2], [/\b(fourth|four|4|d)\b|నాలుగో|నాలుగవ|నాలుగు/, 3]];
+const CMD = {
+  next: /\b(next|skip|go on|another)\b|తరువాత|తర్వాత|నెక్స్ట్|ఇంకోటి|ఇంకొకటి|మరొకటి|వేరేది/,
+  answer: /\b(show|tell|say)( me)?( the)? answer\b|జవాబు చెప్పు|జవాబు చూపించు|ఆన్సర్ చెప్పు|చెప్పేయ్/,
+  hint: /\b(hint|clue)\b|క్లూ|సూచన|హింట్/,
+  again: /\b(again|play again|restart|one more)\b|మళ్ళీ|మళ్లీ|ఇంకోసారి/,
+  list: /\b(other games?|games list|all games|another game|menu)\b|ఇతర ఆట|ఆటల లిస్ట్|వేరే ఆట/,
+  close: /^(close|exit|quit|stop (the )?game|close (the )?game)$|ఆట ఆపు|ఆట మూసేయ్|ఆటలు మూసేయ్|బయటకు వెళ్ళు/,
+  dontknow: /\b(don ?t know|do not know|no idea|give up)\b|తెలియదు|తెలీదు/,
+  yes: /^(yes|yeah|ok|okay|sure|got it)$|^(అవును|సరే|ఓకే|తెలిసింది)$/
+};
+function gameFrom(h) {
+  if (/quiz|క్విజ్/.test(h)) return "quiz";
+  if (/riddle|పొడుపు/.test(h)) return "riddles";
+  if (/memory|cards?\b|జ్ఞాపక|కార్డు/.test(h)) return "memory";
+  if (/tic ?tac|\bx ?o\b|ఎక్స్ ఓ|xo/.test(h)) return "tictactoe";
+  if (/\bmaths?\b|numbers? game|లెక్క/.test(h)) return "maths";
+  return null;
+}
+/** What the pet heard; true when the game used it. */
+window.voice = function (text) {
+  const h = norm(text);
+  if (!h) return false;
+  if (CMD.close.test(h)) { say(T("Okay, see you! 👋", "సరే, మళ్ళీ ఆడదాం! 👋")); setTimeout(() => { if (app && app.close) app.close(); }, 900); return true; }
+  if (CMD.list.test(h)) { home(); say(T("Pick a game: quiz, riddles, memory cards, tic-tac-toe or maths.", "ఒక ఆట చెప్పండి: క్విజ్, పొడుపు కథలు, జ్ఞాపకశక్తి ఆట, X-O ఆట, లెక్కల ఆట.")); return true; }
+  const g = gameFrom(h);
+  if (g && (CUR.game === "home" || /\bplay\b|ఆడ/.test(h))) { GAMES[g].run(); return true; }
+  return CUR.voice ? !!CUR.voice(h) : false;
+};
+
 // ---------- 1. quiz ----------
 const QUIZ = [
   { q: ["What is the capital of India?", "భారతదేశ రాజధాని ఏది?"], o: [["Mumbai", "ముంబై"], ["New Delhi", "న్యూఢిల్లీ"], ["Kolkata", "కోల్‌కతా"], ["Chennai", "చెన్నై"]], a: 1,
@@ -257,6 +309,21 @@ function quiz() {
       <div class="qtext">${esc(it.q[L])}</div><div class="opts"></div></div>`);
     const opts = card.querySelector(".opts");
     let answered = false;
+    function after() {
+      card.querySelector(".meta .gold").textContent = "⭐ " + score;
+      card.appendChild($(`<div class="why">💡 ${esc(it.why[L])}</div>`));
+      const next = $(`<div class="row"><button class="btn">${i + 1 < round.length ? T("Next ➜", "తరువాత ➜") : T("See my score", "నా స్కోర్ చూడు")}</button></div>`);
+      next.querySelector("button").onclick = () => { i++; show(); };
+      card.appendChild(next);
+      next.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    function reveal() {   // "I don't know": the answer, without a point
+      if (answered) return;
+      answered = true;
+      [...opts.children][order.indexOf(it.a)].classList.add("right");
+      petSays(T("The answer is: ", "సరైన జవాబు: ") + it.o[it.a][L], "", true);
+      after();
+    }
     for (const k of order) {
       const b = $(`<button class="opt">${esc(it.o[k][L])}</button>`);
       b.onclick = () => {
@@ -269,12 +336,7 @@ function quiz() {
           [...opts.children][order.indexOf(it.a)].classList.add("right");
           petSays(OOPS() + " " + T("The answer is: ", "సరైన జవాబు: ") + it.o[it.a][L], "oops", true);
         }
-        card.querySelector(".meta .gold").textContent = "⭐ " + score;
-        card.appendChild($(`<div class="why">💡 ${esc(it.why[L])}</div>`));
-        const next = $(`<div class="row"><button class="btn">${i + 1 < round.length ? T("Next ➜", "తరువాత ➜") : T("See my score", "నా స్కోర్ చూడు")}</button></div>`);
-        next.querySelector("button").onclick = () => { i++; show(); };
-        card.appendChild(next);
-        next.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        after();
       };
       opts.appendChild(b);
     }
@@ -282,6 +344,25 @@ function quiz() {
     window.scrollTo(0, 0);
     petSays(T("Choose the right answer!", "సరైన జవాబు ఎంచుకోండి!"), "", false);
     say(it.q[L]);
+    const nextBtn = () => card.querySelector(".row .btn");
+    CUR = { game: "quiz", voice: h => {
+      if (answered) { if (CMD.next.test(h) || CMD.yes.test(h)) { nextBtn().click(); return true; } return false; }
+      if (CMD.dontknow.test(h) || CMD.answer.test(h)) { reveal(); return true; }
+      // the choice whose words fit best (two fitting the same: they say which one)
+      let fits = order.map(key => norm(it.o[key][L]) === h ? 2 : fit(h, it.o[key][L]));
+      let top = Math.max(...fits);
+      if (top >= 0.5 && fits.filter(f => f === top).length > 1) {   // a tie: count every word of the tied choices
+        fits = fits.map((f, j) => f === top ? 1 + fitAll(h, it.o[order[j]][L]) : 0);
+        top = Math.max(...fits);
+      }
+      let k = top >= 0.5 && fits.filter(f => f === top).length === 1 ? fits.indexOf(top) : -1;
+      if (k < 0 && h.split(" ").length <= 3) for (const [re, pos] of ORD) if (re.test(h)) { k = pos; break; }
+      if (k < 0 && top >= 0.5) { petSays(T("Which one? Say first, second, third or fourth.", "ఏది? మొదటిది, రెండోది, మూడోది లేదా నాలుగోది అని చెప్పండి."), "", true); return true; }
+      if (k < 0) return false;
+      opts.children[k].click();
+      return true;
+    } };
+    setState(`Habit's quiz game, question ${i + 1} of ${round.length}: "${it.q[L]}" Choices: ${order.map((k, j) => `${j + 1}) ${it.o[k][L]}`).join("; ")}. The right answer is "${it.o[it.a][L]}". Score so far: ${score}.`);
   }
   function done() {
     const b = best("quiz", score);
@@ -291,7 +372,9 @@ function quiz() {
       <div class="row"><button class="btn" id="again">${T("Play again", "మళ్ళీ ఆడదాం")}</button><button class="btn soft" id="other">${T("Other games", "ఇతర ఆటలు")}</button></div></div>`));
     document.getElementById("again").onclick = quiz;
     document.getElementById("other").onclick = home;
-    petSays(msg, "happy", true);
+    petSays(msg + " " + T("Say \"again\" to play once more.", "మళ్ళీ ఆడాలంటే \"మళ్ళీ\" అనండి."), "happy", true);
+    CUR = { game: "quiz-end", voice: h => { if (CMD.again.test(h) || CMD.yes.test(h)) { quiz(); return true; } return false; } };
+    setState(`Habit's quiz game is over: ${score} out of ${round.length}.`);
   }
   show();
 }
@@ -367,6 +450,35 @@ function riddles() {
     window.scrollTo(0, 0);
     petSays(T("Think, think… 🤔", "ఆలోచించండి… 🤔"), "", false);
     say(q);
+    const answers = a.split(/[()]|\bor\b|లేదా/).map(x => x.trim()).filter(x => norm(x).length > 1);
+    let shown = false;
+    CUR = { game: "riddles", voice: h => {
+      if (shown) {
+        if (CMD.next.test(h) || CMD.yes.test(h)) { i++; show(); return true; }
+        return false;
+      }
+      if (answers.some(x => says(h, x))) {
+        shown = true; got++; best("riddles", got);
+        card.querySelector(".answer").classList.remove("hidden");
+        card.querySelector(".meta .gold").textContent = "✅ " + got;
+        card.querySelector(".row").classList.add("hidden");
+        petSays(PRAISE() + " " + a + "!", "happy", true);
+        const me = i;
+        setTimeout(() => { if (CUR.game === "riddles" && i === me) { i++; show(); } }, 4200);
+        return true;
+      }
+      if (CMD.hint.test(h)) { const b = card.querySelector("#hint"); if (b && !b.disabled) b.click(); else say(hint); return true; }
+      if (CMD.answer.test(h) || CMD.dontknow.test(h)) { shown = true; card.querySelector("#show").click(); return true; }
+      if (CMD.next.test(h)) { i++; show(); return true; }
+      // a short reply is a guess; anything longer goes to the pet's brain (with this riddle, so it knows)
+      if (h.split(" ").length <= 4 || /\b(is it|it s|answer is|i think)\b|అనుకుంటా|ఏమో|అదా|ఇదా/.test(h)) {
+        petSays(T("Not quite! Try again, or say \"hint\" or \"tell the answer\".", "కాదండి! మళ్ళీ ప్రయత్నించండి, లేదా \"క్లూ\" / \"జవాబు చెప్పు\" అనండి."), "oops", true);
+        return true;
+      }
+      return false;
+    } };
+    card.querySelector("#show").addEventListener("click", () => { shown = true; });
+    setState(`Habit's riddles game, riddle ${i + 1}: "${q}" The answer is "${a}". Hint: ${hint}`);
   }
   show();
 }
@@ -402,6 +514,8 @@ function memory() {
   main.replaceChildren(card);
   window.scrollTo(0, 0);
   petSays(T("Find the matching pairs!", "ఒకేలాంటి జతలను కనిపెట్టండి!"), "", true);
+  CUR = { game: "memory", voice: h => { if (CMD.again.test(h)) { memory(); return true; } petSays(T("Tap two cards to find a pair! 🃏", "రెండు కార్డులు నొక్కి జత కనిపెట్టండి! 🃏"), "", true); return true; } };
+  setState("Habit's memory cards game: the person taps two cards at a time to find matching pairs.");
   function won() {
     const b = best("memory", moves, false);
     main.replaceChildren($(`<div class="card center"><div class="big">🧠</div><div class="result">${T("All pairs found!", "అన్ని జతలూ దొరికాయి!")}</div>
@@ -409,6 +523,7 @@ function memory() {
       <div class="row"><button class="btn" id="again">${T("Play again", "మళ్ళీ ఆడదాం")}</button><button class="btn soft" id="other">${T("Other games", "ఇతర ఆటలు")}</button></div></div>`));
     document.getElementById("again").onclick = memory;
     document.getElementById("other").onclick = home;
+    CUR = { game: "memory-end", voice: h => { if (CMD.again.test(h) || CMD.yes.test(h)) { memory(); return true; } return false; } };
     petSays(T("Super memory! 🎉", "భలే జ్ఞాపకశక్తి! 🎉"), "happy", true);
   }
 }
@@ -455,7 +570,23 @@ function tictactoe() {
   }
   main.replaceChildren(card);
   window.scrollTo(0, 0);
-  petSays(T("You are ✖. Your turn first!", "మీరు ✖. ముందు మీ వంతు!"), "", true);
+  petSays(T("You are ✖. Your turn first! Tap a box, or say \"middle\", \"top left\" or a number from 1 to 9.", "మీరు ✖. ముందు మీ వంతు! ఒక గడి నొక్కండి, లేదా \"మధ్య\", \"పైన ఎడమ\" లేదా 1 నుంచి 9 లో ఒక నంబర్ చెప్పండి."), "", true);
+  const POS = [[/top left|పైన ఎడమ/, 0], [/top (middle|centre|center)|పైన మధ్య/, 1], [/top right|పైన కుడి/, 2], [/(middle|centre|center) left|మధ్య ఎడమ|మధ్యలో ఎడమ/, 3],
+    [/(middle|centre|center) right|మధ్య కుడి|మధ్యలో కుడి/, 5], [/bottom left|కింద ఎడమ/, 6], [/bottom (middle|centre|center)|కింద మధ్య/, 7], [/bottom right|కింద కుడి/, 8],
+    [/\b(middle|centre|center)\b|మధ్య/, 4]];
+  const TE_NUM = ["ఒకటి", "రెండు", "మూడు", "నాలుగు", "ఐదు", "ఆరు", "ఏడు", "ఎనిమిది", "తొమ్మిది"];
+  CUR = { game: "tictactoe", voice: h => {
+    if (over) { if (CMD.again.test(h) || CMD.yes.test(h)) { tictactoe(); return true; } return false; }
+    let n = -1;
+    for (const [re, k] of POS) if (re.test(h)) { n = k; break; }
+    if (n < 0) { const m = h.match(/\b([1-9])\b/); if (m) n = Number(m[1]) - 1; }
+    if (n < 0) TE_NUM.forEach((w, k) => { if (n < 0 && h.includes(w)) n = k; });
+    if (n < 0) return false;
+    if (b[n] || thinking) { petSays(T("That box is taken! Pick another.", "ఆ గడి నిండిపోయింది! వేరేది చెప్పండి."), "oops", true); return true; }
+    cells[n].click();
+    return true;
+  } };
+  setState("Habit's tic-tac-toe game: the person is ✖ and the pet is ⭕. Boxes are numbered 1 to 9, left to right, top to bottom.");
 }
 
 // ---------- 5. quick maths ----------
@@ -493,6 +624,17 @@ function maths() {
     }
     main.replaceChildren(card);
     window.scrollTo(0, 0);
+    say(text.replace("−", T(" minus ", " మైనస్ ")).replace("×", T(" times ", " ఇంటు ")).replace("+", T(" plus ", " ప్లస్ ")));
+    CUR = { game: "maths", voice: h => {
+      if (answered) return false;
+      const m = h.match(/\d+/);
+      if (!m) return false;
+      const btn = [...card.querySelectorAll(".opt")].find(x => x.textContent === m[0]);
+      if (!btn) { petSays(T(`${m[0]} isn't one of the answers. Look again!`, `${m[0]} జవాబుల్లో లేదు. మళ్ళీ చూడండి!`), "oops", true); return true; }
+      btn.click();
+      return true;
+    } };
+    setState(`Habit's quick maths game, question ${i + 1} of ${total}: ${text} = ? The choices are ${opts.join(", ")}; the right answer is ${ans}.`);
   }
   function done() {
     const b = best("maths", score);
@@ -502,6 +644,7 @@ function maths() {
       <div class="row"><button class="btn" id="again">${T("Play again", "మళ్ళీ ఆడదాం")}</button><button class="btn soft" id="other">${T("Other games", "ఇతర ఆటలు")}</button></div></div>`));
     document.getElementById("again").onclick = maths;
     document.getElementById("other").onclick = home;
+    CUR = { game: "maths-end", voice: h => { if (CMD.again.test(h) || CMD.yes.test(h)) { maths(); return true; } return false; } };
     petSays(msg, "happy", true);
   }
   petSays(T("Pick the right answer, fast!", "త్వరగా సరైన జవాబు ఎంచుకోండి!"), "", true);
@@ -530,6 +673,11 @@ function home() {
   main.replaceChildren(grid, $(`<div class="foot">${T("Everything stays on this phone. No internet needed.", "అంతా ఈ ఫోన్‌లోనే. ఇంటర్నెట్ అవసరం లేదు.")}</div>`));
   window.scrollTo(0, 0);
   petSays(T("Let's play! Pick a game 🎮", "ఆట ఆడదాం! ఒక ఆట ఎంచుకోండి 🎮"), "happy", false);
+  CUR = { game: "home", voice: h => {
+    say(T("Which game? Quiz, riddles, memory cards, tic-tac-toe or maths.", "ఏ ఆట? క్విజ్, పొడుపు కథలు, జ్ఞాపకశక్తి ఆట, X-O ఆట, లేదా లెక్కల ఆట?"));
+    return true;
+  } };
+  setState("Habit's games page: the list of games (quiz, riddles, memory cards, tic-tac-toe, quick maths).");
 }
 document.getElementById("back").onclick = () => {
   if (leave) { const f = leave; f(); return; }

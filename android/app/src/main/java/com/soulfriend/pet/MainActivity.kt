@@ -781,14 +781,9 @@ class MainActivity : Activity() {
                 addView(pet, LinearLayout.LayoutParams(dp(84), dp(84)))
             })
             put(ui.button(if (PetService.running) "Close my pet" else "🐾  Show my pet on screen", if (PetService.running) "ghost" else "primary") { togglePet() }, 12)
-            put(ui.text("Tap it to talk · hold it for the menu · drag it down to ✕ to close", 12.5f, Ui.MUTED), 8)
+            put(ui.text(t("Tap it to talk · hold it to type · say \"let's play\" for games · drag it down to ✕ to close", "తట్టి మాట్లాడండి · పట్టుకుంటే టైప్ చేయవచ్చు · ఆటల కోసం \"ఆట ఆడదాం\" అనండి · మూసేయడానికి కిందకు ✕ దగ్గరకు లాగండి"), 12.5f, Ui.MUTED), 8)
         }, 14)
 
-        add(ui.section(t("🎮 Play with your pet", "🎮 మీ పెట్‌తో ఆడుకోండి"),
-            t("Quiz, riddles, memory cards, tic-tac-toe and quick maths. Or just tell your pet \"let's play\". No internet needed.",
-              "క్విజ్, పొడుపు కథలు, జ్ఞాపకశక్తి ఆట, X - O ఆట, లెక్కల ఆట. లేదా మీ పెట్‌తో \"ఆట ఆడదాం\" అనండి. ఇంటర్నెట్ అవసరం లేదు.")).apply {
-            put(ui.button(t("🎮  Play games", "🎮  ఆటలు ఆడండి"), "primary") { GamesActivity.open(this@MainActivity) }, 12)
-        }, 12)
         add(brainCard(), 12)
         add(ui.section("Choose your pet").apply { petPicker(this) }, 12)
 
@@ -1863,7 +1858,7 @@ class MainActivity : Activity() {
                 add(bigPet(PuppyView.Mood.LOVE), 16)
                 add(ui.text("All set! 🎉", 27f, Ui.INK, bold = true).apply { gravity = Gravity.CENTER }, 8)
                 add(ui.card().apply {
-                    listOf("👆" to "Tap me to talk", "✋" to "Hold me for the menu: type, photo, lists", "↕️" to "Drag me anywhere; drag me down to ✕ to close",
+                    listOf("👆" to "Tap me to talk", "✋" to "Hold me to type (⋯ for photo, screen, lists)", "↕️" to "Drag me anywhere; drag me down to ✕ to close",
                         "📱" to "Open this app for tasks, files, your Vault and settings").forEachIndexed { i, (ic, t) ->
                         put(ui.row(ui.text(ic, 20f), ui.text(t, 15f), gap = 12), if (i == 0) 0 else 12)
                     }
