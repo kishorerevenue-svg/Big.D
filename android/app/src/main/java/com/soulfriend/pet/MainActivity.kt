@@ -909,6 +909,8 @@ class MainActivity : Activity() {
         put(status, 4)
         put(ui.check("🧸 Cute cartoon voice (higher, like a cartoon character)", store.cuteVoice) { store.cuteVoice = it }, 8)
         put(ui.check("🎉 Fun sounds when they fit (tada, laugh, wow, applause…)", store.funSounds) { store.funSounds = it; if (it) SoundFx.play(this@MainActivity, "tada") }, 8)
+        put(ui.check(t("💬 Keep listening after answers (talk without tapping every time; say \"bye\" to stop)",
+            "💬 జవాబు తర్వాత కాసేపు వింటూ ఉండు (ప్రతిసారీ తట్టనక్కర్లేదు; ఆపడానికి \"చాలు\" అనండి)"), store.convo == "on") { store.convo = if (it) "on" else "off" }, 8)
         put(ui.row(ui.button("▶ Test voice", "primary") {
             if (!Settings.canDrawOverlays(this@MainActivity)) { toast("First allow \"Show over other apps\" below."); return@button }
             if (!PetService.running) startForegroundService(Intent(this@MainActivity, PetService::class.java))

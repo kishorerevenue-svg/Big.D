@@ -34,6 +34,8 @@ class Brain(private val store: Store) {
             .put("todos", todos).put("notes", notes)
             .put("memories", JSONArray().also { a -> store.memories().forEach { a.put(it) } })
             .put("learn", store.learnShare)
+        // who is talking now, only when they said it in this conversation (family members share the phone)
+        store.speakerNow()?.let { body.put("speaker", it); store.touchSpeaker() }
         if (photo != null) body.put("image", JSONObject().put("mediaType", photo.first).put("data", photo.second))
         val server = store.server
         if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) {

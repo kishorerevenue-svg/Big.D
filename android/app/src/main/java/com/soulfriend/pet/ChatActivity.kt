@@ -551,7 +551,7 @@ class ChatActivity : Activity() {
         val timer = ChatTheme.disappear(this, cid).let { if (it > 0) "⏱ " else "" }
         return timer + when {
             c.isSelf -> t("Only on this phone · notes and reminders", "ఈ ఫోన్‌లో మాత్రమే · నోట్స్, రిమైండర్లు")
-            c.isAi -> t("Your AI friend · answers can be wrong sometimes", "మీ AI స్నేహితుడు · జవాబులు అప్పుడప్పుడు తప్పు కావచ్చు")
+            c.isAi -> t("Your AI friend · says where facts come from", "మీ AI స్నేహితుడు · సమాచారం ఎక్కడిదో చెబుతుంది")
             c.isBcast -> "📢 " + t("${c.members().size} recipients", "${c.members().size} మందికి")
             c.isGroup -> (c.comm?.let { "🏘️ " + it.optString("name") + " · " } ?: "") + c.members().joinToString(", ") { if (it.optString("uid") == me) t("You", "మీరు") else it.optString("name") }
             presence.isNotEmpty() -> presence
