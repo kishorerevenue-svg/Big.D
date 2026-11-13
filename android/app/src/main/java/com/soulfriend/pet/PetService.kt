@@ -511,10 +511,32 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         return true
     }
 
+    /** "Interesting talk": the conversation went quiet, so once per conversation (in the daytime) the pet says one short fact,
+     *  tip or riddle, then listens once more. False when it doesn't (then the conversation ends). */
+    private var sparkUsed = false
+    private fun trySpark(): Boolean {
+        val hour = java.time.LocalTime.now().hour
+        if (!convoOn || sparkUsed || !store.sparks || hour < 7 || hour >= 22 || batteryLow()) return false
+        sparkUsed = true
+        val te = te()
+        pet.mood = PuppyView.Mood.THINKING
+        Thread {
+            val j = if (te) Sparks.fromServer(store, "te") else null      // Habit Media's posts are in Telugu
+            val (text, mood) = if (j != null) j.optString("reply") to PuppyView.moodOf(j.optString("emotion")) else Sparks.local(store, te)
+            main.post {
+                if (!convoOn || listening) return@post                   // they tapped or started talking meanwhile
+                say(text, mood)
+                brain.noteSaid(text)
+                afterSpeech = { if (convoOn) startListening() }
+            }
+        }.start()
+        return true
+    }
+
     /** The conversation is over: the pet relaxes (and forgets who was talking: the next person may be someone else). */
     private fun endConvo(quiet: Boolean = false, bye: Boolean = false) {
         val was = convoOn || convoStay
-        convoOn = false; convoStay = false; convoAsking = false; afterSpeech = null
+        convoOn = false; convoStay = false; convoAsking = false; afterSpeech = null; sparkUsed = false
         if (quiet) return
         store.setSpeaker("")
         if (bye || was) {
@@ -562,7 +584,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     if (silent && convoStay && System.currentTimeMillis() - convoHeardAt < 3 * 60_000L && !batteryLow()) {
                         main.postDelayed({ if (convoOn && !listening) startListening() }, 250); return
                     }
-                    if (silent) { endConvo(); return }
+                    if (silent) { if (!trySpark()) endConvo(); return }
                     endConvo(quiet = true)
                 }
                 val msg = when (error) {
@@ -585,7 +607,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 if (heard.isNullOrBlank()) {
                     replyVoice = false
                     if (convoAsking) { convoAsking = false; removeBubble(); return }
-                    if (convoOn) { endConvo(); return }
+                    if (convoOn) { if (!trySpark()) endConvo(); return }
                     showBubble("I didn't catch that. Tap me and speak again.", 5000); return
                 }
                 if (replyVoice) { replyVoice = false; replyByVoice(heard); return }

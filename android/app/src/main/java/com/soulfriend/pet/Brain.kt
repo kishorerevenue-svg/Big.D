@@ -19,6 +19,12 @@ class Brain(private val store: Store) {
 
     fun clear() = history.clear()
 
+    /** Something the pet said by itself (an interesting fact in a pause), so "yes, tell me more" is understood. */
+    fun noteSaid(text: String) {
+        history.add(JSONObject().put("role", "assistant").put("content", text))
+        while (history.size > 12) history.removeAt(0)
+    }
+
     /** [photo] = Pair(mediaType, base64) to ask about a picture.
      *  [local]: when the AI can't be reached, let the phone's own small brain ([LocalBrain]) answer simple requests. */
     fun ask(text: String, onReply: (JSONObject) -> Unit, onError: (String) -> Unit, photo: Pair<String, String>? = null, local: Boolean = true) {

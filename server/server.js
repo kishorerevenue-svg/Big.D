@@ -530,6 +530,14 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // "interesting talk": something short for a pause in a spoken conversation (from Habit's own Media posts, no AI cost)
+  if (req.method === "GET" && url.pathname === "/api/pet/spark") {
+    if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
+    const lang = ["auto", "te", "en"].includes(url.searchParams.get("lang")) ? url.searchParams.get("lang") : "auto";
+    const dev = crypto.createHash("sha256").update("self|" + (String(req.headers["x-device"] || "") || clientIp(req))).digest("hex").slice(0, 16);
+    const s = selfBrain.spark(lang, dev);
+    return s ? send(res, 200, s, origin) : send(res, 404, { error: "Nothing new right now." }, origin);
+  }
   if (req.method === "POST" && url.pathname === "/api/pet") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
     // no Claude key, today's AI budget or this person's free AI messages used up: our own brains answer (they cost nothing)
