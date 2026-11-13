@@ -801,6 +801,7 @@ class MainActivity : Activity() {
             }, 12)
         }, 12)
         add(voiceCard(), 12)
+        add(voiceIdCard(), 12)
         add(ui.section("👀 Pet's eyes · కళ్ళు", "Just ask your pet to look, and it looks through the camera by itself (no camera window, no photo to send):\n" +
             "• \"Look at this shirt, is it available online?\" · \"ఈ షర్ట్ ఆన్‌లైన్‌లో దొరుకుతుందా?\"\n" +
             "• \"What's written on this board?\" · \"ఈ బోర్డు మీద ఏం రాసి ఉంది?\"\n" +
@@ -906,6 +907,36 @@ class MainActivity : Activity() {
             "resting" -> t("resting: Habit works by itself", "విశ్రాంతి: Habit సొంతంగా చేస్తోంది")
             else -> t("not set up", "సెట్ చేయలేదు")
         }), 6)
+    }
+
+    /** Knowing who in the family is talking: first a check that this phone lets Habit hear the voice (VoiceCheck). */
+    private fun voiceIdCard() = ui.section(t("🎙 Knowing voices", "🎙 గొంతు గుర్తింపు"),
+        t("Soon your pet will know who in the family is talking. First, check if this phone lets Habit hear voices. Nothing is recorded or sent.",
+          "త్వరలో కుటుంబంలో ఎవరు మాట్లాడుతున్నారో మీ పెట్ గుర్తిస్తుంది. ముందుగా ఈ ఫోన్ అందుకు అనుమతిస్తుందో చూద్దాం. ఏదీ రికార్డ్ చేయదు, ఎక్కడికీ పంపదు.")).apply {
+        val status = ui.text(when (VoiceCheck.state(this@MainActivity)) {
+            "ok" -> t("✅ This phone can do it.", "✅ ఈ ఫోన్‌లో పని చేస్తుంది.")
+            "no" -> t("❌ It didn't work on this phone last time. You can check again.", "❌ పోయినసారి ఈ ఫోన్‌లో పని చేయలేదు. మళ్ళీ చెక్ చేయవచ్చు.")
+            else -> ""
+        }, 14f, Ui.INK)
+        put(status, 6)
+        put(ui.button(t("🎙 Voice check", "🎙 గొంతు చెక్"), "primary") {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                toast(t("Allow the microphone first, then tap again.", "ముందు మైక్రోఫోన్ అనుమతి ఇవ్వండి, తర్వాత మళ్ళీ నొక్కండి."))
+                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
+                return@button
+            }
+            status.text = t("Getting ready…", "సిద్ధమవుతోంది…")
+            VoiceCheck.run(this@MainActivity, if (store.lang == "te") "te" else "en", onStatus = { status.text = it }) { r ->
+                status.text = when {
+                    r.ok -> t("✅ Yes! This phone can let Habit hear voices. I heard: \"${r.heard}\". The next update can teach your pet your family's voices.",
+                              "✅ అవును! ఈ ఫోన్‌లో పని చేస్తుంది. నేను విన్నది: \"${r.heard}\". తర్వాతి అప్‌డేట్‌లో మీ కుటుంబం గొంతులు మీ పెట్‌కు నేర్పవచ్చు.")
+                    Build.VERSION.SDK_INT < 33 -> t("❌ This needs Android 13 or newer.", "❌ దీనికి Android 13 లేదా కొత్తది కావాలి.")
+                    else -> t("❌ This phone's voice typing doesn't share the sound with Habit. Your pet still knows you when you say \"I'm ___\".",
+                              "❌ ఈ ఫోన్ వాయిస్ టైపింగ్ శబ్దాన్ని హ్యాబిట్‌తో పంచుకోదు. \"నేను ___\" అని చెబితే మీ పెట్ మిమ్మల్ని గుర్తిస్తుంది.") +
+                        "\n(${r.service.ifBlank { "?" }} · ${r.which} · ${r.error} · ${r.peak})"
+                }
+            }
+        }, 10)
     }
 
     private fun voiceCard() = ui.section("Voice 🔊", "A clear, grown-up voice that speeds up a little when your pet is excited and slows down when it's sad.").apply {
