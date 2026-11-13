@@ -58,6 +58,17 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
   // ---------- storage ----------
   let db = { next: 1, items: [], calls: { day: "", n: 0 }, lastDaily: "", seedTries2: { day: "" } };
   try { db = Object.assign(db, JSON.parse(fs.readFileSync(FILE, "utf8"))); } catch (e) { }
+  // web answers can carry Claude's citation marks as text (<cite index="1-2">…</cite>): never shown; posts made before
+  // this was cleaned are fixed once here
+  const noCites = s => String(s == null ? "" : s).replace(/<\\?\/?\s*cite\b[^>]*>/gi, "");
+  {
+    let fixed = 0;
+    for (const i of db.items || []) for (const k of ["title", "body"]) if (typeof i[k] === "string" && /<\\?\/?\s*cite\b/i.test(i[k])) { i[k] = noCites(i[k]); fixed++; }
+    if (fixed) {
+      try { fs.writeFileSync(FILE + ".tmp", JSON.stringify(db)); fs.renameSync(FILE + ".tmp", FILE); } catch (e) { }
+      console.log("Media: took citation marks out of " + fixed + " posts");
+    }
+  }
   let saveTimer = null, urls = null;
   function save() {
     urls = null;
@@ -119,7 +130,7 @@ module.exports = function makeMedia({ DATA_DIR, API_BASE, API_KEY, MODEL, adminP
       if (data.stop_reason !== "pause_turn") break;
       body.messages = body.messages.concat([{ role: "assistant", content: data.content }]);
     }
-    return { text: texts.join("").trim(), pages: [...pages].map(([url, title]) => ({ url, title })), stop: data && data.stop_reason };
+    return { text: noCites(texts.join("").trim()).trim(), pages: [...pages].map(([url, title]) => ({ url, title })), stop: data && data.stop_reason };
   }
   function parseJson(text) {
     const t = String(text || "").replace(/```(?:json)?/gi, "");

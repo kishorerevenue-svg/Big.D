@@ -538,7 +538,7 @@ object ChatSync {
         }
         val rate = if (json.optString("rid").isNotEmpty()) JSONObject().put("rid", json.optString("rid")).put("q", q.take(600))
             .put("r", json.optString("reply")).put("b", json.optString("brain")) else null
-        aiSay(ctx, (json.optString("reply", "").ifBlank { "🐾" } + if (lines.isEmpty()) "" else "\n\n" + lines.joinToString("\n")).trim(), rate)
+        aiSay(ctx, (Talk.plain(json.optString("reply", "")).ifBlank { "🐾" } + if (lines.isEmpty()) "" else "\n\n" + lines.joinToString("\n")).trim(), rate)
     }
     private fun aiSay(ctx: Context, text: String, rate: JSONObject? = null) {
         val db = ChatDb.get(ctx)

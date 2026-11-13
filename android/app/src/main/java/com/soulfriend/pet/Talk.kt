@@ -4,6 +4,14 @@ package com.soulfriend.pet
  *  listening), and yes / no. Only short, whole sayings count ("stop the alarm" is a question for the brain, not "stop").
  *  Plain text rules, so they are tested without a phone (TalkTest). */
 object Talk {
+    // marks a web answer can carry: Claude's citation marks ((cite index="10-1">…</cite>, also <cite index=\"10-1\">
+    // and <\/cite>) and a few HTML tags; never shown in the bubble or read aloud (the server takes them out too)
+    private val MARKS = Regex("<\\\\?/?\\s*(cite|b|i|u|em|strong|span|sup|sub|small|p|a)\\b[^>]*>", RegexOption.IGNORE_CASE)
+    private val BREAKS = Regex("<\\s*br\\s*/?\\s*>", RegexOption.IGNORE_CASE)
+    private val SPACES = Regex("[ \\t]{2,}")
+    /** The words only, without citation marks or HTML tags. */
+    fun plain(s: String): String = if ('<' !in s) s else SPACES.replace(MARKS.replace(BREAKS.replace(s, "\n"), ""), " ").trim()
+
     private fun clean(s: String): String = s.lowercase()
         .replace(Regex("['’`]"), "")
         .replace(Regex("[\\p{P}\\p{S}]"), " ")

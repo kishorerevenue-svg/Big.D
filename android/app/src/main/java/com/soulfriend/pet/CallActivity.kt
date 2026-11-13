@@ -194,7 +194,10 @@ class CallActivity : Activity() {
         shade.visibility = if (video && c.connectedAt > 0) View.GONE else View.VISIBLE
         face.visibility = if (video && c.connectedAt > 0) View.GONE else View.VISIBLE
         statusView.text = when (c.state) {
-            "calling" -> t("Calling…", "కాల్ చేస్తున్నాం…")
+            // no "ringing" from their phone yet: Habit may be closed there (then it rings only with Firebase push set up)
+            "calling" -> if (System.currentTimeMillis() - c.startedAt < 9000) t("Calling…", "కాల్ చేస్తున్నాం…")
+                else t("Calling… their phone isn't ringing yet.\nIf Habit is closed there, they'll see a missed call.",
+                       "కాల్ చేస్తున్నాం… వారి ఫోన్ ఇంకా రింగ్ అవ్వలేదు.\nవారి ఫోన్‌లో Habit మూసి ఉంటే, మిస్డ్ కాల్ కనిపిస్తుంది.")
             "ringing" -> if (c.incoming) (if (c.answered) t("Connecting…", "కలుపుతున్నాం…") else if (c.video) t("Incoming video call", "వీడియో కాల్ వస్తోంది") else t("Incoming voice call", "వాయిస్ కాల్ వస్తోంది"))
                 else t("Ringing…", "రింగ్ అవుతోంది…")
             "connecting" -> t("Connecting…", "కలుపుతున్నాం…")

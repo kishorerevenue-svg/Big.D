@@ -53,6 +53,7 @@ class Brain(private val store: Store) {
             try {
                 val (code, out) = post("$server/api/pet", body.toString())
                 val json = try { JSONObject(out) } catch (e: Exception) { JSONObject() }
+                if (json.has("reply")) json.put("reply", Talk.plain(json.optString("reply")))   // no citation marks shown or read (older servers)
                 if (code in 200..299 && !json.has("reply")) main.post {
                     history.removeAt(history.lastIndex)
                     onError("That server address is not a Habit AI server. Check the address in the Habit AI app.")

@@ -14,6 +14,9 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
   let chunks = [];  // [{id,title,text,tokens:Set}]
 
   const tokenize = s => (String(s).toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) || []).filter(t => t.length > 1);
+  /** A web answer written inside JSON can carry Claude's citation marks as plain text (<cite index="10-1">…</cite>,
+   *  also as <cite index=\"10-1\"> or <\/cite> inside the JSON): they are never shown or read aloud. */
+  const noCites = s => String(s == null ? "" : s).replace(/<\\?\/?\s*cite\b[^>]*>/gi, "");
 
   function rebuild() {
     chunks = [];
@@ -209,8 +212,8 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
     // the answer is the text after the last search result
     let lastSearch = -1;
     content.forEach((c, i) => { if (c.type === "web_search_tool_result") lastSearch = i; });
-    const text = content.slice(lastSearch + 1).filter(c => c.type === "text").map(c => c.text).join("").trim()
-      || content.filter(c => c.type === "text").map(c => c.text).join("").trim();
+    const text = noCites(content.slice(lastSearch + 1).filter(c => c.type === "text").map(c => c.text).join("").trim()
+      || content.filter(c => c.type === "text").map(c => c.text).join("").trim()).trim();
     const seen = new Set(), sources = [];
     for (const c of content) for (const cit of (c.citations || [])) {
       if (cit.url && !seen.has(cit.url) && sources.length < maxSources) { seen.add(cit.url); sources.push({ title: String(cit.title || cit.url).slice(0, 120), url: cit.url }); }
@@ -329,5 +332,5 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
   /** True when an upload is read without Claude (a text file): fileToText reads it directly. */
   const readsItself = (name, mediaType) => /^text\//.test(mediaType) || /\.(txt|md|csv)$/i.test(name);
 
-  return { addKnowledge, removeKnowledge, listKnowledge, knowledgeBlock, searchKnowledge, readKnowledge, viaOf, readsItself, callClaude, anthropic, aiStatus, claudeOut, accountProblem, fileToText, urlToText };
+  return { noCites, addKnowledge, removeKnowledge, listKnowledge, knowledgeBlock, searchKnowledge, readKnowledge, viaOf, readsItself, callClaude, anthropic, aiStatus, claudeOut, accountProblem, fileToText, urlToText };
 };
