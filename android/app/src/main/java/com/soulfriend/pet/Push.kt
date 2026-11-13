@@ -45,7 +45,9 @@ object Push {
         val app = ctx.applicationContext
         val store = Store(app)
         if (busy || !ChatSync.isSetUp(app)) return
-        if (!force && System.currentTimeMillis() - store.pushCheckedAt < 6 * 3600_000L) return
+        // not ringing-ready yet: ask again every couple of minutes (the owner may have just set it up); ready: every 6 hours
+        val every = if (store.pushTok.isEmpty()) 2 * 60_000L else 6 * 3600_000L
+        if (!force && System.currentTimeMillis() - store.pushCheckedAt < every) return
         busy = true
         Thread {
             try {

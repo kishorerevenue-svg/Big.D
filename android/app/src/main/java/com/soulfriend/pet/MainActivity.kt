@@ -1001,9 +1001,9 @@ class MainActivity : Activity() {
 
     /** Overlay, microphone, notifications, exact alarms, contacts, phone calls and Telugu voice. */
     private fun permissionRows(box: LinearLayout) {
-        fun step(done: Boolean, label: String, why: String, action: () -> Unit) {
+        fun step(done: Boolean, label: String, why: String, button: String = "Allow", leaves: Boolean = true, action: () -> Unit) {
             box.put(ui.line(ui.stack(ui.text((if (done) "✅  " else "◻️  ") + label, 15f, Ui.INK, bold = true), ui.text(why, 12.5f, Ui.MUTED)),
-                if (done) null else ui.button("Allow") { leavingForSystemScreen = true; action() }), 12)
+                if (done) null else ui.button(button) { if (leaves) leavingForSystemScreen = true; action() }), 12)
         }
         step(Settings.canDrawOverlays(this), "Show over other apps", "So your pet can float on your screen.") {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -1022,6 +1022,18 @@ class MainActivity : Activity() {
         }
         step(granted(Manifest.permission.READ_CONTACTS), "Contacts (optional)", "Only to find a number when you say \"call Ravi\". Never sent to the server.") {
             requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 3)
+        }
+        // Habit Chat calls ring here even while Habit is closed (Firebase push, once the Habit server's owner turned it on)
+        if (ChatSync.isSetUp(this)) {
+            val on = Push.on(this)
+            step(on, "Habit calls ring when Habit is closed",
+                if (on) "This phone rings for Habit calls even when Habit is closed, like WhatsApp."
+                else "Not on yet. The Habit server's owner turns it on once (Teach page › Calls ring). Then tap Check.",
+                button = "Check", leaves = false) {
+                Push.setup(this, force = true)
+                toast(if (store.lang == "te") "చూస్తున్నాం…" else "Checking…")
+                content.postDelayed({ if (!isFinishing) render() }, 6000)
+            }
         }
         // Android 14+: a Habit call may fill the screen (and ring) when the phone is locked, like a normal call
         if (Build.VERSION.SDK_INT >= 34) {
