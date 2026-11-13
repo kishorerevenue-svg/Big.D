@@ -17,7 +17,7 @@ import java.io.ByteArrayInputStream
 import java.util.Locale
 
 /**
- * Habit's games, opened by the pet ("let's play", "ఆట ఆడదాం") or from the app: a quiz, riddles, memory cards,
+ * Habit's games, opened only by the pet ("let's play", "ఆట ఆడదాం"): a quiz, riddles, memory cards,
  * tic-tac-toe and quick maths, in one page that is part of the app (assets/games/index.html). It works without internet
  * and nothing leaves the phone; the page only asks the app to say things aloud and to close.
  */
