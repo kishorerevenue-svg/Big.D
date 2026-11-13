@@ -34,7 +34,9 @@ if [ "$old" != "$new" ] && ! git diff --quiet "$old" "$new" -- server/package.js
   (cd "$SERVER_DIR" && npm install --omit=dev --no-audit --no-fund) && echo "libraries updated"
 fi
 # The Habit server must always run, also after the server itself restarted: PM2 brings back its saved list, or starts it.
+revived=""
 if ! pm2 describe soul-friend >/dev/null 2>&1; then
+  revived=1
   pm2 resurrect >/dev/null 2>&1
   pm2 describe soul-friend >/dev/null 2>&1 || (cd "$SERVER_DIR" && pm2 start server.js --name soul-friend >/dev/null 2>&1)
   pm2 save >/dev/null 2>&1
@@ -45,7 +47,8 @@ elif [ "$old" != "$new" ]; then
 else
   echo "already up to date"
 fi
-# ...and it starts by itself whenever the server restarts
-if command -v systemctl >/dev/null 2>&1 && ! systemctl is-enabled pm2-root >/dev/null 2>&1; then
+# ...and it starts by itself whenever the server restarts (set up again when it had stopped: an old boot setup may point
+# to an old Node or PM2 path)
+if command -v systemctl >/dev/null 2>&1 && { [ -n "$revived" ] || ! systemctl is-enabled pm2-root >/dev/null 2>&1; }; then
   pm2 startup systemd -u root --hp /root >/dev/null 2>&1 && pm2 save >/dev/null 2>&1 && echo "✅ the Habit server now starts by itself after a server restart"
 fi
