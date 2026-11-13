@@ -48,6 +48,26 @@ object Talk {
         return w.any { it in STAY_WORDS } && w.all { it in STAY_WORDS || it in STAY_FILLER }
     }
 
+    // "let's play", "play quiz", "games", "ఆట ఆడదాం", "క్విజ్ ఆడుకుందాం": a request to play (not "what game is on TV?")
+    private val PLAY_EN = Regex("^(lets|let us|shall we|can we|i want to|i wanna|wanna|come on|come)? ?play( a| some| the)?( game| games| quiz| riddles?| tic tac toe| tictactoe| x o| memory( game)?| maths?( game)?| number game)?( with me| now| please)*$")
+    private val PLAY_ONLY = Regex("^(games?|quiz|riddles?|tic tac toe|tictactoe|memory game|maths? game|ఆటలు|ఆట|గేమ్|గేమ్స్|క్విజ్|పొడుపు కథలు|పొడుపు కథ)( please| ప్లీజ్)?$")
+    private val PLAY_TE = Regex("ఆడదాం|ఆడుదాం|ఆడుకుందాం|ఆడదామా|ఆడుకుందామా|ఆట ఆడ|aadadam|aadudam|aadukundam|adadam|adukundam|aadukundama")
+
+    /** The game they asked for ("quiz", "riddles", "memory", "tictactoe", "maths", or "any"), or null when it isn't a request to play. */
+    fun game(text: String): String? {
+        val c = clean(text)
+        if (c.isEmpty() || words(text).size > 8) return null
+        if (!(PLAY_EN.matches(c) || PLAY_ONLY.matches(c) || PLAY_TE.containsMatchIn(c))) return null
+        return when {
+            Regex("quiz|క్విజ్").containsMatchIn(c) -> "quiz"
+            Regex("riddle|పొడుపు").containsMatchIn(c) -> "riddles"
+            Regex("tic ?tac ?toe|tictactoe|\\bx o\\b|ఎక్స్ ఓ").containsMatchIn(c) -> "tictactoe"
+            Regex("memory|జ్ఞాపక").containsMatchIn(c) -> "memory"
+            Regex("\\bmaths?\\b|number game|లెక్కల").containsMatchIn(c) -> "maths"
+            else -> "any"
+        }
+    }
+
     private val YES = setOf("yes", "yeah", "yep", "yup", "sure", "haan", "ha", "avunu", "avnu", "అవును", "అవ్ను", "kavali", "kaavali", "కావాలి",
         "please", "ఉండు", "undu", "do", "it", "ok", "okay", "sare", "సరే", "ఓకే")
     private val NO = setOf("no", "nope", "nah", "vaddu", "వద్దు", "ledu", "లేదు", "dont", "not", "never", "వద్దులే")

@@ -784,6 +784,11 @@ class MainActivity : Activity() {
             put(ui.text("Tap it to talk · hold it for the menu · drag it down to ✕ to close", 12.5f, Ui.MUTED), 8)
         }, 14)
 
+        add(ui.section(t("🎮 Play with your pet", "🎮 మీ పెట్‌తో ఆడుకోండి"),
+            t("Quiz, riddles, memory cards, tic-tac-toe and quick maths. Or just tell your pet \"let's play\". No internet needed.",
+              "క్విజ్, పొడుపు కథలు, జ్ఞాపకశక్తి ఆట, X - O ఆట, లెక్కల ఆట. లేదా మీ పెట్‌తో \"ఆట ఆడదాం\" అనండి. ఇంటర్నెట్ అవసరం లేదు.")).apply {
+            put(ui.button(t("🎮  Play games", "🎮  ఆటలు ఆడండి"), "primary") { GamesActivity.open(this@MainActivity) }, 12)
+        }, 12)
         add(brainCard(), 12)
         add(ui.section("Choose your pet").apply { petPicker(this) }, 12)
 

@@ -624,6 +624,14 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     // ---------------- asking the brain ----------------
     private fun send(text: String) {
         val byVoice = voiceAsk; voiceAsk = false
+        // "let's play", "ఆట ఆడదాం": the games open straight away (no need to ask the brain, works without internet)
+        Talk.game(text)?.let { g ->
+            if (convoOn) endConvo(quiet = true)
+            if (GamesActivity.open(this, g)) {
+                say(if (te() || isTelugu(text)) "ఆట ఆడదాం! 🎮" else "Let's play! 🎮", PuppyView.Mood.EXCITED, local = true)
+                return
+            }
+        }
         HandsFree.match(text)?.let { if (handsFree(it)) return }
         if (BuildConfig.HANDS_FREE && Regex("^(reels? mode|hands ?free( mode)?|రీల్స్ మోడ్|హ్యాండ్స్ ఫ్రీ)$", RegexOption.IGNORE_CASE).matches(text.trim().trimEnd('.', '!'))) { startVoiceMode(); return }
         if (ScreenCaptureService.wantsScreen(text)) { readScreen(text); return }
@@ -782,8 +790,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         replyTo?.let { (m, text) -> openMsgCard(m); msgInput?.setText(text); msgInput?.setSelection(text.length) }
         panelText?.let { if (panel != null && panelContent.isEmpty()) { it.text = reply + extra; panelTools?.visibility = View.VISIBLE } }
         showRate()
-        // a spoken question: when the answer has been said, listen for the next one (conversation mode)
-        if (byVoice && store.voiceOn && lookAt == null && lookAgain == null && screenAsk == null && replyTo == null && !voiceMode &&
+        // a spoken question: when the answer has been said, listen for the next one (conversation mode), unless the answer
+        // took them somewhere else (a game, another app, a call, the letter helper)
+        val away = arr != null && (0 until arr.length()).any { arr.optJSONObject(it)?.optString("type") in setOf("game", "open_app", "open_page", "call", "whatsapp", "letter") }
+        if (byVoice && store.voiceOn && !away && lookAt == null && lookAgain == null && screenAsk == null && replyTo == null && !voiceMode &&
             (convoStay || store.convo != "off")) afterSpeech = { convoNext() }
         else if (convoOn) endConvo(quiet = true)
     }
