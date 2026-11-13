@@ -24,7 +24,7 @@ const path = require("path");
 const crypto = require("crypto");
 const zlib = require("zlib");
 
-module.exports = function makeChat({ DATA_DIR, social, h }) {
+module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
   const FILE = path.join(DATA_DIR, "chat.json");
   const FDIR = path.join(DATA_DIR, "chat-files");
   fs.mkdirSync(FDIR, { recursive: true });
@@ -75,6 +75,24 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
   }
   /** An event for a person: to their phone and each of their linked computers ([except]: the device that did it). */
   function push(uid, ev, except) { for (const bid of boxIds(uid)) if (bid !== except) pushBox(bid, Object.assign({}, ev)); }
+
+  // ---------- waking phones where Habit is closed (Firebase push, see push.js) ----------
+  // Each phone gives its push address (POST /api/chat/push). A call note wakes the phone at once (it rings); a new
+  // message wakes it gently (a notification), only when Habit isn't open and waiting there. The push has no words.
+  db.push = db.push || {};                 // uid -> [{ t: push address, pkg, at }]
+  function wake(u, what, cid, high) {
+    if (!fcm || !fcm.ready()) return;
+    const list = db.push[u];
+    if (!list || !list.length) return;
+    if (!high && waiters.has(u)) return;   // Habit is open there: the message reaches it at once anyway
+    for (const x of list.slice()) fcm.send(x.t, { t: what, cid }, high).then(r => {
+      if (r !== "gone") return;
+      db.push[u] = (db.push[u] || []).filter(y => y.t !== x.t);
+      if (!db.push[u].length) delete db.push[u];
+      save();
+    }).catch(() => {});
+  }
+  const pushPhones = () => Object.keys(db.push || {}).length;
   const pushAll = (conv, ev, except) => { for (const u of conv.members) if (u !== except) push(u, Object.assign({}, ev)); };
 
   // ---------- chats ----------
@@ -271,6 +289,21 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
       return send(200, { me: Object.assign({}, mine, { kid }), cursor: box(me).n });
     }
     if (!db.keys[me]) return send(409, { error: "Open Habit Chat in the app first.", needKey: true });
+
+    // this phone's push address (Firebase): its Habit calls ring and new messages show while Habit is closed (push.js)
+    if (p === "/api/chat/push" && req.method === "POST") {
+      if (web) return send(200, { ok: true });
+      const tok = str(body.token, 4096).trim(), pkg = /^[\w.]{3,120}$/.test(String(body.pkg || "")) ? String(body.pkg) : "";
+      if (tok) for (const u of Object.keys(db.push)) if (u !== me) {          // one phone, one person (it changed accounts)
+        db.push[u] = db.push[u].filter(x => x.t !== tok);
+        if (!db.push[u].length) delete db.push[u];
+      }
+      const list = (db.push[me] || []).filter(x => x.t !== tok);
+      if (tok) list.push({ t: tok, pkg, at: Date.now() });
+      if (list.length) db.push[me] = list.slice(-3); else delete db.push[me];   // the newest three phones / installs
+      save();
+      return send(200, { ok: true, push: !!(fcm && fcm.ready()) });
+    }
 
     if (p === "/api/chat/convs" && req.method === "GET") {
       const list = Object.values(db.convs).filter(c => c.members.includes(me)).map(c => view(c, me));
@@ -697,6 +730,10 @@ module.exports = function makeChat({ DATA_DIR, social, h }) {
           push(u, { k: "m", cid: c.id, seq: m.seq });
         }
         push(me, { k: "m", cid: c.id, seq: m.seq }, bid);       // a copy for my other devices (sent from the computer: the phone shows it too)
+        // phones where Habit is closed: a call note wakes them at once (the call rings, or stops ringing); a message or task
+        // shows as a notification. Other small notes (reactions, edits…) wait until Habit opens.
+        const ring = type === "ctl" && body.ring === true;
+        if (type !== "ctl" || ring) for (const u of c.members) if (u !== me) wake(u, ring ? "call" : "msg", c.id, ring);
         save();
         return send(200, { seq: m.seq, at: m.at, task });
       }
@@ -909,5 +946,5 @@ ${ok ? `<a class="a" href="${esc(app)}">👥 Join in Habit AI</a>` : ""}<a class
   }
   function reports() { return db.reports.slice(-100).reverse().map(r => Object.assign({}, r, { byName: person(r.by).name, whoName: r.who ? person(r.who).name : "", whoHandle: r.who ? person(r.who).handle : "" })); }
 
-  return { handle, stats, reports, _test: { db: () => db, ack, purge, waiters } };
+  return { handle, stats, reports, pushPhones, _test: { db: () => db, ack, purge, waiters } };
 };

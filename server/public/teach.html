@@ -216,6 +216,24 @@ summary{cursor:pointer;font-weight:600}
       <p id="ytMsg" class="msg"></p>
     </section>
 
+    <section class="card" id="pushCard">
+      <h2>📞 Calls ring when Habit is closed · హ్యాబిట్ మూసి ఉన్నా కాల్ రింగ్</h2>
+      <p class="hint">Without this, a Habit call rings only when Habit is open on the other phone; otherwise they only see a missed call later. Google's free Firebase wakes the phone, like WhatsApp does. The push has no message words in it: chats and calls stay locked. Set it up once:</p>
+      <ol class="hint">
+        <li>Open <b>console.firebase.google.com</b> → <b>Create a project</b> → name: Habit AI → Google Analytics: off → Create.</li>
+        <li>In the project: <b>Add app</b> → Android → package name <code>com.kishore.bigd.lite</code> → Register app → <b>Download google-services.json</b>. Skip the other steps.</li>
+        <li>⚙️ <b>Project settings › Service accounts › Generate new private key</b> → Generate key. A second .json file downloads. Keep it secret.</li>
+        <li>Choose the two files here and tap Save. The key stays only on this server.</li>
+      </ol>
+      <label for="pushApp">1. google-services.json</label>
+      <input id="pushApp" type="file" accept=".json,application/json" aria-label="google-services.json">
+      <label for="pushKey">2. Service account key (the second .json)</label>
+      <input id="pushKey" type="file" accept=".json,application/json" aria-label="Service account key">
+      <button id="pushSave" type="button">Save</button>
+      <button id="pushOff" type="button" class="ghost" hidden>Turn off</button>
+      <div class="msg" id="pushMsg" role="status"></div>
+    </section>
+
     <section class="card">
       <h2>💬 Habit Chat · హ్యాబిట్ చాట్</h2>
       <p class="hint">Chats and groups between people who use the app, locked end to end on their phones: this server only passes on locked messages it can't read, and deletes each one once everyone has it (photos and voice notes after 30 days). When someone reports a chat, the messages they reported show here.</p>
@@ -526,6 +544,33 @@ async function loadChat() {
   for (const r of reports.slice(0, 30)) ul.append(row(`⚠️ ${r.byName} reported ${r.whoName || (r.name ? "the group " + r.name : "a chat")}${r.whoHandle ? " (@" + r.whoHandle + ")" : ""}: ${r.reason || ""}`,
     (r.msgs || []).map(m => "• " + m.text).join("\n"), new Date(r.at).toLocaleString(), "", null));
 }
+// ---------- 📞 calls ring when Habit is closed (Firebase) ----------
+async function loadPush() { showPush(await api("push")); }
+function showPush({ push: s, phones }) {
+  $("pushOff").hidden = !(s.keyFile || s.appFile);
+  if (s.ready) say($("pushMsg"), `✅ On (Firebase project ${s.project}). ${phones} phone${phones === 1 ? "" : "s"} can ring now; each phone joins when Habit opens once with this version. ` +
+    `Pushes sent: ${s.sent}` + (s.failed ? ` · failed: ${s.failed}` + (s.lastError ? ` (last: ${s.lastError})` : "") : "") +
+    (s.apps.includes("com.kishore.bigd.lite") ? "" : "\n⚠️ The Firebase app's package name isn't com.kishore.bigd.lite. Add an Android app with that name and save the new google-services.json."), s.apps.includes("com.kishore.bigd.lite"));
+  else say($("pushMsg"), "Not set up yet: calls ring only when Habit is open on the other phone.", false);
+}
+$("pushSave").onclick = () => {
+  const a = $("pushApp").files[0], k = $("pushKey").files[0];
+  if (!a || !k) { say($("pushMsg"), "Choose both files first (google-services.json and the key).", false); return; }
+  if (a.size > 200000 || k.size > 200000) { say($("pushMsg"), "Those files are too big to be Firebase files.", false); return; }
+  $("pushSave").disabled = true; say($("pushMsg"), "Checking the files with Google…", true);
+  (async () => {
+    const r = await api("push/setup", { app: await a.text(), admin: await k.text() });
+    if (!r.ok) throw new Error(r.error || "Couldn't save.");
+    $("pushApp").value = ""; $("pushKey").value = "";
+    await loadPush();
+  })().catch(e => say($("pushMsg"), e.message, false)).finally(() => { $("pushSave").disabled = false; });
+};
+$("pushOff").onclick = async () => {
+  if ($("pushOff").dataset.sure !== "1") { $("pushOff").dataset.sure = "1"; $("pushOff").textContent = "Tap again to turn off"; return; }
+  $("pushOff").dataset.sure = ""; $("pushOff").textContent = "Turn off";
+  try { await api("push/remove", {}); await loadPush(); } catch (e) { say($("pushMsg"), e.message, false); }
+};
+
 // ---------- 🎓 Teach Gemma ----------
 let gm = null, gmTimer = 0, gmEdit = "";
 const GM_FROM = { owner: "your lesson", fix: "a person's correction", gemma: "Gemma's own answer" };
@@ -630,6 +675,7 @@ $("gmBack").onclick = async () => { if ($("gmBack").dataset.sure !== "1") { $("g
 
 async function refresh() {
   loadChat().catch(() => {});
+  loadPush().catch(() => {});
   loadFeedback().catch(() => {});
   loadCt().catch(() => {});
   loadAiv().catch(() => {});

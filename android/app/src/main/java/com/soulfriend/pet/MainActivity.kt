@@ -1023,6 +1023,14 @@ class MainActivity : Activity() {
         step(granted(Manifest.permission.READ_CONTACTS), "Contacts (optional)", "Only to find a number when you say \"call Ravi\". Never sent to the server.") {
             requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 3)
         }
+        // Android 14+: a Habit call may fill the screen (and ring) when the phone is locked, like a normal call
+        if (Build.VERSION.SDK_INT >= 34) {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            step(nm == null || nm.canUseFullScreenIntent(), "Habit calls on the lock screen", "So a Habit Chat call fills the screen and rings when the phone is locked.") {
+                try { startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$packageName"))) }
+                catch (e: Exception) { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
+            }
+        }
         step(granted(Manifest.permission.CALL_PHONE), "Phone calls (optional)",
             "So your pet can call when you say \"call Ravi\": it waits 3 seconds (tap it to stop), then calls. Without this, the phone app opens and you tap Call.") {
             requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), REQ_PET_CALL)

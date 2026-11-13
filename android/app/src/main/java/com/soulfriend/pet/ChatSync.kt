@@ -106,6 +106,7 @@ object ChatSync {
         db.ensureAi()
         db.setKv("ready", "1")
         changed()
+        Push.setup(ctx, force = true)
         return null
     }
 
@@ -113,6 +114,7 @@ object ChatSync {
     fun hold(ctx: Context, who: String) {
         if (!isSetUp(ctx)) return
         holders.add(who)
+        Push.setup(ctx)               // (at most every few hours) calls ring here even while Habit is closed, when the server has push
         synchronized(this) {
             if (loop?.isAlive == true) return
             val app = ctx.applicationContext
@@ -613,6 +615,7 @@ object ChatSync {
             val env = JSONObject().put("v", 1).put("epk", s.epk).put("iv", s.iv).put("ct", s.ct).put("keys", JSONObject(s.keys)).put("kid", JSONObject(s.kids))
             val req = JSONObject().put("cid", m.cid).put("id", m.id).put("type", type).put("env", env)
             if (task != null) req.put("task", task)
+            if (m.kind == "call") req.put("ring", true)     // a call note: the server wakes their phone at once (Push), even if Habit is closed there
             val r = api(store, "POST", "/api/chat/send", req.toString())
             if (r.ok) {
                 if (m.kind in CTL) { db.deleteMsg(m.cid, m.id); return null }      // a hidden note has done its job

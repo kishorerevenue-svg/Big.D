@@ -30,8 +30,9 @@ import java.util.concurrent.Executors
  *  - The notes "offer" (with the caller's connection details), "ringing", "answer" and "end" go through Habit Chat,
  *    locked end to end like messages (kind "call"); they are not shown. A short line stays in the chat (kind "clog"):
  *    "📞 Voice call · 2:31", "📞 Missed voice call"…
- *  - A phone rings while Habit is open or the pet is on screen (Habit Chat is connected then). Otherwise it learns about
- *    the call at its next check and shows a missed call. (Ringing any time needs Firebase push, a later step.)
+ *  - A phone rings while Habit is open or the pet is on screen (Habit Chat is connected then). When Habit is closed, a
+ *    Firebase push wakes it (Push.kt, once the server has push set up) and it rings like a normal call; without push it
+ *    learns about the call at its next check and shows a missed call.
  */
 object CallManager {
     const val RING = "habit_calls_ring"
@@ -147,6 +148,8 @@ object CallManager {
         try { nm.notify(RING_ID, n) } catch (e: SecurityException) { }
         // the call screen too, when Android lets it open (Habit is open, or may show over other apps for the pet)
         try { ctx.startActivity(screen) } catch (e: Exception) { }
+        // while it rings, keep up with the caller (a hang-up stops the ringing at once), also when a push woke the phone
+        ChatSync.hold(ctx, "ring")
         changed()
     }
 
@@ -185,6 +188,7 @@ object CallManager {
         call.state = "ended"; call.reason = reason
         if (tell) send(ctx, call, "end", JSONObject().put("reason", reason))
         stopRinging(ctx)
+        ChatSync.release("ring")
         CallService.stop(ctx)
         val r = reason.removePrefix("their-")
         val st = when {
