@@ -9,8 +9,21 @@ object Talk {
     private val MARKS = Regex("<\\\\?/?\\s*(cite|b|i|u|em|strong|span|sup|sub|small|p|a)\\b[^>]*>", RegexOption.IGNORE_CASE)
     private val BREAKS = Regex("<\\s*br\\s*/?\\s*>", RegexOption.IGNORE_CASE)
     private val SPACES = Regex("[ \\t]{2,}")
-    /** The words only, without citation marks or HTML tags. */
-    fun plain(s: String): String = if ('<' !in s) s else SPACES.replace(MARKS.replace(BREAKS.replace(s, "\n"), ""), " ").trim()
+    /** The words only, without citation marks, HTML tags or **bold** stars. */
+    fun plain(s: String): String {
+        var t = s
+        if ('<' in t) t = SPACES.replace(MARKS.replace(BREAKS.replace(t, "\n"), ""), " ")
+        if ("**" in t) t = t.replace("**", "")
+        return t.trim()
+    }
+
+    private val LINKS = Regex("https?://\\S+|www\\.\\S+", RegexOption.IGNORE_CASE)
+    private val MARKDOWN = Regex("__|`+|^[ \\t]*[#*]+[ \\t]*", RegexOption.MULTILINE)
+    /** What the voice reads: no marks, no web addresses read letter by letter ("the link" instead), no list stars. */
+    fun speakable(s: String): String {
+        val te = s.any { it in 'ఀ'..'౿' }
+        return SPACES.replace(MARKDOWN.replace(LINKS.replace(plain(s), if (te) "లింక్" else "the link"), ""), " ").trim()
+    }
 
     private fun clean(s: String): String = s.lowercase()
         .replace(Regex("['’`]"), "")

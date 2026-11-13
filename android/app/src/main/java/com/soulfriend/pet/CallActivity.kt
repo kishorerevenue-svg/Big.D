@@ -75,9 +75,9 @@ class CallActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = Store(this); ui = Ui(this)
-        call = CallManager.active
+        call = CallManager.active ?: CallManager.restore(this, intent)    // (Android may have closed Habit while it rang)
         val c = call
-        if (c == null || c.state == "ended") { finish(); return }
+        if (c == null || c.state == "ended") { CallManager.stopRinging(this); finish(); return }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
         else @Suppress("DEPRECATION") window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)

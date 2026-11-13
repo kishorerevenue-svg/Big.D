@@ -459,7 +459,9 @@ const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, medi
   forgetOldFeed: req => (extras && extras.forgetDevice ? extras.forgetDevice(req) : ""),
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Habit Chat: chats and groups between people who use the app, locked end to end on the phones (the server can't read them)
-const chat = require("./chat.js")({ DATA_DIR, social, h: { send, readBody, allowed, clientIp, baseUrl } });
+// Firebase push: a Habit call rings (and a new message shows) while Habit is closed on that phone; no words in the push
+const push = require("./push.js")({ DATA_DIR });
+const chat = require("./chat.js")({ DATA_DIR, social, push, h: { send, readBody, allowed, clientIp, baseUrl } });
 // The fake messages list (app: Tasks › 🛡️ Fake messages): people warn each other about fraud messages they got, with votes and comments
 const fakes = require("./fakes.js")({ DATA_DIR, social, learn, MODEL, API_KEY,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
@@ -532,6 +534,13 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // the app's Firebase ids for Habit push (ids every Firebase app carries; the secret key stays on this server), once the
+  // owner has set it up on the Teach page: the phone starts Firebase with them so a call can ring while Habit is closed
+  if (req.method === "GET" && url.pathname === "/api/push/config") {
+    if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin);
+    const c = push.clientConfig(String(url.searchParams.get("pkg") || ""));
+    return c ? send(res, 200, c, origin) : send(res, 404, { error: "Push isn't set up on this server." }, origin);
+  }
   // "interesting talk": something short for a pause in a spoken conversation (from Habit's own Media posts, no AI cost)
   if (req.method === "GET" && url.pathname === "/api/pet/spark") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
@@ -653,6 +662,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/teach/aivideo") return send(res, 200, aiVideo.status());
       if (req.method === "GET" && url.pathname === "/api/teach/cartoon") return send(res, 200, cartoon.status());
       if (req.method === "GET" && url.pathname === "/api/teach/chat") return send(res, 200, { stats: chat.stats(), reports: chat.reports(), fakes: fakes.stats() });
+      if (req.method === "GET" && url.pathname === "/api/teach/push") return send(res, 200, { push: push.status(), phones: chat.pushPhones() });
       if (req.method === "GET" && url.pathname === "/api/teach/feedback") {
         let lines = [];
         try { lines = fs.readFileSync(path.join(DATA_DIR, "feedback.jsonl"), "utf8").trim().split("\n").filter(Boolean).slice(-200).map(l => JSON.parse(l)).reverse(); } catch (e) { }
@@ -661,6 +671,8 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "POST") {
         const body = await readBody(req, 30 * 1024 * 1024);
         if (url.pathname === "/api/teach/delete") return send(res, 200, { ok: learn.removeKnowledge(String(body.id || "")) });
+        if (url.pathname === "/api/teach/push/setup") return send(res, 200, await push.setup(body.app, body.admin));
+        if (url.pathname === "/api/teach/push/remove") return send(res, 200, push.remove());
         if (url.pathname === "/api/teach/brain/install") return send(res, 200, ownBrain.install());
         if (url.pathname.startsWith("/api/teach/gemma/")) {
           const out = await gemma.teach(url.pathname.slice("/api/teach/gemma/".length), body, baseUrl(req));

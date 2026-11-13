@@ -122,6 +122,19 @@ class Store(context: Context) {
     var convo: String
         get() = (p.getString("convo", "on") ?: "on").let { if (it == "ask") "on" else it }
         set(v) { p.edit().putString("convo", v).apply() }
+    /** Habit push ([Push]): the app's Firebase ids from the server, the push address the server has, and when. */
+    var pushCfg: String
+        get() = p.getString("pushCfg", "") ?: ""
+        set(v) { p.edit().putString("pushCfg", v).apply() }
+    var pushTok: String
+        get() = p.getString("pushTok", "") ?: ""
+        set(v) { p.edit().putString("pushTok", v).apply() }
+    var pushSentAt: Long
+        get() = p.getLong("pushSentAt", 0L)
+        set(v) { p.edit().putLong("pushSentAt", v).apply() }
+    var pushCheckedAt: Long
+        get() = p.getLong("pushCheckedAt", 0L)
+        set(v) { p.edit().putLong("pushCheckedAt", v).apply() }
     /** The voice typing that heard words last time, when it isn't the phone's usual one ([Ears]). */
     var ears: String
         get() = p.getString("ears", "") ?: ""
