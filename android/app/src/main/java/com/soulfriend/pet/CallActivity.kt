@@ -102,6 +102,7 @@ class CallActivity : Activity() {
         main.removeCallbacksAndMessages(null)
         CallManager.listeners.remove(refresh)
         ChatSync.release("call")
+        try { tone?.release() } catch (e: Exception) { }; tone = null
         val c = call
         // the call lives in this screen's page: if the screen goes away, the call ends
         if (c != null && c.state != "ended" && ::web.isInitialized) CallManager.end(applicationContext, c, if (c.connectedAt > 0) "hangup" else if (c.incoming) "decline" else "cancel", true)
@@ -188,7 +189,28 @@ class CallActivity : Activity() {
             CallManager.end(applicationContext, c, if (c.connectedAt > 0) "hangup" else "cancel", true) })
     }
 
+    // the caller hears that it is calling, like a phone call: a short "tuut" every few seconds while it reaches their phone,
+    // then the ring-back tone while their phone rings; quiet once it connects or ends
+    private var tone: android.media.ToneGenerator? = null
+    private var toneMode = ""
+    private var lastTuut = 0L
+    private fun tones() {
+        val c = call
+        val mode = if (c == null || c.incoming) "" else when (c.state) { "calling" -> "tuut"; "ringing" -> "ring"; else -> "" }
+        val gen = { tone ?: try { android.media.ToneGenerator(AudioManager.STREAM_VOICE_CALL, 70).also { tone = it } } catch (e: Exception) { null } }
+        if (mode != toneMode) {
+            try { tone?.stopTone() } catch (e: Exception) { }
+            toneMode = mode
+            if (mode == "ring") try { gen()?.startTone(android.media.ToneGenerator.TONE_SUP_RINGTONE) } catch (e: Exception) { }
+        }
+        if (mode == "tuut" && System.currentTimeMillis() - lastTuut >= 2500) {
+            lastTuut = System.currentTimeMillis()
+            try { gen()?.startTone(android.media.ToneGenerator.TONE_SUP_DIAL, 350) } catch (e: Exception) { }
+        }
+    }
+
     private fun showStatus() {
+        tones()
         val c = call ?: return
         val video = c.video && c.state != "ringing" && c.state != "ended"
         shade.visibility = if (video && c.connectedAt > 0) View.GONE else View.VISIBLE
