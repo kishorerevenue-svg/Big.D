@@ -118,10 +118,14 @@ class Store(context: Context) {
         set(v) { p.edit().putBoolean("funSounds", v).apply() }
 
     /** Conversation mode: after a spoken answer the pet listens a little longer for the next question (no tap needed).
-     *  "ask" (it asks the first time), "on" or "off". */
+     *  "on" (the default: people asked to talk without tapping every time) or "off" ("ask" was the old default). */
     var convo: String
-        get() = p.getString("convo", "ask") ?: "ask"
+        get() = (p.getString("convo", "on") ?: "on").let { if (it == "ask") "on" else it }
         set(v) { p.edit().putString("convo", v).apply() }
+    /** The voice typing that heard words last time, when it isn't the phone's usual one ([Ears]). */
+    var ears: String
+        get() = p.getString("ears", "") ?: ""
+        set(v) { p.edit().putString("ears", v).apply() }
     var convoAsked: Int
         get() = p.getInt("convoAsked", 0)
         set(v) { p.edit().putInt("convoAsked", v).apply() }

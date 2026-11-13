@@ -98,7 +98,7 @@ Personality: warm, playful, a little excited like ${pet.like}, never rude. In Te
 Your "reply" is read aloud in full, so write it the way you would say it: plain sentences, no tables, no markdown, no lists of links.
 - Chat and tasks: 1 to 3 short sentences.
 - When they ask for information (news, facts, how to do something, government schemes, health or farming tips, explanations), give the main answer first in "reply", in up to about 6 short, simple sentences. If more is worth knowing, end with one short offer such as "Shall I tell you more?" ("ఇంకా చెప్పమంటారా?"), and when they say yes, go on with the rest. It is read aloud completely, so never tell them to read it on the screen or "check the display".
-- When your answer comes from an internet search, the news or Wikipedia, end it with the source in two or three words, for example "(from the internet)", "(Wikipedia)", "(ఈనాడు వార్తలు)". Don't add warnings like "I may be wrong" or "please double-check" to your answers; only when you are really not sure about something important (a fee, a date, a rule), say so once in a few words and where to check.
+- When your answer comes from an internet search, the news or Wikipedia, end it with the source in two or three words, for example "(from the internet)", "(Wikipedia)", "(ఈనాడు వార్తలు)". Don't add warnings like "I may be wrong" or "please double-check" to your answers; only when you are really not sure about something important (a fee, a date, a rule), say so once in a few words and where to check. The reply is read aloud: plain words only, with no citation tags, HTML or markdown symbols.
 - If they say your answer is boring or they are bored ("boring", "bore", "బోర్"), say sorry lightly in a few words and change to something fun: a quick amazing fact, a riddle, or one light question about their day.
 - Only things meant to be kept or sent (a letter, a message to send, a long translation, a long list) go in a show_text action; then say in one or two sentences what it contains.
 Answer only their NEWEST message. Earlier messages are just context: never say "as I told you", "check my earlier answer", "I already said", never repeat an earlier answer unless they ask for it again, and add no extra talk that isn't needed.
@@ -237,7 +237,7 @@ function parsePet(text) {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
     if (a >= 0 && b > a) { try { obj = JSON.parse(text.slice(a, b + 1)); } catch (e2) { } }
   }
-  const reply = String((obj && obj.reply) || (obj ? "" : text) || "").trim().slice(0, 4000) || "Woof!";
+  const reply = learn.noCites(String((obj && obj.reply) || (obj ? "" : text) || "")).trim().slice(0, 4000) || "Woof!";
   const emotion = PET_EMOTIONS.includes(obj && obj.emotion) ? obj.emotion : "happy";
   const sound = PET_SOUNDS.includes(obj && obj.sound) ? obj.sound : "";
   const actions = (obj && Array.isArray(obj.actions) ? obj.actions : [])
@@ -398,7 +398,7 @@ function parseReply(text) {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
     if (a >= 0 && b > a) { try { obj = JSON.parse(text.slice(a, b + 1)); } catch (e2) { } }
   }
-  const reply = String((obj && obj.reply) || text || "").trim().slice(0, 4000);
+  const reply = learn.noCites(String((obj && obj.reply) || text || "")).trim().slice(0, 4000);
   const emotion = EMOTIONS.includes(obj && obj.emotion) ? obj.emotion : "happy";
   return { emotion, reply: reply || "…" };
 }
@@ -538,6 +538,7 @@ const server = http.createServer(async (req, res) => {
     const lang = ["auto", "te", "en"].includes(url.searchParams.get("lang")) ? url.searchParams.get("lang") : "auto";
     const dev = crypto.createHash("sha256").update("self|" + (String(req.headers["x-device"] || "") || clientIp(req))).digest("hex").slice(0, 16);
     const s = selfBrain.spark(lang, dev);
+    if (s && typeof s.reply === "string") s.reply = learn.noCites(s.reply);
     return s ? send(res, 200, s, origin) : send(res, 404, { error: "Nothing new right now." }, origin);
   }
   if (req.method === "POST" && url.pathname === "/api/pet") {
@@ -580,6 +581,7 @@ const server = http.createServer(async (req, res) => {
         if (Array.isArray(last)) { const eyes = /^\[Your eyes/.test(String((last[1] && last[1].text) || "")); out.actions = (out.actions || []).filter(a => a.type !== "look" || (eyes && a.again === true)); }
       }
       out.actions = await makeFileActions(out.actions, req);
+      if (typeof out.reply === "string") out.reply = learn.noCites(out.reply);   // learned and own-brain answers too
       gemma.mark(out, messages);   // an answer from Habit's own brains: 👍 / 👎 under it on the phone
       if (SAVE_CHATS) { const u = messages[messages.length - 1].content; appendLine("chats.jsonl", { at: new Date().toISOString(), app: "pet", user: typeof u === "string" ? u : "[photo] " + u[1].text, ...out }); }
       return send(res, 200, out, origin);

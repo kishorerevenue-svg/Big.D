@@ -90,7 +90,7 @@ module.exports = function makeAnswers({ DATA_DIR, learn }) {
     let best = null, score = 0;
     for (const a of learned) { if (te(a.key) !== te(k)) continue; const s = a.key === k ? 1 : alike(k, a.key); if (s > score) { score = s; best = a; } }
     if (!best || score < min) return null;
-    return { answer: String(best.answer).replace(/\bBigD AI\b/g, "Habit AI").replace(/\bBigD\b/g, "Habit").replace(/బిగ్‌డీ/g, "హ్యాబిట్"), score, id: best.id, sources: best.sources || [], from: best.from || "night", at: best.at };
+    return { answer: String(best.answer).replace(/<\\?\/?\s*cite\b[^>]*>/gi, "").replace(/\bBigD AI\b/g, "Habit AI").replace(/\bBigD\b/g, "Habit").replace(/బిగ్‌డీ/g, "హ్యాబిట్"), score, id: best.id, sources: best.sources || [], from: best.from || "night", at: best.at };
   }
   /** Counts one more use of a learned answer. */
   function used(id) { const a = learned.find(x => x.id === id); if (a) { a.uses = (a.uses || 0) + 1; dirty = true; } }
@@ -101,7 +101,7 @@ module.exports = function makeAnswers({ DATA_DIR, learn }) {
    *  from their memories and notes); an answer that contains any of them is not kept. */
   function keep(q, answer, { sources = [], personal = [] } = {}) {
     if (off() || /^(off|no|false|0)$/i.test(process.env.LEARN_FROM_CLAUDE || "") || !general(q)) return false;
-    const a = String(answer || "").trim();
+    const a = String(answer || "").replace(/<\\?\/?\s*cite\b[^>]*>/gi, "").trim();
     if (a.length < 25 || a.length > 1500 || /[\w.+-]+@[\w-]+\.\w/.test(a)) return false;
     const low = a.toLowerCase();
     if (personal.some(w => w && low.includes(String(w).toLowerCase()))) return false;

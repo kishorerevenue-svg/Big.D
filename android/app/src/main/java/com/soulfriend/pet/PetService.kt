@@ -252,7 +252,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                         wake()
                         if (pendingCall != null) { cancelCall(); return@setOnTouchListener true }
                         if (voiceMode) stopVoiceMode()
-                        else if (listening) { if (convoOn) { tapStopped = true; endConvo() }; stopListening() }   // a tap ends the conversation
+                        else if (listening) { noMore = true; if (convoOn) { tapStopped = true; endConvo() }; stopListening() }   // a tap ends the conversation
                         else startListening()
                     }
                 }
@@ -377,7 +377,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun isTelugu(s: String) = s.any { it in 'ఀ'..'౿' }
 
     /** [local] = read with the phone's own voice only (the text never goes to the server). */
-    private fun say(text: String, mood: PuppyView.Mood, extra: String = "", prefix: String = "", local: Boolean = false, delayMs: Long = 0) {
+    private fun say(said: String, mood: PuppyView.Mood, extra: String = "", prefix: String = "", local: Boolean = false, delayMs: Long = 0) {
+        val text = Talk.plain(said)                              // never a citation mark or HTML tag in the bubble or the voice
         if (text.isBlank()) return
         pet.mood = mood
         showBubble(prefix + text + extra, keepMs = (6000 + text.length * 80L).coerceAtMost(30_000))
@@ -555,7 +556,56 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     }
 
     // ---------------- listening ----------------
-    private fun startListening() {
+    // Patient listening: some phones' voice typing gives up a second after it starts, before people begin to talk. So one
+    // turn of listening lasts a few seconds: while nobody has started talking, the voice typing quietly starts again; when
+    // the phone's usual one keeps giving up at once (or can't work at all), the Google app's voice typing is tried ([Ears]).
+    private var listenSince = 0L                     // when this turn of listening began (the quiet restarts keep it)
+    private var readyAt = 0L
+    private var heardSpeech = false                  // they started talking in this turn
+    private var quickMisses = 0
+    private var restarts = 0
+    private var unclearTries = 0
+    private var noMore = false                       // they tapped to stop: this turn doesn't start again by itself
+    private var ears: android.content.ComponentName? = null
+
+    /** How long one turn listens for someone to start talking. */
+    private fun patienceMs(): Long = when { convoAsking -> 7_000L; convoOn -> 8_000L; else -> 9_000L }
+
+    /** Nothing heard yet (or this voice typing can't work): listen again quietly while this turn lasts. */
+    private fun listenMore(broken: Boolean): Boolean {
+        if (noMore || tapStopped || voiceMode || onPhone() || CallManager.active != null) return false
+        val now = System.currentTimeMillis()
+        if (now - listenSince > patienceMs() || restarts >= 12) return false
+        if (broken || now - readyAt < 2_500L) quickMisses++
+        if (broken || quickMisses >= 2) {
+            val other = Ears.other(this, ears, anyKind = broken)
+            if (other != null) { ears = other; quickMisses = 0 } else if (broken) return false
+        }
+        restarts++
+        main.postDelayed({ if (!listening && !tapStopped && !onPhone()) startListening(again = true) }, if (broken) 300L else 120L)
+        return true
+    }
+
+    /** They talked but the words weren't clear: once, the pet asks them to say it again. */
+    private fun askAgain(): Boolean {
+        if (unclearTries >= 1 || noMore || tapStopped || convoAsking || voiceMode || onPhone()) return false
+        unclearTries++
+        heardSpeech = false; quickMisses = 0; listenSince = System.currentTimeMillis()
+        showBubble(sayAgainText(), 0)
+        main.postDelayed({ if (!listening && !tapStopped && !onPhone()) startListening(again = true) }, 150)
+        return true
+    }
+    private fun sayAgainText() = if (te()) "🤔 సరిగ్గా వినపడలేదు, మళ్ళీ చెప్పండి…" else "🤔 I didn't get that. Say it again…"
+
+    /** The turn ended: nothing heard at all, or words it couldn't make out. */
+    private fun notHeard(te: Boolean) = when {
+        !heardSpeech && te -> "🎙 ఏమీ వినపడలేదు. నన్ను తట్టి, \"వింటున్నాను\" అని కనిపించాక మాట్లాడండి."
+        !heardSpeech -> "🎙 I didn't hear anything. Tap me and talk when you see \"Listening…\"."
+        te -> "సరిగ్గా అర్థం కాలేదు. నన్ను తట్టి మళ్ళీ చెప్పండి."
+        else -> "I didn't catch that. Tap me and speak again."
+    }
+
+    private fun startListening(again: Boolean = false) {
         if (CallManager.active != null || onPhone()) { showBubble(if (store.lang == "en") "📞 You're on a call. I'll listen after it." else "📞 మీరు కాల్‌లో ఉన్నారు. కాల్ తర్వాత వింటాను."); return }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             say("I need the microphone. Open the Habit AI app and tap 'Allow microphone'.", PuppyView.Mood.SAD); openApp(); return
@@ -563,29 +613,44 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             say("Voice typing isn't available on this phone. Hold me to type instead.", PuppyView.Mood.CONFUSED); return
         }
-        hush()
-        tapStopped = false
+        if (!again) {
+            hush()
+            tapStopped = false; noMore = false
+            listenSince = System.currentTimeMillis(); heardSpeech = false; quickMisses = 0; restarts = 0; unclearTries = 0
+            ears = Ears.start(this)
+        }
         lookToken++
-        val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
+        readyAt = System.currentTimeMillis()
+        // a fresh voice typing for each try: a used one gets stuck on some phones
+        recognizer?.let { try { it.destroy() } catch (e: Exception) { } }
+        val rec = Ears.create(this, ears).also { recognizer = it }
         rec.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
+                readyAt = System.currentTimeMillis()
                 showBubble(when {
                     voiceMode -> "🎙 Say: next · previous · pause · like\n(tap me to stop)"
+                    unclearTries > 0 && !heardSpeech -> sayAgainText()
                     convoAsking -> if (te()) "🎙 అవును / వద్దు?" else "🎙 Yes or no?"
                     convoOn -> if (te()) "🎙 ఇంకా అడగండి… (\"చాలు\" అంటే ఆపుతాను)" else "🎙 Ask more… (say \"bye\" to stop)"
                     store.lang == "en" -> "Listening…"
                     else -> "వింటున్నాను… Listening…"
                 }, 0)
             }
-            override fun onBeginningOfSpeech() {}
+            override fun onBeginningOfSpeech() { heardSpeech = true }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { setListening(false) }
             override fun onError(error: Int) {
-                setListening(false); replyVoice = false
-                if (voiceMode) { voiceModeNext(error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT); return }
-                if (tapStopped) { tapStopped = false; return }                  // they tapped to end the conversation
+                setListening(false)
+                if (voiceMode) { replyVoice = false; voiceModeNext(error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT); return }
+                if (tapStopped) { tapStopped = false; replyVoice = false; return }   // they tapped to end the conversation
                 val silent = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                // busy, broken, or doesn't know the language: another voice typing, if the phone has one
+                val broken = error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_SERVER || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                    error == 11 || error == 12 || error == 13 || error == 14   // server disconnected, language not supported / unavailable, can't check
+                if ((silent && !heardSpeech) || broken) { if (listenMore(broken)) return }
+                if (silent && heardSpeech && askAgain()) return
+                replyVoice = false
                 if (convoAsking) { convoAsking = false; if (silent) { removeBubble(); return } }   // no answer: it asks again another time
                 if (convoOn) {
                     // "stay with me": keeps listening through short silences (a few minutes); otherwise silence ends the conversation
@@ -595,29 +660,33 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     if (silent) { if (!trySpark()) endConvo(); return }
                     endConvo(quiet = true)
                 }
+                val te = te()
                 val msg = when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap me and speak again."
-                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "No internet for voice. Check your connection."
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Please allow the microphone in the Habit AI app."
-                    else -> "Voice didn't work. Tap me to try again, or hold me to type."
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> notHeard(te)
+                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> if (te) "వాయిస్‌కి ఇంటర్నెట్ లేదు. కనెక్షన్ చూడండి." else "No internet for voice. Check your connection."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> if (te) "Habit AI యాప్‌లో మైక్రోఫోన్ అనుమతి ఇవ్వండి." else "Please allow the microphone in the Habit AI app."
+                    else -> if (te) "వాయిస్ పని చేయలేదు. మళ్ళీ తట్టండి, లేదా నన్ను పట్టుకుని టైప్ చేయండి." else "Voice didn't work. Tap me to try again, or hold me to type."
                 }
-                pet.mood = PuppyView.Mood.CONFUSED; showBubble(msg, 5000)
+                pet.mood = PuppyView.Mood.CONFUSED; showBubble(msg, 6000)
             }
             override fun onPartialResults(partial: Bundle?) {
                 if (voiceMode) return
-                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) showBubble("“$it”", 0) }
+                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) { heardSpeech = true; showBubble("“$it”", 0) } }
             }
             override fun onResults(results: Bundle?) {
                 setListening(false)
                 val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 if (voiceMode) { onVoiceModeHeard(heard.orEmpty()); return }
-                if (tapStopped) { tapStopped = false; return }
+                if (tapStopped) { tapStopped = false; replyVoice = false; return }
                 if (heard.isNullOrBlank()) {
+                    if (!heardSpeech && listenMore(false)) return
+                    if (heardSpeech && askAgain()) return
                     replyVoice = false
                     if (convoAsking) { convoAsking = false; removeBubble(); return }
                     if (convoOn) { if (!trySpark()) endConvo(); return }
-                    showBubble("I didn't catch that. Tap me and speak again.", 5000); return
+                    pet.mood = PuppyView.Mood.CONFUSED; showBubble(notHeard(te()), 6000); return
                 }
+                Ears.worked(this@PetService, ears)                          // next time it starts with the voice typing that heard this
                 if (replyVoice) { replyVoice = false; replyByVoice(heard); return }
                 if (convoAsking && convoAnswer(heard)) return
                 convoHeardAt = System.currentTimeMillis()
