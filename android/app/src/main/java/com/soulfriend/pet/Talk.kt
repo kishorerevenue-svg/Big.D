@@ -69,6 +69,18 @@ object Talk {
         return w.any { it in STAY_WORDS } && w.all { it in STAY_WORDS || it in STAY_FILLER }
     }
 
+    // "Call me by name" switched by voice: "listen for your name" / "పేరు విను" (on), "stop listening for your name" /
+    // "పేరు వినడం ఆపు" (off). Null: it isn't about that.
+    private val WAKE_ON = Regex("(listen for (your|ur) name|call( you)? by (your )?name on|hands ?free on|start listening for (your|ur) name|" +
+        "పేరు (విను|వింటూ ఉండు|వినడం మొదలు|వినడం ఆన్|ఆన్)|పేరుతో పిలిస్తే (విను|పలుకు)|peru vinu)")
+    private val WAKE_OFF = Regex("(stop listening for (your|ur) name|dont listen for (your|ur) name|do not listen for (your|ur) name|hands ?free off|" +
+        "call( you)? by (your )?name off|పేరు (వినడం ఆపు|వినకు|వినడం ఆఫ్|ఆఫ్)|పేరు కోసం వినకు|peru vinaku|peru vinadam aapu)")
+    fun wakeSwitch(text: String): Boolean? {
+        val c = clean(text)
+        if (c.isEmpty() || words(text).size > 10) return null
+        return when { WAKE_OFF.containsMatchIn(c) -> false; WAKE_ON.containsMatchIn(c) -> true; else -> null }
+    }
+
     // "let's play", "play quiz", "games", "ఆట ఆడదాం", "క్విజ్ ఆడుకుందాం": a request to play (not "what game is on TV?")
     private val PLAY_EN = Regex("^(lets|let us|shall we|can we|i want to|i wanna|wanna|come on|come)? ?play( a| some| the)?( game| games| quiz| riddles?| tic tac toe| tictactoe| x o| memory( game)?| maths?( game)?| number game)?( with me| now| please)*$")
     private val PLAY_ONLY = Regex("^(games?|quiz|riddles?|tic tac toe|tictactoe|memory game|maths? game|ఆటలు|ఆట|గేమ్|గేమ్స్|క్విజ్|పొడుపు కథలు|పొడుపు కథ)( please| ప్లీజ్)?$")
