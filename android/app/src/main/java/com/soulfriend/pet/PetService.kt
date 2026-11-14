@@ -831,7 +831,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         })
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (store.lang == "en") "en-IN" else "te-IN")
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, LetterHelper.showing?.petLang() ?: if (store.lang == "en") "en-IN" else "te-IN")   // (a letter in English: English)
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         // someone started talking while the pet waited quietly: the voice typing gets the ear's sound (Android 13+), from a
@@ -859,6 +859,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 // playing by voice: when the pet has said how it went, it listens for the next answer
                 else if (byVoice && store.convo != "off") afterSpeech = { if (GamesActivity.shown != null && !listening && !onPhone()) { convoOn = true; startListening() } }
             }
+            return
+        }
+        // a letter's questions are on the screen (Files): what they say goes into that letter (the answer being filled, else
+        // the first empty one), not into a new letter
+        LetterHelper.showing?.takeVoice(text)?.let { q ->
+            say(if (te() || isTelugu(text)) "సరే, \"${q.take(50)}\" లో రాశాను." else "Okay, I put it in \"${q.take(50)}\".", PuppyView.Mood.HAPPY)
             return
         }
         // "let's play", "ఆట ఆడదాం": the games open straight away (no need to ask the brain, works without internet). The games

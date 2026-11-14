@@ -276,6 +276,10 @@ class Store(context: Context) {
     var letterMode: String
         get() = p.getString("letterMode", "public") ?: "public"
         set(v) { p.edit().putString("letterMode", v).apply() }
+    /** The letters' language last chosen ("" auto, "en", "te"): an English letter also means English voice typing. */
+    var letterLang: String
+        get() = p.getString("letterLang", "") ?: ""
+        set(v) { p.edit().putString("letterLang", v).apply() }
     /** The office's own details for office letters: desig, office, district, name, ref, contact (kept on this phone). */
     var officeInfo: JSONObject
         get() = try { JSONObject(p.getString("officeInfo", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }

@@ -351,9 +351,9 @@ function allowed(ip, map = hits, limit = LIMIT_PER_10_MIN) {
   list.push(now); map.set(ip, list); return true;
 }
 // ---------- daily limits (protect your API bill) ----------
-const PER_DEVICE_DAILY = Number(process.env.PER_DEVICE_DAILY || 200);   // (talking without tapping uses more)
-const PER_IP_DAILY = Number(process.env.PER_IP_DAILY || 250);
-const DAILY_TOTAL = Number(process.env.DAILY_TOTAL || 4000);
+const PER_DEVICE_DAILY = Number(process.env.PER_DEVICE_DAILY || 600);   // (talking without tapping uses more; the monthly money cap still holds)
+const PER_IP_DAILY = Number(process.env.PER_IP_DAILY || 900);       // (a family's phones share one home Wi-Fi address)
+const DAILY_TOTAL = Number(process.env.DAILY_TOTAL || 8000);
 const today = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10); // India date
 let daily = { day: today(), dev: new Map(), ip: new Map(), total: 0, brief: new Map() };
 const TTS_PER_DEVICE_DAILY = Number(process.env.TTS_PER_DEVICE_DAILY || 300);
