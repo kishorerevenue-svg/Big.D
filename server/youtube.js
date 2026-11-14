@@ -320,12 +320,44 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     const pool = list.flatMap(x => { const st = db.ch[keyOf(x)] || {}; return [...(st.shorts || []), ...(st.popShorts || [])].filter(fine).map(v => ({ ...view(v), cat: x.cat })); })
       .filter(v => !seen.has(v.id) && seen.add(v.id));
     const day = Date.now() - 24 * 3600e3;
-    const shorts = [...mix(pool.filter(v => v.at > day)), ...mix(pool.filter(v => v.at <= day))].slice(0, 300);
+    const shorts = [...mix(pool.filter(v => v.at > day)), ...mix(pool.filter(v => v.at <= day))].slice(0, 1500);   // (all of them)
     const popular = list.flatMap(x => ((db.ch[keyOf(x)] || {}).popular || []).filter(fine).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.views - a.views).slice(0, 40);
     return { live, latest, shorts, popular, trending: cat && cat !== "all" ? [] : db.trending.list, key: !!KEY() };
   }
+  // ---------- search all of YouTube: the pet's "play <a song>", and Media's search ----------
+  // Only videos that play inside Habit (embeddable). Needs YOUTUBE_API_KEY: YouTube gives 10,000 points a day free and a
+  // search costs 100, so answers are kept for a day and at most YOUTUBE_SEARCH_DAILY searches are made a day.
+  const SEARCH_DAILY = Number(process.env.YOUTUBE_SEARCH_DAILY || 80);
+  const found = new Map();                // query → { at, list }
+  let searchDay = "", searchCount = 0;
+  async function search(q, short) {
+    const k = (short ? "s:" : "v:") + q.toLowerCase().replace(/\s+/g, " ").trim();
+    const hit = found.get(k);
+    if (hit && Date.now() - hit.at < 24 * 3600e3) return hit.list;
+    if (!KEY()) { const e = new Error("Searching all of YouTube needs the YouTube key on the server."); e.code = 503; throw e; }
+    const today = new Date().toISOString().slice(0, 10);
+    if (searchDay !== today) { searchDay = today; searchCount = 0; }
+    if (searchCount >= SEARCH_DAILY) { const e = new Error("Today's YouTube searches are used up. Please try again tomorrow."); e.code = 429; throw e; }
+    searchCount++;
+    const j = await api("search?part=snippet&type=video&videoEmbeddable=true&safeSearch=moderate&regionCode=IN&maxResults=20" +
+      (short ? "&videoDuration=short" : "") + "&q=" + encodeURIComponent(q));
+    const list = (j.items || []).map(it => ({ id: it.id && it.id.videoId, title: decode((it.snippet || {}).title), ch: decode((it.snippet || {}).channelTitle),
+      at: Date.parse((it.snippet || {}).publishedAt) || 0 })).filter(v => v.id && fine(v));
+    found.set(k, { at: Date.now(), list });
+    if (found.size > 3000) found.delete(found.keys().next().value);
+    return list;
+  }
+
   const reads = new Map();
   async function handle(req, res, url, origin) {
+    if (url.pathname === "/api/videos/search" && req.method === "GET") {
+      if (h && !h.allowed("vs:" + h.clientIp(req), reads, 60)) { h.send(res, 429, { error: "Too many searches. Please wait a few minutes." }, origin); return true; }
+      const q = str(url.searchParams.get("q"), 120).trim();
+      if (q.length < 2) { h.send(res, 400, { error: "What should I look for?" }, origin); return true; }
+      try { h.send(res, 200, { videos: await search(q, url.searchParams.get("short") === "1") }, origin); }
+      catch (e) { h.send(res, e.code || 502, { error: e.code ? e.message : "YouTube didn't answer. Please try again." }, origin); }
+      return true;
+    }
     if (url.pathname !== "/api/videos" || req.method !== "GET") return false;
     if (h && !h.allowed("v:" + h.clientIp(req), reads, 300)) { h.send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); return true; }
     h.send(res, 200, videos(str(url.searchParams.get("cat"), 20)), origin);
