@@ -89,8 +89,8 @@ class LoginActivity : Activity() {
             else -> createStep(card)
         }
         card.addView(msg)
-        box.addView(ui.text(t("🔒 Your number is never shown to anyone. Your password is kept scrambled; Habit can't read it.",
-            "🔒 మీ నంబర్ ఎవరికీ కనిపించదు. మీ పాస్‌వర్డ్ గుప్తంగా ఉంటుంది; Habit కూడా చదవలేదు."), 12.5f, Ui.MUTED).apply { gravity = Gravity.CENTER; setPadding(dp(8), dp(16), dp(8), 0) })
+        box.addView(ui.text(t("🔒 Your number is never shown to anyone. People who already have it in their contacts can find you in Habit Chat (Chat settings can turn that off). Your password is kept scrambled; Habit can't read it.",
+            "🔒 మీ నంబర్ ఎవరికీ కనిపించదు. అది ఇప్పటికే తమ కాంటాక్ట్స్‌లో ఉన్నవాళ్ళు మిమ్మల్ని Habit చాట్‌లో కనుగొనగలరు (చాట్ సెట్టింగ్స్‌లో ఆపవచ్చు). మీ పాస్‌వర్డ్ గుప్తంగా ఉంటుంది; Habit కూడా చదవలేదు."), 12.5f, Ui.MUTED).apply { gravity = Gravity.CENTER; setPadding(dp(8), dp(16), dp(8), 0) })
     }
 
     private fun field(hint: String, type: Int): EditText = EditText(this).apply {

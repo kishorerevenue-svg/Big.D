@@ -187,11 +187,12 @@ const CMD = {
   yes: /^(yes|yeah|ok|okay|sure|got it)$|^(అవును|సరే|ఓకే|తెలిసింది)$/
 };
 function gameFrom(h) {
-  if (/quiz|క్విజ్/.test(h)) return "quiz";
-  if (/riddle|పొడుపు/.test(h)) return "riddles";
-  if (/memory|cards?\b|జ్ఞాపక|కార్డు/.test(h)) return "memory";
-  if (/tic ?tac|\bx ?o\b|ఎక్స్ ఓ|xo/.test(h)) return "tictactoe";
-  if (/\bmaths?\b|numbers? game|లెక్క/.test(h)) return "maths";
+  // (the Telugu voice typing often writes English names in Telugu letters: "మెమరీ", "రిడిల్స్", "మ్యాథ్స్")
+  if (/quiz|క్విజ్|క్విస్/.test(h)) return "quiz";
+  if (/riddle|పొడుపు|రిడిల్|పజిల్/.test(h)) return "riddles";
+  if (/memory|cards?\b|జ్ఞాపక|కార్డు|మెమరీ|మెమొరీ|మెమోరీ/.test(h)) return "memory";
+  if (/tic ?tac|\bx ?o\b|ఎక్స్ ?ఓ|xo|టిక్ ?టాక్|ఎక్సో/.test(h)) return "tictactoe";
+  if (/\bmaths?\b|numbers? game|లెక్క|మ్యాథ్|మాథ్|మాత్స్|మ్యాత్స్/.test(h)) return "maths";
   return null;
 }
 /** What the pet heard; true when the game used it. */
@@ -685,7 +686,8 @@ document.getElementById("back").onclick = () => {
 };
 window.goBack = () => document.getElementById("back").click();   // the phone's back button
 const start = Q.get("game");
-if (start === "any") { const keys = Object.keys(GAMES); GAMES[pick(keys)].run(); }
+// "let's play" to the pet (no game named): the list, and the pet asks which game (then it listens for the answer)
+if (start === "any") { home(); say(T("Let's play! Which game? Quiz, riddles, memory cards, X-O, or maths?", "ఆట ఆడదాం! ఏ ఆట ఆడదాం? క్విజ్, పొడుపు కథలు, జ్ఞాపకశక్తి ఆట, X-O ఆట, లేదా లెక్కల ఆట?")); }
 else if (GAMES[start]) GAMES[start].run();
 else home();
 </script>

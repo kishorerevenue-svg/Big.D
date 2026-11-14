@@ -85,6 +85,23 @@ class ChatSettingsActivity : Activity() {
             db.setKv("set:seen", if (on) "1" else "0")
             Thread { ChatSync.api(store, "POST", "/api/chat/privacy", JSONObject().put("seen", on).toString()) }.start()
         }
+        toggle(R.drawable.ic_phone, 1, t("Find my contacts on Habit", "Habit లో నా కాంటాక్ట్‌లను చూపించు"),
+            t("Shows which of your contacts use Habit. Their numbers are checked with Habit's server in a scrambled form and aren't kept there.",
+                "మీ కాంటాక్ట్‌లలో ఎవరు Habit వాడుతున్నారో చూపిస్తుంది. వాళ్ళ నంబర్లు గుప్త రూపంలో Habit సర్వర్‌తో సరిచూస్తాం, అక్కడ దాచం."),
+            ChatContacts.matchState(this) == "on") { on ->
+            ChatContacts.setMatch(this, on)
+            if (on) {
+                if (ChatContacts.allowed(this)) ChatContacts.matchNow(this, store, force = true)
+                else requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), REQ_CONTACTS)
+            }
+        }
+        toggle(R.drawable.ic_search, 4, t("People who have my number can find me", "నా నంబర్ ఉన్నవాళ్ళు నన్ను కనుగొనవచ్చు"),
+            t("Your number is never shown. People who already have it in their contacts see that you're on Habit and can chat with you.",
+                "మీ నంబర్ ఎవరికీ కనిపించదు. అది ఇప్పటికే తమ కాంటాక్ట్స్‌లో ఉన్నవాళ్ళకు మీరు Habit లో ఉన్నారని తెలుస్తుంది, మీతో చాట్ చేయగలరు."),
+            db.kv("set:findme") != "0") { on ->
+            db.setKv("set:findme", if (on) "1" else "0")
+            Thread { ChatSync.api(store, "POST", "/api/chat/privacy", JSONObject().put("phone", on).toString()) }.start()
+        }
         toggle(R.drawable.ic_ticks, 4, t("Read receipts (blue ticks)", "చదివిన గుర్తు (నీలి టిక్కులు)"), t("Off: people don't see when you read their messages", "ఆఫ్: మీరు చదివారని ఇతరులకు తెలియదు"), ChatTheme.receiptsOn(this)) { db.setKv("set:receipts", if (it) "1" else "0") }
         item(R.drawable.ic_status, 1, t("Status privacy", "స్టేటస్ గోప్యత"), when (ChatStatus.privacy(this).first) { "except" -> t("Everyone I chat with, except some", "అందరూ, కొందరు తప్ప"); "only" -> t("Only the people I chose", "నేను ఎంచుకున్నవాళ్ళు మాత్రమే"); else -> t("Everyone I chat with", "నేను చాట్ చేసే అందరూ") }) { ChatStatus.privacyDialog(this, store) }
         item(R.drawable.ic_timer, 2, t("Default message timer", "కొత్త చాట్‌లకు టైమర్"), t("New chats you start: ", "మీరు మొదలుపెట్టే కొత్త చాట్‌లు: ") + ChatTheme.timerText(ChatTheme.defaultTimer(this), te)) { pickTimer() }
@@ -100,6 +117,12 @@ class ChatSettingsActivity : Activity() {
         head(t("About", "గురించి"))
         rows().addView(ui.text(t("🔒 Habit Chat is locked end to end: messages, photos, files and calls are locked on your phone and opened only on the phones of the people in the chat. Habit's server only passes them on and deletes them once delivered. Calls go straight between the phones (or through Habit's relay, still locked).",
             "🔒 Habit చాట్ ఎండ్ టు ఎండ్ లాక్: మెసేజ్‌లు, ఫోటోలు, ఫైల్స్, కాల్స్ మీ ఫోన్‌లోనే లాక్ అవుతాయి, చాట్‌లో ఉన్నవాళ్ళ ఫోన్‌లలో మాత్రమే తెరుచుకుంటాయి. Habit సర్వర్ వాటిని అందించి, అందాక తొలగిస్తుంది."), 13.5f, C.SUB).apply { setPadding(dp(16), dp(12), dp(16), dp(12)) })
+    }
+
+    private val REQ_CONTACTS = 41
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_CONTACTS && ChatContacts.allowed(this)) ChatContacts.matchNow(this, store, force = true)
     }
 
     /** The card the next rows go into (each heading starts a new one). */

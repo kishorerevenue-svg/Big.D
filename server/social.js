@@ -792,11 +792,34 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     return out.sort((a, b) => b[0] - a[0]).slice(0, n).map(([, uid]) => person(uid)).filter(Boolean);
   }
 
+  // ---------- "Contacts on Habit": people found by the phone numbers in someone's contacts ----------
+  // The phone sends each contact's number as a scrambled code (made the same way as here); this compares the codes
+  // with the numbers people log in with. Nothing that was sent is kept.
+  const phoneCodes = new Map();      // login number → its code
+  const phoneCode = id => {
+    let c = phoneCodes.get(id);
+    if (!c) { c = crypto.createHash("sha256").update("habit-phone:" + id).digest("hex").slice(0, 32); phoneCodes.set(id, c); }
+    return c;
+  };
+  /** The people whose login number has one of these [codes]: Map code → uid (people with a name, not banned). */
+  function byPhoneCodes(codes) {
+    const want = new Set(codes), out = new Map();
+    if (!want.size) return out;
+    for (const u of Object.values(db.users)) {
+      if (!u.login || u.login.kind !== "phone" || !u.name || u.banned) continue;
+      const c = phoneCode(u.login.id);
+      if (want.has(c)) out.set(c, u.uid);
+    }
+    return out;
+  }
+  /** Whether [uid] logs in with a phone number (then people who have that number can find them). */
+  const hasPhone = uid => { const u = db.users[uid]; return !!(u && u.login && u.login.kind === "phone"); };
+
   // ---------- linked computers (Habit Chat on the web): one more device for the same person ----------
   /** A device's key: the salted hash of its device id (the same one used to know who a phone is). */
   const devKey = req => devHash(req);
   function linkDevice(dk, uid) { db.devices[dk] = uid; save(); }
   function unlinkDevice(dk) { if (db.devices[dk]) { delete db.devices[dk]; save(); } }
 
-  return { handle, stats, engagement, postCartoon, who, person, byHandle, findPeople, devKey, linkDevice, unlinkDevice };
+  return { handle, stats, engagement, postCartoon, who, person, byHandle, findPeople, byPhoneCodes, hasPhone, devKey, linkDevice, unlinkDevice };
 };

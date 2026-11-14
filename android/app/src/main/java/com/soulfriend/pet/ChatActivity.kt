@@ -2410,6 +2410,13 @@ object ChatPeople {
             ChatDb.get(a).convs().filter { it.isDm && it.accepted && !it.blocked }.forEach { c ->
                 c.members().firstOrNull { it.optString("uid") != me }?.let { p -> if (seen.add(p.optString("uid"))) row(p) }
             }
+            // then the phone contacts who are on Habit (with the name saved in the phone)
+            val contacts = ChatContacts.onHabitList(a).filter { it.second.optBoolean("chat") && it.second.optString("uid") !in seen && it.second.optString("uid") !in skip }
+            if (contacts.isNotEmpty()) {
+                results.addView(ui.text(if (te) "Habit లో మీ కాంటాక్ట్‌లు" else "Your contacts on Habit", 12.5f, dl.sub).apply { setPadding(0, ui.dp(12), 0, 0) })
+                for ((c, p) in contacts) if (seen.add(p.optString("uid"))) row(JSONObject(p.toString()).put("name", c.name.ifBlank { p.optString("name") }))
+            }
+            ChatContacts.matchNow(a, store)
             if (results.childCount > 0) results.addView(ui.text(if (te) "ఇంకెవరైనా: పైన పేరు టైప్ చేయండి" else "Anyone else: type their name above", 12.5f, dl.sub).apply { setPadding(0, ui.dp(8), 0, 0) }, 0)
         }
         fun search(s: String) {
