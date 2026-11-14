@@ -1074,7 +1074,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         showRate()
         // a spoken question: when the answer has been said, listen for the next one (conversation mode), unless the answer
         // took them somewhere else (a game, another app, a call, the letter helper)
-        val away = arr != null && (0 until arr.length()).any { arr.optJSONObject(it)?.optString("type") in setOf("game", "open_app", "open_page", "call", "whatsapp", "letter") }
+        val away = arr != null && (0 until arr.length()).any { arr.optJSONObject(it)?.optString("type") in setOf("game", "open_app", "open_page", "call", "whatsapp", "letter", "play") }   // (a song plays: it doesn't listen over it)
         if (byVoice && store.voiceOn && !away && lookAt == null && lookAgain == null && screenAsk == null && replyTo == null && !voiceMode &&
             (convoStay || store.convo != "off")) afterSpeech = { convoNext() }
         else if (convoOn) endConvo(quiet = true)

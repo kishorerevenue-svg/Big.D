@@ -48,6 +48,7 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
             "letter" -> openLetterHelper(a.optString("request"))
             "open_page" -> openPage(a.optString("page"))
             "game" -> if (GamesActivity.open(ctx, a.optString("name"))) null else "Open the Habit AI app to play"
+            "play" -> play(a.optString("q"), a.optBoolean("short"))
             else -> null
         }
     } catch (e: Exception) { "Sorry, I couldn't do that on this phone" }
@@ -72,6 +73,26 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
         val id = try { ctx.getSystemService(DownloadManager::class.java).enqueue(req) } catch (e: Exception) { return null }
         store.addFile(SavedFile(id, safe, if (safe.endsWith(".xlsx")) "xlsx" else "docx", System.currentTimeMillis()))
         return id
+    }
+
+    /** "Play <a song>": finds it on YouTube (through the Habit server) and plays it right inside Habit, with more like it to
+     *  swipe to. If the server can't search YouTube now, YouTube's own search opens with those words. */
+    private fun play(q: String, short: Boolean): String? {
+        val words = q.trim().take(120)
+        if (words.isBlank()) return null
+        Thread {
+            val r = try { Net.get(store, "/api/videos/search?q=" + android.net.Uri.encode(words) + (if (short) "&short=1" else "")) } catch (e: Exception) { null }
+            val arr = r?.json?.optJSONArray("videos")
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if (r != null && r.ok && arr != null && arr.length() > 0) {
+                    MediaViewer.items = (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { v ->
+                        MediaViewer.Item(if (short) "short" else "video", v.optString("id"), "", v.optString("ch"), v.optString("title"), 0, false) } }
+                    MediaViewer.start = 0; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
+                    start(Intent(ctx, MediaViewer::class.java))
+                } else start(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/results?search_query=" + android.net.Uri.encode(words))))
+            }
+        }.start()
+        return if (store.lang == "te") "🎵 \"$words\" వెతికి ప్లే చేస్తున్నాను…" else "🎵 Finding and playing \"$words\"…"
     }
 
     /** "Make a letter" without the details: open the letter helper, which asks for each detail. */

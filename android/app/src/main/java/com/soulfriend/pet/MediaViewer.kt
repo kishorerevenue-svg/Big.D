@@ -68,7 +68,11 @@ class MediaViewer : Activity() {
     private lateinit var words: TextView
     private lateinit var likeBtn: TextView
     private lateinit var talkBtn: TextView
-    private lateinit var ytBtn: TextView
+    private lateinit var ytBtn: TextView           // Subscribe (on YouTube)
+    private lateinit var side: LinearLayout        // the buttons down the right side, like Shorts
+    private lateinit var seek: android.widget.SeekBar
+    private lateinit var clock: TextView
+    private var seeking = false
     private var chrome = true
     private var full: View? = null
     private var fullCb: WebChromeClient.CustomViewCallback? = null
@@ -109,16 +113,36 @@ class MediaViewer : Activity() {
         }
         bottomBar.addView(who)
         bottomBar.addView(words, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
-        val acts = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        likeBtn = pill("🤍") { like() }
-        acts.addView(likeBtn)
-        talkBtn = pill("💬") { comments() }
-        acts.addView(talkBtn, gap())
-        acts.addView(pill("📤") { share() }, gap())
-        ytBtn = pill("YouTube ↗") { openYouTube() }
-        acts.addView(ytBtn, gap())
-        bottomBar.addView(acts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        // a YouTube video: where it is, and drag to go forward or back
+        val seekRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        seek = android.widget.SeekBar(this).apply {
+            max = 1000; contentDescription = "Video position"
+            progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF3B30"))
+            thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(b: android.widget.SeekBar, v: Int, user: Boolean) { if (user) clock.text = mmss(v / 10.0) + " / " + mmss(length) }
+                override fun onStartTrackingTouch(b: android.widget.SeekBar) { seeking = true }
+                override fun onStopTrackingTouch(b: android.widget.SeekBar) {
+                    seeking = false
+                    web?.evaluateJavascript("seek(${b.progress / 10.0})", null)
+                }
+            })
+        }
+        clock = TextView(this).apply { setTextColor(Color.WHITE); textSize = 12f; setPadding(dp(6), 0, 0, 0) }
+        seekRow.addView(seek, LinearLayout.LayoutParams(0, dp(34), 1f))
+        seekRow.addView(clock)
+        bottomBar.addView(seekRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         root.addView(bottomBar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+
+        // the buttons down the right side, like Shorts. A Habit post: like and comment here. A YouTube video: like, comments
+        // and subscribe open it in the YouTube app (that's where your YouTube account is); share works for both.
+        side = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        likeBtn = sideBtn("🤍", "Like") { like() }
+        talkBtn = sideBtn("💬", "Comments") { comments() }
+        ytBtn = sideBtn("🔔", "Subscribe") { openYouTube() }
+        val shareBtn = sideBtn("📤", "Share") { share() }
+        for (b in listOf(likeBtn, talkBtn, ytBtn, shareBtn)) side.addView(b, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
+        root.addView(side, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.BOTTOM).apply { marginEnd = dp(6); bottomMargin = dp(170) })
 
         if (items.size > 1) {
             val hint = TextView(this).apply {
@@ -164,6 +188,40 @@ class MediaViewer : Activity() {
 
     private fun gap() = LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) }
 
+    private fun sideBtn(icon: String, word: String, onClick: () -> Unit) = TextView(this).apply {
+        gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 12f; setShadowLayer(4f, 0f, 1f, Color.BLACK)
+        setPadding(dp(6), dp(4), dp(6), dp(4)); minWidth = dp(56)
+        setSide(this, icon, word); contentDescription = word
+        setOnClickListener { onClick() }
+    }
+    private fun setSide(v: TextView, icon: String, word: String) {
+        val sp = android.text.SpannableString(icon + "\n" + word)
+        sp.setSpan(android.text.style.RelativeSizeSpan(2.2f), 0, icon.length, 0)
+        v.text = sp
+    }
+    private var length = 0.0
+    private fun mmss(t: Double): String { val s = t.toInt().coerceAtLeast(0); return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60) }
+
+    /** The YouTube player tells the page where it is; the page tells us. */
+    inner class Tube {
+        @android.webkit.JavascriptInterface fun time(t: Double, d: Double) { runOnUiThread { showTime(t, d) } }
+        @android.webkit.JavascriptInterface fun err(code: Int) { runOnUiThread { cantPlay(code) } }
+    }
+    private fun showTime(t: Double, d: Double) {
+        if (d > 0) length = d
+        if (length <= 0 || seeking) return
+        seek.max = (length * 10).toInt().coerceAtLeast(1)
+        seek.progress = (t * 10).toInt()
+        clock.text = mmss(t) + " / " + mmss(length)
+    }
+    /** YouTube won't play this one inside other apps (or it's gone): go to the next one by itself. */
+    private fun cantPlay(code: Int) {
+        if (code !in listOf(2, 5, 100, 101, 150)) return
+        val next = at + 1
+        if (next < items.size) { android.widget.Toast.makeText(this, "This one plays only on YouTube · next ▶", android.widget.Toast.LENGTH_SHORT).show(); pager.jump(next) }
+        else android.widget.Toast.makeText(this, "This one plays only on YouTube: tap Subscribe 🔔 to open it there", android.widget.Toast.LENGTH_LONG).show()
+    }
+
     // ---------- pages ----------
     private fun show(i: Int) {
         val prev = at
@@ -179,10 +237,13 @@ class MediaViewer : Activity() {
         who.text = cur.who
         words.text = cur.words; words.maxLines = 3; words.visibility = if (cur.words.isBlank()) View.GONE else View.VISIBLE
         val canAct = cur.key.isNotBlank() && onLike != null
-        likeBtn.visibility = if (canAct) View.VISIBLE else View.GONE
-        talkBtn.visibility = if (canAct && onComments != null) View.VISIBLE else View.GONE
+        val yt = cur.kind == "video" || cur.kind == "short"
+        likeBtn.visibility = if (canAct || yt) View.VISIBLE else View.GONE
+        talkBtn.visibility = if ((canAct && onComments != null) || yt) View.VISIBLE else View.GONE
         paintLike()
-        ytBtn.visibility = if (cur.kind == "video" || cur.kind == "short") View.VISIBLE else View.GONE
+        ytBtn.visibility = if (yt) View.VISIBLE else View.GONE
+        (seek.parent as? View)?.visibility = if (yt) View.VISIBLE else View.GONE
+        length = 0.0; seek.progress = 0; clock.text = ""
         if (cur.kind == "video" || cur.kind == "short") play(i)
         if (cur.kind == "file") playFile(i)
     }
@@ -244,7 +305,7 @@ class MediaViewer : Activity() {
     private fun toggleChrome() { chrome = !chrome; setChrome(chrome) }
 
     private fun setChrome(on: Boolean) {
-        for (v in listOf<View>(topBar, bottomBar)) {
+        for (v in listOf<View>(topBar, bottomBar, side)) {
             v.animate().cancel()
             if (on) { v.visibility = View.VISIBLE; v.animate().alpha(1f).setDuration(160).start() }
             else v.animate().alpha(0f).setDuration(160).withEndAction { if (!chrome) v.visibility = View.GONE }.start()
@@ -265,6 +326,7 @@ class MediaViewer : Activity() {
                 openOut(u); return true
             }
         }
+        addJavascriptInterface(Tube(), "HabitTube")
         webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View, callback: CustomViewCallback) { showFull(view, callback) }
             override fun onHideCustomView() { hideFull(false) }
@@ -285,8 +347,17 @@ class MediaViewer : Activity() {
         val origin = server.trimEnd('/')
         val html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
             "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head><body>" +
-            "<iframe src=\"https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&enablejsapi=1&origin=$origin\" " +
-            "allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" allowfullscreen></iframe></body></html>"
+            "<iframe id=\"p\" src=\"https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&enablejsapi=1&origin=$origin\" " +
+            "allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" allowfullscreen></iframe>" +
+            "<script>var f=document.getElementById('p'),ok=false;" +
+            "function post(o){try{o.id=1;o.channel='widget';f.contentWindow.postMessage(JSON.stringify(o),'*');}catch(e){}}" +
+            "function hello(){post({event:'listening'});post({event:'command',func:'addEventListener',args:['onError']});}" +
+            "function seek(s){post({event:'command',func:'seekTo',args:[s,true]});}" +
+            "f.onload=function(){hello();var n=0,iv=setInterval(function(){if(ok||++n>30)clearInterval(iv);else hello();},400);};" +
+            "window.addEventListener('message',function(e){if(String(e.origin).indexOf('youtube')<0)return;var m;try{m=typeof e.data=='string'?JSON.parse(e.data):e.data;}catch(x){return;}" +
+            "if(!m||!window.HabitTube)return;if(m.event=='onError'){HabitTube.err(+m.info||0);return;}" +
+            "if((m.event=='infoDelivery'||m.event=='initialDelivery')&&m.info){ok=true;var i=m.info;if(i.currentTime!=null||i.duration)HabitTube.time(+(i.currentTime||0),+(i.duration||0));}});</script>" +
+            "</body></html>"
         w.loadDataWithBaseURL("$origin/", html, "text/html", "utf-8", null)
         webAt = k
     }
@@ -402,12 +473,13 @@ class MediaViewer : Activity() {
     // ---------- buttons ----------
     private fun paintLike() {
         val cur = items.getOrNull(at) ?: return
-        likeBtn.text = (if (cur.liked) "❤️" else "🤍") + (if (cur.likes > 0) " ${cur.likes}" else "")
+        val habit = cur.key.isNotBlank() && onLike != null
+        setSide(likeBtn, if (habit && cur.liked) "❤️" else if (habit) "🤍" else "👍", if (habit && cur.likes > 0) "${cur.likes}" else "Like")
     }
 
     private fun like() {
         val cur = items.getOrNull(at) ?: return
-        if (cur.key.isBlank()) return
+        if (cur.key.isBlank() || onLike == null) { openYouTube(); return }    // a YouTube video: liked on YouTube
         val now = !cur.liked
         items.filter { it.key == cur.key }.forEach { it.liked = now; it.likes = maxOf(0, it.likes + if (now) 1 else -1) }
         paintLike()
@@ -416,7 +488,7 @@ class MediaViewer : Activity() {
 
     private fun comments() {
         val cur = items.getOrNull(at) ?: return
-        if (cur.key.isBlank()) return
+        if (cur.key.isBlank() || onComments == null) { openYouTube(); return }    // a YouTube video: its comments are on YouTube
         onComments?.invoke(cur.key)
         finish()
     }
@@ -437,14 +509,20 @@ class MediaViewer : Activity() {
         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) } catch (e: Exception) { }
     }
 
+    private fun petSmall(on: Boolean) {
+        if (PetService.running) try { startService(Intent(this, PetService::class.java).setAction(PetService.ACTION_GAME).putExtra("on", on)) } catch (e: Exception) { }
+    }
+
     override fun onPause() {
         super.onPause()
+        petSmall(false)
         if (webAt >= 0) stopVideo()
         if (fileAt >= 0) stopFile()
     }
 
     override fun onResume() {
         super.onResume()
+        petSmall(true)
         if (at >= 0 && items.getOrNull(at)?.kind == "file") playFile(at)
     }
 

@@ -331,6 +331,16 @@ class SocialPage(private val m: MainActivity) {
                 LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(10) })
         }, 4)
         chips()
+        // any song or video on YouTube: it plays right here (swipe for more)
+        m.add(LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            val box = ui.input("🔎 Any song or video · పాట / వీడియో వెతకండి", ytQuery)
+            box.isSingleLine = true; box.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            box.onText { ytQuery = it }
+            box.setOnEditorActionListener { _, _, _ -> ytSearch(); true }
+            addView(box, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(ui.button("▶ Play", "primary") { ytSearch() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+        }, 10)
         if (mine == null && meState == 2) m.add(ui.card(Ui.SUN_SOFT).apply {
             addView(ui.text("👤 మీ ప్రొఫైల్ · Make your profile", 15f, Ui.INK, bold = true))
             put(ui.text("Add your name, a photo and a line about you. Then you can post photos and videos, comment and follow people.", 13.5f, Ui.MUTED), 4)
@@ -644,6 +654,26 @@ class SocialPage(private val m: MainActivity) {
             row.addView(card, LinearLayout.LayoutParams(dp(if (tall) 120 else 200), -2).apply { if (i > 0) marginStart = dp(10) })
         }
         m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(row) }, 8)
+    }
+
+    private var ytQuery = ""
+    /** Searches all of YouTube (through the Habit server) and plays what it finds here. */
+    private fun ytSearch() {
+        val q = ytQuery.trim()
+        if (q.length < 2) { m.toast(if (store.lang == "te") "పాట, సినిమా లేదా పాడిన వారి పేరు రాయండి" else "Type a song, film or singer name"); return }
+        m.toast(if (store.lang == "te") "\"$q\" వెతుకుతున్నాను…" else "Finding \"$q\"…")
+        m.io.execute {
+            val r = try { Net.get(store, "/api/videos/search?q=" + Uri.encode(q), headers()) } catch (e: Exception) { null }
+            m.runOnUiThread {
+                val arr = r?.json?.optJSONArray("videos")
+                if (r == null || !r.ok || arr == null || arr.length() == 0) { m.toast(r?.error("Nothing found. Try other words.") ?: "No internet."); return@runOnUiThread }
+                MediaViewer.items = (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { v ->
+                    MediaViewer.Item("video", v.optString("id"), "", v.optString("ch"), v.optString("title"), 0, false) } }
+                MediaViewer.start = 0; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
+                m.leavingForSystemScreen = true
+                m.startActivity(Intent(m, MediaViewer::class.java))
+            }
+        }
     }
 
     /** YouTube videos full screen (YouTube's own player); swipe for the next one in the strip. */
