@@ -1,0 +1,101 @@
+== dark-list:   mCurrentFocus=Window{4058d98 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-chat:   mCurrentFocus=Window{1e269e5 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== dark-group:   mCurrentFocus=Window{da86075 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== dark-settings:   mCurrentFocus=Window{72c8ca6 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatSettingsActivity}
+== dark-info:   mCurrentFocus=Window{432a4bd u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatInfoActivity}
+== dark-contact:   mCurrentFocus=Window{b73a594 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatInfoActivity}
+== dark-media:   mCurrentFocus=Window{3df2513 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatInfoActivity}
+== dark-starred:   mCurrentFocus=Window{10b263a u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatInfoActivity}
+== dark-ai:   mCurrentFocus=Window{f5fb5d1 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== dark-devices:   mCurrentFocus=Window{dabfe1a u0 com.kishore.bigd.lite/com.soulfriend.pet.LinkedDevicesActivity}
+== dark-ai:   mCurrentFocus=Window{d3dd0c6 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== tapui Wrong answer: 743 1307 844 1373
+== tapui OK, send: 743 1454 978 1596
+== dark-list:   mCurrentFocus=Window{d1db87e u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-group:   mCurrentFocus=Window{4eb12ae u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== dark-chat:   mCurrentFocus=Window{bbd8360 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== dark-list:   mCurrentFocus=Window{45d8e7e u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== light-list:   mCurrentFocus=Window{5eb521b u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== light-chat:   mCurrentFocus=Window{656919b u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== light-group:   mCurrentFocus=Window{4a963f7 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== light-settings:   mCurrentFocus=Window{54bf87b u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatSettingsActivity}
+== light-info:   mCurrentFocus=Window{d74018 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatInfoActivity}
+== light-contact:   mCurrentFocus=Window{91669ae u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatInfoActivity}
+== light-media:   mCurrentFocus=Window{4115b2a u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatInfoActivity}
+== light-starred:   mCurrentFocus=Window{448011 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatInfoActivity}
+== light-ai:   mCurrentFocus=Window{ccfbdda u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== light-devices:   mCurrentFocus=Window{673aac u0 com.kishore.bigd.lite/com.soulfriend.pet.LinkedDevicesActivity}
+== light-ai:   mCurrentFocus=Window{aa682e2 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== tapui Wrong answer: 743 1307 844 1373
+== tapui OK, send: 
+== light-list:   mCurrentFocus=Window{27093a8 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== light-group:   mCurrentFocus=Window{5784a04 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== light-chat:   mCurrentFocus=Window{1ea9377 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== light-list:   mCurrentFocus=Window{2fdddab u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== login-light:   mCurrentFocus=Window{44537e8 u0 com.kishore.bigd.lite/com.soulfriend.pet.LoginActivity}
+== login-dark:   mCurrentFocus=Window{bed0646 u0 com.kishore.bigd.lite/com.soulfriend.pet.LoginActivity}
+== home-teal:   mCurrentFocus=Window{87117ae u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== home-purple:   mCurrentFocus=Window{9a173a9 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== home-orange:   mCurrentFocus=Window{c377986 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== home-green:   mCurrentFocus=Window{240baf0 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== home-blue:   mCurrentFocus=Window{3852fdf u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== home-maroon:   mCurrentFocus=Window{ad26267 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== home-top:   mCurrentFocus=Window{3dac963 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== home-office0:   mCurrentFocus=Window{7215b09 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-home-office0:   mCurrentFocus=Window{c58468e u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-office:   mCurrentFocus=Window{f15ed4 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-page-office:   mCurrentFocus=Window{48f98b4 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== home-sheet0:   mCurrentFocus=Window{91df907 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-tasks:   mCurrentFocus=Window{1edc4ae u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-files:   mCurrentFocus=Window{cfab548 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-vault:   mCurrentFocus=Window{9f57cd3 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-pet:   mCurrentFocus=Window{8fecf84 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-translate:   mCurrentFocus=Window{7445970 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-family:   mCurrentFocus=Window{e628749 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-govt:   mCurrentFocus=Window{54a48da u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-feed:   mCurrentFocus=Window{42b8902 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== page-pet-v:   mCurrentFocus=Window{147e985 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== te-page-pet-v:   mCurrentFocus=Window{78e6c10 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== games:   mCurrentFocus=Window{43eb5b5 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== dark-games:   mCurrentFocus=Window{80fe653 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== games-quiz:   mCurrentFocus=Window{e61906 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== dark-games-quiz:   mCurrentFocus=Window{395273d u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== games-riddles:   mCurrentFocus=Window{95c99b8 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== dark-games-riddles:   mCurrentFocus=Window{dc8292b u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== games-memory:   mCurrentFocus=Window{7a12ea4 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== dark-games-memory:   mCurrentFocus=Window{a9d9257 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== games-tictactoe:   mCurrentFocus=Window{b99780 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== dark-games-tictactoe:   mCurrentFocus=Window{a28ae25 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== games-maths:   mCurrentFocus=Window{a0335bf u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== dark-games-maths:   mCurrentFocus=Window{e1ddb3a u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== quiz-answered:   mCurrentFocus=Window{b68fff7 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== ttt-play:   mCurrentFocus=Window{5e3b6ed u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== tapui Box 5: 
+== tapui Box 1: 105 792 380 1068
+== mem-play:   mCurrentFocus=Window{f4e8584 u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== tapui Card 1: 
+== tapui Card 2: 317 727 530 937
+== te-riddle:   mCurrentFocus=Window{5599f2b u0 com.kishore.bigd.lite/com.soulfriend.pet.GamesActivity}
+== tapui జవాబు చూపించు: 
+== dark-home-teal:   mCurrentFocus=Window{b52fc6c u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-home-purple:   mCurrentFocus=Window{d49d79e u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-home-orange:   mCurrentFocus=Window{62b03cc u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-home-green:   mCurrentFocus=Window{f00d623 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-home-blue:   mCurrentFocus=Window{3ea60a0 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-home-maroon:   mCurrentFocus=Window{cfd51b0 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-home-top:   mCurrentFocus=Window{9a7db78 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-home-sheet0:   mCurrentFocus=Window{6abd027 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-page-tasks:   mCurrentFocus=Window{7583baa u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-page-files:   mCurrentFocus=Window{529508e u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-page-pet:   mCurrentFocus=Window{9ea551a u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-page-translate:   mCurrentFocus=Window{37ef7cb u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-page-family:   mCurrentFocus=Window{dc301a u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-page-govt:   mCurrentFocus=Window{469f6ab u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== dark-page-feed:   mCurrentFocus=Window{e7502d2 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== te-dark-home:   mCurrentFocus=Window{f7c2dc6 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== te-home:   mCurrentFocus=Window{168797a u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== te-dark-list:   mCurrentFocus=Window{1e32d80 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== te-light-chat:   mCurrentFocus=Window{b0c6b39 u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== te-dark-group:   mCurrentFocus=Window{2f8c57b u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
+== auto-night-list:   mCurrentFocus=Window{c7c4ec6 u0 com.kishore.bigd.lite/com.soulfriend.pet.MainActivity}
+== auto-night-chat:   mCurrentFocus=Window{2b0618a u0 com.kishore.bigd.lite/com.soulfriend.pet.ChatActivity}
