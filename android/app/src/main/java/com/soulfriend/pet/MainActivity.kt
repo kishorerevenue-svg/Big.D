@@ -68,7 +68,7 @@ class MainActivity : Activity() {
     /** The page area (above the bottom bar): the page scrolls in it; a bar can stay fixed at its top ([setTopBar]). */
     private lateinit var bodyFrame: FrameLayout
     private var topBar: View? = null
-    @Volatile private var resumedNow = false
+    @Volatile internal var resumedNow = false
     private lateinit var talkLabel: TextView
     private lateinit var fab: TextView
     internal val fmt: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
@@ -251,7 +251,14 @@ class MainActivity : Activity() {
             else if (store.mirrorOn && (tab == "home" || tab == "pet") && System.currentTimeMillis() - store.mirrorAt > 3 * 3600_000L)
                 content.postDelayed({ if (!isFinishing && hasWindowFocus() && (tab == "home" || tab == "pet")) lookAtMe(true) }, 1500)
             pendingShare?.let { pendingShare = null; messages.checkShared(it) }
-            pendingLetter?.let { pendingLetter = null; letter.start(it) }
+            // the pet heard "make a letter…": a letter already half filled isn't thrown away without asking
+            pendingLetter?.let { req -> pendingLetter = null
+                if (letter.inProgress()) AlertDialog.Builder(this).setTitle(t("A letter is open", "ఒక లేఖ తెరిచి ఉంది"))
+                    .setMessage(t("Go on with this letter, or start a new one?", "ఈ లేఖనే కొనసాగించాలా, కొత్తది మొదలుపెట్టాలా?"))
+                    .setPositiveButton(t("Go on with this one", "దీన్నే కొనసాగించు"), null)
+                    .setNegativeButton(t("Start a new one", "కొత్తది మొదలుపెట్టు")) { _, _ -> letter.start(req) }.show()
+                else letter.start(req)
+            }
             pendingPost?.let { pendingPost = null; social.fromShare(it.first, it.second) }
         }
     }

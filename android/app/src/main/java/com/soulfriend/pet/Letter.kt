@@ -45,6 +45,8 @@ class LetterHelper(private val m: MainActivity) {
         private val OFFICE_TYPES = listOf("📨" to "Letter to higher office", "📋" to "Report", "📝" to "Memo", "↩️" to "Endorsement",
             "⚖️" to "Proceedings / Order", "📢" to "Notice", "⚠️" to "Show-cause notice", "✉️" to "Reply to a petition",
             "📎" to "Covering letter", "🗂️" to "Office order", "👥" to "Minutes of meeting", "📊" to "Excel statement")
+        /** The letter helper last drawn; the pet gives it what it hears while its questions are on the screen. */
+        @Volatile var showing: LetterHelper? = null
     }
 
     private var officeType = ""            // the chosen office document type ("" = let the AI decide)
@@ -59,7 +61,9 @@ class LetterHelper(private val m: MainActivity) {
 
     private var stage = "start"            // start, planning, questions, making, done
     private var request = ""
-    private var letterLang = ""            // "" = same as the request, "en" or "te"
+    private var letterLang = m.store.letterLang   // "" = same as the request, "en" or "te" (remembered)
+    private var speakLang = ""             // the language the answers are spoken in ("" = the letter's language)
+    private var ownWhy = ""                // why Habit's own brain makes it: limit, resting, busy, nokey, own
     private var title = ""
     private var format = "docx"
     private var say = ""
@@ -94,7 +98,33 @@ class LetterHelper(private val m: MainActivity) {
         if (request.length >= 3) plan() else { stage = "start"; m.render() }
     }
 
+    /** A letter is half filled (its questions on the screen, some answered). */
+    fun inProgress() = stage == "questions" && answers.values.any { it.isNotBlank() }
+
+    /**
+     * The pet heard [text] while this letter's questions are on the screen: it goes into the answer being filled (the one
+     * listening, else the first empty one, else "Anything else"), not into a new letter. Returns where it went, or null.
+     */
+    fun takeVoice(text: String): String? {
+        if (!m.resumedNow || m.tab != "files" || stage != "questions" || text.isBlank()) return null
+        val list = asked()
+        val q = list.firstOrNull { it.id == listeningId } ?: list.firstOrNull { answers[it.id].isNullOrBlank() }
+        val id = q?.id ?: "note"
+        val old = answers[id].orEmpty().trim()
+        answers[id] = if (old.isEmpty()) text.trim() else "$old ${text.trim()}"
+        m.render()
+        fields[id]?.let { m.scrollToView(it) }
+        return q?.q ?: "Anything else to add?"
+    }
+
+    /** The pet's voice typing language while this letter's questions are on the screen, or null. */
+    fun petLang(): String? = if (m.resumedNow && m.tab == "files" && stage == "questions") voiceLang() else null
+
+    /** Voice typing's language: the one chosen for speaking, else the letter's ("English" letter: English words, not Telugu letters). */
+    private fun voiceLang(): String = if (speakLang.ifEmpty { letterLang.ifEmpty { store.lang } } == "en") "en-IN" else "te-IN"
+
     fun build() {
+        showing = this
         fields.clear(); micButtons.clear()
         when (stage) {
             "planning" -> m.add(busy(if (papers.isNotEmpty()) "📄 Reading your papers and planning the questions… (up to a minute)" else "🐾 Thinking about what your letter needs…"), 12)
@@ -208,7 +238,7 @@ class LetterHelper(private val m: MainActivity) {
         sec.put(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL
             listOf("" to "Auto", "en" to "English", "te" to "తెలుగు").forEachIndexed { i, (k, l) ->
-                addView(ui.chip(l, letterLang == k) { letterLang = k; m.render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = m.dp(6) })
+                addView(ui.chip(l, letterLang == k) { letterLang = k; store.letterLang = k; m.render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = m.dp(6) })
             }
         }, 6)
     }
@@ -391,6 +421,7 @@ class LetterHelper(private val m: MainActivity) {
                 val j = r.json
                 title = j.optString("title", "Letter"); format = j.optString("format", "docx"); say = j.optString("say", "")
                 ownSkill = if (j.optBoolean("own")) j.optString("skill") else ""
+                ownWhy = if (j.optBoolean("own")) j.optString("why") else ""
                 summary = j.optString("summary"); notes = j.optString("notes"); docsId = j.optString("docsId"); showNotes = false
                 questions.clear(); extras.clear(); answers.clear(); chosen.clear(); misses = 0
                 j.optJSONArray("questions")?.let { a -> for (i in 0 until a.length()) a.optJSONObject(i)?.let { o ->
@@ -407,12 +438,21 @@ class LetterHelper(private val m: MainActivity) {
     /** A small note when Habit's own brain (not Claude) is making the file. */
     private fun ownNote(done: Boolean) {
         val te = store.lang == "te"
+        // why Claude isn't making it (so it's clear what to do)
+        val why = when (ownWhy) {
+            "limit" -> if (te) "ఈ ఫోన్‌కి ఈరోజు Claude మెసేజ్‌లు అయిపోయాయి; రేపు మళ్ళీ వస్తాయి." else "This phone's Claude messages for today are used up; they come back tomorrow."
+            "resting" -> if (te) "సర్వర్‌లో Claude ఆగి ఉంది (నెల పరిమితి లేదా క్రెడిట్): Teach పేజీలో చూడండి." else "Claude is paused on the server (monthly limit or credit): see the Teach page."
+            "busy" -> if (te) "Claude ఇప్పుడే బిజీగా ఉంది: \"↺ Start over\" నొక్కితే మళ్ళీ Claude ప్రయత్నిస్తుంది." else "Claude was busy just now: tap \"↺ Start over\" to try Claude again."
+            "nokey" -> if (te) "సర్వర్‌లో Claude కీ లేదు." else "The server has no Claude key."
+            else -> ""
+        }
         m.add(ui.card(Ui.TEAL_SOFT).apply {
             addView(ui.text(if (te) "🧠 Habit సొంత మెదడు" else "🧠 Habit's own brain", 15f, Ui.TEAL_DARK, bold = true))
             put(ui.text(if (done) (if (te) "ఈ ఫైల్‌ను Habit తను నేర్చుకున్న ఫార్మాట్‌తో సొంతంగా తయారు చేసింది. పంపే ముందు ఒకసారి చదవండి."
                     else "Habit made this file by itself, from a format it has learned. Please read it once before you send it.")
                 else (if (te) "Claude ఇప్పుడు అందుబాటులో లేదు, అందుకే Habit తను నేర్చుకున్న ఫార్మాట్‌తో ఈ ఫైల్ తయారు చేస్తుంది."
                     else "Claude can't help right now, so Habit makes this file by itself, from a format it has learned."), 13.5f, Ui.INK), 4)
+            if (why.isNotBlank() && !done) put(ui.text(why, 12.5f, Ui.MUTED), 4)
         }, 12)
     }
 
@@ -424,6 +464,23 @@ class LetterHelper(private val m: MainActivity) {
             put(if (voiceAll) ui.button("■ Stop voice answers", "danger") { stopVoiceAll() }
                 else ui.button("🎙 Answer all by voice (I'll read each question)", "sun") { startVoiceAll() }, 12)
             put(ui.text("Or type, or tap 🎤 next to any question. Tap 🔊 to hear a question.", 12.5f, Ui.MUTED), 6)
+            // the letter's language, and the language you speak (an English letter: English voice typing, so the words come
+            // out in English letters, not Telugu ones)
+            put(ui.text("Letter in · లేఖ భాష", 13.5f, Ui.INK, bold = true), 12)
+            put(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL
+                listOf("" to "Auto", "en" to "English", "te" to "తెలుగు").forEachIndexed { i, (k, l) ->
+                    addView(ui.chip(l, letterLang == k) { letterLang = k; store.letterLang = k; m.stopListening(); listeningId = ""; m.render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = m.dp(6) })
+                }
+            }, 6)
+            put(ui.text("🎤 I speak in · నేను మాట్లాడే భాష", 13.5f, Ui.INK, bold = true), 10)
+            val now = voiceLang().take(2)
+            put(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL
+                listOf("en" to "English", "te" to "తెలుగు").forEachIndexed { i, (k, l) ->
+                    addView(ui.chip(l, now == k) { speakLang = k; m.stopListening(); listeningId = ""; m.render() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = m.dp(6) })
+                }
+            }, 6)
         }, 12)
 
         if (summary.isNotBlank() || notes.isNotBlank()) m.add(ui.card(Ui.TEAL_SOFT).apply {
@@ -446,6 +503,9 @@ class LetterHelper(private val m: MainActivity) {
                 if (x.id in chosen) question(this, x.q, x)
             }
         }, 12)
+
+        m.add(ui.section("📎 Earlier letter / reference papers (if you have them)",
+            "Add a photo or PDF of the earlier letter, order or petition: Claude reads it while writing (references, dates, facts).").apply { papersBlock(this) }, 12)
 
         m.add(ui.section("Anything else to add?").apply {
             val note = ui.input("Optional. For example: \"mention that I will make up the work\"", answers["note"] ?: "", multi = true)
@@ -490,7 +550,7 @@ class LetterHelper(private val m: MainActivity) {
         listeningId = id
         micButtons[id]?.let { it.text = "● Listening… tap to stop"; it.background = ui.round(Ui.DANGER_SOFT, 24); it.setTextColor(Ui.DANGER) }
         input.background = ui.round(Ui.TEAL_SOFT, 14, Ui.TEAL)
-        m.listen(onPartial = { p -> (fields[id] ?: input).let { it.setText(join(p)); it.setSelection(it.text.length) } }, onDone = { heard ->
+        m.listen(lang = voiceLang(), onPartial = { p -> (fields[id] ?: input).let { it.setText(join(p)); it.setSelection(it.text.length) } }, onDone = { heard ->
             if (listeningId != id) return@listen
             listeningId = ""
             val ok = !heard.isNullOrBlank()
@@ -562,9 +622,14 @@ class LetterHelper(private val m: MainActivity) {
         if (office) { if (officeType.isNotEmpty()) body.put("docType", officeType); body.put("office", store.officeInfo) }
         if (notes.isNotBlank()) body.put("notes", notes)
         if (docsId.isNotBlank()) body.put("docsId", docsId)
+        // papers added on this screen (or changed after the questions came): they go along now, for Claude to read
+        val sendPapers = docsId.isBlank() && papers.isNotEmpty()
+        if (sendPapers) body.put("docs", JSONArray().apply {
+            papers.forEach { p -> put(JSONObject().put("name", p.name).put("mediaType", p.mime).put("data", Base64.encodeToString(p.data, Base64.NO_WRAP))) }
+        })
         if (ownSkill.isNotBlank()) body.put("skill", ownSkill)
         m.io.execute {
-            val r = Net.post(store, "/api/letter/make", body, timeoutMs = 150_000)
+            val r = Net.post(store, "/api/letter/make", body, timeoutMs = if (sendPapers) 240_000 else 150_000)
             m.runOnUiThread {
                 if (!r.ok || !r.json.optString("url").startsWith(store.server + "/files/")) {
                     stage = "questions"; error = r.error("Couldn't write the letter. Please try again."); m.render(); return@runOnUiThread

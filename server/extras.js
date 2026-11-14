@@ -180,8 +180,8 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     }
     if (body.note) lines.push("Anything else they said: " + str(body.note, 1500));
     if (body.notes) lines.push("Details read from their papers:\n" + str(body.notes, 3000));
-    const papers = loadPapers(body.docsId);
-    if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above.`);
+    const papers = loadPapers(body.docsId).concat(readPapers(body.docs)).slice(0, 10);
+    if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above (an earlier letter, an order, a petition): take the references, numbers, dates and facts from them.`);
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
     const out = await learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
       messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 8000, search: false, model: SMART_MODEL || MODEL });
@@ -352,13 +352,13 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (req.method !== "POST") { send(res, 404, { error: "Not found" }, origin); return true; }
     if (!allowed(clientIp(req))) { send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); return true; }
     let body;
-    try { body = await readBody(req, p === "/api/letter/plan" ? 20 * 1024 * 1024 : p === "/api/scan" ? 6 * 1024 * 1024 : 64 * 1024); }
+    try { body = await readBody(req, p === "/api/letter/plan" || p === "/api/letter/make" ? 20 * 1024 * 1024 : p === "/api/scan" ? 6 * 1024 * 1024 : 64 * 1024); }
     catch (e) { send(res, 400, { error: e.message === "too_large" ? "The papers are too big. Please attach fewer pages." : "Bad request." }, origin); return true; }
 
     try {
       if (p === "/api/letter/plan" || p === "/api/letter/make") {
         const plan = p.endsWith("plan");
-        const hasPapers = plan && Array.isArray(body.docs) && body.docs.length > 0;
+        const hasPapers = Array.isArray(body.docs) && body.docs.length > 0;      // (the earlier letter can be added on the questions screen too)
         if (str(body.request, 2000).length < 3 && !hasPapers && !str(body.docType, 60) && !(!plan && str(body.title, 80))) { send(res, 400, { error: "Tell me what you need first." }, origin); return true; }
         // Habit's own brain makes the file when Claude can't: no key, Claude is resting (monthly limit, no credit),
         // the person's free messages for today are used up, Claude fails, or the plan came from the own brain.
