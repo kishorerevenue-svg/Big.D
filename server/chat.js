@@ -101,10 +101,24 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
 
   // ---------- chats ----------
   const dmId = (a, b) => "d" + crypto.createHash("sha256").update([a, b].sort().join("|")).digest("hex").slice(0, 16);
-  /** Do these two people already know each other (an accepted chat, or a group both accepted)? */
+  // Chats work straight away, like WhatsApp: a new chat, a call or being added to a group reaches the other person at
+  // once (no request to accept). If someone troubles them, they block or report. A chat that just came to someone is
+  // marked "auto" until they reply (or tap OK): until then the more private things (their status updates, last seen)
+  // aren't shared with that person.
+  const real = (c, u) => !!(c.st[u] && c.st[u].ok && !c.st[u].auto);
+  /** Do these two people already know each other (a chat or group both really joined)? */
   function knows(a, b) {
-    for (const c of Object.values(db.convs)) if (c.members.includes(a) && c.members.includes(b) && c.st[a] && c.st[a].ok && c.st[b] && c.st[b].ok) return true;
+    for (const c of Object.values(db.convs)) if (c.members.includes(a) && c.members.includes(b) && real(c, a) && real(c, b)) return true;
     return false;
+  }
+  // (chats that were waiting for a yes before this: they are open now)
+  {
+    let opened = 0;
+    for (const c of Object.values(db.convs)) for (const u of c.members || []) {
+      const st = c.st && c.st[u];
+      if (st && !st.ok) { st.ok = true; st.auto = true; opened++; }
+    }
+    if (opened) { save(); console.log("Chat: " + opened + " waiting chats are open now (no accepting needed)"); }
   }
   function view(c, me) {
     const other = c.kind === "dm" ? c.members.find(u => u !== me) || c.gone : "";
@@ -112,7 +126,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
     const k = c.comm && db.comms[c.comm];
     return { cid: c.id, kind: c.kind, name: c.kind === "dm" ? p.name : c.name, handle: p ? p.handle : "", emoji: c.kind === "dm" ? p.emoji : (c.emoji || (c.ann ? "📢" : "👥")), avatar: p ? p.avatar : "",
       other: other || "", members: c.members.map(u => Object.assign(person(u), { admin: c.admins.includes(u), key: !!db.keys[u] })), admins: c.admins.slice(), by: c.by, at: c.at, last: c.last,
-      accepted: !!(c.st[me] && c.st[me].ok), seq: c.seq, st: ticks(c), blocked: !!other && blocked(me, other), member: c.members.includes(me),
+      accepted: !!(c.st[me] && c.st[me].ok), auto: !!(c.st[me] && c.st[me].auto), seq: c.seq, st: ticks(c), blocked: !!other && blocked(me, other), member: c.members.includes(me),
       desc: c.desc || "", onlyAdmins: !!c.onlyAdmins, adminsEdit: c.adminsEdit !== false, ann: !!c.ann,
       comm: k ? { id: k.id, name: k.name, emoji: k.emoji || "🏘️" } : null, link: c.kind === "group" && c.code && c.admins.includes(me) ? c.code : "" };
   }
@@ -333,7 +347,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
       for (const c of Object.values(db.convs)) {
         if (c.kind !== "dm" || !c.members.includes(me)) continue;
         const u = c.members.find(x => x !== me);
-        if (!u || !(c.st[me] && c.st[me].ok) || !(c.st[u] && c.st[u].ok) || blocked(me, u) || blocked(u, me) || !db.keys[u]) continue;
+        if (!u || !real(c, me) || !real(c, u) || blocked(me, u) || blocked(u, me) || !db.keys[u]) continue;
         const pp = social.person(u);
         if (pp) people.push(Object.assign({}, pp, { cid: c.id, pub: db.keys[u].pub, kid: db.keys[u].kid }));
       }
@@ -342,7 +356,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
     // online / last seen of someone I chat with (nothing for people who hide theirs, and nothing if I hide mine)
     if (p === "/api/chat/presence" && req.method === "GET") {
       const u = str(url.searchParams.get("uid"), 40);
-      const shared = !!u && u !== me && Object.values(db.convs).some(c => c.kind === "dm" && c.members.includes(me) && c.members.includes(u) && c.st[me] && c.st[me].ok && c.st[u] && c.st[u].ok);
+      const shared = !!u && u !== me && Object.values(db.convs).some(c => c.kind === "dm" && c.members.includes(me) && c.members.includes(u) && real(c, me) && real(c, u));
       if (!shared || blocked(u, me) || blocked(me, u)) return send(200, { on: false, at: 0 });
       if (hidesSeen(u) || hidesSeen(me)) return send(200, { on: false, at: 0, hidden: true });
       const at = Number(lastSeen.get(u)) || 0;
@@ -476,11 +490,11 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
         let c = db.convs[cid];
         if (!c) {
           c = db.convs[cid] = { id: cid, kind: "dm", members: [me, other], admins: [me, other], name: "", by: me, at: Date.now(), last: Date.now(), seq: 0,
-            st: { [me]: { ok: true, d: 0, r: 0 }, [other]: { ok: knows(other, me), d: 0, r: 0 } }, told: { [me]: true } };
+            st: { [me]: { ok: true, d: 0, r: 0 }, [other]: { ok: true, auto: !knows(other, me), d: 0, r: 0 } }, told: { [me]: true } };
           push(me, { k: "c", cid }, bid);       // my other devices (phone / computers) see the new chat too
           save();
         }
-        if (!c.st[me].ok) { c.st[me].ok = true; save(); }
+        if (!c.st[me].ok || c.st[me].auto) { c.st[me].ok = true; delete c.st[me].auto; save(); }
         return send(200, { conv: view(c, me) });
       }
       // a new group: the one who makes it is its first admin
@@ -491,7 +505,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
         if (want.length > MAX_GROUP - 1) return send(400, { error: `A group can have up to ${MAX_GROUP} people.` });
         const cid = "g" + crypto.randomBytes(8).toString("hex");
         const c = db.convs[cid] = { id: cid, kind: "group", members: [me, ...want], admins: [me], name, by: me, at: Date.now(), last: Date.now(), seq: 0, st: { [me]: { ok: true, d: 0, r: 0 } }, told: null };
-        for (const u of want) c.st[u] = { ok: knows(u, me), d: 0, r: 0 };
+        for (const u of want) c.st[u] = { ok: true, auto: !knows(u, me), d: 0, r: 0 };
         sysMsg(c, { what: "created", by: me, name, who: want });
         pushAll(c, { k: "c", cid });
         save();
@@ -644,7 +658,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
         if (info && !admin && c.adminsEdit !== false) return send(403, { error: "Only admins can change this group's name, picture and description." });
         const add = list("add").filter(u => !c.members.includes(u) && social.person(u) && db.keys[u] && !blocked(u, me));
         if (c.members.length + add.length > MAX_GROUP) return send(400, { error: `A group can have up to ${MAX_GROUP} people.` });
-        for (const u of add) { c.members.push(u); c.st[u] = { ok: knows(u, me), d: c.seq, r: c.seq }; joinDevices(c, u); }
+        for (const u of add) { c.members.push(u); c.st[u] = { ok: true, auto: !knows(u, me), d: c.seq, r: c.seq }; joinDevices(c, u); }
         if (add.length) sysMsg(c, { what: "added", by: me, who: add });
         const remove = list("remove").filter(u => c.members.includes(u) && u !== me);
         for (const u of remove) { c.members = c.members.filter(x => x !== u); c.admins = c.admins.filter(x => x !== u); delete c.st[u]; dropDevices(c, u); push(u, { k: "x", cid: c.id }); }
@@ -689,7 +703,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
         save();
         return send(200, { ok: true });
       }
-      if (p === "/api/chat/accept") { c.st[me].ok = true; push(me, { k: "c", cid: c.id }); save(); return send(200, { conv: view(c, me) }); }
+      if (p === "/api/chat/accept") { c.st[me].ok = true; delete c.st[me].auto; push(me, { k: "c", cid: c.id }); save(); return send(200, { conv: view(c, me) }); }
       if (p === "/api/chat/read") {
         const seq = Math.min(c.seq, Math.max(0, Number(body.seq) || 0));
         const s = c.st[me];
@@ -732,7 +746,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
         }
         if (other && !c.st[other].ok && (c.st[me].sent || 0) >= BEFORE_ACCEPT)
           return send(429, { error: "Please wait until they accept your chat request." });
-        if (!c.st[me].ok) c.st[me].ok = true;                      // replying to a request accepts it
+        if (!c.st[me].ok || c.st[me].auto) { c.st[me].ok = true; delete c.st[me].auto; }   // replying: they really know each other
         // tasks: anyone can add one (a reminder, or work for someone); the assigned person adds remarks and marks it
         // done; only an admin closes or reopens it (in a one-to-one chat, either of you)
         let task = null;

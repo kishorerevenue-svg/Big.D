@@ -103,7 +103,7 @@ object CallManager {
                     val age = System.currentTimeMillis() + skew - m.at
                     when {
                         cur != null && cur.id == id -> { }                                           // the same ring twice
-                        conv == null || conv.blocked || !conv.accepted -> { }                         // not from someone I accepted
+                        conv == null || conv.blocked -> { }                                           // blocked: it doesn't ring (no accepting needed)
                         age > WAIT_MS -> log(app, Call(id, m.cid, m.sender, b.optBoolean("video"), true).apply { startedAt = m.at }, "missed")
                         cur != null -> {                                                              // already on a call: busy
                             val other = Call(id, m.cid, m.sender, b.optBoolean("video"), true).apply { startedAt = m.at }

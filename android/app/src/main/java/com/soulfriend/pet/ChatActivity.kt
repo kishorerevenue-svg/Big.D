@@ -2133,6 +2133,11 @@ class ChatActivity : Activity() {
             c.isLocal -> {}
             !c.member -> box(t("You're no longer in this group.", "మీరు ఇప్పుడు ఈ గ్రూప్‌లో లేరు."), chipButton(t("Delete chat", "చాట్ తొలగించు"), ChatTheme.DANGER) { db.clear(cid, true); finish() })
             c.blocked -> box(t("You blocked this person. They can't message you.", "మీరు ఈ వ్యక్తిని బ్లాక్ చేశారు."), chipButton(t("Unblock", "అన్‌బ్లాక్"), primary = true) { block(false) })
+            // a chat that came straight to me (no accepting needed): a small note, with Block / Leave and Report at hand
+            c.data.optBoolean("auto") && c.isGroup -> box(t("${c.nameOf(c.data.optString("by"))} added you to this group.", "${c.nameOf(c.data.optString("by"))} మిమ్మల్ని ఈ గ్రూప్‌లో చేర్చారు."),
+                chipButton(t("OK", "సరే"), primary = true) { accept() }, chipButton(t("Leave", "వెళ్ళిపో")) { leave() }, chipButton(t("Report", "రిపోర్ట్"), ChatTheme.DANGER) { report(db.msgs(cid).filter { it.sender != me }, c.data.optString("by")) })
+            c.data.optBoolean("auto") -> box(t("New chat from ${c.name}. If you don't know them, block or report.", "${c.name} నుంచి కొత్త చాట్. వాళ్ళు తెలియకపోతే బ్లాక్ లేదా రిపోర్ట్ చేయండి."),
+                chipButton(t("OK", "సరే"), primary = true) { accept() }, chipButton(t("Block", "బ్లాక్"), ChatTheme.DANGER) { block(true) }, chipButton(t("Report", "రిపోర్ట్"), ChatTheme.DANGER) { report(db.msgs(cid).filter { it.sender != me }, c.otherUid(me)) })
             !c.accepted && c.isGroup -> box(t("${c.nameOf(c.data.optString("by"))} added you to this group. Join it?", "${c.nameOf(c.data.optString("by"))} మిమ్మల్ని ఈ గ్రూప్‌లో చేర్చారు. చేరతారా?"),
                 chipButton(t("Join", "చేరండి"), primary = true) { accept() }, chipButton(t("Leave", "వద్దు")) { leave() }, chipButton(t("Report", "రిపోర్ట్"), ChatTheme.DANGER) { report(db.msgs(cid).filter { it.sender != me }, c.data.optString("by")) })
             !c.accepted -> box(t("${c.name} wants to chat with you. Reply or accept to let them write more.", "${c.name} మీతో చాట్ చేయాలనుకుంటున్నారు. జవాబిస్తే లేదా ఒప్పుకుంటే వాళ్ళు ఇంకా రాయగలరు."),
