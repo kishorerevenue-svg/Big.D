@@ -36,7 +36,7 @@ import java.util.concurrent.Executors
  */
 object CallManager {
     const val RING = "habit_calls_ring"
-    const val NOW = "habit_calls_now"
+    const val NOW = "habit_calls_live"           // (was "habit_calls_now", too quiet to see: it's removed)
     const val RING_ID = 4711
     const val NOW_ID = 4712
     /** How long an incoming call rings, and how long a caller waits. */
@@ -53,7 +53,14 @@ object CallManager {
         @Volatile var reason = ""
         @Volatile var logged = false
         @Volatile var answered = false
+        @Volatile var speaker = false
+        @Volatile var muted = false
+        @Volatile var held = false          // I put it on hold (or a normal phone call came)
+        @Volatile var heldByThem = false    // they put it on hold
     }
+
+    /** The open call screen's buttons, for the notification and the floating call bar: "speaker", "mute", "hold". */
+    @Volatile var controls: ((String) -> Unit)? = null
 
     @Volatile var active: Call? = null
     /** Calls that ended here (a ring's old details never bring one back). */
@@ -122,6 +129,7 @@ object CallManager {
                 "ringing" -> if (cur != null && cur.id == id && !cur.incoming && cur.state == "calling") { cur.state = "ringing"; changed() }
                 "answer" -> if (cur != null && cur.id == id && !cur.incoming && cur.state != "ended") { cur.answer = b.optString("sdp"); cur.state = "connecting"; changed() }
                 "end" -> if (cur != null && cur.id == id) end(app, cur, "their-" + b.optString("reason", "hangup"), false)
+                "hold", "resume" -> if (cur != null && cur.id == id) { cur.heldByThem = cmd == "hold"; changed(); CallService.update(app) }
             }
         }
     }
@@ -189,9 +197,11 @@ object CallManager {
             enableVibration(true); vibrationPattern = longArrayOf(0, 900, 700, 900, 700)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         })
-        if (nm.getNotificationChannel(NOW) == null) nm.createNotificationChannel(NotificationChannel(NOW, "Habit calls (on a call)", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Shows while you are on a Habit call"; setSound(null, null)
+        if (nm.getNotificationChannel(NOW) == null) nm.createNotificationChannel(NotificationChannel(NOW, "Habit calls (on a call)", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Shows while you are on a Habit call: back to the call, speaker, mute, end"; setSound(null, null); enableVibration(false)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         })
+        try { if (nm.getNotificationChannel("habit_calls_now") != null) nm.deleteNotificationChannel("habit_calls_now") } catch (e: Exception) { }
     }
 
     // ---------- during and after the call ----------
@@ -270,38 +280,84 @@ object CallManager {
 class CallActionReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val call = CallManager.active ?: CallManager.restore(ctx, intent)
-        if (call == null) { CallManager.stopRinging(ctx); return }
-        if (intent.action == "decline" && call.incoming && call.state == "ringing") CallManager.end(ctx.applicationContext, call, "decline", true)
+        if (call == null) { CallManager.stopRinging(ctx); CallService.stop(ctx); return }
+        when (val a = intent.action) {
+            "decline" -> if (call.incoming && call.state == "ringing") CallManager.end(ctx.applicationContext, call, "decline", true)
+            "hangup" -> CallManager.end(ctx.applicationContext, call, if (call.connectedAt > 0) "hangup" else if (call.incoming) "decline" else "cancel", true)
+            "speaker", "mute", "hold" -> CallManager.controls?.invoke(a ?: "")
+        }
     }
 }
 
-/** Keeps the call going (and the microphone and camera allowed) when you leave the call screen; tap to go back. */
+/** Keeps the call going (and the microphone and camera allowed) when you leave the call screen. Its notification is a
+ *  phone-call one (Android 12+: the green call chip in the status bar): tap to go back, end, speaker, mute. */
 class CallService : Service() {
     companion object {
         fun start(ctx: Context, video: Boolean) {
             try { ctx.startForegroundService(Intent(ctx, CallService::class.java).putExtra("video", video)) } catch (e: Exception) { }
         }
         fun stop(ctx: Context) { try { ctx.stopService(Intent(ctx, CallService::class.java)) } catch (e: Exception) { } }
+        @Volatile private var on = false
+
+        /** The notification again, after speaker / mute / hold changed. */
+        fun update(ctx: Context) {
+            if (!on) return
+            val call = CallManager.active ?: return
+            try { ctx.getSystemService(NotificationManager::class.java)?.notify(CallManager.NOW_ID, build(ctx, call)) } catch (e: Exception) { }
+        }
+
+        fun build(ctx: Context, call: CallManager.Call): Notification {
+            val te = Store(ctx).lang == "te"
+            fun t(en: String, tel: String) = if (te) tel else en
+            val name = ChatDb.get(ctx).conv(call.cid)?.name ?: "Habit"
+            val pf = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val open = PendingIntent.getActivity(ctx, 4704, Intent(ctx, CallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), pf)
+            fun act(a: String, code: Int) = PendingIntent.getBroadcast(ctx, code, Intent(ctx, CallActionReceiver::class.java).setAction(a), pf)
+            val status = when {
+                call.held -> t("On hold", "హోల్డ్‌లో ఉంది")
+                call.heldByThem -> t("They put you on hold", "వాళ్ళు హోల్డ్‌లో పెట్టారు")
+                call.connectedAt > 0 -> t("Habit call", "Habit కాల్")
+                else -> t("Calling…", "కాల్ చేస్తున్నాం…")
+            }
+            val b = Notification.Builder(ctx, CallManager.NOW)
+                .setSmallIcon(android.R.drawable.sym_call_outgoing)
+                .setContentTitle(name).setContentText(status + t(" · tap to go back", " · తిరిగి వెళ్ళడానికి నొక్కండి"))
+                .setOngoing(true).setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_CALL).setContentIntent(open)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+            if (call.connectedAt > 0) b.setUsesChronometer(true).setWhen(call.connectedAt)
+            val speaker = Notification.Action.Builder(Icon.createWithResource(ctx, android.R.drawable.ic_lock_silent_mode_off),
+                if (call.speaker) t("Speaker off", "స్పీకర్ ఆపు") else t("Speaker", "స్పీకర్"), act("speaker", 4706)).build()
+            val mute = Notification.Action.Builder(Icon.createWithResource(ctx, android.R.drawable.ic_btn_speak_now),
+                if (call.muted) t("Unmute", "మ్యూట్ తీసేయి") else t("Mute", "మ్యూట్"), act("mute", 4707)).build()
+            if (Build.VERSION.SDK_INT >= 31) {
+                val person = android.app.Person.Builder().setName(name).setImportant(true).build()
+                b.setStyle(Notification.CallStyle.forOngoingCall(person, act("hangup", 4705)))
+                b.addAction(speaker); b.addAction(mute)
+            } else {
+                b.addAction(Notification.Action.Builder(Icon.createWithResource(ctx, android.R.drawable.ic_menu_close_clear_cancel), t("End", "ముగించు"), act("hangup", 4705)).build())
+                b.addAction(speaker); b.addAction(mute)
+            }
+            return b.build()
+        }
     }
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         CallManager.channels(this)
         val call = CallManager.active
         if (call == null) { stopSelf(); return START_NOT_STICKY }
-        val te = Store(this).lang == "te"
-        val name = ChatDb.get(this).conv(call.cid)?.name ?: "Habit"
-        val open = PendingIntent.getActivity(this, 4704, Intent(this, CallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val n = Notification.Builder(this, CallManager.NOW)
-            .setSmallIcon(android.R.drawable.sym_call_outgoing)
-            .setContentTitle(name).setContentText(if (te) "Habit కాల్ జరుగుతోంది · తిరిగి వెళ్ళడానికి నొక్కండి" else "On a Habit call · tap to go back")
-            .setOngoing(true).setCategory(Notification.CATEGORY_CALL).setContentIntent(open).setUsesChronometer(true).setWhen(call.connectedAt.takeIf { it > 0 } ?: System.currentTimeMillis())
-            .build()
+        val n = build(this, call)
         val cam = intent?.getBooleanExtra("video", false) == true && checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val base = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or (if (cam) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0)
         try {
-            if (Build.VERSION.SDK_INT >= 30) startForeground(CallManager.NOW_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or (if (cam) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0))
-            else startForeground(CallManager.NOW_ID, n)
+            when {
+                // a phone call of its own (Android shows it like one); if the phone doesn't allow that, a microphone one
+                Build.VERSION.SDK_INT >= 30 -> try { startForeground(CallManager.NOW_ID, n, base or ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL) }
+                    catch (e: Exception) { startForeground(CallManager.NOW_ID, n, base) }
+                else -> startForeground(CallManager.NOW_ID, n)
+            }
+            on = true
         } catch (e: Exception) { stopSelf() }
         return START_NOT_STICKY
     }
+    override fun onDestroy() { on = false; super.onDestroy() }
 }

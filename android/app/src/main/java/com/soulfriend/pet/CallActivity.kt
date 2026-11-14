@@ -70,7 +70,9 @@ class CallActivity : Activity() {
     private fun t(en: String, tel: String) = if (te) tel else en
     private fun dp(v: Int) = ui.dp(v)
     private val refresh: () -> Unit = { onCallChanged() }
-    private val tick = object : Runnable { override fun run() { showStatus(); main.postDelayed(this, 1000) } }
+    private val tick = object : Runnable { override fun run() { showStatus(); watchPhone(); updateBar(); main.postDelayed(this, 1000) } }
+    /** The notification's and the floating bar's buttons come here. */
+    private val control: (String) -> Unit = { cmd -> runOnUiThread { when (cmd) { "speaker" -> toggleSpeaker(); "mute" -> toggleMute(); "hold" -> { autoHeld = false; hold(call?.held != true) } } } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,9 +84,10 @@ class CallActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
         else @Suppress("DEPRECATION") window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         window.statusBarColor = Color.BLACK
-        speaker = c.video
+        speaker = c.video; c.speaker = speaker
         build(c)
         CallManager.listeners.add(refresh)
+        CallManager.controls = control
         ChatSync.hold(this, "call")          // the other phone's answer and hang-up come through Habit Chat
         wantAnswer = intent.getBooleanExtra("answer", false)
         if (!c.incoming) begin()
@@ -101,6 +104,8 @@ class CallActivity : Activity() {
         super.onDestroy()
         main.removeCallbacksAndMessages(null)
         CallManager.listeners.remove(refresh)
+        if (CallManager.controls === control) CallManager.controls = null
+        hideBar()
         ChatSync.release("call")
         try { tone?.release() } catch (e: Exception) { }; tone = null
         val c = call
@@ -178,14 +183,17 @@ class CallActivity : Activity() {
             controls.addView(roundBtn(if (c.video) "🎥" else "📞", Ui.GOOD, 74, t("Answer", "ఎత్తండి")) { answer() })
             return
         }
-        controls.addView(roundBtn(if (muted) "🔇" else "🎤", if (muted) on else dim, desc = t("Mute", "మ్యూట్")) {
-            muted = !muted; js("setMute($muted)"); drawControls() }.apply { if (muted) setTextColor(Color.BLACK) })
-        controls.addView(roundBtn("🔊", if (speaker) on else dim, desc = t("Speaker", "స్పీకర్")) { speaker = !speaker; route(); drawControls() })
+        val live = c.connectedAt > 0
+        val sz = if (c.video && live) 52 else 60                       // more buttons: a little smaller, so they all fit
+        controls.addView(roundBtn(if (muted) "🔇" else "🎤", if (muted) on else dim, sz, desc = t("Mute", "మ్యూట్")) { toggleMute() }.apply { if (muted) setTextColor(Color.BLACK) })
+        controls.addView(roundBtn("🔊", if (speaker) on else dim, sz, desc = t("Speaker", "స్పీకర్")) { toggleSpeaker() })
         if (c.video) {
-            controls.addView(roundBtn(if (camOn) "📹" else "🚫", if (camOn) dim else on, desc = t("Camera on or off", "కెమెరా")) { camOn = !camOn; js("setCam($camOn)"); drawControls() })
-            controls.addView(roundBtn("🔄", dim, desc = t("Switch camera", "కెమెరా మార్చు")) { js("flip()") })
+            controls.addView(roundBtn(if (camOn) "📹" else "🚫", if (camOn) dim else on, sz, desc = t("Camera on or off", "కెమెరా")) { camOn = !camOn; js("setCam($camOn)"); drawControls() })
+            controls.addView(roundBtn("🔄", dim, sz, desc = t("Switch camera", "కెమెరా మార్చు")) { js("flip()") })
         }
-        controls.addView(roundBtn("✆", Ui.DANGER, 66, t("End call", "కాల్ ముగించు")) {
+        if (live) controls.addView(roundBtn(if (c.held) "▶" else "⏸", if (c.held) on else dim, sz, desc = if (c.held) t("Resume", "కొనసాగించు") else t("Hold", "హోల్డ్")) {
+            autoHeld = false; hold(!c.held) }.apply { if (c.held) setTextColor(Color.BLACK) })
+        controls.addView(roundBtn("✆", Ui.DANGER, if (sz < 60) 60 else 66, t("End call", "కాల్ ముగించు")) {
             CallManager.end(applicationContext, c, if (c.connectedAt > 0) "hangup" else "cancel", true) })
     }
 
@@ -253,7 +261,13 @@ class CallActivity : Activity() {
                 else t("Ringing…", "రింగ్ అవుతోంది…")
             "connecting" -> t("Connecting…", "కలుపుతున్నాం…")
             "reconnecting" -> t("Reconnecting…", "మళ్ళీ కలుపుతున్నాం…")
-            "connected" -> { val s = ((System.currentTimeMillis() - c.connectedAt) / 1000).toInt(); "%d:%02d".format(s / 60, s % 60) }
+            "connected" -> { val s = ((System.currentTimeMillis() - c.connectedAt) / 1000).toInt(); val time = "%d:%02d".format(s / 60, s % 60)
+                when {
+                    c.held -> t("On hold", "హోల్డ్‌లో ఉంది") + " · " + time + (if (autoHeld) t("\n(you're on a phone call)", "\n(మీరు ఫోన్ కాల్‌లో ఉన్నారు)") else "")
+                    c.heldByThem -> t("They put you on hold", "వాళ్ళు హోల్డ్‌లో పెట్టారు") + " · " + time
+                    else -> time
+                }
+            }
             else -> endWords(c)
         }
     }
@@ -269,6 +283,7 @@ class CallActivity : Activity() {
     private fun onCallChanged() {
         val c = call ?: return
         if (c.state == "ended") {
+            hideBar()
             showStatus(); controls.removeAllViews()
             js("hangup()")
             audioOff()
@@ -295,6 +310,7 @@ class CallActivity : Activity() {
         if (!pageReady || started) return
         started = true
         audioOn()
+        CallService.start(applicationContext, c.video)   // the call notification (and the call keeps going) if you leave this screen
         Thread {
             val r = ChatSync.api(store, "GET", "/api/chat/turn")
             val ice = r.json.optJSONArray("ice") ?: JSONArray().put(JSONObject().put("urls", JSONArray().put("stun:stun.l.google.com:19302")))
@@ -361,6 +377,94 @@ class CallActivity : Activity() {
             }
         }
         @JavascriptInterface fun log(s: String) { Log.d("HabitCall", s) }
+    }
+
+    // =================== mute, speaker, hold ===================
+    private fun toggleMute() {
+        val c = call ?: return
+        muted = !muted; c.muted = muted; js("setMute($muted)")
+        drawControls(); updateBar(); CallService.update(this)
+    }
+    private fun toggleSpeaker() {
+        val c = call ?: return
+        speaker = !speaker; c.speaker = speaker; route()
+        drawControls(); updateBar(); CallService.update(this)
+    }
+    /** Hold: neither hears the other, the call stays on; the other phone shows "on hold". */
+    private fun hold(on: Boolean) {
+        val c = call ?: return
+        if (c.state == "ended" || c.connectedAt == 0L || c.held == on) return
+        c.held = on
+        js("setHold($on)")
+        CallManager.send(this, c, if (on) "hold" else "resume", JSONObject())
+        drawControls(); showStatus(); updateBar(); CallService.update(this)
+    }
+
+    // A normal phone call (SIM) during a Habit call: the Habit call goes on hold by itself, and comes back after it.
+    // (A SIM call and a Habit call can't be joined into one: they go through different networks.)
+    private var autoHeld = false
+    private fun watchPhone() {
+        val c = call ?: return
+        if (c.connectedAt == 0L || c.state == "ended") return
+        val m = try { getSystemService(AudioManager::class.java)?.mode ?: return } catch (e: Exception) { return }
+        val phone = m == AudioManager.MODE_IN_CALL || (Build.VERSION.SDK_INT >= 30 && m == AudioManager.MODE_CALL_SCREENING)
+        if (phone && !c.held) { autoHeld = true; hold(true) }
+        else if (!phone && autoHeld && m != AudioManager.MODE_RINGTONE) { autoHeld = false; audioOn(); hold(false) }
+    }
+
+    // =================== the floating call bar ===================
+    // When you leave the call screen (home, another app, Habit's chats), a small bar stays at the top like a phone call:
+    // who, the time, speaker and end. Tap it to go back. (It needs "Show over other apps", which the pet uses too.)
+    private var bar: View? = null
+    private var barText: TextView? = null
+    private var barSpk: TextView? = null
+
+    override fun onStart() { super.onStart(); hideBar() }
+    override fun onStop() {
+        super.onStop()
+        val c = call
+        if (c != null && c.state != "ended" && !isFinishing) showBar()
+    }
+
+    private fun showBar() {
+        if (bar != null || !android.provider.Settings.canDrawOverlays(this)) return
+        val c = call ?: return
+        val wm = getSystemService(WindowManager::class.java) ?: return
+        val conv = ChatDb.get(this).conv(c.cid)
+        val v = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(8), dp(6), dp(8)); background = ui.round(Color.parseColor("#F21C1C1E"), 34); elevation = dp(8).toFloat()
+            addView(TextView(this@CallActivity).apply { text = conv?.emoji ?: "🐾"; textSize = 22f; gravity = Gravity.CENTER; background = ui.round(Color.parseColor("#33FFFFFF"), 22) },
+                LinearLayout.LayoutParams(dp(44), dp(44)))
+            addView(LinearLayout(this@CallActivity).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, dp(4), 0)
+                addView(ui.text(conv?.name ?: "Habit", 16f, Color.WHITE, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                addView(ui.text("", 13f, Color.parseColor("#B8C0CC")).apply { maxLines = 1 }.also { barText = it })
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(roundBtn("🔊", Color.WHITE, 46, t("Speaker", "స్పీకర్")) { toggleSpeaker() }.also { barSpk = it })
+            addView(roundBtn("✆", Ui.DANGER, 46, t("End call", "కాల్ ముగించు")) { CallManager.end(applicationContext, c, if (c.connectedAt > 0) "hangup" else "cancel", true) })
+            contentDescription = t("Habit call. Tap to go back to the call.", "Habit కాల్. తిరిగి వెళ్ళడానికి నొక్కండి.")
+            setOnClickListener {
+                try { startActivity(Intent(this@CallActivity, CallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) } catch (e: Exception) { }
+            }
+        }
+        val p = WindowManager.LayoutParams((resources.displayMetrics.widthPixels * 0.94).toInt(), WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            android.graphics.PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = dp(30) }
+        try { wm.addView(v, p); bar = v } catch (e: Exception) { }
+        updateBar()
+    }
+
+    private fun updateBar() {
+        val c = call ?: return
+        val tv = barText ?: return
+        tv.text = statusView.text.toString().substringBefore('\n')
+        barSpk?.apply { background = ui.round(if (c.speaker) Color.WHITE else Color.parseColor("#55FFFFFF"), 23); setTextColor(if (c.speaker) Color.BLACK else Color.WHITE) }
+    }
+
+    private fun hideBar() {
+        bar?.let { try { getSystemService(WindowManager::class.java)?.removeView(it) } catch (e: Exception) { } }
+        bar = null; barText = null; barSpk = null
     }
 
     // =================== sound: earpiece or speaker ===================

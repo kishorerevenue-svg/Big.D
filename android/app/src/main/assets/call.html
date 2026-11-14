@@ -110,7 +110,14 @@ async function remoteAnswer(sdp) {
   catch (e) { log("answer: " + e); state("error:" + (e && e.name ? e.name : "Error")); }
 }
 
-function setMute(m) { if (stream) stream.getAudioTracks().forEach(t => { t.enabled = !m; }); }
+// mute: they don't hear me. Hold (the hold button, or a normal phone call came): neither hears the other; the call stays on
+let mutedNow = false, held = false;
+function setMute(m) { mutedNow = !!m; sound(); }
+function setHold(h) { held = !!h; sound(); }
+function sound() {
+  if (stream) stream.getAudioTracks().forEach(t => { t.enabled = !mutedNow && !held; });
+  try { $("sound").muted = held; $("remote").muted = held; } catch (e) { }
+}
 
 function setCam(on) {
   if (stream) stream.getVideoTracks().forEach(t => { t.enabled = !!on; });
