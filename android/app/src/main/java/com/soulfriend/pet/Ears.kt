@@ -132,7 +132,7 @@ class QuietEar(val key: String, private val onTalk: () -> Unit, private val onDo
                     val rms = Math.sqrt(sum / maxOf(1, n / 2))
                     frames++
                     if (rms == 0.0) zeros++
-                    if (frames == 50 && zeros >= 49) { main.post { if (running) { running = false; onDone(true) } }; break }   // only silence: not ours here
+                    if (frames == 75 && zeros >= 74) { main.post { if (running) { running = false; onDone(true) } }; break }   // 1.5 s of only silence: not ours here
                     if (floor < 0 || (frames <= 10 && rms < floor)) floor = rms   // starts from the quietest of the first moments
                     if (frames > 5 && rms > maxOf(floor * 3.0, 250.0)) { if (++loud >= 3) { talked = true; main.post { if (running) onTalk() } } }
                     else { loud = 0; floor = floor * 0.95 + rms * 0.05 }       // learns how quiet the room is

@@ -169,7 +169,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         MessageHub.listener = null
         closeMsgCard()
         main.removeCallbacksAndMessages(null)
-        endEar()
+        endEar(); hushBeeps(false)
         try { recognizer?.destroy() } catch (e: Exception) { }
         tts?.shutdown()
         removeBubble(); closePanel(); hideCloseTarget(); hideRemote(); closeDanger(); voiceMode = false
@@ -404,6 +404,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private val voicePool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private fun speak(said: String) {
+        hushBeeps(false)                                              // its voice is heard (the listening beeps were hushed)
         if (onPhone()) { ++speakSeq; return }                         // a phone call: quiet (the words stay in the bubble)
         val text = Talk.speakable(said)                              // no marks or web addresses read aloud
         val seq = ++speakSeq
@@ -428,6 +429,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     private val emoji = Regex("\\p{So}|\uFE0F")
     private fun speakPhone(said: String) {
+        hushBeeps(false)
         if (onPhone()) return
         val text = emoji.replace(Talk.speakable(said)) { if (it.value == "°") it.value else "" }.trim()
         natural.stop()
@@ -604,7 +606,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     /** Stops listening without any message (a new line is coming, or the game closed). */
     private fun quietStop() {
         tapStopped = true; noMore = true
-        endEar()
+        endEar(); unhushSoon(200)
         try { recognizer?.cancel() } catch (e: Exception) { }
         setListening(false)
     }
@@ -673,11 +675,33 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 }
             })
         me[0] = ear
-        if (!ear.start(left)) { quietFailed = true; return false }
         quietEar = ear
         setListening(true)                                            // still listening (no flicker)
+        // a moment first, so the voice typing has let go of the microphone
+        main.postDelayed({
+            if (quietEar === ear && !ear.start(left - 300)) {
+                quietEar = null; quietFailed = true; setListening(false)
+                if (!listenMore(false)) heardNothing(SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+            }
+        }, 300)
         return true
     }
+
+    // The voice typing's own beeps (each time it starts and stops) are hushed while the pet listens, when nothing else is
+    // playing: the media sound is muted for those moments only and comes back right after (and before the pet talks).
+    private var beepsHushed = false
+    private val unhush = Runnable { hushBeeps(false) }
+    private fun hushBeeps(on: Boolean) {
+        main.removeCallbacks(unhush)
+        if (on == beepsHushed) return
+        val am = getSystemService(android.media.AudioManager::class.java) ?: return
+        if (on && (voiceMode || am.isMusicActive)) return              // a video or song is playing: its sound stays
+        try {
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, if (on) android.media.AudioManager.ADJUST_MUTE else android.media.AudioManager.ADJUST_UNMUTE, 0)
+            beepsHushed = on
+        } catch (e: Exception) { }
+    }
+    private fun unhushSoon(ms: Long = 450) { if (beepsHushed) { main.removeCallbacks(unhush); main.postDelayed(unhush, ms) } }
 
     /** The turn ended without words: it asks again once, ends the conversation quietly, or says it didn't hear. */
     private fun heardNothing(error: Int) {
@@ -780,6 +804,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             override fun onError(error: Int) {
                 val silentErr = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
                 endEar(learn = silentErr)
+                unhushSoon()
                 setListening(false)
                 if (voiceMode) { replyVoice = false; voiceModeNext(error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT); return }
                 if (tapStopped) { tapStopped = false; replyVoice = false; return }   // they tapped to end the conversation
@@ -789,6 +814,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     error == 11 || error == 12 || error == 13 || error == 14   // server disconnected, language not supported / unavailable, can't check
                 // nobody has started talking yet: it waits with the microphone alone (no beeps, no starting over)
                 if (silent && !heardNow && waitQuietly()) return
+                // a sound but no words: once "say it again"; after that it waits quietly too (a fan or a cough doesn't make it
+                // start over and over)
+                if (silent && heardNow && askAgain()) return
+                if (silent && waitQuietly()) return
                 if (silent || broken) { if (listenMore(broken)) return }   // a pause, noise, its own voice's echo: keep listening
                 heardNothing(error)
             }
@@ -798,12 +827,15 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             override fun onResults(results: Bundle?) {
                 endEar(learn = true)
+                unhushSoon()
                 setListening(false)
                 val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 if (voiceMode) { onVoiceModeHeard(heard.orEmpty()); return }
                 if (tapStopped) { tapStopped = false; replyVoice = false; return }
                 if (heard.isNullOrBlank()) {
                     if (!heardNow && waitQuietly()) return
+                    if (heardNow && askAgain()) return
+                    if (waitQuietly()) return
                     if (listenMore(false)) return
                     if (heardSpeech && askAgain()) return
                     replyVoice = false
@@ -838,10 +870,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         // moment before the talking, so the first word isn't cut; otherwise the ear lets go and the voice typing opens the microphone
         if (ear != null && !(Ears.feedOk(this, ear.key) && ear.attach(i))) endEar()
         setListening(true)
-        try { rec.startListening(i) } catch (e: Exception) { endEar(); setListening(false); showBubble("Voice didn't start. Hold me to type instead.", 5000) }
+        hushBeeps(true)                                               // no beep each time the voice typing starts or stops
+        try { rec.startListening(i) } catch (e: Exception) { endEar(); unhushSoon(); setListening(false); showBubble("Voice didn't start. Hold me to type instead.", 5000) }
     }
 
-    private fun stopListening() { endEar(); try { recognizer?.stopListening() } catch (e: Exception) { }; setListening(false) }
+    private fun stopListening() { endEar(); try { recognizer?.stopListening() } catch (e: Exception) { }; setListening(false); unhushSoon() }
 
     private fun setListening(on: Boolean) {
         listening = on; pet.listening = on
