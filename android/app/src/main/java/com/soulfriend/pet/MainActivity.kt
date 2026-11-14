@@ -1037,6 +1037,16 @@ class MainActivity : Activity() {
                 toast(if (store.lang == "te") "చూస్తున్నాం…" else "Checking…")
                 content.postDelayed({ if (!isFinishing) render() }, 6000)
             }
+            // many phones (OPPO, Vivo, Xiaomi, Realme…) stop closed apps to save battery: then a call's wake-up can't start
+            // Habit, and it doesn't ring
+            val pm = getSystemService(android.os.PowerManager::class.java)
+            val am = getSystemService(android.app.ActivityManager::class.java)
+            val free = (pm == null || pm.isIgnoringBatteryOptimizations(packageName)) && !(Build.VERSION.SDK_INT >= 28 && am?.isBackgroundRestricted == true)
+            step(free, "Habit can wake up when closed",
+                if (free) "Battery saving won't stop Habit's calls." else "This phone may stop Habit to save battery, so its calls can't ring. Tap › Battery (or App battery usage) › choose \"Unrestricted\" / allow background activity, and turn on Auto launch if you see it.",
+                button = "Open") {
+                try { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) } catch (e: Exception) { }
+            }
         }
         // Android 14+: a Habit call may fill the screen (and ring) when the phone is locked, like a normal call
         if (Build.VERSION.SDK_INT >= 34) {
