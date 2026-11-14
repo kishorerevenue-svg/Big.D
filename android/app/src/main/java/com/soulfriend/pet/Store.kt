@@ -143,6 +143,10 @@ class Store(context: Context) {
     var ears: String
         get() = p.getString("ears", "") ?: ""
         set(v) { p.edit().putString("ears", v).apply() }
+    /** The voice typings that don't take the pet's own sound (they open the microphone themselves), comma-separated. */
+    var earsNoFeed: String
+        get() = p.getString("earsNoFeed", "") ?: ""
+        set(v) { p.edit().putString("earsNoFeed", v).apply() }
     var convoAsked: Int
         get() = p.getInt("convoAsked", 0)
         set(v) { p.edit().putInt("convoAsked", v).apply() }

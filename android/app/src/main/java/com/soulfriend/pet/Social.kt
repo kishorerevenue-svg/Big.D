@@ -1025,7 +1025,7 @@ class SocialPage(private val m: MainActivity) {
         }, 12)
         if (me != null) {
             val sec = ui.section("🔐 కొత్త ఫోన్‌లో లాగిన్ · Log in on a new phone",
-                "Add your phone number or email and a password. Then you can open your profile on any phone. Your number or email is never shown to anyone.")
+                "Add your phone number or email and a password. Then you can open your profile on any phone. Your number or email is never shown to anyone (people who already have your number can find you in Habit Chat; Chat settings can turn that off).")
             val lg = meLogin
             if (lg != null && !lOpen) {
                 sec.put(ui.text("✅ Login is on: " + lg.optString("shown"), 15f, Ui.GOOD, bold = true), 10)
@@ -1110,7 +1110,7 @@ class SocialPage(private val m: MainActivity) {
     /** Right after making a profile: offer to add a login, so the profile can be opened on a new phone. */
     private fun askLogin() {
         AlertDialog.Builder(m).setTitle("✅ Your profile is ready!")
-            .setMessage("To open your profile on a new phone later, add your phone number or email and a password. Your number or email is never shown to anyone.")
+            .setMessage("To open your profile on a new phone later, add your phone number or email and a password. Your number or email is never shown to anyone (people who already have your number can find you in Habit Chat).")
             .setPositiveButton("Add now") { _, _ -> focusLogin = true; lOpen = true; lId = ""; lPw = ""; startEdit() }
             .setNegativeButton("Later", null).show()
     }

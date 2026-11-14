@@ -63,6 +63,7 @@ class ChatPage(private val m: MainActivity) {
     private var hiddenOpen = false
     private var people: JSONArray? = null      // Habit people found for [peopleQ]
     private var peopleQ = ""
+    private var allOnHabit = false             // "See all" pressed under "Your contacts on Habit"
     private var comms: List<JSONObject>? = null
     private var commsAt = 0L
     private var statusAt = 0L
@@ -708,8 +709,25 @@ class ChatPage(private val m: MainActivity) {
         for (p in found) box.addView(contactRow(p))
     }
 
-    // ---------- invite your people ----------
+    // ---------- your contacts on Habit, and invite your people ----------
     private fun invites(box: LinearLayout) {
+        if (ChatContacts.allowed(m)) {
+            ChatContacts.matchNow(m, store) { listBox?.let { fillList(it) } }      // once a day (only when it's on)
+            when (ChatContacts.matchState(m)) {
+                "on" -> {
+                    val mine = db.convs().filter { it.isDm }.flatMap { c -> c.members().map { it.optString("uid") } }.toSet()
+                    val list = ChatContacts.onHabitList(m).filter { it.second.optBoolean("chat") && it.second.optString("uid") !in mine }
+                    if (list.isNotEmpty()) {
+                        box.addView(heading(t("Your contacts on Habit", "Habit లో మీ కాంటాక్ట్‌లు") + " · ${list.size}"))
+                        for ((p, h) in list.take(if (allOnHabit) 500 else 6)) box.addView(onHabitRow(p, h))
+                        if (list.size > 6 && !allOnHabit) box.addView(txt(t("See all ${list.size}", "అందరినీ చూడండి (${list.size})"), 14f, C.GOLD_TXT, true).apply {
+                            setPadding(dp(14), dp(8), dp(14), dp(8)); setOnClickListener { allOnHabit = true; listBox?.let { fillList(it) } }
+                        })
+                    }
+                }
+                "" -> findCard(box)
+            }
+        }
         box.addView(heading(t("Invite your people", "మీ వాళ్ళను ఆహ్వానించండి")))
         if (!ChatContacts.allowed(m)) { allowContacts(box); return }
         val ppl = ChatContacts.suggested(m, 8)
@@ -725,9 +743,12 @@ class ChatPage(private val m: MainActivity) {
     private fun allowContacts(box: LinearLayout) {
         box.addView(LinearLayout(m).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)); background = C.round(C.CARD, dp(22).toFloat(), C.EDGE, dp(1))
-            addView(txt(t("See your contacts here to invite or call them. They stay on your phone: nothing is uploaded.",
-                "ఆహ్వానించడానికి, కాల్ చేయడానికి మీ కాంటాక్ట్‌లు ఇక్కడ చూడండి. అవి మీ ఫోన్‌లోనే ఉంటాయి: ఏదీ అప్‌లోడ్ కాదు."), 14f, C.TXT))
-            addView(goldButton(t("Allow contacts", "కాంటాక్ట్‌లకు అనుమతి")) { m.requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), MainActivity.REQ_CHAT_CONTACTS) },
+            addView(txt(t("See your contacts here: who is on Habit (chat with them in one tap), and invite or call the others. To find who is on Habit, their numbers are checked with Habit's server in a scrambled form and aren't kept there.",
+                "మీ కాంటాక్ట్‌లు ఇక్కడ చూడండి: Habit లో ఎవరున్నారో (ఒక్క నొక్కుతో చాట్), మిగతావాళ్ళను ఆహ్వానించండి లేదా కాల్ చేయండి. Habit లో ఎవరున్నారో చూడడానికి వాళ్ళ నంబర్లు గుప్త రూపంలో Habit సర్వర్‌తో సరిచూస్తాం, అక్కడ దాచం."), 14f, C.TXT))
+            addView(goldButton(t("Allow contacts", "కాంటాక్ట్‌లకు అనుమతి")) {
+                ChatContacts.setMatch(m, true)                // the card says so; Chat settings turns it off
+                m.requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), MainActivity.REQ_CHAT_CONTACTS)
+            },
                 LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6); marginStart = dp(8); marginEnd = dp(8) })
     }
@@ -749,7 +770,40 @@ class ChatPage(private val m: MainActivity) {
         if (button != null) addView(button, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
         if (onClick != null) setOnClickListener { onClick() }
     }
+    /** Once (contacts allowed before this came): "Find your contacts on Habit?" */
+    private fun findCard(box: LinearLayout) {
+        box.addView(LinearLayout(m).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)); background = C.round(C.CARD, dp(22).toFloat(), C.EDGE, dp(1))
+            addView(txt(t("Find your contacts on Habit", "Habit లో మీ కాంటాక్ట్‌లను చూడండి"), 15.5f, C.TXT, true))
+            addView(txt(t("See which of your contacts use Habit and chat with them in one tap. Their numbers are checked with Habit's server in a scrambled form and aren't kept there. You can turn this off in Chat settings.",
+                "మీ కాంటాక్ట్‌లలో ఎవరు Habit వాడుతున్నారో చూసి, ఒక్క నొక్కుతో చాట్ చేయండి. వాళ్ళ నంబర్లు గుప్త రూపంలో Habit సర్వర్‌తో సరిచూస్తాం, అక్కడ దాచం. చాట్ సెట్టింగ్స్‌లో ఎప్పుడైనా ఆపవచ్చు."), 13.5f, C.SUB).apply { setPadding(0, dp(4), 0, 0) })
+            addView(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(10), 0, 0)
+                addView(goldButton(t("Find them", "చూపించు")) {
+                    ChatContacts.setMatch(m, true)
+                    ChatContacts.matchNow(m, store, force = true) { listBox?.let { fillList(it) } }
+                    m.toast(t("Looking for your contacts on Habit…", "Habit లో మీ కాంటాక్ట్‌ల కోసం చూస్తున్నాను…"))
+                    listBox?.let { fillList(it) }
+                })
+                addView(pill(t("Not now", "ఇప్పుడు వద్దు"), false) { ChatContacts.setMatch(m, false); listBox?.let { fillList(it) } },
+                    LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(10) })
+            })
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10); marginStart = dp(8); marginEnd = dp(8) })
+    }
+
+    /** A phone contact who is on Habit: Chat (or Invite, if they haven't opened Habit Chat yet). Their Habit name shows too,
+     *  so it's clear who it is. */
+    private fun onHabitRow(p: ChatContacts.Person, h: JSONObject): View {
+        val uid = h.optString("uid"); val chat = h.optBoolean("chat")
+        val who = h.optString("name") + (h.optString("handle").takeIf { it.isNotEmpty() }?.let { " @$it" } ?: "")
+        val sub = if (chat) t("On Habit", "Habit లో ఉన్నారు") + " · " + who else t("On Habit · hasn't opened Chats yet", "Habit లో ఉన్నారు · ఇంకా చాట్‌లు తెరవలేదు")
+        return personRow(h.optString("emoji").ifBlank { "🐾" }, (if (p.starred) "⭐ " else "") + p.name, sub,
+            if (chat) goldMini(t("Chat", "చాట్")) { openWith(uid) } else goldMini(t("Invite", "ఆహ్వానించు")) { ChatContacts.invite(m, store, p) },
+            icon(R.drawable.ic_phone, t("Phone call", "ఫోన్ కాల్")) { ChatContacts.call(m, p) }, onClick = if (chat) ({ openWith(uid) }) else null)
+    }
+
     private fun contactRow(p: ChatContacts.Person): View {
+        ChatContacts.onHabit(m, p.number)?.let { return onHabitRow(p, it) }
         return personRow("", (if (p.starred) "⭐ " else "") + p.name, p.number,
             goldMini(t("Invite", "ఆహ్వానించు")) { ChatContacts.invite(m, store, p) },
             icon(R.drawable.ic_phone, t("Phone call", "ఫోన్ కాల్")) { ChatContacts.call(m, p) }, onClick = null)

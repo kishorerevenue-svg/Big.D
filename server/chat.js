@@ -36,6 +36,8 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
   /** When each person last had Habit open (online = within the last 40 s). Kept in memory, saved with the hourly tidy. */
   const lastSeen = new Map(Object.entries(db.seenAt || {}));
   const hidesSeen = u => (db.priv[u] || {}).seen === false;
+  const hidesPhone = u => (db.priv[u] || {}).phone === false;       // turned off "People who have my number can find me"
+  const matchQuota = new Map();                                      // person → { day, n }: contact numbers checked today
   let timer = null;
   const save = () => { clearTimeout(timer); timer = setTimeout(() => { try { fs.writeFileSync(FILE + ".tmp", JSON.stringify(db)); fs.renameSync(FILE + ".tmp", FILE); } catch (e) { console.error("chat save:", e.message); } }, 300); };
   const str = (v, n) => String(v === undefined || v === null ? "" : v).slice(0, n);
@@ -344,7 +346,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
       const at = Number(lastSeen.get(u)) || 0;
       return send(200, { on: Date.now() - at < 40e3, at });
     }
-    if (p === "/api/chat/privacy" && req.method === "GET") return send(200, { seen: !hidesSeen(me) });
+    if (p === "/api/chat/privacy" && req.method === "GET") return send(200, { seen: !hidesSeen(me), phone: !hidesPhone(me), hasPhone: social.hasPhone(me) });
     // status updates I can see (locked; only the key for me is given), and mine with who has seen them
     if (p === "/api/chat/status" && req.method === "GET") {
       const updates = [];
@@ -486,8 +488,28 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
       if (p === "/api/chat/privacy") {
         const pr = db.priv[me] || (db.priv[me] = {});
         if (body.seen !== undefined) pr.seen = !!body.seen;
+        if (body.phone !== undefined) pr.phone = !!body.phone;      // "People who have my number can find me"
         save();
-        return send(200, { seen: !hidesSeen(me) });
+        return send(200, { seen: !hidesSeen(me), phone: !hidesPhone(me), hasPhone: social.hasPhone(me) });
+      }
+      // "Contacts on Habit": which of my phone contacts use Habit Chat. The phone sends its contacts' numbers as scrambled
+      // codes (only after its owner said yes); they are compared here and never kept. Found: people who log in with that
+      // number, opened Habit Chat (where they can turn this off) and didn't turn off "People who have my number can find
+      // me"; nobody blocked. At most 6,000 numbers a day each.
+      if (p === "/api/chat/match") {
+        const codes = [...new Set((Array.isArray(body.h) ? body.h : []).map(x => String(x || "").toLowerCase()).filter(x => /^[0-9a-f]{32}$/.test(x)))].slice(0, 1000);
+        const day = new Date().toISOString().slice(0, 10);
+        const q = matchQuota.get(me), used = q && q.day === day ? q.n : 0;
+        if (used + codes.length > 6000) return send(429, { error: "Checked enough contacts for today. Please try again tomorrow." });
+        if (matchQuota.size > 20000) for (const [k, v] of matchQuota) if (v.day !== day) matchQuota.delete(k);
+        matchQuota.set(me, { day, n: used + codes.length });
+        const found = [];
+        for (const [code, u] of social.byPhoneCodes(codes)) {
+          if (u === me || !db.keys[u] || hidesPhone(u) || blocked(u, me) || blocked(me, u)) continue;
+          const pp = social.person(u);
+          if (pp) found.push({ h: code, person: { uid: u, name: pp.name, handle: pp.handle, emoji: pp.emoji, avatar: pp.avatar, chat: !!db.keys[u] } });
+        }
+        return send(200, { found });
       }
       // a status update: locked on the phone for the people chosen (only people who know me can get a key)
       if (p === "/api/chat/status") {
