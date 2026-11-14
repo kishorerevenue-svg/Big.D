@@ -127,6 +127,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         tts = TextToSpeech(this, this)
         SoundFx.load(this)
         say("Hi! I'm Habit AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
+        main.postDelayed(wakeTick, 6000)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -169,7 +170,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         MessageHub.listener = null
         closeMsgCard()
         main.removeCallbacksAndMessages(null)
-        endEar(); hushBeeps(false)
+        endEar(); stopWaking(); hushBeeps(false)
         try { recognizer?.destroy() } catch (e: Exception) { }
         tts?.shutdown()
         removeBubble(); closePanel(); hideCloseTarget(); hideRemote(); closeDanger(); voiceMode = false
@@ -404,6 +405,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private val voicePool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private fun speak(said: String) {
+        stopWaking()
         hushBeeps(false)                                              // its voice is heard (the listening beeps were hushed)
         if (onPhone()) { ++speakSeq; return }                         // a phone call: quiet (the words stay in the bubble)
         val text = Talk.speakable(said)                              // no marks or web addresses read aloud
@@ -429,6 +431,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     private val emoji = Regex("\\p{So}|\uFE0F")
     private fun speakPhone(said: String) {
+        stopWaking()
         hushBeeps(false)
         if (onPhone()) return
         val text = emoji.replace(Talk.speakable(said)) { if (it.value == "°") it.value else "" }.trim()
@@ -687,6 +690,117 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         return true
     }
 
+    // ================= "Call me by name" (hands-free) =================
+    // With it on (Settings › Voice), the pet waits for talk with the microphone alone ([QuietEar]). When someone talks near
+    // the phone, the voice typing checks the first words (the phone's own offline one when it has it) and only when they
+    // start with the pet's name does it answer: "హ్యాబిట్" → "హా, చెప్పండి?" and it listens; "హ్యాబిట్, టైమ్ ఎంత?" → the
+    // answer at once. Other talk is let go at once (not kept, not sent to Habit). Not while it talks or listens, during a
+    // call, while a video or song plays, or on low battery.
+    private var wakeEar: QuietEar? = null
+    private var wakeRec: SpeechRecognizer? = null
+    private val wakeChecks = ArrayDeque<Long>()        // when talk was checked for the name (a TV nearby: less often)
+    private var wakeLocal = true                       // the phone's own offline voice typing works for this
+    private var wakeBlocked = false                    // the microphone gives only silence here (the service needs the app opened once)
+    private val wakeTick = object : Runnable { override fun run() { if (!store.wakeOn) stopWaking() else wakeUp(); main.postDelayed(this, 4000) } }
+
+    private fun musicPlaying() = try { getSystemService(android.media.AudioManager::class.java)?.isMusicActive == true } catch (e: Exception) { false }
+    private fun wakeBusy() = !store.wakeOn || wakeBlocked || listening || pet.talking || quietEar != null || voiceMode || onPhone() || CallManager.active != null ||
+        panel != null || !micFgs || batteryLow() || musicPlaying() || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+    private fun wakeUseLocal() = wakeLocal && Build.VERSION.SDK_INT >= 31 && try { SpeechRecognizer.isOnDeviceRecognitionAvailable(this) } catch (e: Exception) { false }
+
+    /** Starts waiting for its name, when nothing else is going on. */
+    private fun wakeUp() {
+        if (wakeEar != null || wakeRec != null || wakeBusy()) return
+        val now = System.currentTimeMillis()
+        while (wakeChecks.isNotEmpty() && now - wakeChecks.first() > 60_000L) wakeChecks.removeFirst()
+        if (wakeChecks.size >= 8) return                               // a lot of talk around: a short rest
+        val me = arrayOfNulls<QuietEar>(1)
+        val ear = QuietEar(if (wakeUseLocal()) "ondevice" else feedKey(),
+            onTalk = { val e = me[0]; if (e != null && wakeEar === e) wakeCheck(e) },
+            onDone = { blocked -> val e = me[0]; if (e != null && wakeEar === e) { wakeEar = null; e.stop(); if (blocked) wakeBlocked = true } })
+        me[0] = ear
+        if (ear.start(10 * 60_000L)) wakeEar = ear
+    }
+
+    private fun stopWaking() {
+        wakeEar?.let { wakeEar = null; it.stop() }
+        wakeRec?.let { wakeRec = null; try { it.cancel() } catch (e: Exception) { }; try { it.destroy() } catch (e: Exception) { } }
+    }
+
+    /** Someone is talking near the phone: do the words start with the pet's name? */
+    private fun wakeCheck(ear: QuietEar) {
+        if (wakeBusy()) { stopWaking(); return }
+        wakeChecks.addLast(System.currentTimeMillis())
+        val local = ear.key == "ondevice"
+        val rec = try { if (local && Build.VERSION.SDK_INT >= 31) SpeechRecognizer.createOnDeviceSpeechRecognizer(this) else Ears.create(this, ears ?: Ears.start(this)) }
+            catch (e: Exception) { stopWaking(); return }
+        wakeRec = rec
+        var said = ""
+        rec.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+            override fun onPartialResults(partial: Bundle?) {
+                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() }?.let { said = it }
+            }
+            override fun onResults(results: Bundle?) {
+                wakeDone(rec, results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() } ?: said)
+            }
+            override fun onError(error: Int) {
+                // the phone's offline voice typing doesn't know this language (or isn't there): the usual one from now on
+                if (local && error in listOf(SpeechRecognizer.ERROR_CLIENT, SpeechRecognizer.ERROR_SERVER_DISCONNECTED, 12, 13)) wakeLocal = false
+                wakeDone(rec, said)
+            }
+        })
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (store.lang == "en") "en-IN" else "te-IN")
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        // from a moment before the talking (the name is the first word); else the voice typing opens the microphone
+        if (!(Ears.feedOk(this, ear.key) && ear.attach(i))) { wakeEar = null; ear.stop() }
+        hushBeeps(true)
+        try { rec.startListening(i) } catch (e: Exception) { wakeDone(rec, "") }
+    }
+
+    private fun wakeDone(rec: SpeechRecognizer, text: String) {
+        if (wakeRec !== rec) return
+        wakeRec = null
+        try { rec.destroy() } catch (e: Exception) { }
+        wakeEar?.let { e -> wakeEar = null; e.stop(); e.taken()?.let { Ears.fed(this, e.key, it) } }
+        unhushSoon()
+        val rest = afterName(text) ?: return                           // not its name: let it go (it waits again)
+        if (listening || pet.talking || CallManager.active != null || onPhone()) return
+        wakeChecks.clear()
+        noMore = false; tapStopped = false; unclearTries = 0
+        if (rest.length >= 2 && !Talk.isStop(rest)) {                 // the name and the question in one go
+            convoHeardAt = System.currentTimeMillis()
+            voiceAsk = true
+            send(rest)
+        } else {
+            pet.mood = PuppyView.Mood.HAPPY
+            say(if (te()) "హా, చెప్పండి?" else "Yes?", PuppyView.Mood.HAPPY)
+            afterSpeech = { startListening() }
+        }
+    }
+
+    /** The words after the pet's name when it is called (the name within the first three words), else null. */
+    private fun afterName(text: String): String? {
+        val words = text.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.isEmpty()) return null
+        val names = listOf("habit", "హ్యాబిట్", "హాబిట్", "హబిట్", "హేబిట్", "హెబిట్", "హ్యాబీట్", "హాబీట్", "హేబీట్", "హ్యాబిత్") +
+            store.wakeName.lowercase().split(Regex("[,\\s]+")).filter { it.length >= 2 }
+        for (k in 0 until minOf(3, words.size)) {
+            val w = words[k].trim(',', '.', '!', '?', '।', '"', '\'')
+            if (names.any { n -> w == n || (n.length >= 4 && w.startsWith(n)) })
+                return words.drop(k + 1).joinToString(" ").trim(',', '.', '!', ' ')
+        }
+        return null
+    }
+
     // The voice typing's own beeps (each time it starts and stops) are hushed while the pet listens, when nothing else is
     // playing: the media sound is muted for those moments only and comes back right after (and before the pet talks).
     private var beepsHushed = false
@@ -762,6 +876,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun startListening(again: Boolean = false, ear: QuietEar? = null) {
+        stopWaking()
         if (ear == null) endEar()                                     // a new try from the start: a waiting ear lets go of the microphone
         if (CallManager.active != null || onPhone()) { endEar(); showBubble(if (store.lang == "en") "📞 You're on a call. I'll listen after it." else "📞 మీరు కాల్‌లో ఉన్నారు. కాల్ తర్వాత వింటాను."); return }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -1047,6 +1162,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 val m = MessageHub.recentFrom(a.optString("contact"))
                 if (m != null) { replyTo = m to a.optString("message"); done.add("Your message to ${m.chat} is ready below. Tap Send ➤"); continue }
             }
+            if (a.optString("type") == "game") { val named = Talk.game(lastQuestion); if (named == null || named == "any") a.put("name", "any") }
             actions.run(a)?.let { done.add(it) }
         }
         var extra = if (done.isEmpty()) "" else "\n\n" + done.joinToString("\n") { "✓ $it" }

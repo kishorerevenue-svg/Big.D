@@ -143,6 +143,14 @@ class Store(context: Context) {
     var ears: String
         get() = p.getString("ears", "") ?: ""
         set(v) { p.edit().putString("ears", v).apply() }
+    /** "Call me by name": the pet listens for its name all the time (hands-free). Off unless they turn it on. */
+    var wakeOn: Boolean
+        get() = p.getBoolean("wakeOn", false)
+        set(v) { p.edit().putBoolean("wakeOn", v).apply() }
+    /** Another name to call the pet by (besides "Habit"), e.g. "చిన్ను"; several spellings with commas. */
+    var wakeName: String
+        get() = p.getString("wakeName", "") ?: ""
+        set(v) { p.edit().putString("wakeName", v).apply() }
     /** The voice typings that don't take the pet's own sound (they open the microphone themselves), comma-separated. */
     var earsNoFeed: String
         get() = p.getString("earsNoFeed", "") ?: ""

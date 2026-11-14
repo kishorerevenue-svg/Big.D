@@ -953,6 +953,22 @@ class MainActivity : Activity() {
         put(ui.check("🎉 Fun sounds when they fit (tada, laugh, wow, applause…)", store.funSounds) { store.funSounds = it; if (it) SoundFx.play(this@MainActivity, "tada") }, 8)
         put(ui.check(t("💬 Keep listening after answers (talk without tapping every time; say \"bye\" to stop)",
             "💬 జవాబు తర్వాత కాసేపు వింటూ ఉండు (ప్రతిసారీ తట్టనక్కర్లేదు; ఆపడానికి \"చాలు\" అనండి)"), store.convo == "on") { store.convo = if (it) "on" else "off" }, 8)
+        // hands-free: call the pet by its name
+        put(ui.check(t("🎙 Call me by name, no touching (say \"Habit\": I answer and listen)",
+            "🎙 పేరుతో పిలవండి, తాకనక్కర్లేదు (\"హ్యాబిట్\" అనండి: నేను పలికి వింటాను)"), store.wakeOn) {
+            store.wakeOn = it
+            if (it) toast(t("Okay! Say \"Habit\" any time. The mic dot stays on while I listen for my name.", "సరే! ఎప్పుడైనా \"హ్యాబిట్\" అనండి. నా పేరు కోసం వింటున్నంతసేపు మైక్ చుక్క వెలుగుతుంది."))
+        }, 8)
+        put(ui.text(t("While it's on I listen for my name all the time: the microphone dot stays on and it uses a little more battery. When someone talks near the phone, " +
+            "the voice typing checks the first words (on the phone itself when it can, otherwise Google's voice typing, as with any voice typing). Only my name wakes me; " +
+            "other talk isn't kept or sent to Habit. Not during calls, or while a video or song plays.",
+            "ఇది ఆన్‌లో ఉన్నంతసేపు నా పేరు కోసం ఎప్పుడూ వింటాను: మైక్ చుక్క వెలుగుతుంది, బ్యాటరీ కొంచెం ఎక్కువ ఖర్చవుతుంది. ఫోన్ దగ్గర ఎవరైనా మాట్లాడితే, " +
+            "వాయిస్ టైపింగ్ మొదటి మాటలు చూస్తుంది (వీలైతే ఫోన్‌లోనే, లేకపోతే మామూలు వాయిస్ టైపింగ్‌లా Google ది). నా పేరు వింటేనే పలుకుతాను; " +
+            "మిగతా మాటలు దాచను, Habit కి పంపను. కాల్స్‌లో, వీడియో లేదా పాట వస్తున్నప్పుడు వినను."), 12f, Ui.MUTED), 4)
+        val callName = ui.input(t("Another name to call me (optional), e.g. చిన్ను", "నన్ను పిలిచే ఇంకో పేరు (ఉంటే), ఉదా: చిన్ను"), store.wakeName)
+        callName.isSingleLine = true
+        callName.onText { store.wakeName = it.take(40) }
+        put(callName, 6)
         put(ui.check(t("💡 Interesting talk when we pause (a fact, a tip or a riddle, once)",
             "💡 మాట ఆగినప్పుడు ఒక ఆసక్తికరమైన విషయం (ఒక సంగతి, చిట్కా లేదా పొడుపు కథ, ఒకసారి)"), store.sparks) { store.sparks = it }, 8)
         put(ui.row(ui.button("▶ Test voice", "primary") {
