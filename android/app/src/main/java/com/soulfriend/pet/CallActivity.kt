@@ -209,6 +209,34 @@ class CallActivity : Activity() {
         }
     }
 
+    private var reachAsked = false
+    private var reachText: String? = null
+    /** It isn't ringing there: asks Habit's server whether their phone can be woken while Habit is closed, to say why. */
+    private fun askReach(cid: String) {
+        reachAsked = true
+        Thread {
+            val r = ChatSync.api(store, "GET", "/api/chat/reach?cid=" + android.net.Uri.encode(cid), timeoutMs = 10_000)
+            if (!r.ok) return@Thread
+            val j = r.json
+            val last = j.optJSONObject("last")?.optString("r").orEmpty()
+            val msg = when {
+                !j.optBoolean("accepted", true) -> t("Calling… it rings there only after they accept your chat (they reply, or tap Accept).",
+                    "కాల్ చేస్తున్నాం… వాళ్ళు మీ చాట్‌ని ఒప్పుకున్నాకే (జవాబు ఇచ్చినా, Accept నొక్కినా) అక్కడ రింగ్ అవుతుంది.")
+                !j.optBoolean("push") -> null
+                j.optInt("phones") == 0 -> t("Calling… their phone can't be woken while Habit is closed there. Ask them to update Habit and open it once.",
+                    "కాల్ చేస్తున్నాం… వారి ఫోన్‌లో Habit మూసి ఉంటే లేపలేము. Habit అప్‌డేట్ చేసి ఒకసారి తెరవమని చెప్పండి.")
+                last == "ok" -> t("Calling… a wake-up went to their phone, but it isn't ringing. If their phone has internet: on their phone, Habit › ⚙️ › \"Habit calls ring when Habit is closed\" › Check (allow background activity, Auto launch and notifications).",
+                    "కాల్ చేస్తున్నాం… వారి ఫోన్‌కి మేలుకొలుపు వెళ్ళింది, కానీ రింగ్ అవ్వడం లేదు. వారి ఫోన్‌లో ఇంటర్నెట్ ఉంటే: వారి ఫోన్‌లో Habit › ⚙️ › \"Habit calls ring when Habit is closed\" › Check (background activity, Auto launch, నోటిఫికేషన్లు అనుమతించండి).")
+                last == "gone" -> t("Calling… Habit on their phone was reinstalled. Ask them to open Habit once.",
+                    "కాల్ చేస్తున్నాం… వారి ఫోన్‌లో Habit మళ్ళీ ఇన్‌స్టాల్ అయింది. ఒకసారి Habit తెరవమని చెప్పండి.")
+                last == "fail" -> t("Calling… couldn't wake their phone just now. Try again in a minute.",
+                    "కాల్ చేస్తున్నాం… ఇప్పుడు వారి ఫోన్‌ని లేపలేకపోయాం. ఒక నిమిషం తర్వాత మళ్ళీ ప్రయత్నించండి.")
+                else -> null
+            }
+            if (msg != null) runOnUiThread { reachText = msg; showStatus() }
+        }.start()
+    }
+
     private fun showStatus() {
         tones()
         val c = call ?: return
@@ -218,8 +246,9 @@ class CallActivity : Activity() {
         statusView.text = when (c.state) {
             // no "ringing" from their phone yet: Habit may be closed there (then it rings only with Firebase push set up)
             "calling" -> if (System.currentTimeMillis() - c.startedAt < 9000) t("Calling…", "కాల్ చేస్తున్నాం…")
-                else t("Calling… their phone isn't ringing yet.\nIf Habit is closed there, they'll see a missed call.",
-                       "కాల్ చేస్తున్నాం… వారి ఫోన్ ఇంకా రింగ్ అవ్వలేదు.\nవారి ఫోన్‌లో Habit మూసి ఉంటే, మిస్డ్ కాల్ కనిపిస్తుంది.")
+                else { if (!reachAsked) askReach(c.cid)
+                    reachText ?: t("Calling… their phone isn't ringing yet.\nIf Habit is closed there, they'll see a missed call.",
+                       "కాల్ చేస్తున్నాం… వారి ఫోన్ ఇంకా రింగ్ అవ్వలేదు.\nవారి ఫోన్‌లో Habit మూసి ఉంటే, మిస్డ్ కాల్ కనిపిస్తుంది.") }
             "ringing" -> if (c.incoming) (if (c.answered) t("Connecting…", "కలుపుతున్నాం…") else if (c.video) t("Incoming video call", "వీడియో కాల్ వస్తోంది") else t("Incoming voice call", "వాయిస్ కాల్ వస్తోంది"))
                 else t("Ringing…", "రింగ్ అవుతోంది…")
             "connecting" -> t("Connecting…", "కలుపుతున్నాం…")

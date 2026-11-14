@@ -82,12 +82,14 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
   // Each phone gives its push address (POST /api/chat/push). A call note wakes the phone at once (it rings); a new
   // message wakes it gently (a notification), only when Habit isn't open and waiting there. The push has no words.
   db.push = db.push || {};                 // uid -> [{ t: push address, pkg, at }]
+  const woke = new Map();                // person → how the last call wake-up went: { at, r: "ok" | "fail" | "gone" }
   function wake(u, what, cid, high) {
     if (!fcm || !fcm.ready()) return;
     const list = db.push[u];
     if (!list || !list.length) return;
     if (!high && waiters.has(u)) return;   // Habit is open there: the message reaches it at once anyway
     for (const x of list.slice()) fcm.send(x.t, { t: what, cid }, high).then(r => {
+      if (high) { const w = woke.get(u); if (!w || r === "ok" || Date.now() - w.at > 5000 || w.r !== "ok") woke.set(u, { at: Date.now(), r }); }
       if (r !== "gone") return;
       db.push[u] = (db.push[u] || []).filter(y => y.t !== x.t);
       if (!db.push[u].length) delete db.push[u];
@@ -345,6 +347,17 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
       if (hidesSeen(u) || hidesSeen(me)) return send(200, { on: false, at: 0, hidden: true });
       const at = Number(lastSeen.get(u)) || 0;
       return send(200, { on: Date.now() - at < 40e3, at });
+    }
+    // a call that doesn't ring: can their phone be woken (Habit closed there)? So the caller's screen can say why.
+    // Only for a one-to-one chat both accepted; nothing about when they were online.
+    if (p === "/api/chat/reach" && req.method === "GET") {
+      const c = db.convs[str(url.searchParams.get("cid"), 40)];
+      if (!c || c.kind !== "dm" || !c.members.includes(me)) return send(404, { error: "Not found" });
+      const u = c.members.find(x => x !== me);
+      if (!u || !(c.st[me] && c.st[me].ok) || !(c.st[u] && c.st[u].ok) || blocked(u, me)) return send(200, { push: false, phones: 0, accepted: false });
+      const w = woke.get(u);
+      return send(200, { push: !!(fcm && fcm.ready()), phones: (db.push[u] || []).length, accepted: true,
+        last: w && Date.now() - w.at < 120e3 ? { r: w.r, ago: Math.round((Date.now() - w.at) / 1000) } : null });
     }
     if (p === "/api/chat/privacy" && req.method === "GET") return send(200, { seen: !hidesSeen(me), phone: !hidesPhone(me), hasPhone: social.hasPhone(me) });
     // status updates I can see (locked; only the key for me is given), and mine with who has seen them
