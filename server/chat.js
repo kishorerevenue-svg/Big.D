@@ -492,9 +492,10 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
         save();
         return send(200, { seen: !hidesSeen(me), phone: !hidesPhone(me), hasPhone: social.hasPhone(me) });
       }
-      // "Contacts on Habit": which of my phone contacts use Habit. The phone sends its contacts' numbers as scrambled codes
-      // (only after its owner said yes); they are compared here and never kept. Found: people who log in with that number
-      // and didn't turn off "People who have my number can find me" (nobody blocked). At most 6,000 numbers a day each.
+      // "Contacts on Habit": which of my phone contacts use Habit Chat. The phone sends its contacts' numbers as scrambled
+      // codes (only after its owner said yes); they are compared here and never kept. Found: people who log in with that
+      // number, opened Habit Chat (where they can turn this off) and didn't turn off "People who have my number can find
+      // me"; nobody blocked. At most 6,000 numbers a day each.
       if (p === "/api/chat/match") {
         const codes = [...new Set((Array.isArray(body.h) ? body.h : []).map(x => String(x || "").toLowerCase()).filter(x => /^[0-9a-f]{32}$/.test(x)))].slice(0, 1000);
         const day = new Date().toISOString().slice(0, 10);
@@ -504,7 +505,7 @@ module.exports = function makeChat({ DATA_DIR, social, h, push: fcm = null }) {
         matchQuota.set(me, { day, n: used + codes.length });
         const found = [];
         for (const [code, u] of social.byPhoneCodes(codes)) {
-          if (u === me || hidesPhone(u) || blocked(u, me) || blocked(me, u)) continue;
+          if (u === me || !db.keys[u] || hidesPhone(u) || blocked(u, me) || blocked(me, u)) continue;
           const pp = social.person(u);
           if (pp) found.push({ h: code, person: { uid: u, name: pp.name, handle: pp.handle, emoji: pp.emoji, avatar: pp.avatar, chat: !!db.keys[u] } });
         }
