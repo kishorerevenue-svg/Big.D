@@ -143,6 +143,17 @@ class Store(context: Context) {
     var ears: String
         get() = p.getString("ears", "") ?: ""
         set(v) { p.edit().putString("ears", v).apply() }
+    /** Who they meant when several contacts had the name they said ("roja" → that number): the pet calls that one next time. */
+    fun callPick(nameKey: String): String = try { JSONObject(p.getString("callPicks", "{}") ?: "{}").optString(nameKey) } catch (e: Exception) { "" }
+    fun setCallPick(nameKey: String, number10: String) {
+        if (nameKey.isBlank() || number10.isBlank()) return
+        try {
+            val j = JSONObject(p.getString("callPicks", "{}") ?: "{}")
+            if (j.length() > 300) j.keys().asSequence().toList().take(50).forEach { j.remove(it) }
+            j.put(nameKey, number10)
+            p.edit().putString("callPicks", j.toString()).apply()
+        } catch (e: Exception) { }
+    }
     /** Head control on the video screen (head up: next, head down: back). Off unless they turn it on. */
     var headControl: Boolean
         get() = p.getBoolean("headControl", false)
