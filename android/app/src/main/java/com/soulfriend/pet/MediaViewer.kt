@@ -70,6 +70,9 @@ class MediaViewer : Activity() {
     private lateinit var talkBtn: TextView
     private lateinit var ytBtn: TextView           // Subscribe (on YouTube)
     private lateinit var side: LinearLayout        // the buttons down the right side, like Shorts
+    private lateinit var headBtn: TextView
+    private var head: HeadWatch? = null            // head control: head up = next, head down = back
+    private val prefs by lazy { Store(this) }
     private lateinit var seek: android.widget.SeekBar
     private lateinit var clock: TextView
     private var seeking = false
@@ -141,7 +144,9 @@ class MediaViewer : Activity() {
         talkBtn = sideBtn("💬", "Comments") { comments() }
         ytBtn = sideBtn("🔔", "Subscribe") { openYouTube() }
         val shareBtn = sideBtn("📤", "Share") { share() }
-        for (b in listOf(likeBtn, talkBtn, ytBtn, shareBtn)) side.addView(b, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
+        headBtn = sideBtn("🙂", "Head") { toggleHead() }
+        for (b in listOf(likeBtn, talkBtn, ytBtn, shareBtn, headBtn)) side.addView(b, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
+        paintHead()
         root.addView(side, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.BOTTOM).apply { marginEnd = dp(6); bottomMargin = dp(170) })
 
         if (items.size > 1) {
@@ -199,6 +204,32 @@ class MediaViewer : Activity() {
         sp.setSpan(android.text.style.RelativeSizeSpan(2.2f), 0, icon.length, 0)
         v.text = sp
     }
+    // ---------- head control: head up = the next video, head down = the one before ----------
+    private fun paintHead() { setSide(headBtn, "🙂", if (prefs.headControl) "Head ✓" else "Head") }
+    private fun tell(s: String) = android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show()
+    private fun toggleHead() {
+        if (prefs.headControl) { prefs.headControl = false; head?.stop(); head = null; paintHead(); return }
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 71); return
+        }
+        startHead(true)
+    }
+    private fun startHead(first: Boolean) {
+        head?.stop()
+        val w = HeadWatch(this) { up -> val to = if (up) at + 1 else at - 1; if (to in items.indices) pager.jump(to) }
+        if (!w.start()) {
+            prefs.headControl = false; head = null; paintHead()
+            if (first) tell("This phone's front camera can't find faces by itself, so head control doesn't work here.")
+            return
+        }
+        head = w; prefs.headControl = true; paintHead()
+        if (first) tell("Head up: next video · Head down: the one before. The camera only finds where your face is; no picture is kept or sent.")
+    }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 71 && grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) startHead(true)
+    }
+
     private var length = 0.0
     private fun mmss(t: Double): String { val s = t.toInt().coerceAtLeast(0); return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60) }
 
@@ -243,6 +274,7 @@ class MediaViewer : Activity() {
         paintLike()
         ytBtn.visibility = if (yt) View.VISIBLE else View.GONE
         (seek.parent as? View)?.visibility = if (yt) View.VISIBLE else View.GONE
+        if (yt) Know.watched(prefs, cur.who)                 // (only when they let Habit notice what they watch)
         length = 0.0; seek.progress = 0; clock.text = ""
         if (cur.kind == "video" || cur.kind == "short") play(i)
         if (cur.kind == "file") playFile(i)
@@ -516,6 +548,7 @@ class MediaViewer : Activity() {
     override fun onPause() {
         super.onPause()
         petSmall(false)
+        head?.stop(); head = null
         if (webAt >= 0) stopVideo()
         if (fileAt >= 0) stopFile()
     }
@@ -523,6 +556,7 @@ class MediaViewer : Activity() {
     override fun onResume() {
         super.onResume()
         petSmall(true)
+        if (prefs.headControl && head == null && checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) startHead(false)
         if (at >= 0 && items.getOrNull(at)?.kind == "file") playFile(at)
     }
 

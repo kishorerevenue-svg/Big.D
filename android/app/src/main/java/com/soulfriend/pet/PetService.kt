@@ -1009,6 +1009,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             return
         }
+        if (store.learnWatch || store.learnPeople) Know.refresh(this, store)      // what Habit noticed (only what they switched on)
         // "listen for your name" / "పేరు వినడం ఆపు": "Call me by name" on or off by voice
         Talk.wakeSwitch(text)?.let { on ->
             store.wakeOn = on
