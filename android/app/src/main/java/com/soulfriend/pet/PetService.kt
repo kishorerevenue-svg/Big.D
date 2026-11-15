@@ -1175,7 +1175,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             if (a.optString("type") == "game") { val named = Talk.game(lastQuestion); if (named == null || named == "any") a.put("name", "any") }
             actions.run(a)?.let { done.add(it) }
         }
-        var extra = if (done.isEmpty()) "" else "\n\n" + done.joinToString("\n") { "✓ $it" }
+        // "⚠ …": something it was asked to do didn't happen: it says that, not the "doing it" line the brain wrote
+        val failed = done.filter { it.startsWith("⚠") }.map { it.removePrefix("⚠").trim() }
+        val did = done.filter { !it.startsWith("⚠") }
+        var extra = if (did.isEmpty()) "" else "\n\n" + did.joinToString("\n") { "✓ $it" }
         val src = json.optJSONArray("sources")
         if (src != null && src.length() > 0)
             extra += "\n\nSources:\n" + (0 until src.length()).joinToString("\n") { i -> src.optJSONObject(i)?.let { "• " + it.optString("title") + "\n  " + it.optString("url") } ?: "" }
@@ -1186,7 +1189,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         else if (json.optBoolean("tiny")) extra += "\n\n📴 " + (if (store.lang == "te") "ఇంటర్నెట్ లేదు, ఫోన్‌లోని చిన్న మెదడు జవాబిచ్చింది" else "No internet: the tiny brain on this phone answered")
         val snd = json.optString("sound")
         val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
-        say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)
+        if (failed.isNotEmpty()) say(failed.joinToString(" "), PuppyView.Mood.CONFUSED, extra, delayMs = wait)
+        else say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)
         lookAt?.let { l -> main.postDelayed({ look(l, announce = false) }, 300) }
         lookAgain?.let { l ->
             autoLooks++

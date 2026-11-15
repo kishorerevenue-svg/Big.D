@@ -37,8 +37,8 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
             "todo_done" -> store.findTodo(a.optString("text")).let { if (it < 0) "Couldn't find that item in your list" else { store.setTodoDone(it, true); "Marked done: ${store.todos()[it].text}" } }
             "todo_remove" -> store.findTodo(a.optString("text")).let { if (it < 0) "Couldn't find that item in your list" else { val t = store.todos()[it].text; store.removeTodo(it); "Removed: $t" } }
             "note_save" -> { store.addNote(a.optString("text")); "Note saved" }
-            "call" -> call(a.optString("number"), a.optString("contact"))
-            "whatsapp" -> whatsapp(a.optString("number"), a.optString("contact"), a.optString("message"))
+            "call" -> call(a.optString("number"), a.optString("contact"), a.optString("alt"))
+            "whatsapp" -> whatsapp(a.optString("number"), a.optString("contact"), a.optString("message"), a.optString("alt"))
             "open_app" -> openApp(a.optString("name"))
             "show_text" -> { showText(a.optString("title", "Habit AI"), a.optString("text")); null }
             "copy_text" -> { copy(a.optString("text")); "Copied" }
@@ -169,9 +169,41 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
 
     private fun digits(s: String) = s.filter { it.isDigit() || it == '+' }
 
-    /** Every contact whose name matches [name], with each number once (name, number), at most 6. */
-    fun lookupAll(name: String): List<Pair<String, String>> {
+    /** Someone they chat with one-to-one in Habit Chat whose name answers to [name] (or [alt]). */
+    private fun habitChat(name: String, alt: String): ChatConv? = try {
+        ChatDb.get(ctx).convs().filter { it.isDm && !it.isLocal && !it.blocked && it.member }
+            .map { c -> c to maxOf(Names.match(name, c.name), if (alt.isBlank()) 0 else Names.match(alt, c.name)) }
+            .filter { it.second > 0 }.maxByOrNull { it.second }?.first
+    } catch (e: Exception) { null }
+
+    /**
+     * Every contact whose name matches [name], with each number once (name, number), at most 6. A name said in Telugu
+     * finds one saved in English letters and the other way ("రోజా" finds "Roja"): first as it is, then [alt] (the brain's
+     * other spelling), then by how the names sound.
+     */
+    fun lookupAll(name: String, alt: String = ""): List<Pair<String, String>> {
         if (name.isBlank() || ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return emptyList()
+        exact(name).ifEmpty { if (alt.isBlank()) emptyList() else exact(alt) }.let { if (it.isNotEmpty()) return it }
+        val same = ArrayList<Pair<String, String>>(); val near = ArrayList<Pair<String, String>>(); val seen = HashSet<String>()
+        try {
+            ctx.contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use { c ->
+                var n = 0
+                while (c.moveToNext() && n++ < 6000) {
+                    val who = c.getString(0) ?: continue
+                    val num = c.getString(1) ?: continue
+                    val how = maxOf(Names.match(name, who), if (alt.isBlank()) 0 else Names.match(alt, who))
+                    if (how == 0) continue
+                    val key = digits(num).takeLast(10)
+                    if (key.length < 5 || !seen.add(key)) continue
+                    (if (how == 2) same else near).add(who to num)
+                }
+            }
+        } catch (e: Exception) { }
+        return same.ifEmpty { near }.take(6)
+    }
+
+    private fun exact(name: String): List<Pair<String, String>> {
         val out = mutableListOf<Pair<String, String>>(); val seen = HashSet<String>()
         val uri = Uri.withAppendedPath(ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI, Uri.encode(name))
         try {
@@ -187,13 +219,23 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
         return out
     }
 
-    private fun call(number: String, contact: String): String? {
+    private fun call(number: String, contact: String, alt: String = ""): String? {
         val given = digits(number)
-        val found = if (given.isBlank()) lookupAll(contact) else listOf(contact.ifBlank { given } to given)
+        val found = if (given.isBlank()) lookupAll(contact, alt) else listOf(contact.ifBlank { given } to given)
         if (found.isEmpty()) {
+            val te = store.lang == "te"
+            // not in the phone's contacts, but someone they chat with in Habit Chat: a Habit call
+            if (contact.isNotBlank()) habitChat(contact, alt)?.let { c ->
+                if (ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    CallManager.startOutgoing(ctx, c.cid, false)
+                    return if (te) "🐾 ${c.name} కి Habit కాల్ చేస్తున్నాను" else "🐾 Calling ${c.name} on Habit"
+                }
+            }
+            // "⚠": it didn't happen (the pet says this, not "calling")
             return if (contact.isNotBlank() && ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED)
-                "Allow Contacts in the Habit AI app so I can find $contact"
-            else if (contact.isNotBlank()) "I couldn't find $contact in your contacts" else "Which number should I call?"
+                (if (te) "⚠ $contact ని వెతకడానికి Habit AI యాప్‌లో Contacts అనుమతి ఇవ్వండి." else "⚠ Allow Contacts in the Habit AI app so I can find $contact.")
+            else if (contact.isNotBlank()) (if (te) "⚠ మీ కాంటాక్ట్‌లలో $contact దొరకలేదు. ఫోన్‌లో సేవ్ చేసిన పేరు చెప్పండి, లేదా నంబర్ చెప్పండి." else "⚠ I couldn't find $contact in your contacts. Say the name as it's saved, or tell me the number.")
+            else (if (te) "⚠ ఏ నంబర్‌కి కాల్ చేయాలి?" else "⚠ Which number should I call?")
         }
         // the floating pet calls by itself (and asks which one when several match)
         onCall?.let { it(found); return null }
@@ -201,8 +243,8 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
         return if (start(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + digits(n))))) "Opening the dialer for $who. Tap Call." else "No phone app found"
     }
 
-    private fun whatsapp(number: String, contact: String, message: String): String {
-        val found = lookup(contact)
+    private fun whatsapp(number: String, contact: String, message: String, alt: String = ""): String {
+        val found = lookup(contact) ?: lookupAll(contact, alt).firstOrNull()?.second
         var n = digits(number).ifBlank { found?.let { digits(it) } ?: "" }.removePrefix("+")
         if (n.length == 11 && n.startsWith("0")) n = n.drop(1)
         if (n.length == 10) n = "91$n"
