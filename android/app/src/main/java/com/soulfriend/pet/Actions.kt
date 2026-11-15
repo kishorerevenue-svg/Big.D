@@ -24,7 +24,7 @@ import java.util.Locale
 
 /** Turns the AI's "actions" into real things on the phone. Each returns a short line to show the user.
  *  [onCall]: the floating pet places calls itself (one person: it calls; several: it asks which). Without it, the dialer opens. */
-class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, String>>) -> Unit)? = null, private val showText: (String, String) -> Unit) {
+class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<String, String>>) -> Unit)? = null, private val showText: (String, String) -> Unit) {
     private val store = Store(ctx)
     private val timeFmt = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.ENGLISH)
 
@@ -49,6 +49,7 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
             "open_page" -> openPage(a.optString("page"))
             "game" -> if (GamesActivity.open(ctx, a.optString("name"))) null else "Open the Habit AI app to play"
             "play" -> play(a.optString("q"), a.optBoolean("short"))
+            "habit_call" -> habitCall(a.optString("contact"), a.optString("alt"), a.optBoolean("video"))
             else -> null
         }
     } catch (e: Exception) { "Sorry, I couldn't do that on this phone" }
@@ -169,6 +170,19 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
 
     private fun digits(s: String) = s.filter { it.isDigit() || it == '+' }
 
+    /** "Habit call to Roja", "video call Roja": a call inside Habit Chat to someone they chat with there. */
+    private fun habitCall(contact: String, alt: String, video: Boolean): String {
+        val te = store.lang == "te"
+        if (contact.isBlank()) return if (te) "⚠ ఎవరికి Habit కాల్ చేయాలి?" else "⚠ Who should I call on Habit?"
+        val c = habitChat(contact, alt)
+            ?: return if (te) "⚠ $contact మీ Habit చాట్‌లలో లేరు. ముందు Habit లో వారితో ఒకసారి చాట్ మొదలుపెట్టండి." else "⚠ $contact isn't in your Habit chats yet. Start a chat with them in Habit once first."
+        val need = listOf(Manifest.permission.RECORD_AUDIO) + (if (video) listOf(Manifest.permission.CAMERA) else emptyList())
+        if (need.any { ctx.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED })
+            return if (te) "⚠ Habit కాల్స్ కోసం యాప్‌లో మైక్రోఫోన్ (వీడియోకి కెమెరా) అనుమతి ఇవ్వండి." else "⚠ Allow the microphone (and the camera for video) in the Habit app for Habit calls."
+        CallManager.startOutgoing(ctx, c.cid, video)
+        return if (te) "🐾 ${c.name} కి Habit ${if (video) "వీడియో " else ""}కాల్ చేస్తున్నాను" else "🐾 ${if (video) "Video calling" else "Calling"} ${c.name} on Habit"
+    }
+
     /** Someone they chat with one-to-one in Habit Chat whose name answers to [name] (or [alt]). */
     private fun habitChat(name: String, alt: String): ChatConv? = try {
         ChatDb.get(ctx).convs().filter { it.isDm && !it.isLocal && !it.blocked && it.member }
@@ -183,7 +197,10 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
      */
     fun lookupAll(name: String, alt: String = ""): List<Pair<String, String>> {
         if (name.isBlank() || ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return emptyList()
-        exact(name).ifEmpty { if (alt.isBlank()) emptyList() else exact(alt) }.let { if (it.isNotEmpty()) return it }
+        val keys = setOf(Names.key(name), Names.key(alt)).filter { it.length >= 2 }
+        // "Roja" means the contact saved as just "Roja", not "Attayya Roja" or "Roja Divya" (they say those names in full)
+        fun whole(l: List<Pair<String, String>>) = l.filter { Names.key(it.first) in keys }.ifEmpty { l }
+        exact(name).ifEmpty { if (alt.isBlank()) emptyList() else exact(alt) }.let { if (it.isNotEmpty()) return whole(it).take(6) }
         val same = ArrayList<Pair<String, String>>(); val near = ArrayList<Pair<String, String>>(); val seen = HashSet<String>()
         try {
             ctx.contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
@@ -200,15 +217,16 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
                 }
             }
         } catch (e: Exception) { }
-        return same.ifEmpty { near }.take(6)
+        return whole(same.ifEmpty { near }).take(6)
     }
 
     private fun exact(name: String): List<Pair<String, String>> {
         val out = mutableListOf<Pair<String, String>>(); val seen = HashSet<String>()
         val uri = Uri.withAppendedPath(ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI, Uri.encode(name))
         try {
-            ctx.contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use { c ->
-                while (c.moveToNext() && out.size < 6) {
+            ctx.contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null,
+                ContactsContract.Data.IS_SUPER_PRIMARY + " DESC, " + ContactsContract.Data.IS_PRIMARY + " DESC")?.use { c ->
+                while (c.moveToNext() && out.size < 25) {
                     val num = c.getString(1) ?: continue
                     val key = digits(num).takeLast(10)
                     if (key.length < 5 || !seen.add(key)) continue
@@ -238,7 +256,7 @@ class Actions(private val ctx: Context, private val onCall: ((List<Pair<String, 
             else (if (te) "⚠ ఏ నంబర్‌కి కాల్ చేయాలి?" else "⚠ Which number should I call?")
         }
         // the floating pet calls by itself (and asks which one when several match)
-        onCall?.let { it(found); return null }
+        onCall?.let { it(contact, found); return null }
         val (who, n) = found.first()
         return if (start(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + digits(n))))) "Opening the dialer for $who. Tap Call." else "No phone app found"
     }

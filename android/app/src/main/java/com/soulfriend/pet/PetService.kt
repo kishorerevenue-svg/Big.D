@@ -116,7 +116,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         running = true
         store = Store(this)
         brain = Brain(store)
-        actions = Actions(this, onCall = { found -> callChoices(found) }) { title, text -> openPanel(title, text) }
+        actions = Actions(this, onCall = { said, found -> callChoices(said, found) }) { title, text -> openPanel(title, text) }
         watchCalls()
         wm = getSystemService(WindowManager::class.java)
         goForeground()
@@ -1009,6 +1009,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             return
         }
+        // "who should I call?" is on the screen and they say who ("the first one", "అత్తయ్య రోజా")
+        pickFrom?.let { list -> pickBy(text, list)?.let { pickCall(it); return } }
         if (store.learnWatch || store.learnPeople) Know.refresh(this, store)      // what Habit noticed (only what they switched on)
         // "listen for your name" / "పేరు వినడం ఆపు": "Call me by name" on or off by voice
         Talk.wakeSwitch(text)?.let { on ->
@@ -1189,7 +1191,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         else if (json.optBoolean("tiny")) extra += "\n\n📴 " + (if (store.lang == "te") "ఇంటర్నెట్ లేదు, ఫోన్‌లోని చిన్న మెదడు జవాబిచ్చింది" else "No internet: the tiny brain on this phone answered")
         val snd = json.optString("sound")
         val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
+        val ask = sayInstead; sayInstead = null                 // "who should I call?" (several people have that name)
         if (failed.isNotEmpty()) say(failed.joinToString(" "), PuppyView.Mood.CONFUSED, extra, delayMs = wait)
+        else if (ask != null) say(ask, PuppyView.Mood.HAPPY, delayMs = wait)
         else say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)
         lookAt?.let { l -> main.postDelayed({ look(l, announce = false) }, 300) }
         lookAgain?.let { l ->
@@ -1204,8 +1208,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         showRate()
         // a spoken question: when the answer has been said, listen for the next one (conversation mode), unless the answer
         // took them somewhere else (a game, another app, a call, the letter helper)
-        val away = arr != null && (0 until arr.length()).any { arr.optJSONObject(it)?.optString("type") in setOf("game", "open_app", "open_page", "call", "whatsapp", "letter", "play") }   // (a song plays: it doesn't listen over it)
-        if (byVoice && store.voiceOn && !away && lookAt == null && lookAgain == null && screenAsk == null && replyTo == null && !voiceMode &&
+        val away = arr != null && (0 until arr.length()).any { arr.optJSONObject(it)?.optString("type") in setOf("game", "open_app", "open_page", "call", "whatsapp", "letter", "play", "habit_call") }   // (a song plays: it doesn't listen over it)
+        if (ask != null && pickFrom != null && byVoice && store.voiceOn && !voiceMode) afterSpeech = { if (pickFrom != null) startListening() }   // it listens for who
+        else if (byVoice && store.voiceOn && !away && lookAt == null && lookAgain == null && screenAsk == null && replyTo == null && !voiceMode &&
             (convoStay || store.convo != "off")) afterSpeech = { convoNext() }
         else if (convoOn) endConvo(quiet = true)
     }
@@ -1266,10 +1271,40 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     // ---------------- calling by the pet: one person: a call after 3 seconds (tap me to stop it); several: pick one ----------------
     private var pendingCall: Runnable? = null
-    private fun callChoices(found: List<Pair<String, String>>) {
+    private var pickFrom: List<Pair<String, String>>? = null     // "who should I call?" is on the screen: they can say who
+    private var pickSaid = ""
+    private var sayInstead: String? = null                       // what the pet says now, in place of the brain's line
+    private fun last10(num: String) = num.filter { it.isDigit() }.takeLast(10)
+
+    private fun callChoices(said: String, found: List<Pair<String, String>>) {
         if (found.size == 1) { callSoon(found[0].first, found[0].second); return }
+        // several people have that name: the one they chose for it last time is their usual one
+        val usual = store.callPick(Names.key(said))
+        if (usual.isNotBlank()) found.firstOrNull { last10(it.second) == usual }?.let { callSoon(it.first, it.second); return }
         val te = te()
-        showChoices(if (te) "📞 ఎవరికి కాల్ చేయాలి?" else "📞 Who should I call?", found.map { (n, num) -> "$n · $num" }) { i -> callSoon(found[i].first, found[i].second) }
+        pickSaid = said
+        showChoices(if (te) "📞 ఎవరికి కాల్ చేయాలి?" else "📞 Who should I call?", found.map { (n, num) -> "$n · $num" }) { i -> pickCall(found[i]) }
+        pickFrom = found
+        sayInstead = if (te) "$said పేరుతో ${found.size} మంది ఉన్నారు. ఎవరికి కాల్ చేయాలి? పేరు చెప్పండి, లేదా నొక్కండి." else "${found.size} people are called $said. Who should I call? Say the name, or tap one."
+    }
+    /** They chose who (a tap or by voice): that one is called, and is the usual one for that name from now on. */
+    private fun pickCall(who: Pair<String, String>) {
+        store.setCallPick(Names.key(pickSaid), last10(who.second))
+        closeChoices()
+        callSoon(who.first, who.second)
+    }
+    /** What they said while "who should I call?" is up: "the first one", "రెండోది", or the name. Null: not one of them. */
+    private fun pickBy(text: String, list: List<Pair<String, String>>): Pair<String, String>? {
+        val t = text.lowercase()
+        val nth = listOf(Regex("first|\\b1st\\b|\\bone\\b|మొదటి|ఒకటో|ఫస్ట్"), Regex("second|\\b2nd\\b|\\btwo\\b|రెండో|రెండవ|సెకండ్"), Regex("third|\\b3rd\\b|\\bthree\\b|మూడో|మూడవ|థర్డ్"),
+            Regex("fourth|\\b4th\\b|\\bfour\\b|నాలుగో|నాలుగవ"), Regex("fifth|\\b5th\\b|\\bfive\\b|ఐదో|ఐదవ"), Regex("sixth|\\b6th\\b|\\bsix\\b|ఆరో|ఆరవ"))
+        if (Regex("\\blast\\b|చివరి").containsMatchIn(t)) return list.last()
+        nth.forEachIndexed { i, r -> if (i < list.size && r.containsMatchIn(t)) return list[i] }
+        val k = Names.key(text)
+        list.filter { Names.key(it.first) == k }.let { if (it.size == 1) return it[0] }
+        val scored = list.map { it to Names.match(text, it.first) }.filter { it.second > 0 }
+        val best = scored.maxOfOrNull { it.second } ?: return null
+        return scored.filter { it.second == best }.takeIf { it.size == 1 }?.get(0)?.first
     }
     private fun callSoon(name: String, number: String) {
         val te = te()
@@ -1324,7 +1359,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         card.post { placeNearPet(card, p, w) }
         main.postDelayed({ if (choices === card) closeChoices() }, 60_000)
     }
-    private fun closeChoices() { choices?.let { try { wm.removeView(it) } catch (e: Exception) { } }; choices = null }
+    private fun closeChoices() { choices?.let { try { wm.removeView(it) } catch (e: Exception) { } }; choices = null; pickFrom = null }
 
     /** Puts [v] just under the pet (or just above it when the pet is low on the screen). */
     private fun placeNearPet(v: View, p: WindowManager.LayoutParams, w: Int) {
