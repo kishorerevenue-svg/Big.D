@@ -1009,6 +1009,15 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             return
         }
+        // "listen for your name" / "పేరు వినడం ఆపు": "Call me by name" on or off by voice
+        Talk.wakeSwitch(text)?.let { on ->
+            store.wakeOn = on
+            if (!on) stopWaking()
+            say(if (on) (if (te()) "సరే! ఇక ఎప్పుడైనా \"హ్యాబిట్\" అనండి, పలుకుతాను." else "Okay! Say \"Habit\" any time and I'll answer.")
+                else (if (te()) "సరే, పేరు కోసం వినడం ఆపాను. మళ్ళీ కావాలంటే నన్ను తట్టి \"పేరు విను\" అనండి." else "Okay, I stopped listening for my name. Tap me and say \"listen for your name\" to turn it on again."),
+                PuppyView.Mood.HAPPY)
+            return
+        }
         // a letter's questions are on the screen (Files): what they say goes into that letter (the answer being filled, else
         // the first empty one), not into a new letter
         LetterHelper.showing?.takeVoice(text)?.let { q ->
