@@ -1175,6 +1175,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 if (m != null) { replyTo = m to a.optString("message"); done.add("Your message to ${m.chat} is ready below. Tap Send ➤"); continue }
             }
             if (a.optString("type") == "game") { val named = Talk.game(lastQuestion); if (named == null || named == "any") a.put("name", "any") }
+            // a call: did they say which kind? "Habit call" (even if the brain wrote a plain call) or "phone call"
+            if (a.optString("type") == "call" && a.optString("number").isBlank()) {
+                val q = lastQuestion.lowercase()
+                if (Regex("habit|హ్యాబిట్|హాబిట్|హేబిట్|హెబిట్|వీడియో కాల్|video call").containsMatchIn(q)) { a.put("type", "habit_call"); if (Regex("వీడియో|video").containsMatchIn(q)) a.put("video", true) }
+                else if (Regex("phone call|normal call|sim call|ఫోన్ కాల్|ఫోన్ చెయ్|ఫోన్ చేయ్|సిమ్|నార్మల్ కాల్|మామూలు కాల్").containsMatchIn(q)) a.put("way", "phone")
+            }
             actions.run(a)?.let { done.add(it) }
         }
         // "⚠ …": something it was asked to do didn't happen: it says that, not the "doing it" line the brain wrote

@@ -37,7 +37,7 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
             "todo_done" -> store.findTodo(a.optString("text")).let { if (it < 0) "Couldn't find that item in your list" else { store.setTodoDone(it, true); "Marked done: ${store.todos()[it].text}" } }
             "todo_remove" -> store.findTodo(a.optString("text")).let { if (it < 0) "Couldn't find that item in your list" else { val t = store.todos()[it].text; store.removeTodo(it); "Removed: $t" } }
             "note_save" -> { store.addNote(a.optString("text")); "Note saved" }
-            "call" -> call(a.optString("number"), a.optString("contact"), a.optString("alt"))
+            "call" -> call(a.optString("number"), a.optString("contact"), a.optString("alt"), a.optString("way"))
             "whatsapp" -> whatsapp(a.optString("number"), a.optString("contact"), a.optString("message"), a.optString("alt"))
             "open_app" -> openApp(a.optString("name"))
             "show_text" -> { showText(a.optString("title", "Habit AI"), a.optString("text")); null }
@@ -180,6 +180,7 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
         if (need.any { ctx.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED })
             return if (te) "⚠ Habit కాల్స్ కోసం యాప్‌లో మైక్రోఫోన్ (వీడియోకి కెమెరా) అనుమతి ఇవ్వండి." else "⚠ Allow the microphone (and the camera for video) in the Habit app for Habit calls."
         CallManager.startOutgoing(ctx, c.cid, video)
+        store.setCallWay(Names.key(contact), "habit")                // a plain "call <them>" is a Habit call from now on ("phone call" changes it back)
         return if (te) "🐾 ${c.name} కి Habit ${if (video) "వీడియో " else ""}కాల్ చేస్తున్నాను" else "🐾 ${if (video) "Video calling" else "Calling"} ${c.name} on Habit"
     }
 
@@ -237,8 +238,14 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
         return out
     }
 
-    private fun call(number: String, contact: String, alt: String = ""): String? {
+    private fun call(number: String, contact: String, alt: String = "", way: String = ""): String? {
         val given = digits(number)
+        // how they call this person: they say "Habit call" or "phone call" once, and a plain "call Roja" does the same after
+        if (given.isBlank() && contact.isNotBlank()) {
+            val k = Names.key(contact)
+            if (way == "phone") store.setCallWay(k, "phone")
+            else if (store.callWay(k) == "habit" && habitChat(contact, alt) != null) return habitCall(contact, alt, false)
+        }
         val found = if (given.isBlank()) lookupAll(contact, alt) else listOf(contact.ifBlank { given } to given)
         if (found.isEmpty()) {
             val te = store.lang == "te"

@@ -143,6 +143,17 @@ class Store(context: Context) {
     var ears: String
         get() = p.getString("ears", "") ?: ""
         set(v) { p.edit().putString("ears", v).apply() }
+    /** How they call each person ("roja" → "habit" or "phone"), from the last time they said which: a plain "call Roja" does the same. */
+    fun callWay(nameKey: String): String = try { JSONObject(p.getString("callWays", "{}") ?: "{}").optString(nameKey) } catch (e: Exception) { "" }
+    fun setCallWay(nameKey: String, way: String) {
+        if (nameKey.isBlank()) return
+        try {
+            val j = JSONObject(p.getString("callWays", "{}") ?: "{}")
+            if (j.length() > 300) j.keys().asSequence().toList().take(50).forEach { j.remove(it) }
+            j.put(nameKey, way)
+            p.edit().putString("callWays", j.toString()).apply()
+        } catch (e: Exception) { }
+    }
     /** Who they meant when several contacts had the name they said ("roja" → that number): the pet calls that one next time. */
     fun callPick(nameKey: String): String = try { JSONObject(p.getString("callPicks", "{}") ?: "{}").optString(nameKey) } catch (e: Exception) { "" }
     fun setCallPick(nameKey: String, number10: String) {
