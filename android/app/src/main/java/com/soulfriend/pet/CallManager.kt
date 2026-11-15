@@ -75,15 +75,16 @@ object CallManager {
 
     // ---------- starting a call ----------
     /** I call the other person in this one-to-one chat (permissions were asked already). */
-    fun startOutgoing(a: Activity, cid: String, video: Boolean) {
+    fun startOutgoing(a: Context, cid: String, video: Boolean) {
+        val screen = Intent(a, CallActivity::class.java).apply { if (a !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }   // (the pet calls too)
         val cur = active
-        if (cur != null) { a.startActivity(Intent(a, CallActivity::class.java)); return }
+        if (cur != null) { a.startActivity(screen); return }
         val c = ChatDb.get(a).conv(cid) ?: return
         val me = ChatSync.myUid(a)
         val peer = c.members().map { it.optString("uid") }.firstOrNull { it.isNotEmpty() && it != me } ?: return
         val call = Call("k" + System.currentTimeMillis().toString(36) + (1000..9999).random(), cid, peer, video, false)
         active = call
-        a.startActivity(Intent(a, CallActivity::class.java))
+        a.startActivity(screen)
         main.postDelayed({ if (active === call && (call.state == "calling" || call.state == "ringing")) end(a.applicationContext, call, "timeout", true) }, WAIT_MS)
     }
 
