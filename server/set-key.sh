@@ -13,6 +13,12 @@ export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
 cd "$(dirname "$0")" || exit 1
 name="${1:-}"
 raw="${2:-}"
+# the key pasted straight after the name with no space between them (or with "="): take the two apart
+if [ -z "$raw" ] && ! [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+  for known in YOUTUBE_API_KEY GOOGLE_TTS_KEY ANTHROPIC_API_KEY GEMINI_API_KEY PEXELS_API_KEY DATA_GOV_KEY GIPHY_KEY KLIPY_KEY GIF_KEY HF_TOKEN TURN_SECRET; do
+    if [[ "$name" == "$known"?* ]]; then raw="${name#"$known"}"; raw="${raw#=}"; name="$known"; break; fi
+  done
+fi
 if [ -z "$raw" ] && [ -t 0 ] && [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
   printf 'Paste %s now and press Enter (it stays hidden): ' "$name"
   IFS= read -rs raw; echo
@@ -22,6 +28,7 @@ if ! [[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]] || [ -z "$value" ]; then
   echo "Usage: set-key.sh NAME          (then paste the key: it stays hidden)"
   echo "       set-key.sh NAME VALUE    (for example: set-key.sh GOOGLE_TTS_KEY AIzaSy...)"
   echo "       set-key.sh NAME --remove (takes the setting out)"
+  echo "Nothing was saved. Easiest: type only the name, press Enter, and paste the key when it asks."
   exit 1
 fi
 touch .env
