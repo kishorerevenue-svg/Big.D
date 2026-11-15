@@ -38,7 +38,7 @@ class Brain(private val store: Store) {
             .put("now", OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString())
             .put("tz", ZoneId.systemDefault().id)
             .put("todos", todos).put("notes", notes)
-            .put("memories", JSONArray().also { a -> store.memories().forEach { a.put(it) } })
+            .put("memories", JSONArray().also { a -> (store.memories() + store.noticedLines()).forEach { a.put(it) } })   // (and what Habit noticed, when they allowed it)
             .put("learn", store.learnShare)
         // who is talking now, only when they said it in this conversation (family members share the phone)
         store.speakerNow()?.let { body.put("speaker", it); store.touchSpeaker() }

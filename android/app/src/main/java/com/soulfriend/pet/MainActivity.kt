@@ -849,13 +849,34 @@ class MainActivity : Activity() {
             put(ui.text("Deletes your profile and everything in it, for ever. Also possible on the web: ${store.server}/delete-account", 12f, Ui.MUTED), 8)
         }, 12)
 
-        add(ui.section("What your pet remembers", "Saved only on this phone. Say \"forget that\" or tap ✕.").apply {
+        add(ui.section("What I know about you · మీ గురించి నాకు తెలిసినవి", "Saved only on this phone. Tap a line to change it, ✕ to forget it, or say \"forget that\".").apply {
             val mems = store.memories()
+            // tell it something directly
+            val more = ui.input(t("Tell me something to remember, e.g. I take my BP tablet at 9", "గుర్తుంచుకోవాల్సింది చెప్పండి, ఉదా: నేను 9 కి BP మాత్ర వేసుకుంటాను"), "")
+            put(ui.line(more, ui.button("➕", "primary") {
+                val v = more.text.toString().trim()
+                if (v.isNotEmpty()) { store.remember(v.take(300)); render() }
+            }), 8)
+            // what Habit may notice by itself (off unless they turn it on); only from inside Habit
+            put(ui.check(t("📺 Notice what I like to watch in Habit Media (the channel names)", "📺 Habit మీడియాలో నేను ఏవి ఎక్కువ చూస్తానో గమనించు (ఛానెల్ పేర్లు)"), store.learnWatch) {
+                store.learnWatch = it; Know.refresh(this@MainActivity, store); render() }, 8)
+            put(ui.check(t("👥 Notice who I chat with most in Habit Chat (their names)", "👥 Habit చాట్‌లో నేను ఎవరితో ఎక్కువ మాట్లాడతానో గమనించు (వారి పేర్లు)"), store.learnPeople) {
+                store.learnPeople = it; Know.refresh(this@MainActivity, store); render() }, 6)
+            put(ui.text(t("These go to my brain with my memory, so I can talk and suggest things your way. I never read your call history, SMS or other apps' messages: Android doesn't allow it and I don't ask.",
+                "ఇవి నా జ్ఞాపకంతో పాటు నా మెదడుకి వెళ్తాయి, మీకు తగ్గట్టు మాట్లాడడానికి. మీ కాల్ హిస్టరీ, SMS, వేరే యాప్‌ల మెసేజ్‌లు నేను ఎప్పుడూ చదవను: Android అనుమతించదు, నేను అడగను."), 12f, Ui.MUTED), 4)
+            for (n in Know.refresh(this@MainActivity, store)) put(ui.text("👀 $n", 14f, Ui.MUTED), 8)
             // the diary: talks are kept on this phone, and after each conversation the important things go into this memory
             put(ui.text("📓 " + (if (store.lang == "te") "డైరీ: ${Diary.size(store)} మాటలు ఈ ఫోన్‌లోనే ఉన్నాయి. ప్రతి సంభాషణ తర్వాత ముఖ్యమైనవి (ప్రతి వ్యక్తి, స్నేహితులు, అలవాట్లు, షెడ్యూల్) ఇక్కడ గుర్తుంటాయి; చిన్న మాటలు మర్చిపోతుంది."
                 else "Diary: ${Diary.size(store)} talks kept on this phone. After each conversation the important things (each person, friends, habits, schedule) are remembered here; small talk is forgotten."), 12.5f, Ui.MUTED), 6)
             if (mems.isEmpty()) put(ui.text("Nothing yet. Tell it about yourself, for example \"My daughter's name is Sita\".", 13.5f, Ui.MUTED))
-            mems.forEachIndexed { i, m -> put(ui.line(ui.text(m, 15f), ui.button("✕", "ghost") { store.removeMemory(i); render() }), 8) }
+            mems.forEachIndexed { i, m -> put(ui.line(ui.text(m, 15f).apply {
+                setOnClickListener {                                  // tap: change the line
+                    val box = android.widget.EditText(this@MainActivity).apply { setText(m); setSelection(m.length) }
+                    AlertDialog.Builder(this@MainActivity).setTitle(t("Change it", "మార్చండి")).setView(box)
+                        .setPositiveButton(t("Save", "సేవ్")) { _, _ -> store.editMemory(i, box.text.toString().take(300)); render() }
+                        .setNegativeButton(t("Cancel", "వద్దు"), null).show()
+                }
+            }, ui.button("✕", "ghost") { store.removeMemory(i); render() }), 8) }
         }, 12)
 
         add(ui.section("Advanced").apply {

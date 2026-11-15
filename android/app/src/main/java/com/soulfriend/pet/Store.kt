@@ -143,6 +143,25 @@ class Store(context: Context) {
     var ears: String
         get() = p.getString("ears", "") ?: ""
         set(v) { p.edit().putString("ears", v).apply() }
+    /** Head control on the video screen (head up: next, head down: back). Off unless they turn it on. */
+    var headControl: Boolean
+        get() = p.getBoolean("headControl", false)
+        set(v) { p.edit().putBoolean("headControl", v).apply() }
+    /** "What I know about you": Habit may notice what they watch in Media / who they chat with most (off unless turned on). */
+    var learnWatch: Boolean
+        get() = p.getBoolean("learnWatch", false)
+        set(v) { p.edit().putBoolean("learnWatch", v).apply(); if (!v) p.edit().remove("watchLog").apply() }
+    var learnPeople: Boolean
+        get() = p.getBoolean("learnPeople", false)
+        set(v) { p.edit().putBoolean("learnPeople", v).apply() }
+    var watchLog: String
+        get() = p.getString("watchLog", "{}") ?: "{}"
+        set(v) { p.edit().putString("watchLog", v).apply() }
+    /** What Habit noticed by itself ([Know]), as lines for the pet's memory. */
+    var noticed: String
+        get() = p.getString("noticed", "[]") ?: "[]"
+        set(v) { p.edit().putString("noticed", v).apply() }
+    fun noticedLines(): List<String> = try { val a = JSONArray(noticed); (0 until a.length()).map { a.getString(it) } } catch (e: Exception) { emptyList() }
     /** "Call me by name": the pet listens for its name all the time (hands-free). Off unless they turn it on. */
     var wakeOn: Boolean
         get() = p.getBoolean("wakeOn", false)
@@ -393,6 +412,7 @@ class Store(context: Context) {
         val keep = l.filterNot { it.lowercase() == q || it.lowercase().contains(q) || (q.length > 3 && q.contains(it.lowercase())) }
         saveMemories(keep); return keep.size < l.size
     }
+    fun editMemory(index: Int, text: String) { val l = memories().toMutableList(); val t = text.trim(); if (index in l.indices && t.isNotEmpty()) { l[index] = t; saveMemories(l) } }
     fun removeMemory(index: Int) { val l = memories().toMutableList(); if (index in l.indices) { l.removeAt(index); saveMemories(l) } }
 
     // ---- files Habit made ----
