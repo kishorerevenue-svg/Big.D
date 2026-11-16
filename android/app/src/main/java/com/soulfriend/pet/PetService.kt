@@ -1064,15 +1064,33 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     }
 
     /** Asks the brain. [context]: what is on Habit's own screen now (a game's question), told to the brain with the question. */
+    private var askNo = 0                            // which question is waiting for its answer (0: none)
     private fun askBrain(text: String, byVoice: Boolean, context: String = "") {
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
         showBubble("“$text”\n…", 0)
-        brain.ask(if (context.isBlank()) text else "[$context]\n$text", onReply = { json -> handleReply(json, byVoice = byVoice) }, onError = { err ->
-            pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000)
+        // a slow answer (a search on the internet, a weak network) mustn't look stuck: it says what it is doing, and after
+        // a minute it gives up and says so
+        val no = ++askSeq; askNo = no
+        val te = te()
+        main.postDelayed({ if (askNo == no) showBubble("“$text”\n" + (if (te) "🔎 చూస్తున్నాను, ఒక్క క్షణం…" else "🔎 Looking it up, one moment…"), 0) }, 5_000)
+        main.postDelayed({ if (askNo == no) showBubble("“$text”\n" + (if (te) "⏳ ఇంకా వెతుకుతున్నాను… నెట్ నెమ్మదిగా ఉంది" else "⏳ Still looking… the network is slow"), 0) }, 20_000)
+        main.postDelayed({
+            if (askNo != no) return@postDelayed
+            askNo = 0
+            pet.mood = PuppyView.Mood.SAD
+            showBubble(if (te) "జవాబు రావడానికి చాలా సమయం పడుతోంది. నెట్ చూసి మళ్లీ అడగండి." else "The answer is taking too long. Please check the internet and ask again.", 7000)
             if (convoOn) endConvo(quiet = true)
+        }, 60_000)
+        brain.ask(if (context.isBlank()) text else "[$context]\n$text", onReply = { json -> if (askNo == no) { askNo = 0; handleReply(json, byVoice = byVoice) } }, onError = { err ->
+            if (askNo == no) {
+                askNo = 0
+                pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000)
+                if (convoOn) endConvo(quiet = true)
+            }
         })
     }
+    private var askSeq = 0
 
     /** "Read my screen": hide the pet, let Android ask permission, take one picture of the screen. */
     private fun readScreen(question: String) {
