@@ -214,16 +214,45 @@ class MediaViewer : Activity() {
         v.text = sp
     }
     // ---------- head control: head up = the next video, head down = the one before ----------
-    private fun paintHead() { setSide(headBtn, "🙂", if (prefs.headControl) "Head ✓" else "Head") }
+    private fun paintHead() { setSide(headBtn, if (prefs.headControl && head?.locked == true) "🔒" else "🙂", if (!prefs.headControl) "Head" else if (head?.locked == true) "Locked" else "Head ✓") }
+    private fun step(up: Boolean) { val to = if (up) at + 1 else at - 1; if (to in items.indices) pager.jump(to) }
+
+    // ---------- a hand passed over the top of the phone: next video; twice quickly: the one before ----------
+    private var waveOn = false
+    private var nearAt = 0L
+    private var waves = 0
+    private val waveDone = Runnable { val n = waves; waves = 0; if (head?.locked != true) step(n < 2) }
+    private val waveEar = object : android.hardware.SensorEventListener {
+        override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) {}
+        override fun onSensorChanged(e: android.hardware.SensorEvent) {
+            val near = e.values[0] < minOf(e.sensor.maximumRange, 4f)
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (near) { nearAt = now; return }
+            val held = now - nearAt
+            nearAt = 0
+            if (held !in 40..800) return                                 // a hand resting there (or a pocket) isn't a wave
+            waves++
+            root.removeCallbacks(waveDone); root.postDelayed(waveDone, if (waves >= 2) 0 else 650)
+        }
+    }
+    private fun wave(on: Boolean) {
+        if (on == waveOn) return
+        val sm = getSystemService(android.hardware.SensorManager::class.java) ?: return
+        if (on) {
+            val s = sm.getDefaultSensor(android.hardware.Sensor.TYPE_PROXIMITY) ?: return
+            waveOn = sm.registerListener(waveEar, s, android.hardware.SensorManager.SENSOR_DELAY_GAME)
+        } else { sm.unregisterListener(waveEar); waveOn = false; waves = 0 }
+    }
     private fun tell(s: String) = android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show()
     private fun toggleHead() {
         if (prefs.headControl) {
             // on already: how big a nod must be, or off
-            val names = arrayOf("Small nods", "Normal nods", "Big nods only", "Turn head control off")
-            android.app.AlertDialog.Builder(this).setTitle("🙂 Head control")
+            val names = arrayOf("Small nods", "Normal nods", "Big nods only", "Turn head control off", if (prefs.handWave) "✋ Hand wave: ON (tap to turn off)" else "✋ Hand wave: off (tap to turn on)")
+            android.app.AlertDialog.Builder(this).setTitle("🙂 Head: right = lock · left = unlock")
                 .setSingleChoiceItems(names, prefs.headLevel.coerceIn(0, 2)) { d, w ->
                     d.dismiss()
-                    if (w == 3) { prefs.headControl = false; head?.stop(); head = null; paintHead() }
+                    if (w == 4) { prefs.handWave = !prefs.handWave; wave(prefs.handWave); tell(if (prefs.handWave) "✋ Pass your hand over the top of the phone: next video. Twice quickly: the one before." else "Hand wave is off") }
+                    else if (w == 3) { prefs.headControl = false; head?.stop(); head = null; wave(false); paintHead() }
                     else { prefs.headLevel = w; head?.level = w; tell("Nod up and come back: next video · nod down and come back: the one before") }
                 }.show()
             return
@@ -235,7 +264,10 @@ class MediaViewer : Activity() {
     }
     private fun startHead(first: Boolean) {
         head?.stop()
-        val w = HeadWatch(this) { up -> val to = if (up) at + 1 else at - 1; if (to in items.indices) pager.jump(to) }
+        val w = HeadWatch(this, onSide = { right ->
+            paintHead()
+            android.widget.Toast.makeText(this, if (right) "🔒 Head control locked · move your head left to unlock" else "🔓 Head control unlocked", android.widget.Toast.LENGTH_SHORT).show()
+        }) { up -> step(up) }
         if (!w.start()) {
             prefs.headControl = false; head = null; paintHead()
             if (first) tell("This phone's front camera can't find faces by itself, so head control doesn't work here.")
@@ -243,7 +275,8 @@ class MediaViewer : Activity() {
         }
         w.level = prefs.headLevel
         head = w; prefs.headControl = true; paintHead()
-        if (first) tell("Nod up and come back: next video · nod down and come back: the one before. Tap Head again to change how big the nod must be. The camera only finds where your face is; no picture is kept or sent.")
+        wave(prefs.handWave)
+        if (first) tell("Nod up and back: next · nod down and back: the one before · head to the right and back: lock · to the left and back: unlock · hand over the top of the phone: next. Tap Head again for more. No picture is kept or sent.")
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -588,7 +621,7 @@ class MediaViewer : Activity() {
     override fun onPause() {
         super.onPause()
         petSmall(false)
-        head?.stop(); head = null
+        head?.stop(); head = null; wave(false)
         if (webAt >= 0) stopVideo()
         if (fileAt >= 0) stopFile()
     }
