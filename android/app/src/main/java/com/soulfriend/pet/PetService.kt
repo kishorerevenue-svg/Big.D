@@ -1060,6 +1060,13 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         lookToken++; autoLooks = 0
         // "look at this shirt", "what's written on this board?", "what colour is my shirt?": the pet looks with the camera itself
         Eyes.wants(text, lastLook)?.let { l -> lastQuestion = l.ask; look(l); return }
+        // "చిరంజీవి పాటలు పెట్టు": played at once from here (the brain sometimes only SAID it was playing)
+        Talk.playQuery(text, store.wakeName)?.let { (q, short) ->
+            lastQuestion = text
+            handleReply(JSONObject().put("reply", if (te()) "🎵 $q ప్లే చేస్తున్నాను" else "🎵 Playing $q").put("emotion", "happy")
+                .put("actions", org.json.JSONArray().put(JSONObject().put("type", "play").put("q", q).put("short", short))), byVoice = byVoice)
+            return
+        }
         askBrain(text, byVoice)
     }
 
