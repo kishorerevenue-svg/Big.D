@@ -212,6 +212,6 @@ object ChatContacts {
     fun call(a: Activity, p: Person) {
         remember(a, p.name, p.number)
         (a as? MainActivity)?.leavingForSystemScreen = true
-        try { a.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(p.number)))) } catch (e: Exception) { }
+        try { a.startActivity(PhoneApp.aim(a, Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(p.number))))) } catch (e: Exception) { }
     }
 }

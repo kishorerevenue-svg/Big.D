@@ -1337,7 +1337,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val tel = number.filter { it.isDigit() || it == '+' }
         if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
             // without the "Phone calls" permission the dialer opens with the number (one tap on Call)
-            try { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$tel")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+            try { startActivity(PhoneApp.aim(this@PetService, Intent(Intent.ACTION_DIAL, Uri.parse("tel:$tel"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
             showBubble(if (te) "📞 $name నంబర్ తెరిచాను, Call నొక్కండి. నేనే నేరుగా కాల్ చేయాలంటే: యాప్ › Your pet › Permissions › \"Phone calls\" › Allow."
                        else "📞 $name's number is ready: tap Call. To let me call by myself: the app › Your pet › Permissions › \"Phone calls\" › Allow.", 9000)
             return
@@ -1348,7 +1348,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         speakPhone(if (te) "$name కి కాల్ చేస్తున్నాను" else "Calling $name")
         val go = Runnable {
             pendingCall = null
-            try { startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(tel))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            try { if (!PhoneApp.call(this@PetService, tel)) startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(tel))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             catch (e: Exception) { showBubble(if (te) "కాల్ చేయలేకపోయాను." else "I couldn't place the call.", 5000) }
         }
         pendingCall = go
@@ -1825,7 +1825,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (v.reasons.isNotEmpty()) card.addView(t("Why · ఎందుకు:\n" + v.reasons.joinToString("\n") { "• $it" }, 14f), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         if (v.advice.isNotEmpty()) card.addView(t("What to do · ఏం చేయాలి:\n" + v.advice.joinToString("\n") { "✓ $it" }, 14f, Color.parseColor("#1D5E3A"), true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         card.addView(row(
-            pill("📞 1930") { closeDanger(); try { startActivity(Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:1930")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { } },
+            pill("📞 1930") { closeDanger(); try { startActivity(PhoneApp.aim(this@PetService, Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:1930"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { } },
             pill("🚩 Report") { closeDanger(); try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://sancharsaathi.gov.in/sfc/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { } },
             pill("OK, I understand", primary = true) { closeDanger(); pet.mood = PuppyView.Mood.HAPPY }
         ), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })

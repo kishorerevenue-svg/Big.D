@@ -2340,7 +2340,7 @@ class ChatActivity : Activity() {
     /** A normal phone call (to anyone, with Habit or not). */
     private fun phoneCall(number: String) {
         if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) { requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL); return }
-        try { startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(number)))) } catch (e: Exception) { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)))) }
+        try { if (!PhoneApp.call(this, number)) startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(number)))) } catch (e: Exception) { startActivity(PhoneApp.aim(this, Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number))))) }
         finish()
     }
 
@@ -2372,7 +2372,7 @@ class ChatActivity : Activity() {
             REQ_CALL_PERMS -> if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) CallManager.startOutgoing(this, cid, callVideo)
                 else toast(t("Habit needs the microphone" + (if (callVideo) " and camera" else "") + " for calls.", "కాల్స్ కోసం Habit కి మైక్" + (if (callVideo) ", కెమెరా" else "") + " అనుమతి కావాలి."))
             REQ_CAMERA, REQ_QR_CAM -> if (granted) camera(requestCode) else if (requestCode == REQ_QR_CAM) finish()
-            REQ_CALL -> if (granted) phoneCall(pickedNumber) else { try { startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(pickedNumber)))) } catch (e: Exception) { }; finish() }
+            REQ_CALL -> if (granted) phoneCall(pickedNumber) else { try { startActivity(PhoneApp.aim(this, Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(pickedNumber))))) } catch (e: Exception) { }; finish() }
         }
     }
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()

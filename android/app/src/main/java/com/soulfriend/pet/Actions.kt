@@ -265,7 +265,7 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
         // the floating pet calls by itself (and asks which one when several match)
         onCall?.let { it(contact, found); return null }
         val (who, n) = found.first()
-        return if (start(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + digits(n))))) "Opening the dialer for $who. Tap Call." else "No phone app found"
+        return if (start(PhoneApp.aim(ctx, Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + digits(n)))))) "Opening the dialer for $who. Tap Call." else "No phone app found"
     }
 
     private fun whatsapp(number: String, contact: String, message: String, alt: String = ""): String {
@@ -316,4 +316,22 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
     private fun installed(pkg: String) = try { ctx.packageManager.getPackageInfo(pkg, 0); true } catch (e: PackageManager.NameNotFoundException) { false }
 
     private fun start(i: Intent): Boolean = try { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true } catch (e: ActivityNotFoundException) { false } catch (e: SecurityException) { false }
+}
+
+/** Phone calls go straight to the phone's own Phone app (no "Open with: Phone / Zoom…" question). */
+object PhoneApp {
+    /** Opening the dialer with a number: the phone's own Phone app. (A direct call is left as it is: the phone's call
+     *  system takes it.) */
+    fun aim(ctx: android.content.Context, i: Intent): Intent {
+        if (i.action != Intent.ACTION_DIAL) return i
+        try { ctx.getSystemService(android.telecom.TelecomManager::class.java)?.defaultDialerPackage?.takeIf { it.isNotBlank() }?.let { i.setPackage(it) } } catch (e: Exception) { }
+        return i
+    }
+    /** Calls [number] at once through the phone's call system (needs the "Phone calls" permission). False: it couldn't. */
+    @android.annotation.SuppressLint("MissingPermission")
+    fun call(ctx: android.content.Context, number: String): Boolean = try {
+        val tm = ctx.getSystemService(android.telecom.TelecomManager::class.java)
+        if (tm == null || ctx.checkSelfPermission(android.Manifest.permission.CALL_PHONE) != android.content.pm.PackageManager.PERMISSION_GRANTED) false
+        else { tm.placeCall(Uri.fromParts("tel", number, null), null); true }
+    } catch (e: Exception) { false }
 }
