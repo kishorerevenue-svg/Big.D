@@ -305,6 +305,7 @@ class MediaViewer : Activity() {
     }
     /** YouTube won't play this one inside other apps (or it's gone): go to the next one by itself. */
     private fun cantPlay(code: Int) {
+        if (code in listOf(101, 150)) items.getOrNull(webAt.coerceAtLeast(0))?.let { NoEmbed.tell(prefs, it.src, it.chId) }
         if (code !in listOf(2, 5, 100, 101, 150)) return
         val next = at + 1
         if (next < items.size) { android.widget.Toast.makeText(this, "This one plays only on YouTube · next ▶", android.widget.Toast.LENGTH_SHORT).show(); pager.jump(next) }

@@ -172,25 +172,50 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
   // ---------- trending today (Telugu) ----------
   const telugu = s => /[ఀ-౿]/.test(s);
   /** Not clickbait: not skipped by our own brain, and no "shocking", "viral", gossip or crime words in the title. */
-  const fine = v => !(db.skipped || []).includes(v.id) && !BAD.test(v.title || "");
+  const fine = v => !(db.skipped || []).includes(v.id) && !BAD.test(v.title || "") && playable(v);
+  // ---------- videos that won't play inside apps ("blocked from display on this website or application") ----------
+  // The phones say so when YouTube refuses one; such a video is left out, and a channel with 3 such videos too.
+  function playable(v) {
+    const n = db.noEmbed || {};
+    if (n.ids && n.ids[v.id]) return false;
+    return !(v.chId && n.ch && (n.ch[v.chId] || 0) >= 3);
+  }
+  function blocked(id, chId) {
+    if (!/^[\w-]{11}$/.test(id)) return;
+    const n = db.noEmbed = db.noEmbed || { ids: {}, ch: {} };
+    n.ids = n.ids || {}; n.ch = n.ch || {};
+    if (n.ids[id]) return;
+    n.ids[id] = Date.now();
+    const keys = Object.keys(n.ids);
+    if (keys.length > 3000) keys.sort((a, b) => n.ids[a] - n.ids[b]).slice(0, keys.length - 3000).forEach(k => delete n.ids[k]);
+    if (/^UC[\w-]{22}$/.test(chId || "")) n.ch[chId] = (n.ch[chId] || 0) + 1;
+    db.trending.list = (db.trending.list || []).filter(playable);
+    save();
+  }
   async function trending() {
     let list = [];
     if (KEY()) {
       try {
-        const j = await api("videos?part=snippet,statistics&chart=mostPopular&regionCode=IN&maxResults=50");
+        const items = [], got = new Set();
+        for (const c of ["", "10", "24", "1", "23", "25", "17", "22"]) {
+          try {
+            const j = await api("videos?part=snippet,statistics,status&chart=mostPopular&regionCode=IN&maxResults=50" + (c ? "&videoCategoryId=" + c : ""));
+            for (const v of j.items || []) if (!got.has(v.id) && (!v.status || v.status.embeddable !== false)) { got.add(v.id); items.push(v); }
+          } catch (e) { if (!c) throw e; }
+        }
         const ours = new Set(Object.values(db.ch).map(s => s.id).filter(Boolean));
-        list = (j.items || []).filter(v => v.snippet && (telugu(v.snippet.title) || /^te/.test(v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || "") || ours.has(v.snippet.channelId)))
+        list = items.filter(v => v.snippet && (telugu(v.snippet.title) || /^te/.test(v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || "") || ours.has(v.snippet.channelId)))
           .map(v => ({ id: v.id, title: str(v.snippet.title, 200), ch: str(v.snippet.channelTitle, 80), chId: str(v.snippet.channelId, 30), at: Date.parse(v.snippet.publishedAt) || 0, views: Number((v.statistics || {}).viewCount || 0),
             desc: str(v.snippet.description, 600), cat: ({ "25": "news", "17": "news", "1": "movies", "10": "movies", "23": "movies", "24": "movies", "27": "jobs" })[v.snippet.categoryId] || "" }));
       } catch (e) { console.error("YouTube trending:", e.message); }
     }
-    if (list.length < 5) {
-      // without a key (or few Telugu videos in India's list): our channels' most-watched videos of the last 2 days
+    {
+      // with them: our channels' most-watched videos of the last 2 days (and all of it without a key)
       const since = Date.now() - 2 * 86400e3, seen = new Set(list.map(v => v.id));
-      list = list.concat(Object.values(db.ch).flatMap(s => s.videos || []).filter(v => v.at > since && !seen.has(v.id)).sort((a, b) => b.views - a.views)
-        .slice(0, 20 - list.length).map(v => ({ id: v.id, title: v.title, ch: v.ch, at: v.at, views: v.views })));
+      list = list.concat(Object.values(db.ch).flatMap(s => (s.videos || []).map(v => ({ ...v, chId: v.chId || s.id }))).filter(v => v.at > since && !seen.has(v.id) && seen.add(v.id)).sort((a, b) => b.views - a.views)
+        .slice(0, 60).map(v => ({ id: v.id, title: v.title, ch: v.ch, chId: v.chId || "", at: v.at, views: v.views })));
     }
-    db.trending = { at: Date.now(), list: list.filter(fine).slice(0, 20) }; save();
+    db.trending = { at: Date.now(), list: list.filter(fine).slice(0, 150) }; save();
   }
 
   // ---------- new videos become Media posts ----------
@@ -240,9 +265,9 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
       const catchUp = recent < DAILY[cat] / 2 ? Math.min(10, Math.ceil(DAILY[cat] / 2) - recent) : 0;
       let room = Math.min(Math.max(PER_RUN[cat] || 1, catchUp), DAILY[cat] - (db.posted[cat] || 0));
       if (room <= 0) continue;
-      const trend = (db.trending.list || []).filter(v => v.cat === cat);
+      const trend = (db.trending.list || []).filter(v => v.cat === cat).slice(0, 10);
       const pool = [...channels(cat).flatMap(x => (db.ch[keyOf(x)] || {}).videos || []), ...trend]
-        .filter((v, i, all) => v.at > since && all.findIndex(o => o.id === v.id) === i && !media.hasUrl(`https://www.youtube.com/watch?v=${v.id}`) && !(db.skipped || []).includes(v.id))
+        .filter((v, i, all) => v.at > since && all.findIndex(o => o.id === v.id) === i && !media.hasUrl(`https://www.youtube.com/watch?v=${v.id}`) && !(db.skipped || []).includes(v.id) && playable(v))
         .sort((a, b) => score(cat, b) - score(cat, a));
       for (const v of pool.slice(0, room + 4)) {
         if (room <= 0) break;
@@ -388,6 +413,14 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
       if (q.length < 2) { h.send(res, 400, { error: "What should I look for?" }, origin); return true; }
       try { h.send(res, 200, { videos: await search(q, url.searchParams.get("short") === "1") }, origin); }
       catch (e) { h.send(res, e.code || 502, { error: e.code ? e.message : "YouTube didn't answer. Please try again." }, origin); }
+      return true;
+    }
+    if (url.pathname === "/api/videos/blocked" && req.method === "POST") {
+      if (h && !h.allowed("vb:" + h.clientIp(req), reads, 30)) { h.send(res, 429, { error: "Too many." }, origin); return true; }
+      let raw = "";
+      for await (const c of req) { raw += c; if (raw.length > 2000) break; }
+      try { const b = JSON.parse(raw || "{}"); blocked(str(b.id, 11), str(b.chId, 30)); } catch (e) { }
+      h.send(res, 200, { ok: true }, origin);
       return true;
     }
     if (url.pathname === "/api/videos/mine" && req.method === "GET") {

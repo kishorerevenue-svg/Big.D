@@ -571,6 +571,9 @@ class StoryReader : Activity() {
                 openOut(u); return true
             }
         }
+        addJavascriptInterface(object {
+            @android.webkit.JavascriptInterface fun err(code: Int) { runOnUiThread { cantPlay(code) } }
+        }, "HabitTube")
         webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View, callback: CustomViewCallback) { showFull(view, callback) }
             override fun onHideCustomView() { hideFull(false) }
@@ -591,10 +594,35 @@ class StoryReader : Activity() {
         val origin = server.trimEnd('/')
         val html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
             "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head><body>" +
-            "<iframe src=\"https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&enablejsapi=1&origin=$origin\" " +
-            "allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" allowfullscreen></iframe></body></html>"
+            "<iframe id=\"p\" src=\"https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&enablejsapi=1&origin=$origin\" " +
+            "allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" allowfullscreen></iframe>" +
+            "<script>var f=document.getElementById('p'),ok=false;function post(o){try{o.id=1;o.channel='widget';f.contentWindow.postMessage(JSON.stringify(o),'*');}catch(e){}}" +
+            "function hello(){post({event:'listening'});post({event:'command',func:'addEventListener',args:['onError']});}" +
+            "f.onload=function(){hello();var n=0,iv=setInterval(function(){if(ok||++n>30)clearInterval(iv);else hello();},400);};" +
+            "window.addEventListener('message',function(e){if(String(e.origin).indexOf('youtube')<0)return;var m;try{m=typeof e.data=='string'?JSON.parse(e.data):e.data;}catch(x){return;}" +
+            "if(!m)return;if(m.event=='infoDelivery'||m.event=='initialDelivery')ok=true;if(m.event=='onError'&&window.HabitTube)HabitTube.err(+m.info||0);});</script></body></html>"
         w.loadDataWithBaseURL("$origin/", html, "text/html", "utf-8", null)
         webAt = k
+    }
+
+    /** YouTube won't play this one inside apps: its picture and one button to watch it on YouTube (no error text). */
+    private fun cantPlay(code: Int) {
+        if (code !in listOf(2, 5, 100, 101, 150)) return
+        val k = webAt
+        val p = list.getOrNull(k) ?: return
+        val box = (pages.getOrNull(k)?.tag as? Holder)?.yt ?: return
+        if (code == 101 || code == 150) NoEmbed.tell(Store(this), p.ytId)
+        stopVideo()
+        box.removeAllViews()
+        box.addView(ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load("https://i.ytimg.com/vi/${p.ytId}/hqdefault.jpg", this, 720) }, FrameLayout.LayoutParams(-1, -1))
+        box.addView(View(this).apply { setBackgroundColor(Color.parseColor("#88000000")) }, FrameLayout.LayoutParams(-1, -1))
+        box.addView(TextView(this).apply {
+            text = "▶  YouTube లో చూడండి · Watch on YouTube"; textSize = 14f; setTextColor(Color.WHITE); typeface = Fonts.bold(context); gravity = Gravity.CENTER
+            val d = resources.displayMetrics.density
+            setPadding((18 * d).toInt(), (11 * d).toInt(), (18 * d).toInt(), (11 * d).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.parseColor("#E62117")); cornerRadius = 24 * d }
+            setOnClickListener { openOut("https://www.youtube.com/watch?v=${p.ytId}") }
+        }, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
     }
 
     private fun stopVideo() {
