@@ -25,7 +25,7 @@ import android.os.SystemClock
  * quick move of the head up or down is "next" or "back" ([onNod]). No picture is looked at, kept or sent anywhere: the
  * frames are thrown away as they come and only the rectangle's place is used.
  */
-class HeadWatch(private val ctx: Context, private val onNod: (up: Boolean) -> Unit) {
+class HeadWatch(private val ctx: Context, private val onSide: (right: Boolean) -> Unit = {}, private val onNod: (up: Boolean) -> Unit) {
     private val main = Handler(Looper.getMainLooper())
     private var thread: HandlerThread? = null
     private var device: CameraDevice? = null
@@ -94,23 +94,26 @@ class HeadWatch(private val ctx: Context, private val onNod: (up: Boolean) -> Un
     private var quietUntil = 0L
     private var lastAt = 0L
     private var outAt = 0L                 // a move away from rest began (0: at rest)
-    private var outUp = false
-    /** How big a nod must be: 0 small moves, 1 normal, 2 big moves only. */
+    private var outKind = 0                // 1 up, 2 down, 3 to the person's right, 4 to their left
+    /** How big a move must be: 0 small moves, 1 normal, 2 big moves only. */
     @Volatile var level = 1
+    /** Locked: nods do nothing (a move of the head to the left unlocks). */
+    @Volatile var locked = false
 
-    // A nod is a quick move of the head up (or down) AND back to where it was, within about a second. Looking away,
-    // turning to talk to someone, sitting differently or moving the phone don't come back that fast (or go sideways), so
-    // they aren't taken as a nod.
+    // A nod is a quick move of the head up (or down) AND back to where it was, within about a second and a half. A move
+    // to the side and back is the lock (right) and the unlock (left). Looking away, turning to talk to someone, sitting
+    // differently or moving the phone don't come back that fast, so they aren't taken as anything.
     private fun face(faces: Array<Face>?, turn: Int) {
         val b = faces?.maxByOrNull { it.bounds.width() * it.bounds.height() }?.bounds ?: return
-        // how high the face is on the upright picture, counted in face heights (the camera sits turned inside the phone:
-        // [turn] is how far its picture is turned). A smaller number is higher up. [x]: sideways, the same way.
+        // where the face is on the upright picture, counted in face sizes (the camera sits turned inside the phone: [turn]
+        // is how far its picture is turned). y: a smaller number is higher up. x: a smaller number is the person's right.
+        val cx = b.exactCenterX().toDouble(); val cy = b.exactCenterY().toDouble()
         val y: Double; val x: Double; val size: Int
         when (turn) {
-            90 -> { y = b.exactCenterX().toDouble(); x = b.exactCenterY().toDouble(); size = b.width() }
-            270 -> { y = -b.exactCenterX().toDouble(); x = b.exactCenterY().toDouble(); size = b.width() }
-            180 -> { y = -b.exactCenterY().toDouble(); x = b.exactCenterX().toDouble(); size = b.height() }
-            else -> { y = b.exactCenterY().toDouble(); x = b.exactCenterX().toDouble(); size = b.height() }
+            90 -> { y = cx; x = -cy; size = b.width() }
+            270 -> { y = -cx; x = cy; size = b.width() }
+            180 -> { y = -cy; x = -cx; size = b.height() }
+            else -> { y = cy; x = cx; size = b.height() }
         }
         if (size < 20) return
         val pos = y / size; val posX = x / size
@@ -118,21 +121,29 @@ class HeadWatch(private val ctx: Context, private val onNod: (up: Boolean) -> Un
         val dt = now - lastAt
         if (base.isNaN() || dt > 1500) { base = pos; baseX = posX; lastAt = now; outAt = 0; return }   // the face just came (back) into view
         lastAt = now
-        val far = when (level) { 0 -> 0.17; 2 -> 0.34; else -> 0.25 }
+        val far = when (level) { 0 -> 0.10; 2 -> 0.24; else -> 0.16 }
+        val farX = far * 1.5
         val d = base - pos                                                       // above 0: the head went up
-        val side = Math.abs(posX - baseX)
-        if (now < quietUntil) { base += (pos - base) * (dt / 250.0).coerceAtMost(1.0); baseX += (posX - baseX) * (dt / 250.0).coerceAtMost(1.0); outAt = 0; return }
+        val dx = baseX - posX                                                    // above 0: to the person's right
+        if (now < quietUntil) { val a = (dt / 250.0).coerceAtMost(1.0); base += (pos - base) * a; baseX += (posX - baseX) * a; outAt = 0; return }
         if (outAt == 0L) {
-            if (Math.abs(d) > far && side < far) { outAt = now; outUp = d > 0 }   // a quick move up or down began
-            else { val a = (dt / 1200.0).coerceAtMost(1.0); base += (pos - base) * a; baseX += (posX - baseX) * a }   // slow moves: followed
+            when {
+                Math.abs(dx) > farX && Math.abs(dx) > Math.abs(d) * 1.3 -> { outAt = now; outKind = if (dx > 0) 3 else 4 }
+                Math.abs(d) > far && Math.abs(d) > Math.abs(dx) -> { outAt = now; outKind = if (d > 0) 1 else 2 }
+                else -> { val a = (dt / 2500.0).coerceAtMost(1.0); base += (pos - base) * a; baseX += (posX - baseX) * a }   // slow moves: followed
+            }
             return
         }
-        // away from rest: did it come back (a nod), go sideways or stay away (not a nod)?
-        if (side > far * 1.6 || now - outAt > 1100) { base = pos; baseX = posX; outAt = 0; return }
-        if (Math.abs(d) < far * 0.4) {
-            outAt = 0; quietUntil = now + 1500
-            val up = outUp
-            main.post { if (on) onNod(up) }
+        // away from rest: did it come back (a nod or a side move), or stay away (neither)?
+        if (now - outAt > 1500) { base = pos; baseX = posX; outAt = 0; return }
+        val back = if (outKind >= 3) Math.abs(dx) < farX * 0.5 && Math.abs(d) < far else Math.abs(d) < far * 0.5
+        if (back) {
+            val k = outKind
+            outAt = 0; quietUntil = now + 1300
+            main.post {
+                if (!on) return@post
+                if (k >= 3) { locked = k == 3; onSide(k == 3) } else if (!locked) onNod(k == 1)
+            }
         }
     }
 

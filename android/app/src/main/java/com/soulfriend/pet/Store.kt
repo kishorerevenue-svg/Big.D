@@ -176,6 +176,10 @@ class Store(context: Context) {
     var myChAuto: Boolean
         get() = p.getBoolean("myChAuto", true)
         set(v) { p.edit().putBoolean("myChAuto", v).apply() }
+    /** A hand passed over the top of the phone (its nearness sensor): next video; twice quickly: the one before. */
+    var handWave: Boolean
+        get() = p.getBoolean("handWave", true)
+        set(v) { p.edit().putBoolean("handWave", v).apply() }
     /** How big a nod must be: 0 small moves, 1 normal, 2 big moves only. */
     var headLevel: Int
         get() = p.getInt("headLevel", 1)
