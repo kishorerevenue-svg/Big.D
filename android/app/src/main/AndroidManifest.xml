@@ -159,7 +159,7 @@
             android:name=".GamesActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
-            android:theme="@style/Habit.Chat" />
+            android:theme="@style/Habit.Float" />
 
         <!-- The pet's eyes: a see-through screen with a small note at the top (the app you were in stays behind it) -->
         <activity

@@ -87,7 +87,7 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 if (r != null && r.ok && arr != null && arr.length() > 0) {
                     MediaViewer.items = (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { v ->
-                        MediaViewer.Item(if (short) "short" else "video", v.optString("id"), "", v.optString("ch"), v.optString("title"), 0, false) } }
+                        MediaViewer.Item(if (short) "short" else "video", v.optString("id"), "", v.optString("ch"), v.optString("title"), 0, false, chId = v.optString("chId")) } }
                     MediaViewer.start = 0; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
                     start(Intent(ctx, MediaViewer::class.java))
                 } else start(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/results?search_query=" + android.net.Uri.encode(words))))

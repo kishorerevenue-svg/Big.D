@@ -56,7 +56,7 @@ class HeadWatch(private val ctx: Context, private val onNod: (up: Boolean) -> Un
             val r = ImageReader.newInstance(size.width, size.height, ImageFormat.YUV_420_888, 2).also { reader = it }
             r.setOnImageAvailableListener({ x -> try { x.acquireLatestImage()?.close() } catch (e: Exception) { } }, h)   // the pictures aren't used
             on = true
-            base = Double.NaN
+            base = Double.NaN; outAt = 0
             cm.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(cam: CameraDevice) {
                     if (!on) { cam.close(); return }
@@ -90,34 +90,49 @@ class HeadWatch(private val ctx: Context, private val onNod: (up: Boolean) -> Un
     }
 
     private var base = Double.NaN          // where the face rests (it follows slow moves)
+    private var baseX = 0.0
     private var quietUntil = 0L
     private var lastAt = 0L
+    private var outAt = 0L                 // a move away from rest began (0: at rest)
+    private var outUp = false
+    /** How big a nod must be: 0 small moves, 1 normal, 2 big moves only. */
+    @Volatile var level = 1
 
+    // A nod is a quick move of the head up (or down) AND back to where it was, within about a second. Looking away,
+    // turning to talk to someone, sitting differently or moving the phone don't come back that fast (or go sideways), so
+    // they aren't taken as a nod.
     private fun face(faces: Array<Face>?, turn: Int) {
         val b = faces?.maxByOrNull { it.bounds.width() * it.bounds.height() }?.bounds ?: return
         // how high the face is on the upright picture, counted in face heights (the camera sits turned inside the phone:
-        // [turn] is how far its picture is turned). A smaller number is higher up.
-        val (y, size) = when (turn) {
-            90 -> b.exactCenterX().toDouble() to b.width()
-            270 -> -b.exactCenterX().toDouble() to b.width()
-            180 -> -b.exactCenterY().toDouble() to b.height()
-            else -> b.exactCenterY().toDouble() to b.height()
+        // [turn] is how far its picture is turned). A smaller number is higher up. [x]: sideways, the same way.
+        val y: Double; val x: Double; val size: Int
+        when (turn) {
+            90 -> { y = b.exactCenterX().toDouble(); x = b.exactCenterY().toDouble(); size = b.width() }
+            270 -> { y = -b.exactCenterX().toDouble(); x = b.exactCenterY().toDouble(); size = b.width() }
+            180 -> { y = -b.exactCenterY().toDouble(); x = b.exactCenterX().toDouble(); size = b.height() }
+            else -> { y = b.exactCenterY().toDouble(); x = b.exactCenterX().toDouble(); size = b.height() }
         }
         if (size < 20) return
-        val pos = y / size
+        val pos = y / size; val posX = x / size
         val now = SystemClock.elapsedRealtime()
         val dt = now - lastAt
-        if (base.isNaN() || dt > 1500) { base = pos; lastAt = now; return }      // the face just came (back) into view
+        if (base.isNaN() || dt > 1500) { base = pos; baseX = posX; lastAt = now; outAt = 0; return }   // the face just came (back) into view
         lastAt = now
+        val far = when (level) { 0 -> 0.17; 2 -> 0.34; else -> 0.25 }
         val d = base - pos                                                       // above 0: the head went up
-        if (now > quietUntil && Math.abs(d) > 0.16) {
-            quietUntil = now + 1500; base = pos
-            val up = d > 0
+        val side = Math.abs(posX - baseX)
+        if (now < quietUntil) { base += (pos - base) * (dt / 250.0).coerceAtMost(1.0); baseX += (posX - baseX) * (dt / 250.0).coerceAtMost(1.0); outAt = 0; return }
+        if (outAt == 0L) {
+            if (Math.abs(d) > far && side < far) { outAt = now; outUp = d > 0 }   // a quick move up or down began
+            else { val a = (dt / 1200.0).coerceAtMost(1.0); base += (pos - base) * a; baseX += (posX - baseX) * a }   // slow moves: followed
+            return
+        }
+        // away from rest: did it come back (a nod), go sideways or stay away (not a nod)?
+        if (side > far * 1.6 || now - outAt > 1100) { base = pos; baseX = posX; outAt = 0; return }
+        if (Math.abs(d) < far * 0.4) {
+            outAt = 0; quietUntil = now + 1500
+            val up = outUp
             main.post { if (on) onNod(up) }
-        } else {
-            // follows slow moves (holding the phone differently); right after a nod it follows fast, so the way back isn't a nod
-            val a = (dt / (if (now > quietUntil) 1500.0 else 250.0)).coerceAtMost(1.0)
-            base += (pos - base) * a
         }
     }
 

@@ -43,4 +43,14 @@
     <style name="Habit.Black" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">@font/jakarta</item>
     </style>
+    <!-- A floating card over whatever is on the screen (the games). -->
+    <style name="Habit.Float" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">@font/jakarta</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowCloseOnTouchOutside">false</item>
+    </style>
 </resources>

@@ -41,11 +41,11 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        ChatTheme.apply(this)
         super.onCreate(savedInstanceState)
+        ChatTheme.refresh(this)
         AppLook.refresh(this)
         val hero = AppLook.HERO
-        ChatTheme.bars(this, hero[0], AppLook.BG)
+        setFinishOnTouchOutside(false)
         tts = TextToSpeech(this, this)
         web = WebView(this).apply {
             setBackgroundColor(AppLook.BG)
@@ -62,7 +62,16 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
             }
             addJavascriptInterface(Bridge(), "HabitApp")
         }
-        setContentView(web)
+        // a floating card (not the whole screen): rounded, with a soft coloured edge; the pet sits just under it
+        val d = resources.displayMetrics.density
+        val card = android.widget.FrameLayout(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(AppLook.BG); cornerRadius = 26 * d; setStroke((2.5f * d).toInt(), hero[1]) }
+            clipToOutline = true
+            val e = (2.5f * d).toInt(); setPadding(e, e, e, e)
+            addView(web, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }
+        setContentView(card)
+        fit()
         val hex = { c: Int -> String.format("%06X", c and 0xFFFFFF) }
         val q = Uri.Builder()
             .appendQueryParameter("lang", if (store.lang == "te") "te" else "en")
@@ -77,6 +86,17 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
             .build().encodedQuery
         web.loadUrl("file:///android_asset/games/index.html?$q")
     }
+
+    /** The card's size and place: most of the width, about two thirds of the height, near the top. */
+    private fun fit() {
+        val m = resources.displayMetrics
+        val tall = m.heightPixels > m.widthPixels
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        window.setLayout((m.widthPixels * (if (tall) 0.94f else 0.7f)).toInt(), (m.heightPixels * (if (tall) 0.66f else 0.86f)).toInt())
+        window.attributes = window.attributes.apply { gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL; y = (m.heightPixels * (if (tall) 0.07f else 0.04f)).toInt(); dimAmount = 0.45f }
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+    }
+    override fun onConfigurationChanged(c: android.content.res.Configuration) { super.onConfigurationChanged(c); fit() }
 
     override fun onInit(status: Int) { ttsReady = status == TextToSpeech.SUCCESS }
 

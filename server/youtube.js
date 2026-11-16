@@ -180,7 +180,7 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
         const j = await api("videos?part=snippet,statistics&chart=mostPopular&regionCode=IN&maxResults=50");
         const ours = new Set(Object.values(db.ch).map(s => s.id).filter(Boolean));
         list = (j.items || []).filter(v => v.snippet && (telugu(v.snippet.title) || /^te/.test(v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || "") || ours.has(v.snippet.channelId)))
-          .map(v => ({ id: v.id, title: str(v.snippet.title, 200), ch: str(v.snippet.channelTitle, 80), at: Date.parse(v.snippet.publishedAt) || 0, views: Number((v.statistics || {}).viewCount || 0),
+          .map(v => ({ id: v.id, title: str(v.snippet.title, 200), ch: str(v.snippet.channelTitle, 80), chId: str(v.snippet.channelId, 30), at: Date.parse(v.snippet.publishedAt) || 0, views: Number((v.statistics || {}).viewCount || 0),
             desc: str(v.snippet.description, 600), cat: ({ "25": "news", "17": "news", "1": "movies", "10": "movies", "23": "movies", "24": "movies", "27": "jobs" })[v.snippet.categoryId] || "" }));
       } catch (e) { console.error("YouTube trending:", e.message); }
     }
@@ -312,7 +312,7 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
   // ---------- for the app: GET /api/videos?cat=news ----------
   function videos(cat) {
     const list = cat && media.CATS[cat] ? channels(cat).map(x => ({ ...x, cat })) : allChannels();
-    const view = v => ({ id: v.id, title: v.title, ch: v.ch, at: v.at, views: v.views || 0 });
+    const view = v => ({ id: v.id, title: v.title, ch: v.ch, chId: v.chId || "", at: v.at, views: v.views || 0 });
     const live = list.map(x => { const st = db.ch[keyOf(x)] || {}; return st.live ? { id: st.live.id, title: st.live.title, ch: x.name || st.name, cat: x.cat, since: st.live.since, live: true } : null; }).filter(Boolean);
     const latest = list.flatMap(x => ((db.ch[keyOf(x)] || {}).videos || []).filter(fine).slice(0, 8).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 40);
     // Shorts: new ones and every channel's most-watched ones, in a new random order each time (today's first), up to 300
@@ -341,11 +341,43 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     searchCount++;
     const j = await api("search?part=snippet&type=video&videoEmbeddable=true&safeSearch=moderate&regionCode=IN&maxResults=20" +
       (short ? "&videoDuration=short" : "") + "&q=" + encodeURIComponent(q));
-    const list = (j.items || []).map(it => ({ id: it.id && it.id.videoId, title: decode((it.snippet || {}).title), ch: decode((it.snippet || {}).channelTitle),
+    const list = (j.items || []).map(it => ({ id: it.id && it.id.videoId, title: decode((it.snippet || {}).title), ch: decode((it.snippet || {}).channelTitle), chId: str((it.snippet || {}).channelId, 30),
       at: Date.parse((it.snippet || {}).publishedAt) || 0 })).filter(v => v.id && fine(v));
     found.set(k, { at: Date.now(), list });
     if (found.size > 3000) found.delete(found.keys().next().value);
     return list;
+  }
+
+  // ---------- "your channels": the newest videos of the channels a person watches in Habit ----------
+  // The phone keeps its own list of channels (nothing about the person is kept here); it asks for their newest videos.
+  // YouTube's own channel feeds: free, no key. Each channel is read at most once an hour.
+  const mineCache = new Map();            // channel id → { at, videos, shorts }
+  let mineHour = 0, mineReads = 0;
+  async function channelNow(id) {
+    const own = Object.values(db.ch).find(s => s.id === id && s.at && !s.err);
+    if (own) return { videos: own.videos || [], shorts: own.shorts || [] };
+    const hit = mineCache.get(id);
+    if (hit && Date.now() - hit.at < 3600e3) return hit;
+    const hour = Math.floor(Date.now() / 3600e3);
+    if (hour !== mineHour) { mineHour = hour; mineReads = 0; }
+    if (++mineReads > 600) return hit || { videos: [], shorts: [] };
+    const tail = id.slice(2), slim = v => ({ ...v, desc: "" });
+    let long = [], shorts = [], ok = false;
+    try { long = await feed(`playlist_id=UULF${tail}`); ok = true; } catch (e) { try { long = (await feed(`channel_id=${id}`)).filter(v => !v.short); ok = true; } catch (e2) { } }
+    try { shorts = await feed(`playlist_id=UUSH${tail}`); ok = true; } catch (e) { }
+    if (!ok && hit) return hit;
+    const out = { at: ok ? Date.now() : Date.now() - 50 * 60e3, videos: long.slice(0, 12).map(slim), shorts: shorts.slice(0, 12).map(slim) };
+    mineCache.set(id, out);
+    if (mineCache.size > 1500) mineCache.delete(mineCache.keys().next().value);
+    return out;
+  }
+  async function mine(ids) {
+    const got = [];
+    for (let i = 0; i < ids.length; i += 4) got.push(...await Promise.all(ids.slice(i, i + 4).map(id => channelNow(id).catch(() => ({ videos: [], shorts: [] })))));
+    const view = (v, id) => ({ id: v.id, title: v.title, ch: v.ch, chId: v.chId || id, at: v.at, views: v.views || 0 });
+    // newest first, but in turns: every channel's newest, then every channel's second newest…
+    const turns = key => { const out = []; for (let k = 0; k < 12; k++) { const row = got.map((g, i) => (g[key] || []).filter(fine)[k] && view((g[key] || []).filter(fine)[k], ids[i])).filter(Boolean); row.sort((a, b) => b.at - a.at); out.push(...row); } return out; };
+    return { latest: turns("videos").slice(0, 60), shorts: turns("shorts").slice(0, 60) };
   }
 
   const reads = new Map();
@@ -356,6 +388,13 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
       if (q.length < 2) { h.send(res, 400, { error: "What should I look for?" }, origin); return true; }
       try { h.send(res, 200, { videos: await search(q, url.searchParams.get("short") === "1") }, origin); }
       catch (e) { h.send(res, e.code || 502, { error: e.code ? e.message : "YouTube didn't answer. Please try again." }, origin); }
+      return true;
+    }
+    if (url.pathname === "/api/videos/mine" && req.method === "GET") {
+      if (h && !h.allowed("vm:" + h.clientIp(req), reads, 40)) { h.send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); return true; }
+      const ids = [...new Set(str(url.searchParams.get("ch"), 800).split(",").filter(x => /^UC[\w-]{22}$/.test(x)))].slice(0, 20);
+      try { h.send(res, 200, ids.length ? await mine(ids) : { latest: [], shorts: [] }, origin); }
+      catch (e) { h.send(res, 502, { error: "YouTube didn't answer. Please try again." }, origin); }
       return true;
     }
     if (url.pathname !== "/api/videos" || req.method !== "GET") return false;
@@ -394,5 +433,5 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
   }
   const stats = () => ({ on: ON, key: !!KEY(), channels: allChannels().length, liveNow: Object.values(db.ch).filter(s => s.live).length, postedToday: db.posted.day === today() ? db.posted : {} });
 
-  return { handle, videos, list, addChannel, removeChannel, stats, tick, parseFeed, cleanTitle, _db: () => db };
+  return { handle, videos, mine, list, addChannel, removeChannel, stats, tick, parseFeed, cleanTitle, _db: () => db };
 };
