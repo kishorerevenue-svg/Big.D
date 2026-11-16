@@ -42,7 +42,7 @@ import android.widget.VideoView
  */
 class MediaViewer : Activity() {
     /** kind: "photo" (src = picture), "video" (src = YouTube id) or "file" (src = a video posted from a phone, with its [poster]). */
-    class Item(val kind: String, val src: String, val key: String, val who: String, val words: String, var likes: Int, var liked: Boolean, val poster: String = "")
+    class Item(val kind: String, val src: String, val key: String, val who: String, val words: String, var likes: Int, var liked: Boolean, val poster: String = "", val chId: String = "")
 
     companion object {
         /** What to show (set just before opening). */
@@ -71,6 +71,8 @@ class MediaViewer : Activity() {
     private lateinit var ytBtn: TextView           // Subscribe (on YouTube)
     private lateinit var side: LinearLayout        // the buttons down the right side, like Shorts
     private lateinit var headBtn: TextView
+    private lateinit var followBtn: TextView       // follow this video's channel inside Habit (its new videos come to Media)
+    private var counted = false                    // this video was already counted as watched
     private var head: HeadWatch? = null            // head control: head up = next, head down = back
     private val prefs by lazy { Store(this) }
     private lateinit var seek: android.widget.SeekBar
@@ -145,7 +147,8 @@ class MediaViewer : Activity() {
         ytBtn = sideBtn("🔔", "Subscribe") { openYouTube() }
         val shareBtn = sideBtn("📤", "Share") { share() }
         headBtn = sideBtn("🙂", "Head") { toggleHead() }
-        for (b in listOf(likeBtn, talkBtn, ytBtn, shareBtn, headBtn)) side.addView(b, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
+        followBtn = sideBtn("⭐", "Follow") { follow() }
+        for (b in listOf(likeBtn, talkBtn, followBtn, ytBtn, shareBtn, headBtn)) side.addView(b, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
         paintHead()
         root.addView(side, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.BOTTOM).apply { marginEnd = dp(6); bottomMargin = dp(170) })
 
@@ -251,6 +254,11 @@ class MediaViewer : Activity() {
     }
     private fun showTime(t: Double, d: Double) {
         if (d > 0) length = d
+        // a good part of it was watched: its channel is one of "your channels" (after two such videos its new ones come to Media)
+        if (!counted && (t >= 15 || (length > 0 && t >= length * 0.6))) {
+            counted = true
+            items.getOrNull(at)?.let { if (MyChannels.valid(it.chId)) MyChannels.watched(prefs, it.chId, it.who) }
+        }
         if (length <= 0 || seeking) return
         seek.max = (length * 10).toInt().coerceAtLeast(1)
         seek.progress = (t * 10).toInt()
@@ -284,6 +292,8 @@ class MediaViewer : Activity() {
         talkBtn.visibility = if ((canAct && onComments != null) || yt) View.VISIBLE else View.GONE
         paintLike()
         ytBtn.visibility = if (yt) View.VISIBLE else View.GONE
+        followBtn.visibility = if (yt && MyChannels.valid(cur.chId)) View.VISIBLE else View.GONE
+        counted = false; paintFollow()
         (seek.parent as? View)?.visibility = if (yt) View.VISIBLE else View.GONE
         if (yt) Know.watched(prefs, cur.who)                 // (only when they let Habit notice what they watch)
         length = 0.0; seek.progress = 0; clock.text = ""
@@ -514,6 +524,19 @@ class MediaViewer : Activity() {
     }
 
     // ---------- buttons ----------
+    private fun paintFollow() {
+        val cur = items.getOrNull(at) ?: return
+        setSide(followBtn, "⭐", if (MyChannels.following(prefs, cur.chId)) "Following ✓" else "Follow")
+    }
+    private fun follow() {
+        val cur = items.getOrNull(at) ?: return
+        if (!MyChannels.valid(cur.chId)) return
+        val on = !MyChannels.following(prefs, cur.chId)
+        MyChannels.setFollow(prefs, cur.chId, cur.who, on)
+        paintFollow()
+        if (on) android.widget.Toast.makeText(this, "⭐ ${cur.who}: new videos will come to your Media page", android.widget.Toast.LENGTH_SHORT).show()
+    }
+
     private fun paintLike() {
         val cur = items.getOrNull(at) ?: return
         val habit = cur.key.isNotBlank() && onLike != null

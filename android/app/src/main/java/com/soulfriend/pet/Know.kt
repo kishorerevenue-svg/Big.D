@@ -46,3 +46,45 @@ object Know {
         return out
     }
 }
+
+/**
+ * "Your channels": the YouTube channels someone watches or follows inside Habit Media, so their new videos come to the
+ * Media page without a YouTube login. The list stays on this phone; to bring the new videos the app asks the Habit server
+ * for those channels' newest videos (the server keeps nothing about who asked).
+ */
+object MyChannels {
+    class Ch(val id: String, val name: String, val n: Int, val follow: Boolean, val at: Long)
+    private val ID = Regex("^UC[\\w-]{22}$")
+    fun valid(id: String) = ID.matches(id)
+    private fun load(store: Store) = try { JSONObject(store.myCh) } catch (e: Exception) { JSONObject() }
+
+    fun list(store: Store): List<Ch> {
+        val j = load(store)
+        return j.keys().asSequence().toList().mapNotNull { id -> j.optJSONObject(id)?.let { Ch(id, it.optString("n"), it.optInt("c"), it.optBoolean("f"), it.optLong("at")) } }
+            .sortedWith(compareByDescending<Ch> { it.follow }.thenByDescending { it.n }.thenByDescending { it.at })
+    }
+    /** The channels whose new videos are shown: the followed ones, and those watched at least twice. */
+    fun ids(store: Store): List<String> = list(store).filter { it.follow || it.n >= 2 }.take(20).map { it.id }
+    fun following(store: Store, id: String) = load(store).optJSONObject(id)?.optBoolean("f") == true
+
+    private fun put(store: Store, id: String, name: String, change: (JSONObject) -> Unit) {
+        if (!valid(id)) return
+        try {
+            val j = load(store)
+            val o = j.optJSONObject(id) ?: JSONObject()
+            if (name.isNotBlank()) o.put("n", name.trim().take(60))
+            change(o); o.put("at", System.currentTimeMillis())
+            j.put(id, o)
+            if (j.length() > 60) {                                   // the least watched (not followed) are forgotten
+                val drop = j.keys().asSequence().toList().filter { j.optJSONObject(it)?.optBoolean("f") != true }
+                    .sortedBy { j.optJSONObject(it)?.optInt("c") ?: 0 }.take(j.length() - 50)
+                drop.forEach { j.remove(it) }
+            }
+            store.myCh = j.toString()
+        } catch (e: Exception) { }
+    }
+    /** A good part of a video of this channel was watched in Habit. */
+    fun watched(store: Store, id: String, name: String) { if (store.myChAuto) put(store, id, name) { it.put("c", it.optInt("c") + 1) } }
+    fun setFollow(store: Store, id: String, name: String, on: Boolean) = put(store, id, name) { it.put("f", on) }
+    fun remove(store: Store, id: String) { try { val j = load(store); j.remove(id); store.myCh = j.toString() } catch (e: Exception) { } }
+}

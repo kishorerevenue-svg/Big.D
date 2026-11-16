@@ -615,6 +615,7 @@ class SocialPage(private val m: MainActivity) {
                 m.runOnUiThread { if (r.ok) { vids[k] = r.json; refreshIf("feed") } else vidsAt[k] = System.currentTimeMillis() - 8 * 60_000L }
             }
         }
+        if (tab == "foryou") myStrips()
         val v = vids[k] ?: return
         fun arr(n: String) = v.optJSONArray(n) ?: JSONArray()
         if (tab != "popular") strip("🔴 ఇప్పుడు లైవ్ · Live now", arr("live"), live = true)
@@ -624,9 +625,51 @@ class SocialPage(private val m: MainActivity) {
         if (cat.isNotBlank()) strip("⭐ ఎక్కువ మంది చూసినవి · Most watched", arr("popular"))
     }
 
+    // "Your channels": the newest videos of the channels watched or followed in Habit (no YouTube login needed)
+    private val ytCh = HashMap<String, String>()        // video id → its channel's id
+    private var mineFor = ""
+    private var mineAt = 0L
+    private var mineJson: JSONObject? = null
+    private fun myStrips() {
+        val ids = MyChannels.ids(store)
+        if (ids.isEmpty()) {
+            m.add(ui.text("⭐ మీకు నచ్చిన ఛానెల్ వీడియోలు ఇక్కడ చూస్తే (లేదా ⭐ Follow నొక్కితే), వాటి కొత్త వీడియోలు ఈ పేజీకి వస్తాయి · Watch a channel's videos here (or tap ⭐ Follow) and its new videos come to this page.", 12.5f, Ui.MUTED), 10)
+            return
+        }
+        val key = ids.joinToString(",")
+        if (key != mineFor || System.currentTimeMillis() - mineAt > 10 * 60_000L) {
+            mineFor = key; mineAt = System.currentTimeMillis()
+            io.execute {
+                val r = try { Net.get(store, "/api/videos/mine?ch=" + Uri.encode(key), headers()) } catch (e: Exception) { null }
+                m.runOnUiThread { if (r != null && r.ok) { mineJson = r.json; refreshIf("feed") } else mineAt = System.currentTimeMillis() - 8 * 60_000L }
+            }
+        }
+        val j = mineJson
+        if (j != null) {
+            strip("⭐ మీరు చూసే ఛానెళ్లు · Your channels", j.optJSONArray("latest") ?: JSONArray())
+            strip("⭐ మీ ఛానెళ్ల Shorts · Your channels' Shorts", j.optJSONArray("shorts") ?: JSONArray(), tall = true)
+        }
+        m.add(ui.text("⚙ My channels (${MyChannels.list(store).size}) · నా ఛానెళ్లు", 13f, Ui.MUTED, bold = true).apply { setPadding(0, dp(6), 0, dp(6)); setOnClickListener { myChannelsDialog() } }, 8)
+    }
+    /** The list on this phone: untick a channel to take it out; or stop Habit noticing new ones. */
+    private fun myChannelsDialog() {
+        val list = MyChannels.list(store)
+        val names = (list.map { (if (it.follow) "⭐ " else "") + it.name.ifBlank { "YouTube channel" } + (if (it.n > 0) "  · ${it.n} watched" else "") } +
+            listOf("Notice the channels I watch · నేను చూసేవి గమనించు")).toTypedArray()
+        val keep = BooleanArray(names.size) { true }.also { it[it.size - 1] = store.myChAuto }
+        android.app.AlertDialog.Builder(m).setTitle("⭐ My channels · నా ఛానెళ్లు")
+            .setMultiChoiceItems(names, keep) { _, i, on -> keep[i] = on }
+            .setPositiveButton("OK") { _, _ ->
+                list.forEachIndexed { i, c -> if (!keep[i]) MyChannels.remove(store, c.id) }
+                store.myChAuto = keep[keep.size - 1]
+                mineFor = ""; mineJson = null; refreshIf("feed")
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     private fun strip(title: String, a: JSONArray, live: Boolean = false, tall: Boolean = false) {
         val all = (0 until a.length()).mapNotNull { a.optJSONObject(it) }.filter { it.optString("id").length == 11 }.map { o ->
             val ch = o.optString("ch")
+            o.optString("chId").let { if (it.isNotBlank()) ytCh[o.optString("id")] = it }
             SPost("yt:" + o.optString("id"), SUser("", ch.ifBlank { "YouTube" }, "", "", "", if (live) "🔴" else "▶️", false, false, 0, 0, 0, false, false),
                 o.optLong("at"), o.optString("title"), "", emptyList(), o.optString("id"), ch, "", "", "", "", "YouTube · $ch", "", o.optString("cat"), "▶️", 0, false, o.optInt("views"), 0, false)
         }
@@ -668,7 +711,7 @@ class SocialPage(private val m: MainActivity) {
                 val arr = r?.json?.optJSONArray("videos")
                 if (r == null || !r.ok || arr == null || arr.length() == 0) { m.toast(r?.error("Nothing found. Try other words.") ?: "No internet."); return@runOnUiThread }
                 MediaViewer.items = (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { v ->
-                    MediaViewer.Item("video", v.optString("id"), "", v.optString("ch"), v.optString("title"), 0, false) } }
+                    MediaViewer.Item("video", v.optString("id"), "", v.optString("ch"), v.optString("title"), 0, false, chId = v.optString("chId")) } }
                 MediaViewer.start = 0; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
                 m.leavingForSystemScreen = true
                 m.startActivity(Intent(m, MediaViewer::class.java))
@@ -678,7 +721,7 @@ class SocialPage(private val m: MainActivity) {
 
     /** YouTube videos full screen (YouTube's own player); swipe for the next one in the strip. */
     private fun openVideos(list: List<SPost>, start: Int, shorts: Boolean = false) {
-        MediaViewer.items = list.map { x -> MediaViewer.Item(if (shorts) "short" else "video", x.ytId, "", x.author.name, x.title, 0, false) }
+        MediaViewer.items = list.map { x -> MediaViewer.Item(if (shorts) "short" else "video", x.ytId, "", x.author.name, x.title, 0, false, chId = ytCh[x.ytId] ?: "") }
         MediaViewer.start = start; MediaViewer.server = store.server; MediaViewer.onLike = null; MediaViewer.onComments = null
         m.leavingForSystemScreen = true
         m.startActivity(Intent(m, MediaViewer::class.java))

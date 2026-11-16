@@ -169,6 +169,13 @@ class Store(context: Context) {
     var headControl: Boolean
         get() = p.getBoolean("headControl", false)
         set(v) { p.edit().putBoolean("headControl", v).apply() }
+    /** "Your channels" in Media: the YouTube channels watched or followed inside Habit (kept on this phone only). */
+    var myCh: String
+        get() = p.getString("myCh", "{}") ?: "{}"
+        set(v) { p.edit().putString("myCh", v).apply() }
+    var myChAuto: Boolean
+        get() = p.getBoolean("myChAuto", true)
+        set(v) { p.edit().putBoolean("myChAuto", v).apply() }
     /** How big a nod must be: 0 small moves, 1 normal, 2 big moves only. */
     var headLevel: Int
         get() = p.getInt("headLevel", 1)
