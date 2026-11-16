@@ -86,6 +86,12 @@ class MediaViewer : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         if (items.isEmpty()) { finish(); return }
+        // a list of long YouTube videos: the screen made for those (the video at the top, the others under it)
+        if (items.all { it.kind == "video" }) {
+            WatchActivity.items = items; WatchActivity.start = start; WatchActivity.server = server
+            try { startActivity(Intent(this, WatchActivity::class.java)) } catch (e: Exception) { }
+            finish(); return
+        }
         ui = Ui(this)
         edgeToEdge()
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
@@ -148,16 +154,16 @@ class MediaViewer : Activity() {
         val shareBtn = sideBtn("📤", "Share") { share() }
         headBtn = sideBtn("🙂", "Head") { toggleHead() }
         followBtn = sideBtn("⭐", "Follow") { follow() }
-        for (b in listOf(likeBtn, talkBtn, followBtn, ytBtn, shareBtn, headBtn)) side.addView(b, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
+        for (b in listOf(likeBtn, talkBtn, followBtn, ytBtn, shareBtn, headBtn)) side.addView(b, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
         paintHead()
-        root.addView(side, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.BOTTOM).apply { marginEnd = dp(6); bottomMargin = dp(170) })
+        root.addView(side, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.BOTTOM).apply { marginEnd = dp(4); bottomMargin = dp(190) })
 
         if (items.size > 1) {
             val hint = TextView(this).apply {
                 text = "⬆  పైకి స్వైప్ చేయండి · Swipe up for more"; setTextColor(Color.WHITE); textSize = 13f
                 setPadding(dp(14), dp(8), dp(14), dp(8)); background = ui.round(Color.parseColor("#88000000"), 18)
             }
-            root.addView(hint, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+            root.addView(hint, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dp(110) })
             hint.animate().alpha(0f).setStartDelay(2200).setDuration(700).withEndAction { root.removeView(hint) }.start()
         }
 
@@ -197,14 +203,14 @@ class MediaViewer : Activity() {
     private fun gap() = LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) }
 
     private fun sideBtn(icon: String, word: String, onClick: () -> Unit) = TextView(this).apply {
-        gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 12f; setShadowLayer(4f, 0f, 1f, Color.BLACK)
-        setPadding(dp(6), dp(4), dp(6), dp(4)); minWidth = dp(56)
+        gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 10.5f; setShadowLayer(4f, 0f, 1f, Color.BLACK)
+        setPadding(dp(4), dp(2), dp(4), dp(2)); minWidth = dp(46)
         setSide(this, icon, word); contentDescription = word
         setOnClickListener { onClick() }
     }
     private fun setSide(v: TextView, icon: String, word: String) {
         val sp = android.text.SpannableString(icon + "\n" + word)
-        sp.setSpan(android.text.style.RelativeSizeSpan(2.2f), 0, icon.length, 0)
+        sp.setSpan(android.text.style.RelativeSizeSpan(1.7f), 0, icon.length, 0)
         v.text = sp
     }
     // ---------- head control: head up = the next video, head down = the one before ----------
@@ -400,7 +406,7 @@ class MediaViewer : Activity() {
         val origin = server.trimEnd('/')
         val html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
             "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head><body>" +
-            "<iframe id=\"p\" src=\"https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&enablejsapi=1&origin=$origin\" " +
+            "<iframe id=\"p\" src=\"https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&enablejsapi=1${if (item.kind == "short") "&controls=0&loop=1&playlist=$id" else ""}&origin=$origin\" " +
             "allow=\"autoplay; encrypted-media; picture-in-picture; fullscreen\" allowfullscreen></iframe>" +
             "<script>var f=document.getElementById('p'),ok=false;" +
             "function post(o){try{o.id=1;o.channel='widget';f.contentWindow.postMessage(JSON.stringify(o),'*');}catch(e){}}" +
