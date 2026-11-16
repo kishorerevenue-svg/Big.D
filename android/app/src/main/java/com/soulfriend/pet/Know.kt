@@ -88,3 +88,13 @@ object MyChannels {
     fun setFollow(store: Store, id: String, name: String, on: Boolean) = put(store, id, name) { it.put("f", on) }
     fun remove(store: Store, id: String) { try { val j = load(store); j.remove(id); store.myCh = j.toString() } catch (e: Exception) { } }
 }
+
+/** YouTube refused to play a video inside the app: the Habit server is told, so it stops showing it (and, after a few,
+ *  that channel) to everyone. Only the video's id and its channel's id are sent. */
+object NoEmbed {
+    private val told = HashSet<String>()
+    fun tell(store: Store, id: String, chId: String = "") {
+        if (id.length != 11 || !told.add(id)) return
+        Thread { try { Net.post(store, "/api/videos/blocked", JSONObject().put("id", id).put("chId", chId), timeoutMs = 10_000) } catch (e: Exception) { } }.start()
+    }
+}

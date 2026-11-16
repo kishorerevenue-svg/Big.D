@@ -174,6 +174,7 @@ class WatchActivity : Activity() {
     /** YouTube won't play this one inside other apps (or it's gone): the next one by itself. */
     private fun cantPlay(code: Int) {
         if (code !in listOf(2, 5, 100, 101, 150)) return
+        if (code == 101 || code == 150) NoEmbed.tell(prefs, cur.src, cur.chId)
         android.widget.Toast.makeText(this, "This one plays only on YouTube · next ▶", android.widget.Toast.LENGTH_SHORT).show()
         if (!next()) openOut("https://www.youtube.com/watch?v=${cur.src}")
     }
