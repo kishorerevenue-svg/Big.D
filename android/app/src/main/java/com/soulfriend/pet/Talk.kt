@@ -113,4 +113,21 @@ object Talk {
         if (w.any { it in YES }) return true
         return null
     }
+
+    // "చిరంజీవి పాటలు పెట్టు", "play Rathinamo song", "భక్తి పాటలు వినిపించు": what to play (and whether shorts). Done on the
+    // phone at once, so a song never depends on the brain remembering to really start it.
+    private val PLAY_WHAT = Regex("పాటలు|పాటల|పాట|సాంగ్స్|సాంగ్|songs?|వీడియోలు|వీడియో|videos?|షార్ట్స్|రీల్స్|shorts|reels|సినిమా|కామెడీ|comedy|భజన|కీర్తన", RegexOption.IGNORE_CASE)
+    private val PLAY_DO = Regex("పెట్ట[^\\s]*|ప్లే\\s*చెయ్[^\\s]*|ప్లే\\s*చేయ[^\\s]*|ప్లే|వెయ్[^\\s]*|వేయ్[^\\s]*|వేయి|వినిపించ[^\\s]*|చూపించ[^\\s]*|\\bplay\\b|\\bput on\\b", RegexOption.IGNORE_CASE)
+    private val PLAY_NOT = Regex("కాల్|call|అలారం|alarm|రిమైండర్|remind|స్టేటస్|status|పోస్ట్|ఎవరు|ఎందుకు|ఎప్పుడు|who|why|when|\\?", RegexOption.IGNORE_CASE)
+    private val PLAY_DROP = Regex("చిలకమ్మా|చిలకమ్మ|దయచేసి|please|ఒకసారి|కొంచెం|నాకు|మాకు|\\bfor me\\b|\\bme\\b|\\ba\\b|\\bsome\\b|ఇప్పుడే|ఇప్పుడు|\\bnow\\b", RegexOption.IGNORE_CASE)
+    fun playQuery(text: String, petName: String = ""): Pair<String, Boolean>? {
+        val t = text.trim().trimEnd('.', '!', '।')
+        if (t.length > 90 || !PLAY_WHAT.containsMatchIn(t) || !PLAY_DO.containsMatchIn(t) || PLAY_NOT.containsMatchIn(t)) return null
+        var q = PLAY_DROP.replace(PLAY_DO.replace(t, " "), " ")
+        if (petName.isNotBlank()) q = q.replace(petName, " ", ignoreCase = true)
+        q = q.replace(Regex("హ్యాబిట్|హాబిట్|\\bhabit\\b", RegexOption.IGNORE_CASE), " ").replace(Regex("[,،]"), " ").replace(Regex("\\s+"), " ").trim()
+        val short = Regex("షార్ట్స్|రీల్స్|shorts|reels", RegexOption.IGNORE_CASE).containsMatchIn(t)
+        if (PLAY_WHAT.replace(q, "").isBlank()) q = if (Regex("[\\u0C00-\\u0C7F]").containsMatchIn(t)) "తెలుగు $q".trim() else "Telugu $q".trim()
+        return q.take(100) to short
+    }
 }
