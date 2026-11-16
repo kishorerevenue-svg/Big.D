@@ -346,13 +346,13 @@ class FamilyPage(private val m: MainActivity) {
         val n = clean(number); if (n.isEmpty()) return
         m.leavingForSystemScreen = true
         val direct = m.granted(Manifest.permission.CALL_PHONE)
-        try { m.startActivity(Intent(if (direct) Intent.ACTION_CALL else Intent.ACTION_DIAL, Uri.parse("tel:$n"))) }
+        try { m.startActivity(PhoneApp.aim(m, Intent(if (direct) Intent.ACTION_CALL else Intent.ACTION_DIAL, Uri.parse("tel:$n")))) }
         catch (e: Exception) { dial(n) }
     }
 
     private fun dial(n: String) {
         m.leavingForSystemScreen = true
-        try { m.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + clean(n)))) } catch (e: Exception) { m.toast("Couldn't open the phone app. Please dial $n.") }
+        try { m.startActivity(PhoneApp.aim(m, Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + clean(n))))) } catch (e: Exception) { m.toast("Couldn't open the phone app. Please dial $n.") }
     }
 
     private fun smsFamily(text: String) {

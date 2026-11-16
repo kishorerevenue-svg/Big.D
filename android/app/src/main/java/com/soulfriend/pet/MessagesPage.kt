@@ -567,7 +567,7 @@ class MessagesPage(private val m: MainActivity) {
 
     private fun dial(n: String) {
         m.leavingForSystemScreen = true
-        try { m.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$n"))) } catch (e: Exception) { m.toast("Please dial $n") }
+        try { m.startActivity(PhoneApp.aim(m, Intent(Intent.ACTION_DIAL, Uri.parse("tel:$n")))) } catch (e: Exception) { m.toast("Please dial $n") }
     }
 
     private fun open(url: String) = m.openUrl(url)
