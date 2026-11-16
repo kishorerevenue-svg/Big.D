@@ -281,7 +281,7 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    internal fun go(t: String) { setTab(t); render(); scroll.scrollTo(0, 0) }
+    internal fun go(t: String) { if (t == "feedback" && tab != "feedback") social.newMix(); setTab(t); render(); scroll.scrollTo(0, 0) }
     /** "safety" is not a tab of its own: it is Tasks › 🛡️ Fake (checking messages, the fake messages list, new scams). */
     private fun setTab(t: String) { if (t == "safety") { tasksTab = "fake"; tab = "tasks" } else tab = t }
     /** True while Tasks › 🛡️ Fake is on screen. */

@@ -314,14 +314,14 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     const list = cat && media.CATS[cat] ? channels(cat).map(x => ({ ...x, cat })) : allChannels();
     const view = v => ({ id: v.id, title: v.title, ch: v.ch, chId: v.chId || "", at: v.at, views: v.views || 0 });
     const live = list.map(x => { const st = db.ch[keyOf(x)] || {}; return st.live ? { id: st.live.id, title: st.live.title, ch: x.name || st.name, cat: x.cat, since: st.live.since, live: true } : null; }).filter(Boolean);
-    const latest = list.flatMap(x => ((db.ch[keyOf(x)] || {}).videos || []).filter(fine).slice(0, 8).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 40);
+    const latest = list.flatMap(x => ((db.ch[keyOf(x)] || {}).videos || []).filter(fine).slice(0, 15).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 300);
     // Shorts: new ones and every channel's most-watched ones, in a new random order each time (today's first), up to 300
     const seen = new Set(), mix = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
     const pool = list.flatMap(x => { const st = db.ch[keyOf(x)] || {}; return [...(st.shorts || []), ...(st.popShorts || [])].filter(fine).map(v => ({ ...view(v), cat: x.cat })); })
       .filter(v => !seen.has(v.id) && seen.add(v.id));
     const day = Date.now() - 24 * 3600e3;
     const shorts = [...mix(pool.filter(v => v.at > day)), ...mix(pool.filter(v => v.at <= day))].slice(0, 1500);   // (all of them)
-    const popular = list.flatMap(x => ((db.ch[keyOf(x)] || {}).popular || []).filter(fine).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.views - a.views).slice(0, 40);
+    const popular = list.flatMap(x => ((db.ch[keyOf(x)] || {}).popular || []).filter(fine).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.views - a.views).slice(0, 200);
     return { live, latest, shorts, popular, trending: cat && cat !== "all" ? [] : db.trending.list, key: !!KEY() };
   }
   // ---------- search all of YouTube: the pet's "play <a song>", and Media's search ----------
