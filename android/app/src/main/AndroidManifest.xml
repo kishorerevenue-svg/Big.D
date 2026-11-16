@@ -128,6 +128,11 @@
 
         <!-- Media: photos and videos full screen (swipe up and down) -->
         <activity
+            android:name=".WatchActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/Habit.Black" />
+        <activity
             android:name=".MediaViewer"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"

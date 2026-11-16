@@ -367,7 +367,7 @@ class MainActivity : Activity() {
     private fun updateBack() {
         if (Build.VERSION.SDK_INT < 33) return
         val sub = socialPage?.screen
-        val want = store.onboarded && ((tab == "feedback" && sub != null && sub != "feed") || tab in TOOL_PAGES || (tab == "messages" && chatPage.picking))
+        val want = store.onboarded && tab != "home"
         if (want && backCb == null) {
             val cb = android.window.OnBackInvokedCallback { if (!pageBack()) dropBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
@@ -385,11 +385,11 @@ class MainActivity : Activity() {
     private fun pageBack(): Boolean {
         if (!store.onboarded) return false
         return when (tab) {
-            "feedback" -> social.back()
-            "messages" -> chatPage.back()
+            "home" -> false
+            "feedback" -> { if (!social.back()) go("home"); true }
+            "messages" -> { if (!chatPage.back()) go("home"); true }
             "family" -> { if (!family.back()) go("home"); true }
-            in TOOL_PAGES -> { go("home"); true }
-            else -> false
+            else -> { go("home"); true }                          // every other page: Back goes to Home first (Back on Home leaves)
         }
     }
 
