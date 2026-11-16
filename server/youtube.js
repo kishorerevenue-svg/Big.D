@@ -339,7 +339,7 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
     if (searchDay !== today) { searchDay = today; searchCount = 0; }
     if (searchCount >= SEARCH_DAILY) { const e = new Error("Today's YouTube searches are used up. Please try again tomorrow."); e.code = 429; throw e; }
     searchCount++;
-    const j = await api("search?part=snippet&type=video&videoEmbeddable=true&safeSearch=moderate&regionCode=IN&maxResults=20" +
+    const j = await api("search?part=snippet&type=video&videoEmbeddable=true&videoSyndicated=true&safeSearch=moderate&regionCode=IN&maxResults=20" +
       (short ? "&videoDuration=short" : "") + "&q=" + encodeURIComponent(q));
     const list = (j.items || []).map(it => ({ id: it.id && it.id.videoId, title: decode((it.snippet || {}).title), ch: decode((it.snippet || {}).channelTitle), chId: str((it.snippet || {}).channelId, 30),
       at: Date.parse((it.snippet || {}).publishedAt) || 0 })).filter(v => v.id && fine(v));
