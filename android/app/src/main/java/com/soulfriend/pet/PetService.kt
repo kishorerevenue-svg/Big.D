@@ -482,7 +482,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private var tapStopped = false
     private var voiceAsk = false                     // the question now being answered was spoken (not typed)
 
+    private var spokeAt = 0L                          // when its own voice last ended
     private fun spokenDone() {
+        spokeAt = System.currentTimeMillis()
         val next = afterSpeech ?: return
         afterSpeech = null
         // its own voice must be over in the room before it listens (a Bluetooth speaker plays a little later), or the
@@ -640,7 +642,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private var ears: android.content.ComponentName? = null
 
     /** How long one turn listens for someone to start talking (a game: time to think). */
-    private fun patienceMs(): Long = when { convoAsking -> 7_000L; GamesActivity.shown != null -> 20_000L; else -> 10_000L }
+    private fun patienceMs(): Long = when { convoAsking -> 7_000L; GamesActivity.shown != null -> 90_000L; else -> 10_000L }
 
     // Waiting quietly: after the voice typing gave up once (nobody talked yet), the pet waits for talking with the
     // microphone alone ([QuietEar]): no voice typing runs meanwhile, so no beeps and nothing starts over every second.
@@ -809,7 +811,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         main.removeCallbacks(unhush)
         if (on == beepsHushed) return
         val am = getSystemService(android.media.AudioManager::class.java) ?: return
-        if (on && (voiceMode || am.isMusicActive)) return              // a video or song is playing: its sound stays
+        // a video or song is playing: its sound stays. (Right after the pet's own voice, and in a game, the phone still says
+        // "music is playing" for a moment: that is the pet itself, so the beeps are hushed all the same.)
+        val own = GamesActivity.shown != null || System.currentTimeMillis() - spokeAt < 3000L
+        if (on && (voiceMode || (am.isMusicActive && !own))) return
         try {
             am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, if (on) android.media.AudioManager.ADJUST_MUTE else android.media.AudioManager.ADJUST_UNMUTE, 0)
             beepsHushed = on
@@ -859,6 +864,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     /** They talked but the words weren't clear: once, the pet asks them to say it again. */
     private fun askAgain(): Boolean {
         if (unclearTries >= 1 || noMore || tapStopped || convoAsking || voiceMode || onPhone()) return false
+        if (GamesActivity.shown != null) return false                 // in a game it just keeps listening (no "say it again")
         unclearTries++
         heardSpeech = false; quickMisses = 0; restarts = 0; listenSince = System.currentTimeMillis()
         showBubble(sayAgainText(), 0)

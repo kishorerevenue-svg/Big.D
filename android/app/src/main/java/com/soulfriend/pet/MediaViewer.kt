@@ -208,7 +208,17 @@ class MediaViewer : Activity() {
     private fun paintHead() { setSide(headBtn, "🙂", if (prefs.headControl) "Head ✓" else "Head") }
     private fun tell(s: String) = android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show()
     private fun toggleHead() {
-        if (prefs.headControl) { prefs.headControl = false; head?.stop(); head = null; paintHead(); return }
+        if (prefs.headControl) {
+            // on already: how big a nod must be, or off
+            val names = arrayOf("Small nods", "Normal nods", "Big nods only", "Turn head control off")
+            android.app.AlertDialog.Builder(this).setTitle("🙂 Head control")
+                .setSingleChoiceItems(names, prefs.headLevel.coerceIn(0, 2)) { d, w ->
+                    d.dismiss()
+                    if (w == 3) { prefs.headControl = false; head?.stop(); head = null; paintHead() }
+                    else { prefs.headLevel = w; head?.level = w; tell("Nod up and come back: next video · nod down and come back: the one before") }
+                }.show()
+            return
+        }
         if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 71); return
         }
@@ -222,8 +232,9 @@ class MediaViewer : Activity() {
             if (first) tell("This phone's front camera can't find faces by itself, so head control doesn't work here.")
             return
         }
+        w.level = prefs.headLevel
         head = w; prefs.headControl = true; paintHead()
-        if (first) tell("Head up: next video · Head down: the one before. The camera only finds where your face is; no picture is kept or sent.")
+        if (first) tell("Nod up and come back: next video · nod down and come back: the one before. Tap Head again to change how big the nod must be. The camera only finds where your face is; no picture is kept or sent.")
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)

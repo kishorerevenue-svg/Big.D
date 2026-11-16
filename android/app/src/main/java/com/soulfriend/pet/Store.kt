@@ -169,6 +169,10 @@ class Store(context: Context) {
     var headControl: Boolean
         get() = p.getBoolean("headControl", false)
         set(v) { p.edit().putBoolean("headControl", v).apply() }
+    /** How big a nod must be: 0 small moves, 1 normal, 2 big moves only. */
+    var headLevel: Int
+        get() = p.getInt("headLevel", 1)
+        set(v) { p.edit().putInt("headLevel", v).apply() }
     /** "What I know about you": Habit may notice what they watch in Media / who they chat with most (off unless turned on). */
     var learnWatch: Boolean
         get() = p.getBoolean("learnWatch", false)
