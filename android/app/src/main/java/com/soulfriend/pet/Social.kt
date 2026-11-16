@@ -302,6 +302,7 @@ class SocialPage(private val m: MainActivity) {
 
     /** Tapping the Media tab again: back to the top of the feed. */
     fun home() {
+        mixSeed = System.nanoTime(); tubeShown = 20
         if (screen != "feed" || history.isNotEmpty()) { if (listening.isNotEmpty()) m.stopListening(); history.clear(); screen = "feed"; m.render() }
         m.scrollTop()
     }
@@ -323,31 +324,66 @@ class SocialPage(private val m: MainActivity) {
     // ------------------------------ feed ------------------------------
     private fun buildFeed() {
         val mine = me
+        // one line on top: the tabs, ▾ for the rest (search, mood, issue, cartoon), and me
         m.add(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            addView(ui.stack(ui.title("Media · మీడియా"), ui.text("వార్తలు, వీడియోలు, అందరి పోస్టులు · News, videos and everyone's posts", 13f, Ui.MUTED)),
-                LinearLayout.LayoutParams(0, -2, 1f))
-            addView(avatar(mine ?: placeholderMe(), 44) { if (mine != null) openProfile(mine.uid) else startEdit() },
-                LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(10) })
+            addView(chipRow(), LinearLayout.LayoutParams(0, -2, 1f))
+            fun round(label: String, on: Boolean, what: String, click: () -> Unit) = addView(TextView(m).apply {
+                text = label; textSize = 16f; setTextColor(Ui.INK); gravity = Gravity.CENTER; typeface = Fonts.bold(context)
+                background = ui.round(if (on) Ui.TEAL_SOFT else Ui.SURFACE, 20, Ui.LINE); contentDescription = what
+                setOnClickListener { click() }
+            }, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(6) })
+            round("🔎", searchOpen, "Search any song or video") { searchOpen = !searchOpen; if (searchOpen) { topOpen = false; searchFocus = true }; m.render() }
+            round(if (topOpen) "⌃" else "⌄", topOpen, "Mood, issue and cartoon") { topOpen = !topOpen; if (topOpen) searchOpen = false; m.render() }
+            addView(avatar(mine ?: placeholderMe(), 40) { if (mine != null) openProfile(mine.uid) else startEdit() },
+                LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(6) })
         }, 4)
-        chips()
+        if (searchOpen) searchRow()
+        if (topOpen) moreTop(mine)
+        else if (mood.isNotBlank() || issue.isNotBlank()) m.add(ui.chip("✕ " + listOfNotNull(moods.firstOrNull { it.first == mood && mood.isNotBlank() }?.second, issues.firstOrNull { it.first == issue && issue.isNotBlank() }?.second).joinToString(" · "), true) { mood = ""; issue = ""; error = ""; m.render() }, 8)
+        val fk = feedKey()
+        if (admin) m.add(ui.row(ui.button("🛡 Reports", "ghost") { openReports() }), 10)
+        if (admin && tab in sectionKeys) m.add(ui.row(ui.button("🔄 AI posts now") { generate(tab) }, ui.button("✍️ Post here", "primary") { startCompose(asUid = "s_$tab") }), 10)
+        feedBody(fk)
+    }
+
+    private fun searchRow() {
         // any song or video on YouTube: it plays right here (swipe for more)
+        val box = ui.input("🔎 Any song or video · పాట / వీడియో వెతకండి", ytQuery)
         m.add(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            val box = ui.input("🔎 Any song or video · పాట / వీడియో వెతకండి", ytQuery)
             box.isSingleLine = true; box.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
             box.onText { ytQuery = it }
             box.setOnEditorActionListener { _, _, _ -> ytSearch(); true }
             addView(box, LinearLayout.LayoutParams(0, -2, 1f))
             addView(ui.button("▶ Play", "primary") { ytSearch() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
         }, 10)
+        if (searchFocus) { searchFocus = false; box.requestFocus()
+        box.postDelayed({ try { m.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(box, 0) } catch (e: Exception) { } }, 150) }
+    }
+    private var searchFocus = false
+
+    private var topOpen = false
+    private var searchOpen = false
+    /** A new mix of videos (each time the Media page is opened). */
+    fun newMix() { mixSeed = System.nanoTime(); tubeShown = 20 }
+    /** What opens under ▾: search any song or video, mood and issue, your profile, make a cartoon. */
+    private fun moreTop(mine: SUser?) {
+        if (filterable) {
+            val f = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL }
+            f.addView(ui.chip((moods.firstOrNull { it.first == mood } ?: moods[0]).second + " ▾", mood.isNotBlank()) { pick(true) })
+            f.addView(ui.chip((issues.firstOrNull { it.first == issue } ?: issues[0]).second + " ▾", issue.isNotBlank()) { pick(false) },
+                LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+            if (mood.isNotBlank() || issue.isNotBlank()) f.addView(ui.chip("✕ Clear", false) { mood = ""; issue = ""; error = ""; m.render() },
+                LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
+            m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(f) }, 8)
+        }
         if (mine == null && meState == 2) m.add(ui.card(Ui.SUN_SOFT).apply {
             addView(ui.text("👤 మీ ప్రొఫైల్ · Make your profile", 15f, Ui.INK, bold = true))
             put(ui.text("Add your name, a photo and a line about you. Then you can post photos and videos, comment and follow people.", 13.5f, Ui.MUTED), 4)
             put(ui.row(ui.button("Make my profile", "primary") { startEdit() }), 10)
         }, 12)
-        note(tab)?.let { m.add(ui.text(it, 12.5f, Ui.MUTED), 10) }
-        if (tab == "foryou" || tab == "fun" || tab == "kids") m.add(LinearLayout(m).apply {
+        m.add(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(10), dp(10), dp(10))
             background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(AppLook.lt(Color.parseColor("#FFF1D6"), AppLook.WARN_SOFT), AppLook.lt(Color.parseColor("#FFE0EC"), AppLook.DANGER_SOFT))).apply { cornerRadius = dp(18).toFloat() }
             addView(ui.text("🎬", 30f, Ui.INK))
@@ -356,9 +392,11 @@ class SocialPage(private val m: MainActivity) {
             addView(ui.button("Make", "primary") { go("cartoon") })
             setOnClickListener { go("cartoon") }
         }, 10)
-        val fk = feedKey()
-        if (admin) m.add(ui.row(ui.button("🛡 Reports", "ghost") { openReports() }), 10)
-        if (admin && tab in sectionKeys) m.add(ui.row(ui.button("🔄 AI posts now") { generate(tab) }, ui.button("✍️ Post here", "primary") { startCompose(asUid = "s_$tab") }), 10)
+        if (MyChannels.list(store).isNotEmpty()) m.add(ui.text("⚙ My channels (${MyChannels.list(store).size}) · నా ఛానెళ్లు", 13f, Ui.MUTED, bold = true).apply { setPadding(0, dp(6), 0, dp(6)); setOnClickListener { myChannelsDialog() } }, 4)
+        note(tab)?.let { m.add(ui.text(it, 12.5f, Ui.MUTED), 8) }
+    }
+
+    private fun feedBody(fk: String) {
         val blocked = store.blockedUsers
         val all = feeds[fk]
         val list = all?.filter { it.author.uid !in blocked }
@@ -374,8 +412,11 @@ class SocialPage(private val m: MainActivity) {
             }, 14f, Ui.MUTED), 14)
             if (tab == "foryou" || tab == "following") whoToFollow()
         }
-        if (fk == tab && filterable) videoStrips()
-        if (!list.isNullOrEmpty()) m.add(LinearLayout(m).apply {
+        val vids = if (fk == tab && filterable) videoFeed() else null
+        val shorts = vids?.second.orEmpty()
+        val tube = vids?.first.orEmpty()
+        if (tube.isEmpty() && shorts.isNotEmpty()) shortsShelf(shorts)
+        if (!list.isNullOrEmpty() && tube.isEmpty()) m.add(LinearLayout(m).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(TextView(m).apply {
                 text = "▶  Reels · వీడియోలా"; textSize = 15f; setTextColor(Color.WHITE); typeface = Fonts.bold(context); gravity = Gravity.CENTER
@@ -385,7 +426,21 @@ class SocialPage(private val m: MainActivity) {
             }, LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(ui.button("⬆  Swipe to read", "soft") { openReader(list[0]) }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(8) })
         }, 12)
-        list?.forEachIndexed { i, p ->
+        if (tube.isNotEmpty()) {
+            // like YouTube: big videos one under the other (a new mix each time), Shorts after the first two, and the
+            // posts in between
+            val posts = list.orEmpty()
+            var pi = 0
+            val shown = minOf(tube.size, tubeShown)
+            for (i in 0 until shown) {
+                m.add(bigVideo(tube, i), 6)
+                if (i == 1 && shorts.isNotEmpty()) shortsShelf(shorts)
+                if (i % 3 == 2 && pi < posts.size) { m.add(postRow(posts[pi]), 10); pi++ }
+                if (i == 7 && tab == "foryou") whoToFollow()
+            }
+            if (shown < tube.size) m.add(ui.button("▼ ఇంకా వీడియోలు · More videos", "soft") { tubeShown += 20; m.render() }, 10)
+            while (pi < posts.size) { m.add(postRow(posts[pi]), 10); pi++ }
+        } else list?.forEachIndexed { i, p ->
             m.add(postRow(p), 10)
             if (i == 3 && tab == "foryou") whoToFollow()
         }
@@ -411,6 +466,19 @@ class SocialPage(private val m: MainActivity) {
         "fun" -> "😄 Clean jokes, riddles, good thoughts and funny cartoons."
         "facts" -> "💡 మీకు తెలుసా? True, interesting facts, written by our own brain from Wikipedia and trusted sources."
         else -> null
+    }
+
+    private fun chipRow(): View {
+        val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
+        tabs.forEachIndexed { i, t ->
+            row.addView(ui.chip(t.label, tab == t.key) { if (tab != t.key) { tab = t.key; error = ""; mixSeed = System.nanoTime(); tubeShown = 20; m.render(); m.scrollTop() } },
+                LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = dp(6) })
+        }
+        return HorizontalScrollView(m).apply {
+            isHorizontalScrollBarEnabled = false; addView(row)
+            setOnScrollChangeListener { _, x, _, _, _ -> chipsX = x }
+            post { scrollTo(chipsX, 0) }
+        }
     }
 
     private fun chips() {
@@ -623,6 +691,103 @@ class SocialPage(private val m: MainActivity) {
         if (tab != "popular") strip("📱 Shorts", arr("shorts"), tall = true)
         if (cat.isNotBlank()) strip("▶️ కొత్త వీడియోలు · New videos", arr("latest"))
         if (cat.isNotBlank()) strip("⭐ ఎక్కువ మంది చూసినవి · Most watched", arr("popular"))
+    }
+
+    private var mixSeed = System.nanoTime()
+    private var tubeShown = 20
+    private fun toPosts(a: JSONArray?, live: Boolean = false): List<SPost> {
+        if (a == null) return emptyList()
+        return (0 until a.length()).mapNotNull { a.optJSONObject(it) }.filter { it.optString("id").length == 11 }.map { o ->
+            val ch = o.optString("ch")
+            o.optString("chId").let { if (it.isNotBlank()) ytCh[o.optString("id")] = it }
+            SPost("yt:" + o.optString("id"), SUser("", ch.ifBlank { "YouTube" }, "", "", "", if (live || o.optBoolean("live")) "🔴" else "▶️", false, false, 0, 0, 0, false, false),
+                o.optLong("at"), o.optString("title"), "", emptyList(), o.optString("id"), ch, "", "", "", "", "YouTube · $ch", "", o.optString("cat"), "▶️", 0, false, o.optInt("views"), 0, false)
+        }
+    }
+    /** All the videos for this tab, mixed in a new order each time the page is opened: (long videos, Shorts). */
+    private fun videoFeed(): Pair<List<SPost>, List<SPost>> {
+        val cat = if (tab in sectionKeys) tab else ""
+        val k = cat.ifBlank { "all" }
+        if (System.currentTimeMillis() - (vidsAt[k] ?: 0L) > 10 * 60_000L) {
+            vidsAt[k] = System.currentTimeMillis()
+            io.execute {
+                val r = Net.get(store, "/api/videos" + (if (cat.isNotBlank()) "?cat=" + Uri.encode(cat) else ""), headers())
+                m.runOnUiThread { if (r.ok) { vids[k] = r.json; refreshIf("feed") } else vidsAt[k] = System.currentTimeMillis() - 8 * 60_000L }
+            }
+        }
+        val mineJ = if (tab == "foryou") { loadMine(); mineJson } else null
+        val v = vids[k]
+        val rnd = java.util.Random(mixSeed xor k.hashCode().toLong())
+        val live = toPosts(v?.optJSONArray("live"), live = true)
+        // For you: what is trending today, and new videos of your channels, in a new mix each time
+        val trending = toPosts(v?.optJSONArray("trending"))
+        val long = when (tab) {
+            "foryou" -> trending + toPosts(mineJ?.optJSONArray("latest")) + (if (trending.size < 20) toPosts(v?.optJSONArray("latest")) else emptyList())
+            "popular" -> toPosts(v?.optJSONArray("popular")) + trending
+            else -> toPosts(v?.optJSONArray("latest")) + toPosts(v?.optJSONArray("popular"))
+        }.shuffled(rnd)
+        val seen = HashSet<String>()
+        val tube = (live.take(2) + long).filter { seen.add(it.ytId) }
+        val sh = (toPosts(mineJ?.optJSONArray("shorts")) + toPosts(v?.optJSONArray("shorts")).take(300)).shuffled(rnd).filter { seen.add(it.ytId) }
+        return tube to sh
+    }
+    private fun loadMine() {
+        val ids = MyChannels.ids(store)
+        if (ids.isEmpty()) return
+        val key = ids.joinToString(",")
+        if (key != mineFor || System.currentTimeMillis() - mineAt > 10 * 60_000L) {
+            mineFor = key; mineAt = System.currentTimeMillis()
+            io.execute {
+                val r = try { Net.get(store, "/api/videos/mine?ch=" + Uri.encode(key), headers()) } catch (e: Exception) { null }
+                m.runOnUiThread { if (r != null && r.ok) { mineJson = r.json; refreshIf("feed") } else mineAt = System.currentTimeMillis() - 8 * 60_000L }
+            }
+        }
+    }
+    /** One video, the way YouTube shows it: the big picture, then the channel's letter, the name and the channel. */
+    private fun bigVideo(list: List<SPost>, i: Int): View {
+        val p = list[i]
+        val live = p.author.emoji == "🔴"
+        return LinearLayout(m).apply {
+            orientation = LinearLayout.VERTICAL; contentDescription = "Play " + p.title
+            val pic = Box169(m).apply { background = ui.round(Color.BLACK, 16); clipToOutline = true }
+            pic.addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP
+                Images.load("https://i.ytimg.com/vi/${p.ytId}/${if (live) "hqdefault_live" else "hqdefault"}.jpg", this, 720) }, FrameLayout.LayoutParams(-1, -1))
+            if (live) pic.addView(TextView(m).apply { text = "● LIVE"; textSize = 11f; setTextColor(Color.WHITE); typeface = Fonts.bold(context)
+                setPadding(dp(7), dp(3), dp(7), dp(3)); background = ui.round(Color.parseColor("#E62117"), 6) },
+                FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(8), dp(8)) })
+            addView(pic, LinearLayout.LayoutParams(-1, -2))
+            addView(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(9), 0, dp(10))
+                val name = p.author.name
+                val hue = floatArrayOf(((name.hashCode() and 0x7fffffff) % 360).toFloat(), 0.55f, 0.62f)
+                addView(TextView(m).apply { text = name.trim().take(1).uppercase().ifBlank { "▶" }; textSize = 15f; setTextColor(Color.WHITE); typeface = Fonts.bold(context); gravity = Gravity.CENTER
+                    background = ui.round(Color.HSVToColor(hue), 18) }, LinearLayout.LayoutParams(dp(36), dp(36)))
+                addView(ui.stack(
+                    ui.text(p.title, 14.5f, Ui.INK, bold = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END },
+                    ui.text(listOfNotNull(name, if (p.views > 0 && !live) "${num(p.views)} views" else null, if (live) "🔴 live now" else if (p.at > 0) ago(p.at) else null).joinToString(" · "), 12f, Ui.MUTED).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+                ).apply { setPadding(dp(10), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+            })
+            setOnClickListener { openVideos(list, i) }
+        }
+    }
+    /** The Shorts row: tall pictures side by side. */
+    private fun shortsShelf(all: List<SPost>) {
+        val posts = all.take(30)
+        m.add(ui.text("📱 Shorts", 16f, Ui.INK, bold = true), 10)
+        val row = LinearLayout(m).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, dp(8), 0) }
+        posts.forEachIndexed { i, p ->
+            row.addView(FrameLayout(m).apply {
+                background = ui.round(Color.BLACK, 14); clipToOutline = true; contentDescription = "Play " + p.title
+                addView(ImageView(m).apply { scaleType = ImageView.ScaleType.CENTER_CROP; Images.load("https://i.ytimg.com/vi/${p.ytId}/hqdefault.jpg", this, 480) }, FrameLayout.LayoutParams(-1, -1))
+                addView(View(m).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Color.TRANSPARENT, Color.parseColor("#CC000000"))) },
+                    FrameLayout.LayoutParams(-1, dp(90), Gravity.BOTTOM))
+                addView(TextView(m).apply { text = p.title; textSize = 12.5f; setTextColor(Color.WHITE); typeface = Fonts.bold(context); maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(8), 0, dp(8), dp(8)) },
+                    FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+                setOnClickListener { openVideos(all, i, true) }
+            }, LinearLayout.LayoutParams(dp(150), dp(266)).apply { if (i > 0) marginStart = dp(8) })
+        }
+        m.add(HorizontalScrollView(m).apply { isHorizontalScrollBarEnabled = false; addView(row) }, 8)
+        m.add(View(m), 8)
     }
 
     // "Your channels": the newest videos of the channels watched or followed in Habit (no YouTube login needed)
