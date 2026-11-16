@@ -648,6 +648,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     // microphone alone ([QuietEar]): no voice typing runs meanwhile, so no beeps and nothing starts over every second.
     private var quietEar: QuietEar? = null
     private var quietFailed = false                  // the microphone can't be used for waiting here: the old way, this turn
+    private var wokeByEar = false                    // the last try began because the waiting ear heard something
+    private var falseWakes = 0                       // ...and how often that was only noise, this turn
     private var micFgs = false                       // the pet may use the microphone while other apps are on the screen
 
     private fun feedKey() = (ears ?: Ears.usual(this))?.flattenToString() ?: "default"
@@ -668,6 +670,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val left = if (convoStay && convoOn) 3 * 60_000L - (now - convoHeardAt) else patienceMs() - (now - listenSince)
         if (left < 1_500L) return false
         endEar()
+        if (wokeByEar) { wokeByEar = false; falseWakes++ }             // noise woke it for nothing: from now only clearly louder talk
         val me = arrayOfNulls<QuietEar>(1)
         val ear = QuietEar(feedKey(),
             onTalk = { val e = me[0]; if (e != null && quietEar === e) startListening(again = true, ear = e) },   // someone talks: now the voice typing
@@ -679,6 +682,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     if (!(blocked && listenMore(false))) heardNothing(SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
                 }
             })
+        ear.strict = 1.0 + minOf(falseWakes, 4) * 0.8
         me[0] = ear
         quietEar = ear
         setListening(true)                                            // still listening (no flicker)
@@ -806,6 +810,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     // The voice typing's own beeps (each time it starts and stops) are hushed while the pet listens, when nothing else is
     // playing: the media sound is muted for those moments only and comes back right after (and before the pet talks).
     private var beepsHushed = false
+    private val hushed = ArrayList<Int>()            // the sounds this hushed (given back exactly)
     private val unhush = Runnable { hushBeeps(false) }
     private fun hushBeeps(on: Boolean) {
         main.removeCallbacks(unhush)
@@ -815,10 +820,17 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         // "music is playing" for a moment: that is the pet itself, so the beeps are hushed all the same.)
         val own = GamesActivity.shown != null || System.currentTimeMillis() - spokeAt < 3000L
         if (on && (voiceMode || (am.isMusicActive && !own))) return
-        try {
-            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, if (on) android.media.AudioManager.ADJUST_MUTE else android.media.AudioManager.ADJUST_UNMUTE, 0)
-            beepsHushed = on
-        } catch (e: Exception) { }
+        // (some phones play the beep as a system or notification sound, so those are hushed for the moment too; the ring
+        // of a phone call is never touched)
+        if (on) {
+            for (st in intArrayOf(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.STREAM_SYSTEM, android.media.AudioManager.STREAM_NOTIFICATION)) try {
+                if (!am.isStreamMute(st)) { am.adjustStreamVolume(st, android.media.AudioManager.ADJUST_MUTE, 0); hushed.add(st) }
+            } catch (e: Exception) { }
+            beepsHushed = true
+        } else {
+            for (st in hushed) try { am.adjustStreamVolume(st, android.media.AudioManager.ADJUST_UNMUTE, 0) } catch (e: Exception) { }
+            hushed.clear(); beepsHushed = false
+        }
     }
     private fun unhushSoon(ms: Long = 450) { if (beepsHushed) { main.removeCallbacks(unhush); main.postDelayed(unhush, ms) } }
 
@@ -850,14 +862,14 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun listenMore(broken: Boolean): Boolean {
         if (noMore || tapStopped || voiceMode || onPhone() || CallManager.active != null) return false
         val now = System.currentTimeMillis()
-        if (now - listenSince > patienceMs() || restarts >= 25) return false
+        if (now - listenSince > patienceMs() || restarts >= 6) return false
         if (broken || (!heardNow && now - readyAt < 2_500L)) quickMisses++
         if (broken || quickMisses >= 2) {
             val other = Ears.other(this, ears, anyKind = broken)
             if (other != null) { ears = other; quickMisses = 0 } else if (broken) return false
         }
         restarts++
-        main.postDelayed({ if (!listening && !tapStopped && !onPhone()) startListening(again = true) }, if (broken) 300L else 120L)
+        main.postDelayed({ if (!listening && !tapStopped && !onPhone()) startListening(again = true) }, if (broken) 600L else 300L + restarts * 300L)
         return true
     }
 
@@ -896,11 +908,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (!again) {
             hush()
             tapStopped = false; noMore = false
-            listenSince = System.currentTimeMillis(); heardSpeech = false; quickMisses = 0; restarts = 0; unclearTries = 0; quietFailed = false
+            listenSince = System.currentTimeMillis(); heardSpeech = false; quickMisses = 0; restarts = 0; unclearTries = 0; quietFailed = false; falseWakes = 0
             ears = Ears.start(this)
         }
         lookToken++
         readyAt = System.currentTimeMillis(); heardNow = false
+        wokeByEar = ear != null
         // a fresh voice typing for each try: a used one gets stuck on some phones
         recognizer?.let { try { it.destroy() } catch (e: Exception) { } }
         val rec = Ears.create(this, ears).also { recognizer = it }
@@ -964,6 +977,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     if (convoOn) { if (!trySpark()) endConvo(); return }
                     pet.mood = PuppyView.Mood.CONFUSED; showBubble(notHeard(te()), 6000); return
                 }
+                wokeByEar = false
                 Ears.worked(this@PetService, ears)                          // next time it starts with the voice typing that heard this
                 if (replyVoice) { replyVoice = false; replyByVoice(heard); return }
                 if (convoAsking && convoAnswer(heard)) return

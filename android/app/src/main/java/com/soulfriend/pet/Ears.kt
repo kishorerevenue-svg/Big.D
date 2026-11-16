@@ -86,6 +86,8 @@ class QuietEar(val key: String, private val onTalk: () -> Unit, private val onDo
     @Volatile private var stuck = false
     @Volatile private var cap = 65536                                         // how much the pipe holds
     @Volatile private var attached = false
+    /** Above 1: only clearly louder talk counts (after noise woke it for nothing). */
+    @Volatile var strict = 1.0
 
     @android.annotation.SuppressLint("MissingPermission")
     fun start(maxMs: Long): Boolean {
@@ -134,7 +136,7 @@ class QuietEar(val key: String, private val onTalk: () -> Unit, private val onDo
                     if (rms == 0.0) zeros++
                     if (frames == 75 && zeros >= 74) { main.post { if (running) { running = false; onDone(true) } }; break }   // 1.5 s of only silence: not ours here
                     if (floor < 0 || (frames <= 10 && rms < floor)) floor = rms   // starts from the quietest of the first moments
-                    if (frames > 5 && rms > maxOf(floor * 3.0, 250.0)) { if (++loud >= 3) { talked = true; main.post { if (running) onTalk() } } }
+                    if (frames > 5 && rms > maxOf(floor * 3.0, 250.0) * strict) { if (++loud >= (3 * strict).toInt()) { talked = true; main.post { if (running) onTalk() } } }
                     else { loud = 0; floor = floor * 0.95 + rms * 0.05 }       // learns how quiet the room is
                     if (android.os.SystemClock.elapsedRealtime() > end) { main.post { if (running) { running = false; onDone(false) } }; break }
                 }
