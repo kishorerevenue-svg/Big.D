@@ -561,11 +561,12 @@ module.exports = function makeSkills({ DATA_DIR, learn, files, MODEL, ownBrain }
 
   // ---------- filling a template ----------
   function today() { return new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-"); }
+  // (a "Dt.17.11.2026" at the end of the Rc.No. is left out: the date has its own line)
   function officeVals(o) {
     o = o && typeof o === "object" ? o : {};
     const year = today().slice(-4);
     return { o_desig: str(o.desig, 60), o_office: str(o.office, 100), o_district: str(o.district, 60), o_name: str(o.name, 60),
-      o_rc: str(o.ref, 40) || "Rc.No." + "\u00A0".repeat(14) + "/" + year, o_contact: str(o.contact, 80) };   // (spaces the office fills by hand)
+      o_rc: str(o.ref, 40).replace(/[\s,]*(?:Dt|Dated|Date)[.:]?\s*[\d./-]*\s*$/i, "") || "Rc.No." + "\u00A0".repeat(14) + "/" + year, o_contact: str(o.contact, 80) };   // (spaces the office fills by hand)
   }
   const items = v => String(v || "").split(/\r?\n|;/).map(x => x.replace(/^\s*(\d+[.)]|[-•*])\s*/, "").trim()).filter(Boolean).slice(0, 60);
   function fillText(text, vals, counter) {

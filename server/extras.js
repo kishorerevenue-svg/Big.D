@@ -183,9 +183,13 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     const papers = loadPapers(body.docsId).concat(readPapers(body.docs)).slice(0, 10);
     if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above (an earlier letter, an order, a petition): take the references, numbers, dates and facts from them.`);
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
-    const out = await learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
-      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 8000, search: false, model: SMART_MODEL || MODEL });
-    const o = parseJson(out.text);
+    const ask = model => learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
+      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 8000, search: false, model });
+    let out;
+    try { out = await ask(SMART_MODEL || MODEL); }
+    catch (e) { if (e.user || !SMART_MODEL || SMART_MODEL === MODEL) throw e; console.error("Letter: the big AI couldn't (" + (e.status || "") + "), the regular one tries"); out = await ask(MODEL); }
+    let o = parseJson(out.text);
+    if ((!o || !o.content) && SMART_MODEL && SMART_MODEL !== MODEL) o = parseJson((await ask(MODEL)).text);
     if (!o || !o.content) throw new Error("empty_letter");
     const f = await files.create({ type: "make_file", format: o.format === "xlsx" ? "xlsx" : "docx", title: str(o.title, 80) || str(body.title, 80) || "Letter", content: o.content });
     if (skills) skills.learnFrom(body, { title: str(o.title, 80), format: o.format, content: o.content });   // Habit learns this kind of file (in the background)
@@ -362,10 +366,17 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         if (str(body.request, 2000).length < 3 && !hasPapers && !str(body.docType, 60) && !(!plan && str(body.title, 80))) { send(res, 400, { error: "Tell me what you need first." }, origin); return true; }
         // Habit's own brain makes the file when Claude can't: no key, Claude is resting (monthly limit, no credit),
         // the person's free messages for today are used up, Claude fails, or the plan came from the own brain.
-        let why = !plan && str(body.skill, 60) ? "own" : !API_KEY ? "nokey" : learn.claudeOut() ? "resting" : "";
-        if (!why) { const lim = dailyCheck(req, "msg"); if (lim) { if (!skills) { send(res, 429, { error: lim }, origin); return true; } why = "limit"; } }
+        // papers (an earlier letter, a report…) can only be read by the AI: then it always tries the AI (and its backups),
+        // and never makes a letter without them
+        const withDocs = hasPapers || /^[a-f0-9]{24}$/.test(String(body.docsId || "")) || str(body.notes, 50).length > 0;
+        let why = !plan && str(body.skill, 60) && !withDocs ? "own" : !API_KEY ? "nokey" : learn.claudeOut() && !withDocs ? "resting" : "";
+        if (!why && !withDocs) { const lim = dailyCheck(req, "msg"); if (lim) { if (!skills) { send(res, 429, { error: lim }, origin); return true; } why = "limit"; } }
         if (why && !skills) { send(res, 500, { error: "Server has no API key yet." }, origin); return true; }
-        const own = async w => send(res, 200, plan ? skills.ownPlan(body, w) : await skills.ownMake(body, req, baseUrl), origin);
+        const own = async w => {
+          console.log("Letter: made by our own brain (" + w + ")");
+          if (withDocs && !plan) { send(res, 503, { error: "I couldn't read your papers just now (the AI is busy). Your answers are kept: please tap Make again in a few minutes. మీ పత్రాలను ఇప్పుడు చదవలేకపోయాను. కొన్ని నిమిషాల తర్వాత మళ్లీ Make నొక్కండి." }, origin); return; }
+          send(res, 200, plan ? skills.ownPlan(body, w) : await skills.ownMake(body, req, baseUrl), origin);
+        };
         if (why) { await own(why); return true; }
         if (hasPapers && !papersAllowed(req)) { send(res, 429, { error: "You've reached today's limit for reading papers. Please try again tomorrow." }, origin); return true; }
         try { send(res, 200, plan ? await letterPlan(body) : await letterMake(body, req), origin); }
