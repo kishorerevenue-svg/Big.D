@@ -97,7 +97,7 @@ class HeadWatch(private val ctx: Context, private val onSide: (right: Boolean) -
     private var lastKindAt = 0L            // …and when: coming back from it isn't a move the other way
     /** How big a move must be: 0 small moves, 1 normal, 2 big moves only. */
     @Volatile var level = 1
-    /** Locked: nods do nothing (a move of the head to the right locks, to the left unlocks). */
+    /** Locked: nods do nothing (a move of the head to either side locks it, and the next one unlocks). */
     @Volatile var locked = false
 
     // A quick move of the head up or down (from where it rests) is a nod: it is taken at once, as the head moves (a head
@@ -139,7 +139,7 @@ class HeadWatch(private val ctx: Context, private val onSide: (right: Boolean) -
         quietUntil = now + 900
         main.post {
             if (!on) return@post
-            if (kind >= 3) { locked = kind == 3; onSide(kind == 3) } else if (!locked) onNod(kind == 1)
+            if (kind >= 3) { locked = !locked; onSide(locked) } else if (!locked) onNod(kind == 1)     // to either side: lock / unlock
         }
     }
 
