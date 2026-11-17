@@ -59,7 +59,11 @@ class LetterHelper(private val m: MainActivity) {
     private var editOffice = false
     private var officeDraft: JSONObject? = null   // the office details being typed (not saved yet)
 
-    private var stage = "start"            // start, planning, questions, making, done
+    private var stage = "start"            // start, planning, questions, making, drafting, rough, finishing, done
+    private val pieces = mutableListOf<String>()   // what they wrote about the matter, added piece by piece (➕ Add)
+    private var rough: JSONObject? = null   // the rough copy: title, format, content, lines
+    private var change = ""                 // what to change in the rough copy
+    private var editingAt = 0L              // the "My letters" entry being changed (0: a new letter)
     private var request = ""
     private var letterLang = m.store.letterLang   // "" = same as the request, "en" or "te" (remembered)
     private var speakLang = ""             // the language the answers are spoken in ("" = the letter's language)
@@ -99,14 +103,17 @@ class LetterHelper(private val m: MainActivity) {
     }
 
     /** A letter is half filled (its questions on the screen, some answered). */
-    fun inProgress() = stage == "questions" && answers.values.any { it.isNotBlank() }
+    fun inProgress() = (stage == "questions" && answers.values.any { it.isNotBlank() }) || stage == "rough" || (stage == "start" && pieces.isNotEmpty())
 
     /**
      * The pet heard [text] while this letter's questions are on the screen: it goes into the answer being filled (the one
      * listening, else the first empty one, else "Anything else"), not into a new letter. Returns where it went, or null.
      */
     fun takeVoice(text: String): String? {
-        if (!m.resumedNow || m.tab != "files" || stage != "questions" || text.isBlank()) return null
+        if (!m.resumedNow || m.tab != "files" || text.isBlank()) return null
+        if (stage == "rough") { change = (change.trim() + " " + text.trim()).trim(); m.render(); fields["change"]?.let { m.scrollToView(it) }; return "What to change" }
+        if (stage == "start" && pieces.isNotEmpty()) { request = (request.trim() + " " + text.trim()).trim(); m.render(); fields["request"]?.let { m.scrollToView(it) }; return "The matter" }
+        if (stage != "questions") return null
         val list = asked()
         val q = list.firstOrNull { it.id == listeningId } ?: list.firstOrNull { answers[it.id].isNullOrBlank() }
         val id = q?.id ?: "note"
@@ -118,7 +125,7 @@ class LetterHelper(private val m: MainActivity) {
     }
 
     /** The pet's voice typing language while this letter's questions are on the screen, or null. */
-    fun petLang(): String? = if (m.resumedNow && m.tab == "files" && stage == "questions") voiceLang() else null
+    fun petLang(): String? = if (m.resumedNow && m.tab == "files" && (stage == "questions" || stage == "rough")) voiceLang() else null
 
     /** Voice typing's language: the one chosen for speaking, else the letter's ("English" letter: English words, not Telugu letters). */
     private fun voiceLang(): String = if (speakLang.ifEmpty { letterLang.ifEmpty { store.lang } } == "en") "en-IN" else "te-IN"
@@ -129,6 +136,9 @@ class LetterHelper(private val m: MainActivity) {
         when (stage) {
             "planning" -> m.add(busy(if (papers.isNotEmpty()) "📄 Reading your papers and planning the questions… (up to a minute)" else "🐾 Thinking about what your letter needs…"), 12)
             "making" -> m.add(busy("✍️ Writing your letter… this can take up to a minute."), 12)
+            "drafting" -> m.add(busy(if (papers.isNotEmpty() || docsId.isNotBlank()) "📄 Reading your papers and writing the rough copy… (up to a minute)" else "✍️ Writing the rough copy… (up to a minute)"), 12)
+            "finishing" -> m.add(busy("📄 Making the final Word file…"), 12)
+            "rough" -> buildRough()
             "questions" -> buildQuestions()
             "done" -> buildDone()
             else -> buildStart()
@@ -179,11 +189,7 @@ class LetterHelper(private val m: MainActivity) {
     private fun buildPublicStart() {
         m.add(ui.section("✨ Letter helper · లేఖ సహాయకుడు",
             "Tell me what you need. I'll ask each detail, you answer by typing or by voice 🎤, and I'll make a complete letter. Easy for everyone, even elders.").apply {
-            val box = ui.input("What do you need? e.g. \"Leave letter for 2 days\"", request, multi = true)
-            box.onText { request = it }
-            fields["request"] = box
-            put(box, 12)
-            put(ui.row(mic("request", box, append = true)), 8)
+            matterBlock(this, "What do you need? Write everything about it here, e.g. \"Leave letter for 2 days, from 18-11 to 19-11, for my sister's marriage\"")
             put(ui.text("Or tap one:", 13f, Ui.MUTED), 14)
             val ideas = listOf("Leave letter", "Application", "Complaint letter", "Request letter", "Bank letter", "Excel list")
             ideas.chunked(2).forEach { row ->
@@ -198,9 +204,10 @@ class LetterHelper(private val m: MainActivity) {
             papersBlock(this)
             languageChips(this)
             if (error.isNotBlank()) put(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
-            put(ui.button("➜ Next: ask me the details", "primary") { plan() }, 14)
-            put(ui.button("I wrote everything: make it now, no questions", "ghost") { direct() }, 10)
+            put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
+            put(ui.button("Or: ask me the details one by one", "ghost") { request = matterAll(); plan() }, 10)
         }, 12)
+        myLetters()
     }
 
     private fun buildOfficeStart() {
@@ -216,19 +223,17 @@ class LetterHelper(private val m: MainActivity) {
                     }
                 }, 6)
             }
-            put(ui.text("2. What is the matter?", 14f, Ui.INK, bold = true), 16)
-            val box = ui.input("e.g. \"Report to the RDO on a petition for name correction in the land records\"", request, multi = true)
-            box.onText { request = it }
-            fields["request"] = box
-            put(box, 8)
-            put(ui.row(mic("request", box, append = true)), 8)
+            put(ui.text("2. What is the matter? (write or speak everything here; ➕ Add more as many times as you need)", 14f, Ui.INK, bold = true), 16)
+            matterBlock(this, "e.g. \"Report to the RDO on the joint survey in Sy.No. …: who objected, what was found…\"")
             put(ui.text("3. Related papers (optional)", 14f, Ui.INK, bold = true), 16)
             papersBlock(this)
             languageChips(this)
             if (error.isNotBlank()) put(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
-            put(ui.button("➜ Next: ask me the details", "primary") { plan() }, 14)
+            put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
+            put(ui.button("Or: ask me the details one by one", "ghost") { request = matterAll(); plan() }, 10)
         }, 12)
         officeCard()
+        myLetters()
         m.add(ui.text("Papers you add are read by Claude AI only to write this document, and kept on the Habit server only until it is made (at most 6 hours). " +
             "\"Hide personal details\" doesn't cover photos and PDFs. Don't add secret or classified papers, and follow your office's rules on using AI tools.", 12f, Ui.MUTED), 10)
     }
@@ -672,11 +677,220 @@ class LetterHelper(private val m: MainActivity) {
         if (preview.isNotBlank()) m.add(ui.section("Preview").apply {
             put(ui.text(preview, 14.5f, Ui.INK).apply { setTextIsSelectable(true); setPadding(m.dp(12), m.dp(12), m.dp(12), m.dp(12)); background = ui.round(Ui.FIELD, 12, Ui.LINE) }, 10)
         }, 12)
-        m.add(ui.button("✏️ Change my answers and make it again") { stage = "questions"; result = null; m.render(); m.scrollTop() }, 12)
+        if (rough != null) m.add(ui.button("✏️ Change this letter · ఈ లేఖ మార్చు", "primary") { stage = "rough"; result = null; m.render(); m.scrollTop() }, 12)
+        else m.add(ui.button("✏️ Change my answers and make it again") { stage = "questions"; result = null; m.render(); m.scrollTop() }, 12)
         m.add(ui.button("➕ New letter", "ghost") { reset() }, 8)
         m.add(ui.text("🚩 Something wrong or offensive in this letter? Report it", 13f, Ui.MUTED).apply {
             setPadding(0, m.dp(6), 0, m.dp(6)); setOnClickListener { m.reportAi("letter helper", preview.ifBlank { name }, request) }
         }, 14)
+        myLetters()
+    }
+
+    // ---------------- one box for the matter (➕ add more, as many times as needed) ----------------
+    private fun matterAll() = (pieces + request.trim()).filter { it.isNotBlank() }.joinToString("\n")
+
+    private fun matterBlock(sec: LinearLayout, hint: String) {
+        pieces.forEachIndexed { i, s ->
+            sec.put(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(m.dp(10), m.dp(8), m.dp(4), m.dp(8)); background = ui.round(Ui.FIELD, 12, Ui.LINE)
+                addView(ui.text("${i + 1}.", 14f, Ui.TEAL_DARK, bold = true), LinearLayout.LayoutParams(m.dp(30), -2))
+                addView(ui.text(s, 14f, Ui.INK).apply { maxLines = 4; ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(ui.button("✕", "ghost") { pieces.removeAt(i); m.render() }.apply { contentDescription = "Remove part ${i + 1}" })
+            }, 6)
+        }
+        val box = ui.input(if (pieces.isEmpty()) hint else "Anything more? Write or speak, then ➕ Add", request, multi = true)
+        box.minLines = 4
+        box.onText { request = it }
+        fields["request"] = box
+        sec.put(box, 8)
+        sec.put(ui.row(mic("request", box, append = true), ui.button("➕ Add · జోడించు", "sun") {
+            val t = request.trim()
+            if (t.isEmpty()) { m.toast("Write or speak something first."); return@button }
+            m.stopListening(); listeningId = ""
+            pieces.add(t); request = ""; m.render()
+            fields["request"]?.let { m.scrollToView(it) }
+        }), 8)
+        if (pieces.isNotEmpty()) sec.put(ui.text("${pieces.size} part(s) added. Add more, or prepare the rough copy.", 12.5f, Ui.MUTED), 4)
+    }
+
+    // ---------------- the rough copy (numbered lines) → changes → the final file ----------------
+    private fun docsBody(body: JSONObject) {
+        if (docsId.isNotBlank()) body.put("docsId", docsId)
+        else if (papers.isNotEmpty()) body.put("docs", JSONArray().apply {
+            papers.forEach { p -> put(JSONObject().put("name", p.name).put("mediaType", p.mime).put("data", Base64.encodeToString(p.data, Base64.NO_WRAP))) }
+        })
+    }
+
+    private fun draft() {
+        val all = matterAll()
+        if (all.length < 3 && papers.isEmpty()) { m.toast(if (office) "Write the matter (or add the papers) first." else "Tell me what you need first."); return }
+        if (addingPaper) { m.toast("Wait a moment: the paper is still getting ready."); return }
+        m.stopListening(); listeningId = ""
+        if (request.isNotBlank()) { pieces.add(request.trim()); request = "" }
+        stage = "drafting"; error = ""; m.render(); m.scrollTop()
+        val body = JSONObject().put("request", Privacy.maybe(store, pieces.joinToString("\n") { "- $it" })).put("lang", letterLang.ifEmpty { store.lang }).put("mode", store.letterMode)
+        if (office) { if (officeType.isNotEmpty()) body.put("docType", officeType); body.put("office", store.officeInfo) }
+        docsBody(body)
+        val heavy = body.has("docs")
+        m.io.execute {
+            val r = Net.post(store, "/api/letter/draft", body, emptyMap(), if (heavy) 240_000 else 150_000)
+            m.runOnUiThread {
+                if (!r.ok || r.json.optJSONArray("lines") == null) { stage = "start"; error = r.error("Couldn't write the rough copy. Please try again."); m.render(); return@runOnUiThread }
+                rough = r.json; change = ""; editingAt = 0L
+                r.json.optString("docsId").takeIf { it.isNotBlank() }?.let { docsId = it }
+                stage = "rough"; m.render(); m.scrollTop()
+                if (store.voiceOn) m.speakOut(if (store.lang == "en") "Here is the rough copy. Tell me what to change, by line number." else "రఫ్ కాపీ సిద్ధం. ఏ లైన్‌లో ఏమి మార్చాలో చెప్పండి.")
+            }
+        }
+    }
+
+    private fun buildRough() {
+        val r = rough ?: run { stage = "start"; buildStart(); return }
+        val lines = r.optJSONArray("lines") ?: JSONArray()
+        m.add(ui.card(Ui.SUN_SOFT).apply {
+            addView(ui.text("📝 Rough copy · రఫ్ కాపీ", 19f, Ui.INK, bold = true))
+            put(ui.text(r.optString("title", "Letter") + " · the line numbers are only here, not in the final letter", 13f, Ui.MUTED), 4)
+        }, 12)
+        m.add(ui.card().apply {
+            for (i in 0 until lines.length()) {
+                put(LinearLayout(m).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(ui.text("${i + 1}", 13f, Ui.TEAL_DARK, bold = true).apply { gravity = Gravity.END; setPadding(0, m.dp(1), m.dp(10), 0) }, LinearLayout.LayoutParams(m.dp(38), -2))
+                    addView(ui.text(lines.optString(i), 14.5f, Ui.INK).apply { setTextIsSelectable(true); setLineSpacing(0f, 1.15f) }, LinearLayout.LayoutParams(0, -2, 1f))
+                }, if (i == 0) 0 else 6)
+            }
+        }, 10)
+        m.add(ui.section("✏️ What to change? · ఏమి మార్చాలి?",
+            "Say or write it with the line number. e.g. \"line 5: the date is 12-11-2026\", \"after line 9 add that the survey was stopped\", \"10వ లైన్ తీసేయి\"").apply {
+            val box = ui.input("Your change…", change, multi = true)
+            box.minLines = 3
+            box.onText { change = it }
+            fields["change"] = box
+            put(box, 8)
+            put(ui.row(mic("change", box, append = true)), 8)
+            if (error.isNotBlank()) put(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 10)
+            put(ui.button("✏️ Make this change · మార్చు", "primary") { revise() }, 12)
+        }, 12)
+        m.add(ui.button("✅ Final copy: make the Word file · ఫైనల్ కాపీ", "sun") { finalCopy() }, 14)
+        m.add(ui.button("← Add more to the matter and write it again", "ghost") { stage = "start"; m.render(); m.scrollTop() }, 8)
+        m.add(ui.button("↺ Start over", "ghost") { reset() }, 6)
+    }
+
+    private fun revise() {
+        val r = rough ?: return
+        if (change.trim().length < 2) { m.toast("Write or speak what to change first."); return }
+        m.stopListening(); listeningId = ""
+        stage = "drafting"; error = ""; m.render()
+        val body = JSONObject().put("content", r.optJSONObject("content")).put("title", r.optString("title")).put("format", r.optString("format", "docx"))
+            .put("change", Privacy.maybe(store, change.trim())).put("lang", letterLang.ifEmpty { store.lang }).put("mode", store.letterMode)
+        if (office) body.put("office", store.officeInfo)
+        if (docsId.isNotBlank()) body.put("docsId", docsId)
+        m.io.execute {
+            val x = Net.post(store, "/api/letter/revise", body, emptyMap(), 150_000)
+            m.runOnUiThread {
+                stage = "rough"
+                if (!x.ok || x.json.optJSONArray("lines") == null) { error = x.error("Couldn't make the change. Please try again."); m.render(); return@runOnUiThread }
+                rough = x.json; change = ""; m.render(); m.scrollTop()
+                m.toast("✓ Changed. Read it once more.")
+            }
+        }
+    }
+
+    private fun finalCopy() {
+        val r = rough ?: return
+        m.stopListening(); listeningId = ""
+        stage = "finishing"; error = ""; m.render()
+        val body = JSONObject().put("content", r.optJSONObject("content")).put("title", r.optString("title")).put("format", r.optString("format", "docx"))
+        m.io.execute {
+            val x = Net.post(store, "/api/letter/final", body, emptyMap(), 90_000)
+            m.runOnUiThread {
+                if (!x.ok || !x.json.optString("url").startsWith(store.server + "/files/")) { stage = "rough"; error = x.error("Couldn't make the file. Please try again."); m.render(); return@runOnUiThread }
+                val lines = r.optJSONArray("lines") ?: JSONArray()
+                result = JSONObject(x.json.toString()).put("preview", (0 until lines.length()).joinToString("\n") { lines.optString(it) })
+                fileId = Actions(m) { _, _ -> }.downloadFile(x.json.optString("url"), x.json.optString("name", "Letter.docx")) ?: -1L
+                keepLetter(r, x.json)
+                stage = "done"; m.render(); m.scrollTop()
+            }
+        }
+    }
+
+    /** Saved in "My letters" (on this phone): the file and its text, so it can be opened, shared or changed later. */
+    private fun keepLetter(r: JSONObject, file: JSONObject) {
+        val at = if (editingAt > 0) editingAt else System.currentTimeMillis()
+        val e = JSONObject().put("at", at).put("when", System.currentTimeMillis()).put("title", r.optString("title", "Letter")).put("format", r.optString("format", "docx"))
+            .put("name", file.optString("name")).put("url", file.optString("url")).put("file", fileId).put("mode", store.letterMode)
+            .put("content", r.optJSONObject("content")).put("lines", r.optJSONArray("lines"))
+        val old = store.letters
+        val list = JSONArray().put(e)
+        for (i in 0 until old.length()) old.optJSONObject(i)?.let { if (it.optLong("at") != at && list.length() < 30) list.put(it) }
+        store.letters = list
+        editingAt = at
+    }
+
+    private fun myLetters() {
+        val list = store.letters
+        if (list.length() == 0) return
+        m.add(ui.section("📂 My letters · నా లేఖలు (${list.length()})", "Kept on this phone. Open, share, or change any of them.").apply {
+            for (i in 0 until list.length()) {
+                val e = list.optJSONObject(i) ?: continue
+                val day = java.text.SimpleDateFormat("dd-MM-yyyy, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date(e.optLong("when", e.optLong("at"))))
+                put(LinearLayout(m).apply {
+                    orientation = LinearLayout.VERTICAL; setPadding(m.dp(12), m.dp(10), m.dp(12), m.dp(10)); background = ui.round(Ui.FIELD, 14, Ui.LINE)
+                    addView(ui.text((if (e.optString("format") == "xlsx") "📊 " else "📄 ") + e.optString("title", "Letter"), 15f, Ui.INK, bold = true))
+                    addView(ui.text(day, 12f, Ui.MUTED))
+                    addView(ui.row(ui.button("📖 Open", "soft") { openSaved(e, share = false) }, ui.button("📤 Share", "soft") { openSaved(e, share = true) }, gap = 6),
+                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = m.dp(8) })
+                    addView(ui.row(ui.button("✏️ Change", "primary") { changeSaved(e) }, ui.button("🗑 Remove", "ghost") { removeSaved(e) }, gap = 6),
+                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = m.dp(6) })
+                }, 8)
+            }
+        }, 12)
+    }
+
+    private fun changeSaved(e: JSONObject) {
+        m.stopListening(); listeningId = ""
+        rough = JSONObject().put("title", e.optString("title")).put("format", e.optString("format", "docx")).put("content", e.optJSONObject("content")).put("lines", e.optJSONArray("lines") ?: JSONArray())
+        editingAt = e.optLong("at"); change = ""; error = ""; result = null; docsId = ""
+        if (e.optString("mode").isNotBlank()) store.letterMode = e.optString("mode")
+        stage = "rough"; m.render(); m.scrollTop()
+    }
+
+    private fun removeSaved(e: JSONObject) {
+        AlertDialog.Builder(m).setMessage("Remove \"${e.optString("title")}\" from My letters? (The file in Downloads stays.)")
+            .setPositiveButton("Remove") { _, _ ->
+                val old = store.letters; val list = JSONArray()
+                for (i in 0 until old.length()) old.optJSONObject(i)?.let { if (it.optLong("at") != e.optLong("at")) list.put(it) }
+                store.letters = list; m.render()
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    /** Opens (or shares) a saved letter; if its file is gone from Downloads, it is made again from its text. */
+    private fun openSaved(e: JSONObject, share: Boolean) {
+        val xl = e.optString("format") == "xlsx"
+        val u = try { e.optLong("file", -1L).takeIf { it >= 0 }?.let { m.getSystemService(DownloadManager::class.java).getUriForDownloadedFile(it) } } catch (x: Exception) { null }
+        if (u != null) { send(u, xl, share); return }
+        m.toast("Getting the file ready…")
+        val body = JSONObject().put("content", e.optJSONObject("content")).put("title", e.optString("title")).put("format", e.optString("format", "docx"))
+        m.io.execute {
+            val x = Net.post(store, "/api/letter/final", body, emptyMap(), 90_000)
+            m.runOnUiThread {
+                if (!x.ok) { m.toast(x.error("Couldn't get the file. Check the internet.")); return@runOnUiThread }
+                val id = Actions(m) { _, _ -> }.downloadFile(x.json.optString("url"), x.json.optString("name", "Letter.docx")) ?: -1L
+                val old = store.letters
+                for (i in 0 until old.length()) old.optJSONObject(i)?.let { if (it.optLong("at") == e.optLong("at")) it.put("file", id) }
+                store.letters = old
+                m.toast("Downloading… tap Open again in a moment.")
+            }
+        }
+    }
+
+    private fun send(u: Uri, xl: Boolean, share: Boolean) {
+        m.leavingForSystemScreen = true
+        try {
+            if (share) m.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(mime(xl)).putExtra(Intent.EXTRA_STREAM, u).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share your letter"))
+            else m.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(u, mime(xl)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (x: Exception) { m.toast("Install Microsoft Word or Google Docs to open it.") }
     }
 
     private fun mime(xl: Boolean) = if (xl) "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -698,6 +912,7 @@ class LetterHelper(private val m: MainActivity) {
     private fun reset() {
         m.stopListening(); m.stopTalking()
         stage = "start"; request = ""; result = null; error = ""; ownSkill = ""; questions.clear(); extras.clear(); answers.clear(); chosen.clear()
+        pieces.clear(); rough = null; change = ""; editingAt = 0L
         voiceAll = false; listeningId = ""
         papers.clear(); docsId = ""; notes = ""; summary = ""; officeType = ""; showNotes = false
         m.render(); m.scrollTop()
