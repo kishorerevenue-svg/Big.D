@@ -213,7 +213,12 @@ class StoryReader : Activity() {
         autoBtn.text = if (auto) "⏸  Reels" else "▶  Reels"
         autoBtn.background = ui.round(Color.parseColor(if (auto) "#E8336D" else "#77000000"), 21)
         autoBtn.contentDescription = if (auto) "Stop the news reels" else "Play the news like a video"
-        if (auto) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        awake()
+    }
+
+    /** The screen stays on while the reels play or a video plays here. */
+    private fun awake() {
+        if (auto || webAt >= 0 || fileAt >= 0) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -603,6 +608,7 @@ class StoryReader : Activity() {
             "if(!m)return;if(m.event=='infoDelivery'||m.event=='initialDelivery')ok=true;if(m.event=='onError'&&window.HabitTube)HabitTube.err(+m.info||0);});</script></body></html>"
         w.loadDataWithBaseURL("$origin/", html, "text/html", "utf-8", null)
         webAt = k
+        awake()
     }
 
     /** YouTube won't play this one inside apps: its picture and one button to watch it on YouTube (no error text). */
@@ -632,6 +638,7 @@ class StoryReader : Activity() {
         w.loadUrl("about:blank")   // stops the sound at once
         (w.parent as? ViewGroup)?.removeView(w)
         webAt = -1
+        awake()
     }
 
     /** A video posted from a phone, played at the top of page [k] (looping). */
@@ -641,6 +648,7 @@ class StoryReader : Activity() {
         val vv = hd.video ?: return
         val p = list[k]
         fileAt = k
+        awake()
         hd.sign?.visibility = View.GONE
         vv.setOnPreparedListener { mp -> mp.isLooping = true; if (fileAt == k) { vv.start(); hd.poster?.visibility = View.INVISIBLE } }
         vv.setOnErrorListener { _, _, _ -> if (fileAt == k) { hd.sign?.text = "⚠"; hd.sign?.visibility = View.VISIBLE; hd.poster?.visibility = View.VISIBLE }; true }
@@ -649,6 +657,7 @@ class StoryReader : Activity() {
 
     private fun stopFile() {
         val k = fileAt; fileAt = -1
+        awake()
         val hd = pages.getOrNull(k)?.tag as? Holder ?: return
         try { hd.video?.stopPlayback() } catch (e: Exception) { }
         hd.poster?.visibility = View.VISIBLE

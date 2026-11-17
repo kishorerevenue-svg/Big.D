@@ -85,6 +85,7 @@ class MediaViewer : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)   // the screen stays on while watching or playing
         if (items.isEmpty()) { finish(); return }
         // a list of long YouTube videos: the screen made for those (the video at the top, the others under it)
         if (items.all { it.kind == "video" }) {
