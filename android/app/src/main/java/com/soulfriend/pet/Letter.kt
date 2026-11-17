@@ -98,8 +98,12 @@ class LetterHelper(private val m: MainActivity) {
             if (store.letterMode != mode) { m.stopListening(); listeningId = ""; store.letterMode = mode }
             papers.clear(); docsId = ""; notes = ""; summary = ""
         }
-        request = req.trim(); result = null; error = ""
-        if (request.length >= 3) plan() else { stage = "start"; m.render() }
+        result = null; error = ""
+        if (stage != "start" || rough != null) { pieces.clear(); rough = null; change = ""; editingAt = 0L; questions.clear(); answers.clear() }
+        if (req.trim().length >= 3) pieces.add(req.trim())
+        request = ""; stage = "start"; m.render(); m.scrollTop()
+        if (store.voiceOn && req.trim().length >= 3) m.speakOut(if (store.lang == "en") "Add all the details in the box, and the papers if any. Then tap Prepare the rough copy."
+            else "వివరాలన్నీ బాక్స్‌లో చెప్పండి, పత్రాలు ఉంటే జోడించండి. తర్వాత రఫ్ కాపీ నొక్కండి.")
     }
 
     /** A letter is half filled (its questions on the screen, some answered). */
@@ -186,9 +190,18 @@ class LetterHelper(private val m: MainActivity) {
         store.letterMode = mode; error = ""; m.render()
     }
 
+    /** "📥 My letters (n)" on top: goes to the downloaded letters (each can be opened, shared or changed). */
+    private fun lettersButton() {
+        val n = store.letters.length()
+        if (n == 0) return
+        m.add(ui.button("📥 Downloaded letters · నా లేఖలు ($n)", "soft") { lettersView?.let { m.scrollToView(it) } }, 8)
+    }
+    private var lettersView: View? = null
+
     private fun buildPublicStart() {
+        lettersButton()
         m.add(ui.section("✨ Letter helper · లేఖ సహాయకుడు",
-            "Tell me what you need. I'll ask each detail, you answer by typing or by voice 🎤, and I'll make a complete letter. Easy for everyone, even elders.").apply {
+            "Write or speak 🎤 everything in one box (➕ Add more as many times as you need). I'll write a rough copy with line numbers; tell me what to change, then get the final Word file.").apply {
             matterBlock(this, "What do you need? Write everything about it here, e.g. \"Leave letter for 2 days, from 18-11 to 19-11, for my sister's marriage\"")
             put(ui.text("Or tap one:", 13f, Ui.MUTED), 14)
             val ideas = listOf("Leave letter", "Application", "Complaint letter", "Request letter", "Bank letter", "Excel list")
@@ -196,7 +209,7 @@ class LetterHelper(private val m: MainActivity) {
                 put(LinearLayout(m).apply {
                     orientation = LinearLayout.HORIZONTAL
                     row.forEachIndexed { i, s ->
-                        addView(ui.chip(s, false) { request = s; plan() }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = m.dp(6) })
+                        addView(ui.chip(s, false) { request = (s + ": " + request).trim().trimEnd(':'); m.render(); fields["request"]?.let { b -> b.requestFocus(); (b as? EditText)?.setSelection(b.text.length) } }, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = m.dp(6) })
                     }
                 }, 6)
             }
@@ -205,12 +218,12 @@ class LetterHelper(private val m: MainActivity) {
             languageChips(this)
             if (error.isNotBlank()) put(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
             put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
-            put(ui.button("Or: ask me the details one by one", "ghost") { request = matterAll(); plan() }, 10)
         }, 12)
         myLetters()
     }
 
     private fun buildOfficeStart() {
+        lettersButton()
         m.add(ui.section("🏢 Office letters · కార్యాలయ లేఖలు",
             "Letters, reports, memos, proceedings and notices in office format. Add the petition or the earlier letter, and I'll read it first.").apply {
             put(ui.text("1. What do you want to prepare?", 14f, Ui.INK, bold = true), 12)
@@ -230,7 +243,6 @@ class LetterHelper(private val m: MainActivity) {
             languageChips(this)
             if (error.isNotBlank()) put(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
             put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
-            put(ui.button("Or: ask me the details one by one", "ghost") { request = matterAll(); plan() }, 10)
         }, 12)
         officeCard()
         myLetters()
@@ -831,7 +843,8 @@ class LetterHelper(private val m: MainActivity) {
     private fun myLetters() {
         val list = store.letters
         if (list.length() == 0) return
-        m.add(ui.section("📂 My letters · నా లేఖలు (${list.length()})", "Kept on this phone. Open, share, or change any of them.").apply {
+        m.add(ui.section("📥 Downloaded letters · నా లేఖలు (${list.length()})", "Kept on this phone and in Downloads. Open, share, or ✏️ change any of them: the rough copy with line numbers opens again.").apply {
+            lettersView = this
             for (i in 0 until list.length()) {
                 val e = list.optJSONObject(i) ?: continue
                 val day = java.text.SimpleDateFormat("dd-MM-yyyy, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date(e.optLong("when", e.optLong("at"))))
