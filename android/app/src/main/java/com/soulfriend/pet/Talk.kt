@@ -130,4 +130,23 @@ object Talk {
         if (PLAY_WHAT.replace(q, "").isBlank()) q = if (Regex("[\\u0C00-\\u0C7F]").containsMatchIn(t)) "తెలుగు $q".trim() else "Telugu $q".trim()
         return q.take(100) to short
     }
+
+    // A call through Habit: "హ్యాబిట్ ద్వారా రోజాకి కాల్ చేయి", "Roja ki Habit call", "call Roja on Habit", "రోజాకి వీడియో కాల్".
+    // (Just "హ్యాబిట్, రోజాకి కాల్ చెయ్" is talking to the pet: that is a normal call.) Returns (who, video), or null.
+    private const val HB = "(?:హ్యాబిట్|హాబిట్|హబిట్|హేబిట్|హెబిట్|హ్యాబీట్|హాబీట్|హేబీట్|హ్యాబిత్|habit)"
+    private val HABIT_WAY = Regex("$HB\\s*(?:ద్వారా|ద్వార|లో|లోనే|తో|కాల్|call|వీడియో|video|యాప్|app)|(?:on|via|through|in|using)\\s+$HB|వీడియో\\s*కాల్|video\\s*call", RegexOption.IGNORE_CASE)
+    private val CALL_WORD = Regex("కాల్|call|ఫోన్\\s*చే|ఫోన్\\s*చె", RegexOption.IGNORE_CASE)
+    private val CALL_FILL = Regex("^(?:$HB|ద్వారా|ద్వార|లో|లోనే|తో|కాల్|కాల్స్|call|calls|వీడియో|video|ఫోన్|యాప్|app|చెయ్.*|చేయ్.*|చేయి|చేయండి|చేసి|చేస్తావా|కలుపు|కలిపి|ఒక్క|ఒక|ఒకసారి|ఒకటి|నువ్వు|నేను|చెప్పింది|చెప్పాను|ఇంకా|వినలేదు|ప్లీజ్|please|make|a|to|on|via|through|using|in|now|ఇప్పుడు|ఇప్పుడే|త్వరగా|కొంచెం|సరే|అమ్మా|రా|బాబు|మరి|కదా|అని|the|my|me|for)$", RegexOption.IGNORE_CASE)
+    fun habitCall(text: String, petName: String = ""): Pair<String, Boolean>? {
+        val t = text.trim().trimEnd('.', '!', '।', '?')
+        if (t.length > 120 || !HABIT_WAY.containsMatchIn(t) || !CALL_WORD.containsMatchIn(t)) return null
+        val video = Regex("వీడియో|video", RegexOption.IGNORE_CASE).containsMatchIn(t)
+        val pn = petName.lowercase().split(Regex("[,\\s]+")).filter { it.length >= 2 }
+        val words = t.replace(Regex("[,،!?।\"']"), " ").split(Regex("\\s+")).filter { it.isNotBlank() }
+            .filter { w -> !CALL_FILL.matches(w) && w.lowercase() !in pn }
+            .map { w -> w.replace(Regex("(?:గారికి|గారికీ|కి|కీ|కు|కూ|తో)$"), "").replace(Regex("(?:ki|ku|ko)$", RegexOption.IGNORE_CASE), "") }
+            .filter { it.length >= 2 }
+        if (words.isEmpty() || words.size > 3) return null
+        return words.joinToString(" ") to video
+    }
 }
