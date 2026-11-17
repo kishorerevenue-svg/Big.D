@@ -215,7 +215,22 @@ class MediaViewer : Activity() {
         v.text = sp
     }
     // ---------- head control: head up = the next video, head down = the one before ----------
-    private fun paintHead() { setSide(headBtn, if (prefs.headControl && head?.locked == true) "🔒" else "🙂", if (!prefs.headControl) "Head" else if (head?.locked == true) "Locked" else "Head ✓") }
+    private fun paintHead() {
+        setSide(headBtn, if (prefs.headControl && head?.locked == true) "🔒" else "🙂", if (!prefs.headControl) "Head" else if (head?.locked == true) "Locked" else "Head ✓")
+        // a faint mark on the video (it stays when the buttons hide): head control on or locked, and the hand wave
+        val h = head
+        if (!prefs.headControl || h == null) { mark?.visibility = View.GONE; return }
+        val m = mark ?: TextView(this).apply {
+            textSize = 12f; setTextColor(Color.WHITE); typeface = Fonts.bold(context); alpha = 0.6f
+            setPadding(dp(10), dp(4), dp(10), dp(4)); setShadowLayer(3f, 0f, 1f, Color.BLACK)
+            root.addView(this, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(70) })
+        }.also { mark = it }
+        m.visibility = View.VISIBLE
+        val locked = h.locked
+        m.text = (if (locked) "🔒 Head · Locked" else "🙂 Head ON") + (if (waveOn) (if (locked) " · ✋ Locked" else " · ✋ Hand ON") else "")
+        m.background = ui.round(Color.parseColor(if (locked) "#99E53935" else "#6600A86B"), 14)
+    }
+    private var mark: TextView? = null
     private fun step(up: Boolean) { val to = if (up) at + 1 else at - 1; if (to in items.indices) pager.jump(to) }
 
     // ---------- a hand passed over the top of the phone: next video; twice quickly: the one before ----------
@@ -249,12 +264,12 @@ class MediaViewer : Activity() {
         if (prefs.headControl) {
             // on already: how big a nod must be, or off
             val names = arrayOf("Small nods", "Normal nods", "Big nods only", "Turn head control off", if (prefs.handWave) "✋ Hand wave: ON (tap to turn off)" else "✋ Hand wave: off (tap to turn on)")
-            android.app.AlertDialog.Builder(this).setTitle("🙂 Head: right = lock · left = unlock")
+            android.app.AlertDialog.Builder(this).setTitle("🙂 Head to the side: lock / unlock")
                 .setSingleChoiceItems(names, prefs.headLevel.coerceIn(0, 2)) { d, w ->
                     d.dismiss()
-                    if (w == 4) { prefs.handWave = !prefs.handWave; wave(prefs.handWave); tell(if (prefs.handWave) "✋ Pass your hand over the top of the phone: next video. Twice quickly: the one before." else "Hand wave is off") }
+                    if (w == 4) { prefs.handWave = !prefs.handWave; wave(prefs.handWave); paintHead(); tell(if (prefs.handWave) "✋ Pass your hand over the top of the phone: next video. Twice quickly: the one before." else "Hand wave is off") }
                     else if (w == 3) { prefs.headControl = false; head?.stop(); head = null; wave(false); paintHead() }
-                    else { prefs.headLevel = w; head?.level = w; tell("Nod up and come back: next video · nod down and come back: the one before") }
+                    else { prefs.headLevel = w; head?.level = w; tell("Nod up: next video · nod down: the one before") }
                 }.show()
             return
         }
@@ -267,7 +282,7 @@ class MediaViewer : Activity() {
         head?.stop()
         val w = HeadWatch(this, onSide = { right ->
             paintHead()
-            android.widget.Toast.makeText(this, if (right) "🔒 Head control locked · move your head left to unlock" else "🔓 Head control unlocked", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, if (right) "🔒 Head and hand locked · turn your head to the side again to unlock" else "🔓 Head and hand unlocked", android.widget.Toast.LENGTH_SHORT).show()
         }) { up -> step(up) }
         if (!w.start()) {
             prefs.headControl = false; head = null; paintHead()
@@ -275,9 +290,10 @@ class MediaViewer : Activity() {
             return
         }
         w.level = prefs.headLevel
-        head = w; prefs.headControl = true; paintHead()
+        head = w; prefs.headControl = true
         wave(prefs.handWave)
-        if (first) tell("Nod up and back: next · nod down and back: the one before · head to the right and back: lock · to the left and back: unlock · hand over the top of the phone: next. Tap Head again for more. No picture is kept or sent.")
+        paintHead()
+        if (first) tell("Nod up: next · nod down: the one before · turn your head to the side: lock (again: unlock) · hand over the top of the phone: next. Tap Head again for more. No picture is kept or sent.")
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -623,7 +639,7 @@ class MediaViewer : Activity() {
     override fun onPause() {
         super.onPause()
         petSmall(false)
-        head?.stop(); head = null; wave(false)
+        head?.stop(); head = null; wave(false); mark?.visibility = View.GONE
         if (webAt >= 0) stopVideo()
         if (fileAt >= 0) stopFile()
     }
