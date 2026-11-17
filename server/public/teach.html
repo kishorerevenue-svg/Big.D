@@ -61,6 +61,23 @@ summary{cursor:pointer;font-weight:600}
 
   <div id="tools" hidden>
     <section class="card">
+      <h2>📑 Example letters (formats) · నమూనా లేఖలు</h2>
+      <p class="hint">Upload a sample letter, report, memo or proceedings from your computer (Word .docx, PDF, photo or text). When someone makes that kind of letter in the app, Habit follows its format: layout, headings, addressing, Rc.No. and date lines, numbering and tone. Its facts and names are never copied. Use samples without real case details.</p>
+      <input id="exFile" type="file" accept=".docx,.pdf,.txt,image/jpeg,image/png,image/webp" aria-label="Choose an example letter">
+      <label for="exTitle">Title (optional)</label>
+      <input id="exTitle" placeholder="For example: Report to RDO on joint survey">
+      <label for="exKind">Kind</label>
+      <select id="exKind">
+        <option value="Letter">Letter</option><option value="Report">Report</option><option value="Proceedings">Proceedings</option>
+        <option value="Memo">Memo</option><option value="Notice">Notice</option><option value="Endorsement">Endorsement</option>
+        <option value="Certificate">Certificate</option><option value="Application">Application</option>
+      </select>
+      <button id="exAdd" type="button">Add example</button>
+      <div class="msg" id="exMsg" role="status"></div>
+      <ul id="exList"></ul>
+    </section>
+
+    <section class="card">
       <h2>Upload a file</h2>
       <p class="hint">PDF, photo of a document (JPG, PNG) or text file, up to 20 MB. Telugu and English both work, even scanned pages. Save Word files as PDF first.</p>
       <input id="file" type="file" accept=".pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" aria-label="Choose a file">
@@ -673,7 +690,38 @@ $("gmStopExam").onclick = async () => { await api("gemma/exam/stop", {}); setTim
 $("gmGet").onclick = async () => { $("gmGet").disabled = true; try { await api("gemma/get", {}); } catch (e) { say($("gmHf"), e.message, false); } loadGemma().catch(() => {}); };
 $("gmBack").onclick = async () => { if ($("gmBack").dataset.sure !== "1") { $("gmBack").dataset.sure = "1"; $("gmBack").textContent = "Tap again"; return; } $("gmBack").dataset.sure = ""; await api("gemma/back", {}); loadGemma().catch(() => {}); };
 
+async function loadFormats() {
+  const { items } = await api("formats");
+  const ul = $("exList"); ul.textContent = "";
+  for (const it of items) {
+    const li = document.createElement("li");
+    const d = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = it.title + (it.kind ? " · " + it.kind : "");
+    const s = document.createElement("small"); s.textContent = `${new Date(it.at).toLocaleDateString()} · ${it.chars.toLocaleString()} characters · ${it.start}`;
+    d.append(b, s);
+    const del = document.createElement("button"); del.className = "ghost"; del.type = "button"; del.textContent = "Delete";
+    del.onclick = async () => {
+      if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "Tap again to delete"; return; }
+      try { await api("formats/delete", { id: it.id }); loadFormats(); } catch (e) { del.textContent = "Couldn't delete"; }
+    };
+    li.append(d, del); ul.append(li);
+  }
+}
+$("exAdd").onclick = () => {
+  const f = $("exFile").files[0];
+  if (!f) { say($("exMsg"), "Choose a file first.", false); return; }
+  if (f.size > 15 * 1024 * 1024) { say($("exMsg"), "That file is over 15 MB.", false); return; }
+  busy($("exAdd"), $("exMsg"), async () => {
+    const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = bad; r.readAsDataURL(f); });
+    const type = f.type || (f.name.endsWith(".pdf") ? "application/pdf" : f.name.endsWith(".docx") ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "text/plain");
+    const { item } = await api("formats/add", { name: f.name, mediaType: type, data, title: $("exTitle").value.trim() || undefined, kind: $("exKind").value });
+    say($("exMsg"), `Added "${item.title}" as an example ${item.kind || "format"}.`, true);
+    $("exFile").value = ""; $("exTitle").value = "";
+  });
+};
+
 async function refresh() {
+  loadFormats().catch(() => {});
   loadChat().catch(() => {});
   loadPush().catch(() => {});
   loadFeedback().catch(() => {});

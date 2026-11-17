@@ -180,6 +180,13 @@ class Store(context: Context) {
     var handWave: Boolean
         get() = p.getBoolean("handWave", true)
         set(v) { p.edit().putBoolean("handWave", v).apply() }
+    /** The example letter (its format is followed): its name and type; the file itself is in the app's own folder. */
+    var exampleName: String
+        get() = p.getString("exampleName", "") ?: ""
+        set(v) { p.edit().putString("exampleName", v).apply() }
+    var exampleMime: String
+        get() = p.getString("exampleMime", "image/jpeg") ?: "image/jpeg"
+        set(v) { p.edit().putString("exampleMime", v).apply() }
     /** How big a nod must be: 0 small moves, 1 normal, 2 big moves only. */
     var headLevel: Int
         get() = p.getInt("headLevel", 1)
