@@ -68,6 +68,7 @@ class WatchActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)   // the screen stays on while watching or playing
         list = items.filter { it.kind == "video" && it.src.isNotBlank() }
         if (list.isEmpty()) { finish(); return }
         ui = Ui(this)

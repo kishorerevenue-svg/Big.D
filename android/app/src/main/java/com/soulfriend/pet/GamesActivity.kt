@@ -42,6 +42,7 @@ class GamesActivity : Activity(), TextToSpeech.OnInitListener {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)   // the screen stays on while watching or playing
         ChatTheme.refresh(this)
         AppLook.refresh(this)
         val hero = AppLook.HERO

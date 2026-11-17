@@ -206,6 +206,23 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
+    // ---------------- the screen stays on while talking with the pet (and two minutes after) ----------------
+    private var awakeUntil = 0L
+    private val sleepCheck = Runnable { awake(0) }
+    private fun awake(ms: Long = 120_000L) {
+        val now = System.currentTimeMillis()
+        if (ms > 0) awakeUntil = maxOf(awakeUntil, now + ms)
+        val on = now < awakeUntil || convoOn
+        if (!::petParams.isInitialized || !::pet.isInitialized) return
+        val has = petParams.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+        if (on != has) {
+            petParams.flags = if (on) petParams.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON else petParams.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
+            try { if (pet.isAttachedToWindow) wm.updateViewLayout(pet, petParams) } catch (e: Exception) { }
+        }
+        main.removeCallbacks(sleepCheck)
+        if (on) main.postDelayed(sleepCheck, maxOf(5_000L, awakeUntil - now + 500))
+    }
+
     // ---------------- the puppy window ----------------
     private fun overlayParams(w: Int, h: Int, focusable: Boolean = false) = WindowManager.LayoutParams(
         w, h, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -405,6 +422,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private val voicePool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private fun speak(said: String) {
+        awake()
         stopWaking()
         hushBeeps(false)                                              // its voice is heard (the listening beeps were hushed)
         if (onPhone()) { ++speakSeq; return }                         // a phone call: quiet (the words stay in the bubble)
@@ -894,6 +912,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun startListening(again: Boolean = false, ear: QuietEar? = null) {
+        awake()
         stopWaking()
         if (ear == null) endEar()                                     // a new try from the start: a waiting ear lets go of the microphone
         if (CallManager.active != null || onPhone()) { endEar(); showBubble(if (store.lang == "en") "📞 You're on a call. I'll listen after it." else "📞 మీరు కాల్‌లో ఉన్నారు. కాల్ తర్వాత వింటాను."); return }
