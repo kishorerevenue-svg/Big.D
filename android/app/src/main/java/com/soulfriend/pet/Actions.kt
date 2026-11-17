@@ -174,15 +174,40 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
     private fun habitCall(contact: String, alt: String, video: Boolean): String {
         val te = store.lang == "te"
         if (contact.isBlank()) return if (te) "⚠ ఎవరికి Habit కాల్ చేయాలి?" else "⚠ Who should I call on Habit?"
-        val c = habitChat(contact, alt)
-            ?: return if (te) "⚠ $contact మీ Habit చాట్‌లలో లేరు. ముందు Habit లో వారితో ఒకసారి చాట్ మొదలుపెట్టండి." else "⚠ $contact isn't in your Habit chats yet. Start a chat with them in Habit once first."
         val need = listOf(Manifest.permission.RECORD_AUDIO) + (if (video) listOf(Manifest.permission.CAMERA) else emptyList())
         if (need.any { ctx.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED })
             return if (te) "⚠ Habit కాల్స్ కోసం యాప్‌లో మైక్రోఫోన్ (వీడియోకి కెమెరా) అనుమతి ఇవ్వండి." else "⚠ Allow the microphone (and the camera for video) in the Habit app for Habit calls."
+        val c = habitChat(contact, alt)
+        if (c == null) {
+            // no chat with them yet, but they are one of "your contacts on Habit": the chat is made, then the call
+            val p = habitContact(contact, alt)
+                ?: return if (te) "⚠ $contact Habit లో దొరకలేదు. వారు Habit వాడుతుంటే, చాట్‌లలో ఒకసారి వారితో చాట్ మొదలుపెట్టండి. (మామూలు కాల్ కావాలంటే \"ఫోన్ కాల్\" అనండి.)"
+                          else "⚠ I couldn't find $contact on Habit. If they use Habit, start a chat with them once in Chats. (Say \"phone call\" for a normal call.)"
+            Thread {
+                val r = try { ChatSync.api(store, "POST", "/api/chat/open", org.json.JSONObject().put("uid", p.second).toString()) } catch (e: Exception) { null }
+                val conv = r?.json?.optJSONObject("conv")
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    if (r == null || !r.ok || conv == null) { android.widget.Toast.makeText(ctx, if (te) "Habit కాల్ కలవలేదు. నెట్ చూసి మళ్లీ ప్రయత్నించండి." else "The Habit call didn't connect. Check the internet and try again.", android.widget.Toast.LENGTH_LONG).show(); return@post }
+                    ChatDb.get(ctx).putConv(conv)
+                    CallManager.startOutgoing(ctx, conv.optString("cid"), video)
+                }
+            }.start()
+            store.setCallWay(Names.key(contact), "habit")
+            return if (te) "🐾 ${p.first} కి Habit ${if (video) "వీడియో " else ""}కాల్ చేస్తున్నాను" else "🐾 ${if (video) "Video calling" else "Calling"} ${p.first} on Habit"
+        }
         CallManager.startOutgoing(ctx, c.cid, video)
         store.setCallWay(Names.key(contact), "habit")                // a plain "call <them>" is a Habit call from now on ("phone call" changes it back)
         return if (te) "🐾 ${c.name} కి Habit ${if (video) "వీడియో " else ""}కాల్ చేస్తున్నాను" else "🐾 ${if (video) "Video calling" else "Calling"} ${c.name} on Habit"
     }
+
+    /** One of "your contacts on Habit" whose name (in the phone, or on Habit) answers to [name]: (the name, their uid). */
+    private fun habitContact(name: String, alt: String): Pair<String, String>? = try {
+        ChatContacts.onHabitList(ctx).map { (person, hp) ->
+            val score = listOf(person.name, hp.optString("name")).filter { it.isNotBlank() }
+                .maxOf { n -> maxOf(Names.match(name, n), if (alt.isBlank()) 0 else Names.match(alt, n)) }
+            Triple(person.name.ifBlank { hp.optString("name") }, hp.optString("uid"), score)
+        }.filter { it.third > 0 && it.second.isNotBlank() }.maxByOrNull { it.third }?.let { it.first to it.second }
+    } catch (e: Exception) { null }
 
     /** Someone they chat with one-to-one in Habit Chat whose name answers to [name] (or [alt]). */
     private fun habitChat(name: String, alt: String): ChatConv? = try {
@@ -244,7 +269,7 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
         if (given.isBlank() && contact.isNotBlank()) {
             val k = Names.key(contact)
             if (way == "phone") store.setCallWay(k, "phone")
-            else if (store.callWay(k) == "habit" && habitChat(contact, alt) != null) return habitCall(contact, alt, false)
+            else if (store.callWay(k) == "habit" && (habitChat(contact, alt) != null || habitContact(contact, alt) != null)) return habitCall(contact, alt, false)
         }
         val found = if (given.isBlank()) lookupAll(contact, alt) else listOf(contact.ifBlank { given } to given)
         if (found.isEmpty()) {

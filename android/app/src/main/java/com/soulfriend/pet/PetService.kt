@@ -1079,6 +1079,13 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         lookToken++; autoLooks = 0
         // "look at this shirt", "what's written on this board?", "what colour is my shirt?": the pet looks with the camera itself
         Eyes.wants(text, lastLook)?.let { l -> lastQuestion = l.ask; look(l); return }
+        // "హ్యాబిట్ ద్వారా రోజాకి కాల్ చేయి": a Habit call at once from here (never a normal phone call)
+        Talk.habitCall(text, store.wakeName)?.let { (who, video) ->
+            lastQuestion = text
+            handleReply(JSONObject().put("reply", "").put("emotion", "happy")
+                .put("actions", org.json.JSONArray().put(JSONObject().put("type", "habit_call").put("contact", who).put("video", video))), byVoice = byVoice)
+            return
+        }
         // "చిరంజీవి పాటలు పెట్టు": played at once from here (the brain sometimes only SAID it was playing)
         Talk.playQuery(text, store.wakeName)?.let { (q, short) ->
             lastQuestion = text
@@ -1240,9 +1247,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             if (a.optString("type") == "game") { val named = Talk.game(lastQuestion); if (named == null || named == "any") a.put("name", "any") }
             // a call: did they say which kind? "Habit call" (even if the brain wrote a plain call) or "phone call"
-            if (a.optString("type") == "call" && a.optString("number").isBlank()) {
+            if (a.optString("type") == "call") {
                 val q = lastQuestion.lowercase()
-                if (Regex("habit|హ్యాబిట్|హాబిట్|హేబిట్|హెబిట్|వీడియో కాల్|video call").containsMatchIn(q)) { a.put("type", "habit_call"); if (Regex("వీడియో|video").containsMatchIn(q)) a.put("video", true) }
+                val hc = Talk.habitCall(lastQuestion, store.wakeName)
+                if (hc != null) { a.put("type", "habit_call"); if (a.optString("contact").isBlank()) a.put("contact", hc.first); if (hc.second) a.put("video", true) }
+                else if (a.optString("number").isNotBlank()) { }
                 else if (Regex("phone call|normal call|sim call|ఫోన్ కాల్|ఫోన్ చెయ్|ఫోన్ చేయ్|సిమ్|నార్మల్ కాల్|మామూలు కాల్").containsMatchIn(q)) a.put("way", "phone")
             }
             actions.run(a)?.let { done.add(it) }
@@ -1264,6 +1273,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val ask = sayInstead; sayInstead = null                 // "who should I call?" (several people have that name)
         if (failed.isNotEmpty()) say(failed.joinToString(" "), PuppyView.Mood.CONFUSED, extra, delayMs = wait)
         else if (ask != null) say(ask, PuppyView.Mood.HAPPY, delayMs = wait)
+        else if (reply.isBlank() && did.isNotEmpty()) say(did.joinToString(" "), PuppyView.moodOf(json.optString("emotion")), delayMs = wait)
         else say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)
         lookAt?.let { l -> main.postDelayed({ look(l, announce = false) }, 300) }
         lookAgain?.let { l ->
