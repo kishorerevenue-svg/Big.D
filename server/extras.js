@@ -196,6 +196,81 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     return { url: baseUrl(req) + f.path, name: f.name, format: f.format, preview: str(o.preview, 8000), say: str(o.say, 300) };
   }
 
+  // ---- the rough copy: the letter as numbered lines, changed by what the person says, then the final Word file ----
+  /** The document's lines as the person sees them on the rough copy (each is numbered there). */
+  function roughLines(content) {
+    const out = [];
+    const add = t => String(t || "").split(/\n/).map(x => x.replace(/\*\*/g, "").trim()).filter(Boolean).forEach(x => out.push(x.slice(0, 1500)));
+    const blocks = content && Array.isArray(content.blocks) ? content.blocks : [];
+    for (const b of blocks.slice(0, 300)) {
+      if (!b || typeof b !== "object") continue;
+      for (const k of ["head", "center", "right", "sub", "ref", "p", "sign"]) if (b[k]) add(b[k]);
+      if (Array.isArray(b.list)) b.list.forEach((x, i) => add((b.numbered ? (i + 1) + ". " : "• ") + x));
+      if (Array.isArray(b.table)) b.table.forEach(r => add((Array.isArray(r) ? r : [r]).join(" | ")));
+    }
+    if (!blocks.length && content && Array.isArray(content.sheets)) for (const s of content.sheets.slice(0, 5)) {
+      add(s.title || s.name); if (Array.isArray(s.columns)) add(s.columns.join(" | "));
+      (Array.isArray(s.rows) ? s.rows : []).slice(0, 200).forEach(r => add((Array.isArray(r) ? r : [r]).join(" | ")));
+    }
+    return out.slice(0, 400);
+  }
+  const roughOut = o => ({ title: str(o.title, 80) || "Letter", format: o.format === "xlsx" ? "xlsx" : "docx", content: o.content, lines: roughLines(o.content), say: str(o.say, 300) });
+  const okContent = c => c && typeof c === "object" && (Array.isArray(c.blocks) || Array.isArray(c.sheets)) && JSON.stringify(c).length < 300000;
+
+  /** The first rough copy: from everything they wrote (and their papers). */
+  async function letterDraft(body) {
+    const lang = ["te", "en"].includes(body.lang) ? body.lang : "auto";
+    const office = body.mode === "office";
+    const lines = [];
+    if (office && body.docType) lines.push("Type of document: " + str(body.docType, 60));
+    lines.push("Everything the person wrote about the matter (in their own words, in pieces):\n" + str(body.request, 8000));
+    const od = office ? officeLine(body.office) : "";
+    if (od) lines.push("Their office: " + od);
+    const papers = loadPapers(body.docsId).concat(readPapers(body.docs)).slice(0, 10);
+    if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above (a report, an earlier letter, an order, a petition): take the references, numbers, dates, names, extents and facts from them.`);
+    lines.push("Write the complete document now: this is a rough copy the person will read line by line and then ask to change.");
+    const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
+    const ask = model => learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
+      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 8000, search: false, model });
+    let o = null;
+    try { o = parseJson((await ask(SMART_MODEL || MODEL)).text); } catch (e) { if (e.user || !SMART_MODEL || SMART_MODEL === MODEL) throw e; }
+    if ((!o || !okContent(o.content)) && SMART_MODEL && SMART_MODEL !== MODEL) o = parseJson((await ask(MODEL)).text);
+    if (!o || !okContent(o.content)) throw new Error("empty_letter");
+    return Object.assign(roughOut(o), { docsId: papers.length ? (/^[a-f0-9]{24}$/.test(String(body.docsId || "")) ? body.docsId : keepPapers(papers)) : "" });
+  }
+
+  /** The change they asked for ("line 5: the date is 12-11-2026", "add a line about…"), on the whole document. */
+  async function letterRevise(body) {
+    const lang = ["te", "en"].includes(body.lang) ? body.lang : "auto";
+    const office = body.mode === "office";
+    if (!okContent(body.content)) throw userError("The rough copy was lost. Please start again.");
+    const change = str(body.change, 3000);
+    if (change.length < 2) throw userError("Write what to change first.");
+    const now = roughLines(body.content);
+    const papers = loadPapers(body.docsId);
+    const od = office ? officeLine(body.office) : "";
+    const user = [
+      od ? "Their office: " + od : "",
+      "The document now (JSON):\n" + JSON.stringify({ title: str(body.title, 80), format: body.format === "xlsx" ? "xlsx" : "docx", content: body.content }),
+      "The person sees it as these numbered lines:\n" + now.map((l, i) => `${i + 1}. ${l}`).join("\n"),
+      "The change they want (line numbers refer to the list above; they may speak Telugu or English):\n<<<\n" + change + "\n>>>",
+      "Make exactly that change (and only what it needs: keep every other line as it is, word for word). Then return the WHOLE updated document in the same JSON format."
+    ].filter(Boolean).join("\n\n");
+    const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
+    const out = await learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
+      messages: [{ role: "user", content: withPapers(papers, user) }], maxTokens: 8000, search: false, model: SMART_MODEL || MODEL });
+    const o = parseJson(out.text);
+    if (!o || !okContent(o.content)) throw new Error("empty_letter");
+    return roughOut(o);
+  }
+
+  /** The final Word (or Excel) file from the rough copy (no AI). */
+  async function letterFinal(body, req) {
+    if (!okContent(body.content)) throw userError("The rough copy was lost. Please start again.");
+    const f = await files.create({ type: "make_file", format: body.format === "xlsx" ? "xlsx" : "docx", title: str(body.title, 80) || "Letter", content: body.content });
+    return { url: baseUrl(req) + f.path, name: f.name, format: f.format };
+  }
+
   // ============ 2. message safety check ============
   const scanAllowed = counter(Number(process.env.SCAN_PER_DEVICE_DAILY || 100), Number(process.env.SCAN_DAILY_TOTAL || 8000));
   const SCAN_PROMPT = lang => `You protect people in India, many of them elderly or new to smartphones, from fraud and dangerous messages. Check one message the person RECEIVED (SMS, WhatsApp or another chat app).
@@ -356,10 +431,26 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (req.method !== "POST") { send(res, 404, { error: "Not found" }, origin); return true; }
     if (!allowed(clientIp(req))) { send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); return true; }
     let body;
-    try { body = await readBody(req, p === "/api/letter/plan" || p === "/api/letter/make" ? 20 * 1024 * 1024 : p === "/api/scan" ? 6 * 1024 * 1024 : 64 * 1024); }
+    try { body = await readBody(req, p === "/api/letter/plan" || p === "/api/letter/make" || p === "/api/letter/draft" ? 20 * 1024 * 1024 : p === "/api/scan" ? 6 * 1024 * 1024 : p.startsWith("/api/letter/") ? 1024 * 1024 : 64 * 1024); }
     catch (e) { send(res, 400, { error: e.message === "too_large" ? "The papers are too big. Please attach fewer pages." : "Bad request." }, origin); return true; }
 
     try {
+      if (p === "/api/letter/final") { send(res, 200, await letterFinal(body, req), origin); return true; }
+      if (p === "/api/letter/draft" || p === "/api/letter/revise") {
+        const draft = p.endsWith("draft");
+        const hasPapers = Array.isArray(body.docs) && body.docs.length > 0;
+        if (draft && str(body.request, 8000).length < 3 && !hasPapers) { send(res, 400, { error: "Write the matter first (or add the papers)." }, origin); return true; }
+        if (!API_KEY) { send(res, 500, { error: "Server has no API key yet." }, origin); return true; }
+        if (hasPapers && !papersAllowed(req)) { send(res, 429, { error: "You've reached today's limit for reading papers. Please try again tomorrow." }, origin); return true; }
+        if (!hasPapers && !body.docsId) { const lim = dailyCheck(req, "msg"); if (lim) { send(res, 429, { error: lim }, origin); return true; } }
+        try { send(res, 200, draft ? await letterDraft(body) : await letterRevise(body), origin); }
+        catch (e) {
+          if (e.user) { send(res, 400, { error: e.message }, origin); return true; }
+          console.error("Letter " + (draft ? "draft" : "change") + ": the AI couldn't (" + (e.status || "") + " " + String(e.message || "").slice(0, 80) + ")");
+          send(res, 503, { error: "The AI is busy just now. Your text is kept: please try again in a few minutes. AI ఇప్పుడు బిజీగా ఉంది, కొన్ని నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి." }, origin);
+        }
+        return true;
+      }
       if (p === "/api/letter/plan" || p === "/api/letter/make") {
         const plan = p.endsWith("plan");
         const hasPapers = Array.isArray(body.docs) && body.docs.length > 0;      // (the earlier letter can be added on the questions screen too)

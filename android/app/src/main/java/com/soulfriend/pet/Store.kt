@@ -345,6 +345,10 @@ class Store(context: Context) {
         get() = p.getString("letterLang", "") ?: ""
         set(v) { p.edit().putString("letterLang", v).apply() }
     /** The office's own details for office letters: desig, office, district, name, ref, contact (kept on this phone). */
+    /** "My letters": the letters made on this phone (their text too, so they can be changed later). Kept only here. */
+    var letters: org.json.JSONArray
+        get() = try { org.json.JSONArray(p.getString("letters", "[]") ?: "[]") } catch (e: Exception) { org.json.JSONArray() }
+        set(v) { p.edit().putString("letters", v.toString()).apply() }
     var officeInfo: JSONObject
         get() = try { JSONObject(p.getString("officeInfo", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
         set(v) { p.edit().putString("officeInfo", v.toString()).apply() }
