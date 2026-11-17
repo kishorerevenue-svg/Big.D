@@ -14,10 +14,12 @@ module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODE
   const str = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
   const device = req => String(req.headers["x-device"] || "").replace(/[^\w-]/g, "").slice(0, 64) || "ip:" + clientIp(req);
 
+  // (a letter in Telugu takes many more tokens than in English: the limits above are big for that)
   function parseJson(text) {
     try { return JSON.parse(text); } catch (e) { }
     const a = String(text).indexOf("{"), b = String(text).lastIndexOf("}");
     if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch (e) { } }
+    console.error("Letter: the AI's answer wasn't complete (" + String(text || "").length + " characters, ends: " + JSON.stringify(String(text || "").slice(-60)) + ")");
     return null;
   }
   const langRule = lang => lang === "te" ? "Write in simple Telugu script."
@@ -149,7 +151,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (od) lines.push("Their office: " + od);
     if (papers.length) lines.push(`${papers.length} paper(s) about the matter are attached above.`);
     const out = await learn.callClaude({ system: office ? PLAN_OFFICE(lang, papers.length > 0) : PLAN_PROMPT(lang, papers.length > 0),
-      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: papers.length ? 4000 : 1800, search: false, model: MODEL });
+      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: papers.length ? 9000 : 3000, search: false, model: MODEL });
     const o = parseJson(out.text) || {};
     const q = (Array.isArray(o.questions) ? o.questions : []).slice(0, 10).map((x, i) => ({
       id: str(x && x.id, 30) || "q" + i, q: str(x && x.q, 200), hint: str(x && x.hint, 120), required: x && x.required !== false
@@ -184,7 +186,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above (an earlier letter, an order, a petition): take the references, numbers, dates and facts from them.`);
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
     const ask = model => learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
-      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 8000, search: false, model });
+      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 16000, search: false, model });
     let out;
     try { out = await ask(SMART_MODEL || MODEL); }
     catch (e) { if (e.user || !SMART_MODEL || SMART_MODEL === MODEL) throw e; console.error("Letter: the big AI couldn't (" + (e.status || "") + "), the regular one tries"); out = await ask(MODEL); }
@@ -231,7 +233,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     lines.push("Write the complete document now: this is a rough copy the person will read line by line and then ask to change.");
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
     const ask = model => learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
-      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 8000, search: false, model });
+      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 16000, search: false, model });
     let o = null;
     try { o = parseJson((await ask(SMART_MODEL || MODEL)).text); } catch (e) { if (e.user || !SMART_MODEL || SMART_MODEL === MODEL) throw e; }
     if ((!o || !okContent(o.content)) && SMART_MODEL && SMART_MODEL !== MODEL) o = parseJson((await ask(MODEL)).text);
@@ -258,7 +260,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     ].filter(Boolean).join("\n\n");
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
     const out = await learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
-      messages: [{ role: "user", content: withPapers(papers, user) }], maxTokens: 8000, search: false, model: SMART_MODEL || MODEL });
+      messages: [{ role: "user", content: withPapers(papers, user) }], maxTokens: 16000, search: false, model: SMART_MODEL || MODEL });
     const o = parseJson(out.text);
     if (!o || !okContent(o.content)) throw new Error("empty_letter");
     return roughOut(o);
