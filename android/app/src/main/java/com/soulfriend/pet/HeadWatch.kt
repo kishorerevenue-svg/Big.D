@@ -56,7 +56,7 @@ class HeadWatch(private val ctx: Context, private val onSide: (right: Boolean) -
             val r = ImageReader.newInstance(size.width, size.height, ImageFormat.YUV_420_888, 2).also { reader = it }
             r.setOnImageAvailableListener({ x -> try { x.acquireLatestImage()?.close() } catch (e: Exception) { } }, h)   // the pictures aren't used
             on = true
-            base = Double.NaN; outAt = 0
+            base = Double.NaN; lastKind = 0
             cm.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(cam: CameraDevice) {
                     if (!on) { cam.close(); return }
@@ -93,16 +93,17 @@ class HeadWatch(private val ctx: Context, private val onSide: (right: Boolean) -
     private var baseX = 0.0
     private var quietUntil = 0L
     private var lastAt = 0L
-    private var outAt = 0L                 // a move away from rest began (0: at rest)
-    private var outKind = 0                // 1 up, 2 down, 3 to the person's right, 4 to their left
+    private var lastKind = 0               // the move just taken (1 up, 2 down, 3 right, 4 left)…
+    private var lastKindAt = 0L            // …and when: coming back from it isn't a move the other way
     /** How big a move must be: 0 small moves, 1 normal, 2 big moves only. */
     @Volatile var level = 1
-    /** Locked: nods do nothing (a move of the head to the left unlocks). */
+    /** Locked: nods do nothing (a move of the head to the right locks, to the left unlocks). */
     @Volatile var locked = false
 
-    // A nod is a quick move of the head up (or down) AND back to where it was, within about a second and a half. A move
-    // to the side and back is the lock (right) and the unlock (left). Looking away, turning to talk to someone, sitting
-    // differently or moving the phone don't come back that fast, so they aren't taken as anything.
+    // A quick move of the head up or down (from where it rests) is a nod: it is taken at once, as the head moves (a head
+    // tipped far back is often not seen as a face any more, so it doesn't wait for the head to come back). Coming back to
+    // rest right after isn't taken as a move the other way. To the right: lock (nods do nothing); to the left: unlock.
+    // Slow moves (sitting differently, moving the phone) are followed, not taken.
     private fun face(faces: Array<Face>?, turn: Int) {
         val b = faces?.maxByOrNull { it.bounds.width() * it.bounds.height() }?.bounds ?: return
         // where the face is on the upright picture, counted in face sizes (the camera sits turned inside the phone: [turn]
@@ -119,31 +120,26 @@ class HeadWatch(private val ctx: Context, private val onSide: (right: Boolean) -
         val pos = y / size; val posX = x / size
         val now = SystemClock.elapsedRealtime()
         val dt = now - lastAt
-        if (base.isNaN() || dt > 1500) { base = pos; baseX = posX; lastAt = now; outAt = 0; return }   // the face just came (back) into view
+        if (base.isNaN() || dt > 2500) { base = pos; baseX = posX; lastAt = now; return }   // the face just came (back) into view
         lastAt = now
-        val far = when (level) { 0 -> 0.10; 2 -> 0.24; else -> 0.16 }
-        val farX = far * 1.5
+        val far = when (level) { 0 -> 0.12; 2 -> 0.26; else -> 0.18 }
+        val farX = far * 1.6
         val d = base - pos                                                       // above 0: the head went up
         val dx = baseX - posX                                                    // above 0: to the person's right
-        if (now < quietUntil) { val a = (dt / 250.0).coerceAtMost(1.0); base += (pos - base) * a; baseX += (posX - baseX) * a; outAt = 0; return }
-        if (outAt == 0L) {
-            when {
-                Math.abs(dx) > farX && Math.abs(dx) > Math.abs(d) * 1.3 -> { outAt = now; outKind = if (dx > 0) 3 else 4 }
-                Math.abs(d) > far && Math.abs(d) > Math.abs(dx) -> { outAt = now; outKind = if (d > 0) 1 else 2 }
-                else -> { val a = (dt / 2500.0).coerceAtMost(1.0); base += (pos - base) * a; baseX += (posX - baseX) * a }   // slow moves: followed
-            }
-            return
+        if (now < quietUntil) { val a = (dt / 200.0).coerceAtMost(1.0); base += (pos - base) * a; baseX += (posX - baseX) * a; return }
+        val kind = when {
+            Math.abs(dx) > farX && Math.abs(dx) > Math.abs(d) * 1.3 -> if (dx > 0) 3 else 4
+            Math.abs(d) > far && Math.abs(d) > Math.abs(dx) -> if (d > 0) 1 else 2
+            else -> 0
         }
-        // away from rest: did it come back (a nod or a side move), or stay away (neither)?
-        if (now - outAt > 1500) { base = pos; baseX = posX; outAt = 0; return }
-        val back = if (outKind >= 3) Math.abs(dx) < farX * 0.5 && Math.abs(d) < far else Math.abs(d) < far * 0.5
-        if (back) {
-            val k = outKind
-            outAt = 0; quietUntil = now + 1300
-            main.post {
-                if (!on) return@post
-                if (k >= 3) { locked = k == 3; onSide(k == 3) } else if (!locked) onNod(k == 1)
-            }
+        if (kind == 0) { val a = (dt / 2000.0).coerceAtMost(1.0); base += (pos - base) * a; baseX += (posX - baseX) * a; return }
+        val opposite = (kind == 1 && lastKind == 2) || (kind == 2 && lastKind == 1) || (kind == 3 && lastKind == 4) || (kind == 4 && lastKind == 3)
+        if (opposite && now - lastKindAt < 3000) { base = pos; baseX = posX; lastKind = 0; return }   // the head coming back to rest
+        lastKind = kind; lastKindAt = now
+        quietUntil = now + 900
+        main.post {
+            if (!on) return@post
+            if (kind >= 3) { locked = kind == 3; onSide(kind == 3) } else if (!locked) onNod(kind == 1)
         }
     }
 
