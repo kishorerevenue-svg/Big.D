@@ -192,11 +192,9 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
                     CallManager.startOutgoing(ctx, conv.optString("cid"), video)
                 }
             }.start()
-            store.setCallWay(Names.key(contact), "habit")
             return if (te) "🐾 ${p.first} కి Habit ${if (video) "వీడియో " else ""}కాల్ చేస్తున్నాను" else "🐾 ${if (video) "Video calling" else "Calling"} ${p.first} on Habit"
         }
         CallManager.startOutgoing(ctx, c.cid, video)
-        store.setCallWay(Names.key(contact), "habit")                // a plain "call <them>" is a Habit call from now on ("phone call" changes it back)
         return if (te) "🐾 ${c.name} కి Habit ${if (video) "వీడియో " else ""}కాల్ చేస్తున్నాను" else "🐾 ${if (video) "Video calling" else "Calling"} ${c.name} on Habit"
     }
 
@@ -266,11 +264,7 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
     private fun call(number: String, contact: String, alt: String = "", way: String = ""): String? {
         val given = digits(number)
         // how they call this person: they say "Habit call" or "phone call" once, and a plain "call Roja" does the same after
-        if (given.isBlank() && contact.isNotBlank()) {
-            val k = Names.key(contact)
-            if (way == "phone") store.setCallWay(k, "phone")
-            else if (store.callWay(k) == "habit" && (habitChat(contact, alt) != null || habitContact(contact, alt) != null)) return habitCall(contact, alt, false)
-        }
+        // a plain "call Roja" is always a normal phone call; a Habit call only when they say "Habit" (habit_call)
         val found = if (given.isBlank()) lookupAll(contact, alt) else listOf(contact.ifBlank { given } to given)
         if (found.isEmpty()) {
             val te = store.lang == "te"
