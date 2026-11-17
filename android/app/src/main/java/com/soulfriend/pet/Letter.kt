@@ -51,6 +51,23 @@ class LetterHelper(private val m: MainActivity) {
 
     private var officeType = ""            // the chosen office document type ("" = let the AI decide)
     private val papers = mutableListOf<Paper>()
+    // an example letter whose FORMAT to follow (kept on this phone for the next letters too)
+    private var forExample = false
+    private var example: Paper? = null
+    private var exampleLoaded = false
+    private fun exampleFile() = java.io.File(m.filesDir, "letter-example.bin")
+    private fun loadExample() {
+        if (exampleLoaded) return
+        exampleLoaded = true
+        try {
+            val f = exampleFile(); val name = store.exampleName
+            if (f.exists() && name.isNotBlank()) { val b = f.readBytes(); example = Paper(name, store.exampleMime, b, if (store.exampleMime == "application/pdf") null else thumbOf(b)) }
+        } catch (e: Exception) { }
+    }
+    private fun setExample(p: Paper?) {
+        example = p; exampleLoaded = true
+        try { if (p == null) { exampleFile().delete(); store.exampleName = "" } else { exampleFile().writeBytes(p.data); store.exampleName = p.name; store.exampleMime = p.mime } } catch (e: Exception) { }
+    }
     private var addingPaper = false
     private var docsId = ""                // the server keeps the papers until the letter is made
     private var notes = ""                 // what the AI read in the papers
@@ -215,6 +232,7 @@ class LetterHelper(private val m: MainActivity) {
             }
             put(ui.text("📎 Related papers (optional)", 14f, Ui.INK, bold = true), 16)
             papersBlock(this)
+            exampleBlock(this)
             languageChips(this)
             if (error.isNotBlank()) put(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
             put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
@@ -240,6 +258,7 @@ class LetterHelper(private val m: MainActivity) {
             matterBlock(this, "e.g. \"Report to the RDO on the joint survey in Sy.No. …: who objected, what was found…\"")
             put(ui.text("3. Related papers (optional)", 14f, Ui.INK, bold = true), 16)
             papersBlock(this)
+            exampleBlock(this)
             languageChips(this)
             if (error.isNotBlank()) put(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
             put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
@@ -304,6 +323,30 @@ class LetterHelper(private val m: MainActivity) {
             "and deleted from the Habit server after it is made (at most 6 hours)", 12f, Ui.MUTED), 4)
     }
 
+    /** A small box: an example letter whose format to follow (from this phone); from a computer: the Teach page. */
+    private fun exampleBlock(sec: LinearLayout) {
+        loadExample()
+        sec.put(ui.text("📑 Example format (optional) · నమూనా", 14f, Ui.INK, bold = true), 16)
+        val ex = example
+        if (ex == null) {
+            sec.put(ui.text("Have a letter in the format you want? Add it: I'll follow its layout, not its facts.", 12.5f, Ui.MUTED), 4)
+            sec.put(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL
+                listOf(ui.button("📷", "soft") { forExample = true; camera() }, ui.button("🖼️", "soft") { forExample = true; pickPhotos() }, ui.button("📄 PDF", "soft") { forExample = true; pickPdf() })
+                    .forEachIndexed { i, b -> addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i > 0) marginStart = m.dp(6) }) }
+            }, 6)
+        } else sec.put(LinearLayout(m).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(m.dp(8), m.dp(6), m.dp(6), m.dp(6)); background = ui.round(Ui.SUN_SOFT, 12, Ui.LINE)
+            if (ex.thumb != null) addView(ImageView(m).apply { setImageBitmap(ex.thumb); scaleType = ImageView.ScaleType.CENTER_CROP; background = ui.round(Ui.LINE, 6); clipToOutline = true }, LinearLayout.LayoutParams(m.dp(36), m.dp(36)))
+            else addView(TextView(m).apply { text = "📑"; textSize = 20f; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(m.dp(36), m.dp(36)))
+            addView(ui.stack(ui.text(ex.name, 13.5f, Ui.INK, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE },
+                ui.text("Format to follow · kept for the next letters too", 11.5f, Ui.MUTED)), LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = m.dp(8) })
+            addView(ui.button("✕", "ghost") { setExample(null); m.render() }.apply { contentDescription = "Remove the example" })
+        }, 6)
+        if (office) sec.put(ui.text("🖥 From a computer: open ${store.server.removePrefix("https://")}/teach › 📑 Example letters, and upload Word, PDF or photos. Habit picks the closest one by itself.", 12f, Ui.MUTED), 6)
+    }
+
     private fun kb(n: Int) = if (n >= 1024 * 1024) String.format(java.util.Locale.ENGLISH, "%.1f MB", n / 1048576f) else "${maxOf(1, n / 1024)} KB"
 
     private fun paperRow(p: Paper, i: Int) = LinearLayout(m).apply {
@@ -319,6 +362,7 @@ class LetterHelper(private val m: MainActivity) {
     }
 
     private fun roomFor(): Int {
+        if (forExample) return 1
         val left = MAX_PAPERS - papers.size
         if (left <= 0) m.toast("You can add up to $MAX_PAPERS papers. Remove one first.")
         return left
@@ -366,7 +410,7 @@ class LetterHelper(private val m: MainActivity) {
         addPhotos(listOf(Uri.fromFile(f)))
     }
 
-    fun onPhotos(list: List<Uri>) = addPhotos(list.take(maxOf(0, MAX_PAPERS - papers.size)))
+    fun onPhotos(list: List<Uri>) = addPhotos(if (forExample) list.take(1) else list.take(maxOf(0, MAX_PAPERS - papers.size)))
 
     private fun addPhotos(list: List<Uri>) {
         if (list.isEmpty()) return
@@ -376,6 +420,11 @@ class LetterHelper(private val m: MainActivity) {
             try { CameraFiles.file(m).delete() } catch (e: Exception) { }
             m.runOnUiThread {
                 addingPaper = false
+                if (forExample) {
+                    forExample = false
+                    made.firstOrNull()?.let { setExample(Paper("Example photo.jpg", "image/jpeg", it, thumbOf(it))) } ?: m.toast("Couldn't open the photo.")
+                    m.render(); return@runOnUiThread
+                }
                 var n = papers.count { it.mime != "application/pdf" }
                 for (b in made) {
                     if (papers.size >= MAX_PAPERS) break
@@ -393,7 +442,7 @@ class LetterHelper(private val m: MainActivity) {
     } catch (e: Throwable) { null }
 
     fun onPdf(uri: Uri) {
-        if (papers.size >= MAX_PAPERS) return
+        if (papers.size >= MAX_PAPERS && !forExample) return
         addingPaper = true; m.render()
         m.io.execute {
             var name = "Document.pdf"
@@ -410,9 +459,11 @@ class LetterHelper(private val m: MainActivity) {
                 when {
                     bytes == null -> m.toast("This PDF is too big (more than 8 MB) or couldn't be opened. Take photos of the pages instead.")
                     bytes.size < 5 || String(bytes, 0, 5, Charsets.ISO_8859_1) != "%PDF-" -> m.toast("That file isn't a PDF.")
+                    forExample -> setExample(Paper(name, "application/pdf", bytes, null))
                     papers.sumOf { it.data.size } + bytes.size > MAX_ALL -> m.toast("That's too much together. Remove a paper first.")
                     else -> { papers.add(Paper(name, "application/pdf", bytes, null)); docsId = "" }
                 }
+                forExample = false
                 m.render()
             }
         }
@@ -744,7 +795,9 @@ class LetterHelper(private val m: MainActivity) {
         val body = JSONObject().put("request", Privacy.maybe(store, pieces.joinToString("\n") { "- $it" })).put("lang", letterLang.ifEmpty { store.lang }).put("mode", store.letterMode)
         if (office) { if (officeType.isNotEmpty()) body.put("docType", officeType); body.put("office", store.officeInfo) }
         docsBody(body)
-        val heavy = body.has("docs")
+        loadExample()
+        example?.let { e -> body.put("example", JSONObject().put("name", e.name).put("mediaType", e.mime).put("data", Base64.encodeToString(e.data, Base64.NO_WRAP))) }
+        val heavy = body.has("docs") || body.has("example")
         m.io.execute {
             val r = Net.post(store, "/api/letter/draft", body, emptyMap(), if (heavy) 240_000 else 150_000)
             m.runOnUiThread {

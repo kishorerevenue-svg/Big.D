@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills }) {
+module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills, formats }) {
   const { send, readBody, allowed, dailyCheck, clientIp, baseUrl } = h;
   const reads = new Map(); // reading the feed has its own, bigger limit (it costs nothing)
   setInterval(() => { const now = Date.now(); for (const [k, l] of reads) if (!l.some(t => now - t < 600000)) reads.delete(k); }, 600000).unref();
@@ -138,6 +138,14 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     return [parts, o.name ? "officer: " + str(o.name, 60) : "", o.ref ? "Rc.No./file number style: " + str(o.ref, 40) : "", o.contact ? "contact: " + str(o.contact, 80) : ""]
       .filter(Boolean).join("; ");
   }
+  /** The format to follow: the example the person attached for this letter (a file, read by the AI), else the owner's
+   *  closest example letter (Teach page). { text: words for the AI, file: [the attached example] } */
+  function exampleFor(body) {
+    const mine = readPapers(body.example ? [body.example] : []);
+    if (mine.length) return { file: mine, text: "The LAST attached file is an EXAMPLE of the format to follow (not a paper about this matter): follow its layout, the order of its parts, headings, the way it addresses and signs off, reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places." };
+    const x = formats ? formats.pick(str(body.docType, 60), str(body.request, 3000)) : null;
+    return { file: [], text: x ? formats.block(x).trim() : "" };
+  }
   const withPapers = (papers, text) => papers.length ? paperBlocks(papers).concat([{ type: "text", text }]) : text;
 
   async function letterPlan(body) {
@@ -230,10 +238,12 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (od) lines.push("Their office: " + od);
     const papers = loadPapers(body.docsId).concat(readPapers(body.docs)).slice(0, 10);
     if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above (a report, an earlier letter, an order, a petition): take the references, numbers, dates, names, extents and facts from them.`);
+    const ex = exampleFor(body);
+    if (ex.text) lines.push(ex.text);
     lines.push("Write the complete document now: this is a rough copy the person will read line by line and then ask to change.");
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
     const ask = model => learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
-      messages: [{ role: "user", content: withPapers(papers, lines.join("\n")) }], maxTokens: 16000, search: false, model });
+      messages: [{ role: "user", content: withPapers(papers.concat(ex.file), lines.join("\n")) }], maxTokens: 16000, search: false, model });
     let o = null;
     try { o = parseJson((await ask(SMART_MODEL || MODEL)).text); } catch (e) { if (e.user || !SMART_MODEL || SMART_MODEL === MODEL) throw e; }
     if ((!o || !okContent(o.content)) && SMART_MODEL && SMART_MODEL !== MODEL) o = parseJson((await ask(MODEL)).text);

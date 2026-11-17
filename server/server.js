@@ -39,6 +39,7 @@ const voice = require("./voice.js")({ DATA_DIR });
 const baseUrl = req => (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
 // created after the helpers below exist (see "extras" near the web server)
 let extras = null;
+const formats = require("./formats.js")({ DATA_DIR, learn });   // example letters the owner adds on the Teach page
 
 /** Picks the brain for this message: fast for chat, smart for hard or many-task requests. */
 function pickModel(text, hasImage) {
@@ -502,7 +503,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
 
-  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills,
+  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills, formats,
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
   if (await gemma.handle(req, res, url, origin, { send, readBody, allowed, clientIp })) return;
@@ -702,6 +703,7 @@ const server = http.createServer(async (req, res) => {
     if (!teachAllowed(req)) { hits.set(tk, [...tries, Date.now()]); return send(res, 401, { error: "Wrong password." }); }
     try {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
+      if (req.method === "GET" && url.pathname === "/api/teach/formats") return send(res, 200, { items: formats.list() });
       // our own brain and the answers learned from common questions
       if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list(), claude: learn.claudeOut(), self: selfBrain.stats(), trends: trends.status(), skills: await skills.status() });
       if (req.method === "GET" && url.pathname === "/api/teach/skills") return send(res, 200, { status: await skills.status(), learned: skills.list() });
@@ -769,6 +771,8 @@ const server = http.createServer(async (req, res) => {
           const page = await learn.urlToText(String(body.url || ""));
           return send(res, 200, { item: learn.addKnowledge(body.title || page.title, String(body.url), page.text, page.via) });
         }
+        if (url.pathname === "/api/teach/formats/add") return send(res, 200, { item: await formats.add(body), items: formats.list() });
+        if (url.pathname === "/api/teach/formats/delete") return send(res, 200, { ok: formats.remove(String(body.id || "")), items: formats.list() });
         if (url.pathname === "/api/teach/file") {
           if (!API_KEY) return send(res, 500, { error: "Server has no API key yet." });
           const text = await learn.fileToText(String(body.name || "file"), String(body.mediaType || ""), String(body.data || ""));
