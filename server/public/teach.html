@@ -743,20 +743,23 @@ async function sendAll(files) {
   const skipped = files.length - good.length;
   if (!good.length) { say($("exMsg"), "No files to add here" + (skipped ? ` (${skipped} skipped: other types or over 15 MB)` : "") + ".", false); return; }
   bulkRunning = true; bulkStop = false; $("bulkStop").hidden = false;
-  let done = 0, same = 0, failed = 0;
-  const show = () => say($("exMsg"), `Reading ${done + same + failed} of ${good.length}… ✓ ${done} added` + (same ? ` · ${same} already there` : "") + (failed ? ` · ✕ ${failed} couldn't be read` : "") + (skipped ? ` · ${skipped} skipped` : ""), true);
+  let done = 0, same = 0, failed = 0, later = 0, aiOver = false;
+  const show = () => say($("exMsg"), `Reading ${done + same + failed + later} of ${good.length}… ✓ ${done} added` + (same ? ` · ${same} already there` : "") + (failed ? ` · ✕ ${failed} couldn't be read` : "") + (later ? ` · ⏳ ${later} PDFs/photos for tomorrow` : "") + (skipped ? ` · ${skipped} skipped` : ""), true);
   show();
+  // Word and text files first (free), then PDFs and photos (read by the AI)
+  good.sort((a, b) => (/\.(docx|txt|md|csv)$/i.test(b.name) ? 1 : 0) - (/\.(docx|txt|md|csv)$/i.test(a.name) ? 1 : 0));
   for (const f of good) {
     if (bulkStop) break;
+    if (aiOver && !/\.(docx|txt|md|csv)$/i.test(f.name)) { later++; show(); continue; }
     try {
       const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = bad; r.readAsDataURL(f); });
       const out = await api("bulk", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data, use });
-      if ((out.format && out.format.same) || (out.info && out.info.same)) same++; else done++;
-    } catch (e) { failed++; }
+      if (out.same || (out.format && out.format.same) || (out.info && out.info.same)) same++; else done++;
+    } catch (e) { if (/used up/.test(e.message)) { aiOver = true; later++; } else failed++; }
     show();
   }
   bulkRunning = false; $("bulkStop").hidden = true;
-  say($("exMsg"), (bulkStop ? "Stopped. " : "Done. ") + `✓ ${done} added` + (same ? ` · ${same} were already there` : "") + (failed ? ` · ✕ ${failed} couldn't be read` : "") + (skipped ? ` · ${skipped} skipped` : ""), !failed);
+  say($("exMsg"), (bulkStop ? "Stopped. " : "Done. ") + `✓ ${done} added` + (same ? ` · ${same} were already there` : "") + (failed ? ` · ✕ ${failed} couldn't be read` : "") + (later ? ` · ⏳ ${later} PDFs/photos: drag the same folders again tomorrow (the ones already in are skipped free)` : "") + (skipped ? ` · ${skipped} skipped` : ""), !failed);
   loadFormats().catch(() => {}); refresh().catch(() => {});
 }
 const drop = $("drop");

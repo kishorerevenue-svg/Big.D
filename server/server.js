@@ -39,7 +39,7 @@ const voice = require("./voice.js")({ DATA_DIR });
 const baseUrl = req => (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
 // created after the helpers below exist (see "extras" near the web server)
 let extras = null;
-const formats = require("./formats.js")({ DATA_DIR, learn });   // example letters the owner adds on the Teach page
+const formats = require("./formats.js")({ DATA_DIR, learn, MODEL });   // example letters the owner adds on the Teach page
 
 /** Picks the brain for this message: fast for chat, smart for hard or many-task requests. */
 function pickModel(text, hasImage) {
@@ -778,7 +778,10 @@ const server = http.createServer(async (req, res) => {
           const name = String(body.name || "file").slice(0, 200), type = String(body.mediaType || ""), where = String(body.path || name).slice(0, 300);
           const use = ["format", "info", "both"].includes(body.use) ? body.use : "both";
           if (!/\.(docx|txt|md|csv)$/i.test(name) && !API_KEY) return send(res, 500, { error: "Server has no API key yet." });
-          const text = String(await formats.textOf(name, type, String(body.data || "")) || "").trim();
+          const got = await formats.bulkText(name, type, String(body.data || ""));
+          if (got.same) return send(res, 200, { same: true });
+          if (got.wait) return send(res, 429, { error: "Today's AI reading for PDFs and photos is used up. Word and text files still go in; the rest tomorrow.", wait: true });
+          const text = String(got.text || "").trim();
           if (text.length < 40) return send(res, 400, { error: "No text could be read." });
           const out = { chars: text.length };
           if (use !== "info") out.format = await formats.add({ text, title: name.replace(/\.[a-z0-9]+$/i, ""), path: where });

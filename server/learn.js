@@ -295,13 +295,13 @@ module.exports = function makeLearn({ DATA_DIR, API_BASE, API_KEY, MODEL, SMART_
   // ---------- turning uploads into text ----------
   const TRANSCRIBE = "Copy out ALL the text in this document exactly, in its original language (Telugu, English or both). Keep headings, numbers, dates and tables (as plain text rows). If it is a photo without much text, describe what it shows in detail instead. Output only the text, nothing else.";
 
-  async function fileToText(name, mediaType, b64) {
+  async function fileToText(name, mediaType, b64, opt = {}) {
     if (readsItself(name, mediaType)) return Buffer.from(b64, "base64").toString("utf8");
     let block;
     if (mediaType === "application/pdf") block = { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } };
     else if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mediaType)) block = { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } };
     else throw Object.assign(new Error("Only PDF, photos (JPG, PNG, WEBP) and text files can be added. Save Word files as PDF first."), { user: true });
-    const out = await callClaude({ system: "You turn documents into plain text.", messages: [{ role: "user", content: [block, { type: "text", text: TRANSCRIBE }] }], maxTokens: 16000, search: false, model: SMART_MODEL || MODEL });
+    const out = await callClaude({ system: "You turn documents into plain text.", messages: [{ role: "user", content: [block, { type: "text", text: TRANSCRIBE }] }], maxTokens: opt.maxTokens || 16000, search: false, model: opt.model || SMART_MODEL || MODEL });
     return out.text + (out.truncated ? "\n\n[The document was very long; only the first part was saved. Split it into smaller files to add the rest.]" : "");
   }
 

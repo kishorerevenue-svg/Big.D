@@ -31,7 +31,7 @@ function docxText(buf) {
   throw Object.assign(new Error("No text was found in that Word file."), { user: true });
 }
 
-module.exports = function makeFormats({ DATA_DIR, learn }) {
+module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   const DIR = path.join(DATA_DIR, "formats");
   try { fs.mkdirSync(DIR, { recursive: true }); } catch (e) { }
   const str = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
@@ -47,9 +47,34 @@ module.exports = function makeFormats({ DATA_DIR, learn }) {
   }
   const hashOf = t => crypto.createHash("sha1").update(String(t).replace(/\s+/g, " ").trim()).digest("hex").slice(0, 16);
   /** The text of an uploaded file: Word and text files are read here (free); PDF and photos by the AI. */
-  async function textOf(name, type, data) {
+  async function textOf(name, type, data, opt) {
     if (/\.docx$/i.test(name) || type.includes("wordprocessingml")) return docxText(Buffer.from(data, "base64"));
-    return learn.fileToText(name || "file", type, data);
+    return learn.fileToText(name || "file", type, data, opt);
+  }
+  // ---------- many files at once: the same file is never read twice, and the AI reads only so many a day ----------
+  const SEEN = path.join(DIR, "seen.json");
+  let seen = {};
+  try { seen = JSON.parse(fs.readFileSync(SEEN, "utf8")); } catch (e) { }
+  let seenTimer = null;
+  const saveSeen = () => { if (!seenTimer) seenTimer = setTimeout(() => { seenTimer = null; try { fs.writeFileSync(SEEN, JSON.stringify(seen)); } catch (e) { } }, 2000); };
+  const rawHash = data => crypto.createHash("sha1").update(String(data || "")).digest("hex").slice(0, 20);
+  const AI_DAILY = Math.max(0, Number(process.env.BULK_AI_DAILY || 300));
+  let aiDay = "", aiUsed = 0;
+  /** A file's text for the bulk upload: { text } or { same } (this very file came before) or { wait } (the AI's daily count is used up). */
+  async function bulkText(name, type, data) {
+    const h = rawHash(data);
+    if (seen[h]) return { same: true };
+    const free = /\.(docx|txt|md|csv)$/i.test(name) || type.includes("wordprocessingml") || /^text\//.test(type);
+    if (!free) {
+      const day = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+      if (day !== aiDay) { aiDay = day; aiUsed = 0; }
+      if (aiUsed >= AI_DAILY) return { wait: true };
+      aiUsed++;
+    }
+    // (the regular AI, not the bigger one: many files, and plain text is enough)
+    const text = await textOf(name, type, data, { model: MODEL || undefined, maxTokens: 8000 });
+    seen[h] = Date.now(); saveSeen();
+    return { text };
   }
   /** What kind of document a file is, from its name and folder ("Reports/RDO survey.docx" → Report). */
   function kindOf(p) {
@@ -103,6 +128,6 @@ module.exports = function makeFormats({ DATA_DIR, learn }) {
     return `\n\nEXAMPLE FORMAT ("${x.title}"${x.kind ? ", a " + x.kind : ""}). Follow its format closely: its layout, the order of its parts, its headings, the way it addresses and signs off, its reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places: those come only from the matter and the papers.\n<<<\n${x.text.slice(0, 8000)}\n>>>`;
   }
 
-  return { list: () => list().map(view), add, remove, pick, block, textOf, kindOf, hashOf };
+  return { list: () => list().map(view), add, remove, pick, block, textOf, kindOf, hashOf, bulkText, aiLeft: () => Math.max(0, AI_DAILY - aiUsed) };
 };
 module.exports.docxText = docxText;
