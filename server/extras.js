@@ -224,7 +224,22 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     }
     return out.slice(0, 400);
   }
-  const roughOut = o => ({ title: str(o.title, 80) || "Letter", format: o.format === "xlsx" ? "xlsx" : "docx", content: o.content, lines: roughLines(o.content), say: str(o.say, 300) });
+  // "Yours faithfully," written twice (as the last paragraph and again in the signature): once only
+  const CLOSE = /^\s*(yours\s+(faithfully|sincerely|truly|obediently)|thanking\s+you,?\s*yours\s+faithfully|భవదీయుడు|భవదీయులు|భవదీయురాలు|తమ\s+విధేయుడు|విధేయుడు)\s*[,.]?\s*$/i;
+  function oneSignOff(content) {
+    const b = content && Array.isArray(content.blocks) ? content.blocks : null;
+    if (!b) return content;
+    const si = b.findIndex(x => x && typeof x.sign === "string");
+    if (si > 0) {
+      const head = String(b[si].sign).split("\n")[0];
+      for (let i = si - 1; i >= 0 && i >= si - 2; i--) if (b[i] && typeof b[i].p === "string" && CLOSE.test(b[i].p.replace(/\*\*/g, "")) && CLOSE.test(head)) b.splice(i, 1);
+      const j = b.findIndex(x => x && typeof x.sign === "string");
+      const lines = String(b[j].sign).split("\n");
+      if (lines.length > 1 && CLOSE.test(lines[0]) && CLOSE.test(lines[1])) b[j].sign = lines.slice(1).join("\n");
+    }
+    return content;
+  }
+  const roughOut = o => { oneSignOff(o.content); return { title: str(o.title, 80) || "Letter", format: o.format === "xlsx" ? "xlsx" : "docx", content: o.content, lines: roughLines(o.content), say: str(o.say, 300) }; };
   const okContent = c => c && typeof c === "object" && (Array.isArray(c.blocks) || Array.isArray(c.sheets)) && JSON.stringify(c).length < 300000;
 
   /** The first rough copy: from everything they wrote (and their papers). */

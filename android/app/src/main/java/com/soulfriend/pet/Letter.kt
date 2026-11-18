@@ -211,9 +211,10 @@ class LetterHelper(private val m: MainActivity) {
     private fun lettersButton() {
         val n = store.letters.length()
         if (n == 0) return
-        m.add(ui.button("📥 Downloaded letters · నా లేఖలు ($n)", "soft") { lettersView?.let { m.scrollToView(it) } }, 8)
+        m.add(ui.button("📂 Your letters & files · మీ లేఖలు ($n)", "soft") { lettersView?.let { m.scrollToView(it) } }, 8)
     }
     private var lettersView: View? = null
+    private var justMade = 0L                    // the letter just made: shown first, marked ✅
 
     private fun buildPublicStart() {
         lettersButton()
@@ -237,23 +238,24 @@ class LetterHelper(private val m: MainActivity) {
             if (error.isNotBlank()) put(ui.text("⚠️ $error", 13.5f, Ui.DANGER), 12)
             put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
         }, 12)
-        myLetters()
     }
 
     private fun buildOfficeStart() {
         lettersButton()
         m.add(ui.section("🏢 Office letters · కార్యాలయ లేఖలు",
             "Letters, reports, memos, proceedings and notices in office format. Add the petition or the earlier letter, and I'll read it first.").apply {
-            put(ui.text("1. What do you want to prepare?", 14f, Ui.INK, bold = true), 12)
-            OFFICE_TYPES.chunked(2).forEach { row ->
-                put(LinearLayout(m).apply {
+            put(ui.text("1. What to prepare? (slide ⟷)", 14f, Ui.INK, bold = true), 12)
+            put(android.widget.HorizontalScrollView(m).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(LinearLayout(m).apply {
                     orientation = LinearLayout.HORIZONTAL
-                    row.forEachIndexed { i, (icon, name) ->
+                    // the chosen one first
+                    OFFICE_TYPES.sortedByDescending { it.second == officeType }.forEachIndexed { i, (icon, name) ->
                         addView(ui.chip("$icon $name", officeType == name) { officeType = if (officeType == name) "" else name; m.render() },
-                            LinearLayout.LayoutParams(0, -2, 1f).apply { if (i > 0) marginStart = m.dp(6) })
+                            LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) marginStart = m.dp(6) })
                     }
-                }, 6)
-            }
+                })
+            }, 6)
             put(ui.text("2. What is the matter? (write or speak everything here; ➕ Add more as many times as you need)", 14f, Ui.INK, bold = true), 16)
             matterBlock(this, "e.g. \"Report to the RDO on the joint survey in Sy.No. …: who objected, what was found…\"")
             put(ui.text("3. Related papers (optional)", 14f, Ui.INK, bold = true), 16)
@@ -264,7 +266,6 @@ class LetterHelper(private val m: MainActivity) {
             put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
         }, 12)
         officeCard()
-        myLetters()
         m.add(ui.text("Papers you add are read by Claude AI only to write this document, and kept on the Habit server only until it is made (at most 6 hours). " +
             "\"Hide personal details\" doesn't cover photos and PDFs. Don't add secret or classified papers, and follow your office's rules on using AI tools.", 12f, Ui.MUTED), 10)
     }
@@ -746,7 +747,6 @@ class LetterHelper(private val m: MainActivity) {
         m.add(ui.text("🚩 Something wrong or offensive in this letter? Report it", 13f, Ui.MUTED).apply {
             setPadding(0, m.dp(6), 0, m.dp(6)); setOnClickListener { m.reportAi("letter helper", preview.ifBlank { name }, request) }
         }, 14)
-        myLetters()
     }
 
     // ---------------- one box for the matter (➕ add more, as many times as needed) ----------------
@@ -875,7 +875,12 @@ class LetterHelper(private val m: MainActivity) {
                 result = JSONObject(x.json.toString()).put("preview", (0 until lines.length()).joinToString("\n") { lines.optString(it) })
                 fileId = Actions(m) { _, _ -> }.downloadFile(x.json.optString("url"), x.json.optString("name", "Letter.docx")) ?: -1L
                 keepLetter(r, x.json)
-                stage = "done"; m.render(); m.scrollTop()
+                // back to the page: the form is ready for a new letter, and this one is on top of "Your letters & files"
+                justMade = editingAt
+                pieces.clear(); request = ""; papers.clear(); docsId = ""; rough = null; change = ""; editingAt = 0L; result = null
+                stage = "start"; m.render()
+                m.toast(if (r.optString("format") == "xlsx") "✅ Excel file ready · saved in Downloads" else "✅ Letter ready · saved in Downloads")
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ lettersView?.let { m.scrollToView(it) } }, 120)
             }
         }
     }
@@ -893,16 +898,22 @@ class LetterHelper(private val m: MainActivity) {
         editingAt = at
     }
 
-    private fun myLetters() {
+    /** The ids (in Downloads) of the files that are letters here: the Files page doesn't list them twice. */
+    fun letterFileIds(): Set<Long> { val l = store.letters; return (0 until l.length()).mapNotNull { l.optJSONObject(it)?.optLong("file", -1L)?.takeIf { f -> f >= 0 } }.toSet() }
+
+    /** "Your letters & files": every letter made here (Open, Share, ✏️ Change, Remove); [others] adds the other files. */
+    fun lettersSection(others: Int) {
         val list = store.letters
-        if (list.length() == 0) return
-        m.add(ui.section("📥 Downloaded letters · నా లేఖలు (${list.length()})", "Kept on this phone and in Downloads. Open, share, or ✏️ change any of them: the rough copy with line numbers opens again.").apply {
+        if (list.length() == 0) { lettersView = null; return }
+        m.add(ui.section("📂 Your letters & files · మీ లేఖలు (${list.length() + others})", "Saved on this phone, in Downloads › Habit AI. ✏️ Change opens the rough copy with line numbers again.").apply {
             lettersView = this
             for (i in 0 until list.length()) {
                 val e = list.optJSONObject(i) ?: continue
                 val day = java.text.SimpleDateFormat("dd-MM-yyyy, h:mm a", java.util.Locale.ENGLISH).format(java.util.Date(e.optLong("when", e.optLong("at"))))
+                val fresh = justMade != 0L && e.optLong("at") == justMade
                 put(LinearLayout(m).apply {
-                    orientation = LinearLayout.VERTICAL; setPadding(m.dp(12), m.dp(10), m.dp(12), m.dp(10)); background = ui.round(Ui.FIELD, 14, Ui.LINE)
+                    orientation = LinearLayout.VERTICAL; setPadding(m.dp(12), m.dp(10), m.dp(12), m.dp(10)); background = ui.round(if (fresh) Ui.TEAL_SOFT else Ui.FIELD, 14, Ui.LINE)
+                    if (fresh) addView(ui.text("✅ Just made · ఇప్పుడే తయారైంది", 13f, Ui.TEAL_DARK, bold = true))
                     addView(ui.text((if (e.optString("format") == "xlsx") "📊 " else "📄 ") + e.optString("title", "Letter"), 15f, Ui.INK, bold = true))
                     addView(ui.text(day, 12f, Ui.MUTED))
                     addView(ui.row(ui.button("📖 Open", "soft") { openSaved(e, share = false) }, ui.button("📤 Share", "soft") { openSaved(e, share = true) }, gap = 6),
@@ -923,11 +934,14 @@ class LetterHelper(private val m: MainActivity) {
     }
 
     private fun removeSaved(e: JSONObject) {
-        AlertDialog.Builder(m).setMessage("Remove \"${e.optString("title")}\" from My letters? (The file in Downloads stays.)")
+        AlertDialog.Builder(m).setMessage("Remove \"${e.optString("title")}\"? It is deleted from this phone.")
             .setPositiveButton("Remove") { _, _ ->
                 val old = store.letters; val list = JSONArray()
                 for (i in 0 until old.length()) old.optJSONObject(i)?.let { if (it.optLong("at") != e.optLong("at")) list.put(it) }
-                store.letters = list; m.render()
+                store.letters = list
+                // the file in Downloads goes too (it is one list now)
+                e.optLong("file", -1L).takeIf { it >= 0 }?.let { id -> try { m.getSystemService(DownloadManager::class.java).remove(id) } catch (x: Exception) { }; store.removeFile(id) }
+                m.render()
             }.setNegativeButton("Cancel", null).show()
     }
 
