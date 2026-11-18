@@ -179,7 +179,7 @@ module.exports = function makeGemma({ DATA_DIR, SERVER_DIR, ownBrain, learn, HF_
   function docs() {
     const out = [], skipped = [];
     let total = 0;
-    for (const it of learn.listKnowledge()) {
+    for (const it of learn.listKnowledge(false)) {          // (never the owner's private office files)
       const via = learn.viaOf(it);
       if (via === "claude") { skipped.push(it.title); continue; }
       const text = learn.readKnowledge(it.id).slice(0, 60000);

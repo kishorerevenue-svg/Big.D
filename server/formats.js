@@ -108,8 +108,8 @@ module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   }
 
   /** The example closest to this letter (its kind first, then the words of the matter), or null. */
-  function pick(docType, request) {
-    const all = list();
+  function pick(docType, request, owner = false) {
+    const all = list().filter(x => owner || !x.from);    // the owner's own old files (from folders) only for the owner
     if (!all.length) return null;
     const kw = words(docType), rw = new Set(words(request));
     let best = null, bs = 0;
