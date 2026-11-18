@@ -1294,9 +1294,13 @@ class MainActivity : Activity() {
         pageHeader("Files", "Applications, office letters, reports and Excel sheets, made step by step with you")
         letter.build()
 
-        val files = store.files().sortedByDescending { it.at }
-        add(ui.label("Your files"), 18)
-        if (files.isEmpty()) add(ui.text("No files yet. Ask above, or tell your pet \"make an Excel list of my monthly expenses\".", 14f, Ui.MUTED), 8)
+        // one list: the letters made here (with ✏️ Change), then the other files (made by the pet, Excel lists…)
+        val mine = letter.letterFileIds()
+        val files = store.files().filter { it.id !in mine }.sortedByDescending { it.at }
+        letter.lettersSection(files.size)
+        if (store.letters.length() == 0) add(ui.label("Your letters & files"), 18)
+        else if (files.isNotEmpty()) add(ui.label("Other files"), 12)
+        if (files.isEmpty() && store.letters.length() == 0) add(ui.text("No files yet. Ask above, or tell your pet \"make an Excel list of my monthly expenses\".", 14f, Ui.MUTED), 8)
         val dm = getSystemService(DownloadManager::class.java)
         files.forEach { f ->
             val xl = f.format == "xlsx"
