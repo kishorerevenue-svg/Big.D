@@ -37,10 +37,26 @@ module.exports = function makeFormats({ DATA_DIR, learn }) {
   const str = (v, n) => String(v == null ? "" : v).trim().slice(0, n);
   const words = s => String(s || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 3);
 
+  let cache = null;
   function list() {
+    if (cache) return cache;
     const out = [];
     try { for (const f of fs.readdirSync(DIR)) if (f.endsWith(".json")) try { out.push(JSON.parse(fs.readFileSync(path.join(DIR, f), "utf8"))); } catch (e) { } } catch (e) { }
-    return out.sort((a, b) => b.at - a.at);
+    cache = out.sort((a, b) => b.at - a.at);
+    return cache;
+  }
+  const hashOf = t => crypto.createHash("sha1").update(String(t).replace(/\s+/g, " ").trim()).digest("hex").slice(0, 16);
+  /** The text of an uploaded file: Word and text files are read here (free); PDF and photos by the AI. */
+  async function textOf(name, type, data) {
+    if (/\.docx$/i.test(name) || type.includes("wordprocessingml")) return docxText(Buffer.from(data, "base64"));
+    return learn.fileToText(name || "file", type, data);
+  }
+  /** What kind of document a file is, from its name and folder ("Reports/RDO survey.docx" → Report). */
+  function kindOf(p) {
+    const s = String(p || "").toLowerCase();
+    for (const [k, re] of [["Proceedings", /proceed|procd|ప్రొసీడింగ్/], ["Report", /report|నివేదిక|రిపోర్ట్/], ["Memo", /memo|మెమో/], ["Notice", /notice|నోటీసు/],
+      ["Endorsement", /endorse|ఎండార్స్/], ["Certificate", /certif|సర్టిఫికెట్|ధృవ/], ["Application", /applic|petition|దరఖాస్తు/], ["Letter", /letter|లేఖ|lr/]]) if (re.test(s)) return k;
+    return "Letter";
   }
   const view = x => ({ id: x.id, title: x.title, kind: x.kind, chars: x.text.length, at: x.at, start: x.text.slice(0, 160) });
 
@@ -48,20 +64,21 @@ module.exports = function makeFormats({ DATA_DIR, learn }) {
   async function add(body) {
     let text = str(body.text, 30000);
     const name = str(body.name, 120), type = str(body.mediaType, 120), data = String(body.data || "");
-    if (!text && data) {
-      if (/\.docx$/i.test(name) || type.includes("wordprocessingml")) text = docxText(Buffer.from(data, "base64"));
-      else text = await learn.fileToText(name || "example", type, data);
-    }
+    if (!text && data) text = await textOf(name, type, data);
     text = String(text || "").replace(/\r/g, "").trim().slice(0, 30000);
     if (text.length < 40) throw Object.assign(new Error("Too little text was found in that example."), { user: true });
-    if (list().length >= 60) throw Object.assign(new Error("60 examples are kept at most: delete an old one first."), { user: true });
-    const x = { id: crypto.randomBytes(6).toString("hex"), title: str(body.title, 100) || name.replace(/\.[a-z0-9]+$/i, "") || "Example",
-      kind: str(body.kind, 60), text, at: Date.now() };
+    const h = hashOf(text), same = list().find(x => x.hash === h);
+    if (same) return Object.assign(view(same), { same: true });
+    if (list().length >= 3000) throw Object.assign(new Error("3000 examples are kept at most: delete old ones first."), { user: true });
+    const x = { id: crypto.randomBytes(6).toString("hex"), title: str(body.title, 100) || name.replace(/^.*[\\/]/, "").replace(/\.[a-z0-9]+$/i, "") || "Example",
+      kind: str(body.kind, 60) || kindOf(str(body.path, 300) + " " + name), text, at: Date.now(), hash: h, from: str(body.path, 300) };
     fs.writeFileSync(path.join(DIR, x.id + ".json"), JSON.stringify(x));
+    list().unshift(x);
     return view(x);
   }
   function remove(id) {
     if (!/^[a-f0-9]{12}$/.test(String(id || ""))) return false;
+    if (cache) cache = cache.filter(x => x.id !== id);
     try { fs.unlinkSync(path.join(DIR, id + ".json")); return true; } catch (e) { return false; }
   }
 
@@ -86,6 +103,6 @@ module.exports = function makeFormats({ DATA_DIR, learn }) {
     return `\n\nEXAMPLE FORMAT ("${x.title}"${x.kind ? ", a " + x.kind : ""}). Follow its format closely: its layout, the order of its parts, its headings, the way it addresses and signs off, its reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places: those come only from the matter and the papers.\n<<<\n${x.text.slice(0, 8000)}\n>>>`;
   }
 
-  return { list: () => list().map(view), add, remove, pick, block };
+  return { list: () => list().map(view), add, remove, pick, block, textOf, kindOf, hashOf };
 };
 module.exports.docxText = docxText;

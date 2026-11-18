@@ -61,18 +61,23 @@ summary{cursor:pointer;font-weight:600}
 
   <div id="tools" hidden>
     <section class="card">
-      <h2>📑 Example letters (formats) · నమూనా లేఖలు</h2>
-      <p class="hint">Upload a sample letter, report, memo or proceedings from your computer (Word .docx, PDF, photo or text). When someone makes that kind of letter in the app, Habit follows its format: layout, headings, addressing, Rc.No. and date lines, numbering and tone. Its facts and names are never copied. Use samples without real case details.</p>
-      <input id="exFile" type="file" accept=".docx,.pdf,.txt,image/jpeg,image/png,image/webp" aria-label="Choose an example letter">
-      <label for="exTitle">Title (optional)</label>
-      <input id="exTitle" placeholder="For example: Report to RDO on joint survey">
-      <label for="exKind">Kind</label>
-      <select id="exKind">
-        <option value="Letter">Letter</option><option value="Report">Report</option><option value="Proceedings">Proceedings</option>
-        <option value="Memo">Memo</option><option value="Notice">Notice</option><option value="Endorsement">Endorsement</option>
-        <option value="Certificate">Certificate</option><option value="Application">Application</option>
-      </select>
-      <button id="exAdd" type="button">Add example</button>
+      <h2>📂 Old letters & files · పాత లేఖలు, ఫైళ్లు</h2>
+      <p class="hint">Drag whole folders of your old letters, reports, proceedings and orders. Each file is read once and kept only as <b>text</b> (the file itself is not kept on the server). Then: <b>format</b>, when a letter of that kind is made, Habit follows the closest one's layout; <b>information</b>, when a related matter comes, Habit uses the old information (earlier orders, history, rules). Word and text files are read free; PDFs and photos are read by the AI (a small cost each). The same file twice is kept once. Blank out personal details you don't want kept.</p>
+      <div id="drop" tabindex="0" role="button" aria-label="Drop folders and files here, or click to choose" style="border:2px dashed #7c8cff;border-radius:16px;padding:34px 16px;text-align:center;margin:12px 0;cursor:pointer;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+        <div style="font-size:40px">📂</div>
+        <b>Drag folders and files here</b>
+        <span class="hint" style="margin:0">or <a href="#" id="pickFolder">choose a folder</a> · <a href="#" id="pickFiles">choose files</a></span>
+        <span class="hint" style="margin:0">Word .docx, PDF, photos (JPG/PNG), .txt · up to 15 MB each · old .doc files: save as .docx first</span>
+      </div>
+      <input id="bulkFolder" type="file" webkitdirectory directory multiple hidden>
+      <input id="bulkFiles" type="file" multiple accept=".docx,.pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" hidden>
+      <label>Keep them as</label>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 10px">
+        <label style="font-weight:400"><input type="radio" name="use" value="both" checked> Both (format + information)</label>
+        <label style="font-weight:400"><input type="radio" name="use" value="format"> Example formats only</label>
+        <label style="font-weight:400"><input type="radio" name="use" value="info"> Information only</label>
+      </div>
+      <button id="bulkStop" type="button" class="ghost" hidden>Stop</button>
       <div class="msg" id="exMsg" role="status"></div>
       <ul id="exList"></ul>
     </section>
@@ -693,7 +698,8 @@ $("gmBack").onclick = async () => { if ($("gmBack").dataset.sure !== "1") { $("g
 async function loadFormats() {
   const { items } = await api("formats");
   const ul = $("exList"); ul.textContent = "";
-  for (const it of items) {
+  if (items.length) { const li = document.createElement("li"); li.textContent = `${items.length} kept as formats` + (items.length > 30 ? " · the newest 30 below" : ""); ul.append(li); }
+  for (const it of items.slice(0, 30)) {
     const li = document.createElement("li");
     const d = document.createElement("div");
     const b = document.createElement("b"); b.textContent = it.title + (it.kind ? " · " + it.kind : "");
@@ -707,18 +713,69 @@ async function loadFormats() {
     li.append(d, del); ul.append(li);
   }
 }
-$("exAdd").onclick = () => {
-  const f = $("exFile").files[0];
-  if (!f) { say($("exMsg"), "Choose a file first.", false); return; }
-  if (f.size > 15 * 1024 * 1024) { say($("exMsg"), "That file is over 15 MB.", false); return; }
-  busy($("exAdd"), $("exMsg"), async () => {
-    const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = bad; r.readAsDataURL(f); });
-    const type = f.type || (f.name.endsWith(".pdf") ? "application/pdf" : f.name.endsWith(".docx") ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "text/plain");
-    const { item } = await api("formats/add", { name: f.name, mediaType: type, data, title: $("exTitle").value.trim() || undefined, kind: $("exKind").value });
-    say($("exMsg"), `Added "${item.title}" as an example ${item.kind || "format"}.`, true);
-    $("exFile").value = ""; $("exTitle").value = "";
-  });
-};
+// ----- many files at once: dragged folders and files, sent one by one -----
+const OK_EXT = /\.(docx|pdf|txt|md|csv|jpe?g|png|webp)$/i;
+let bulkRunning = false, bulkStop = false;
+function typeOf(f) {
+  const n = f.name.toLowerCase();
+  if (n.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (n.endsWith(".pdf")) return "application/pdf";
+  if (/\.jpe?g$/.test(n)) return "image/jpeg";
+  if (n.endsWith(".png")) return "image/png";
+  if (n.endsWith(".webp")) return "image/webp";
+  return "text/plain";
+}
+// every file inside the dragged folders (and their folders)
+async function walk(entry, out) {
+  if (entry.isFile) { await new Promise(ok => entry.file(f => { f.where = entry.fullPath.replace(/^\//, ""); out.push(f); ok(); }, () => ok())); return; }
+  if (!entry.isDirectory) return;
+  const reader = entry.createReader();
+  for (;;) {
+    const batch = await new Promise(ok => reader.readEntries(ok, () => ok([])));
+    if (!batch.length) break;
+    for (const e of batch) await walk(e, out);
+  }
+}
+async function sendAll(files) {
+  if (bulkRunning) { say($("exMsg"), "Still working on the last files…", false); return; }
+  const use = (document.querySelector('input[name="use"]:checked') || {}).value || "both";
+  const good = files.filter(f => OK_EXT.test(f.name) && f.size > 0 && f.size <= 15 * 1024 * 1024 && !f.name.startsWith("~$"));
+  const skipped = files.length - good.length;
+  if (!good.length) { say($("exMsg"), "No files to add here" + (skipped ? ` (${skipped} skipped: other types or over 15 MB)` : "") + ".", false); return; }
+  bulkRunning = true; bulkStop = false; $("bulkStop").hidden = false;
+  let done = 0, same = 0, failed = 0;
+  const show = () => say($("exMsg"), `Reading ${done + same + failed} of ${good.length}… ✓ ${done} added` + (same ? ` · ${same} already there` : "") + (failed ? ` · ✕ ${failed} couldn't be read` : "") + (skipped ? ` · ${skipped} skipped` : ""), true);
+  show();
+  for (const f of good) {
+    if (bulkStop) break;
+    try {
+      const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = bad; r.readAsDataURL(f); });
+      const out = await api("bulk", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data, use });
+      if ((out.format && out.format.same) || (out.info && out.info.same)) same++; else done++;
+    } catch (e) { failed++; }
+    show();
+  }
+  bulkRunning = false; $("bulkStop").hidden = true;
+  say($("exMsg"), (bulkStop ? "Stopped. " : "Done. ") + `✓ ${done} added` + (same ? ` · ${same} were already there` : "") + (failed ? ` · ✕ ${failed} couldn't be read` : "") + (skipped ? ` · ${skipped} skipped` : ""), !failed);
+  loadFormats().catch(() => {}); refresh().catch(() => {});
+}
+const drop = $("drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.style.background = "rgba(124,140,255,.12)"; }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.style.background = ""; }));
+drop.addEventListener("drop", async e => {
+  const items = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const files = [];
+  if (items.length) { say($("exMsg"), "Finding the files in the folders…", true); for (const en of items) await walk(en, files); }
+  else files.push(...e.dataTransfer.files);
+  sendAll(files);
+});
+drop.addEventListener("click", e => { if (e.target.tagName !== "A") $("bulkFiles").click(); });
+drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("bulkFiles").click(); } });
+$("pickFolder").onclick = e => { e.preventDefault(); $("bulkFolder").click(); };
+$("pickFiles").onclick = e => { e.preventDefault(); $("bulkFiles").click(); };
+$("bulkFolder").onchange = () => { sendAll([...$("bulkFolder").files]); $("bulkFolder").value = ""; };
+$("bulkFiles").onchange = () => { sendAll([...$("bulkFiles").files]); $("bulkFiles").value = ""; };
+$("bulkStop").onclick = () => { bulkStop = true; };
 
 async function refresh() {
   loadFormats().catch(() => {});

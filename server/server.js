@@ -772,6 +772,24 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, { item: learn.addKnowledge(body.title || page.title, String(body.url), page.text, page.via) });
         }
         if (url.pathname === "/api/teach/formats/add") return send(res, 200, { item: await formats.add(body), items: formats.list() });
+        // many files at once (a folder dragged in): each is read once and kept only as TEXT (the file itself is not kept),
+        // as an example format, as information for related matters, or both
+        if (url.pathname === "/api/teach/bulk") {
+          const name = String(body.name || "file").slice(0, 200), type = String(body.mediaType || ""), where = String(body.path || name).slice(0, 300);
+          const use = ["format", "info", "both"].includes(body.use) ? body.use : "both";
+          if (!/\.(docx|txt|md|csv)$/i.test(name) && !API_KEY) return send(res, 500, { error: "Server has no API key yet." });
+          const text = String(await formats.textOf(name, type, String(body.data || "")) || "").trim();
+          if (text.length < 40) return send(res, 400, { error: "No text could be read." });
+          const out = { chars: text.length };
+          if (use !== "info") out.format = await formats.add({ text, title: name.replace(/\.[a-z0-9]+$/i, ""), path: where });
+          if (use !== "format") {
+            const h = formats.hashOf(text);
+            const old = learn.listKnowledge().find(k => k.source === "bulk:" + h);
+            out.info = old ? { ...old, same: true } : learn.addKnowledge(name.replace(/\.[a-z0-9]+$/i, ""), "bulk:" + h, text,
+              learn.readsItself(name, type) || /\.docx$/i.test(name) ? "file" : "claude");
+          }
+          return send(res, 200, out);
+        }
         if (url.pathname === "/api/teach/formats/delete") return send(res, 200, { ok: formats.remove(String(body.id || "")), items: formats.list() });
         if (url.pathname === "/api/teach/file") {
           if (!API_KEY) return send(res, 500, { error: "Server has no API key yet." });

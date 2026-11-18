@@ -255,6 +255,8 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above (a report, an earlier letter, an order, a petition): take the references, numbers, dates, names, extents and facts from them.`);
     const ex = exampleFor(body);
     if (ex.text) lines.push(ex.text);
+    const old = learn.knowledgeBlock ? learn.knowledgeBlock(str(body.docType, 60) + " " + str(body.request, 3000)) : "";
+    if (old) lines.push(old.trim() + "\nUse this older information only where it really belongs to this matter (an earlier order, a rule, the history of the case); the facts of this letter come first from the person's words and papers.");
     lines.push("Write the complete document now: this is a rough copy the person will read line by line and then ask to change.");
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
     const ask = model => learn.callClaude({ system: office ? MAKE_OFFICE(lang, date) : MAKE_PROMPT(lang, date),
