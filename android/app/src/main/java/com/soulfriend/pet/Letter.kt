@@ -348,6 +348,9 @@ class LetterHelper(private val m: MainActivity) {
         if (office) sec.put(ui.text("🖥 From a computer: open ${store.server.removePrefix("https://")}/teach › 📑 Example letters, and upload Word, PDF or photos. Habit picks the closest one by itself.", 12f, Ui.MUTED), 6)
     }
 
+    /** The owner's phone (with the team key) also gets their own old office files; others never do. */
+    private fun owner(): Map<String, String> = if (store.teamKey.isNotBlank()) mapOf("X-Admin-Key" to store.teamKey) else emptyMap()
+
     private fun kb(n: Int) = if (n >= 1024 * 1024) String.format(java.util.Locale.ENGLISH, "%.1f MB", n / 1048576f) else "${maxOf(1, n / 1024)} KB"
 
     private fun paperRow(p: Paper, i: Int) = LinearLayout(m).apply {
@@ -484,7 +487,7 @@ class LetterHelper(private val m: MainActivity) {
         })
         val withPapers = papers.isNotEmpty()
         m.io.execute {
-            val r = Net.post(store, "/api/letter/plan", body, emptyMap(), if (withPapers) 180_000 else 90_000)
+            val r = Net.post(store, "/api/letter/plan", body, owner(), if (withPapers) 180_000 else 90_000)
             m.runOnUiThread {
                 if (!r.ok) { stage = "start"; error = r.error("Couldn't start. Please try again."); m.render(); return@runOnUiThread }
                 val j = r.json
@@ -799,7 +802,7 @@ class LetterHelper(private val m: MainActivity) {
         example?.let { e -> body.put("example", JSONObject().put("name", e.name).put("mediaType", e.mime).put("data", Base64.encodeToString(e.data, Base64.NO_WRAP))) }
         val heavy = body.has("docs") || body.has("example")
         m.io.execute {
-            val r = Net.post(store, "/api/letter/draft", body, emptyMap(), if (heavy) 240_000 else 150_000)
+            val r = Net.post(store, "/api/letter/draft", body, owner(), if (heavy) 240_000 else 150_000)
             m.runOnUiThread {
                 if (!r.ok || r.json.optJSONArray("lines") == null) { stage = "start"; error = r.error("Couldn't write the rough copy. Please try again."); m.render(); return@runOnUiThread }
                 rough = r.json; change = ""; editingAt = 0L
@@ -852,7 +855,7 @@ class LetterHelper(private val m: MainActivity) {
         if (office) body.put("office", store.officeInfo)
         if (docsId.isNotBlank()) body.put("docsId", docsId)
         m.io.execute {
-            val x = Net.post(store, "/api/letter/revise", body, emptyMap(), 150_000)
+            val x = Net.post(store, "/api/letter/revise", body, owner(), 150_000)
             m.runOnUiThread {
                 stage = "rough"
                 if (!x.ok || x.json.optJSONArray("lines") == null) { error = x.error("Couldn't make the change. Please try again."); m.render(); return@runOnUiThread }
@@ -868,7 +871,7 @@ class LetterHelper(private val m: MainActivity) {
         stage = "finishing"; error = ""; m.render()
         val body = JSONObject().put("content", r.optJSONObject("content")).put("title", r.optString("title")).put("format", r.optString("format", "docx"))
         m.io.execute {
-            val x = Net.post(store, "/api/letter/final", body, emptyMap(), 90_000)
+            val x = Net.post(store, "/api/letter/final", body, owner(), 90_000)
             m.runOnUiThread {
                 if (!x.ok || !x.json.optString("url").startsWith(store.server + "/files/")) { stage = "rough"; error = x.error("Couldn't make the file. Please try again."); m.render(); return@runOnUiThread }
                 val lines = r.optJSONArray("lines") ?: JSONArray()
@@ -953,7 +956,7 @@ class LetterHelper(private val m: MainActivity) {
         m.toast("Getting the file ready…")
         val body = JSONObject().put("content", e.optJSONObject("content")).put("title", e.optString("title")).put("format", e.optString("format", "docx"))
         m.io.execute {
-            val x = Net.post(store, "/api/letter/final", body, emptyMap(), 90_000)
+            val x = Net.post(store, "/api/letter/final", body, owner(), 90_000)
             m.runOnUiThread {
                 if (!x.ok) { m.toast(x.error("Couldn't get the file. Check the internet.")); return@runOnUiThread }
                 val id = Actions(m) { _, _ -> }.downloadFile(x.json.optString("url"), x.json.optString("name", "Letter.docx")) ?: -1L

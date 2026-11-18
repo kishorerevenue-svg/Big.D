@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills, formats }) {
+module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills, formats, isOwner }) {
   const { send, readBody, allowed, dailyCheck, clientIp, baseUrl } = h;
   const reads = new Map(); // reading the feed has its own, bigger limit (it costs nothing)
   setInterval(() => { const now = Date.now(); for (const [k, l] of reads) if (!l.some(t => now - t < 600000)) reads.delete(k); }, 600000).unref();
@@ -143,7 +143,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
   function exampleFor(body) {
     const mine = readPapers(body.example ? [body.example] : []);
     if (mine.length) return { file: mine, text: "The LAST attached file is an EXAMPLE of the format to follow (not a paper about this matter): follow its layout, the order of its parts, headings, the way it addresses and signs off, reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places." };
-    const x = formats ? formats.pick(str(body.docType, 60), str(body.request, 3000)) : null;
+    const x = formats ? formats.pick(str(body.docType, 60), str(body.request, 3000), !!body._owner) : null;
     return { file: [], text: x ? formats.block(x).trim() : "" };
   }
   const withPapers = (papers, text) => papers.length ? paperBlocks(papers).concat([{ type: "text", text }]) : text;
@@ -255,7 +255,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above (a report, an earlier letter, an order, a petition): take the references, numbers, dates, names, extents and facts from them.`);
     const ex = exampleFor(body);
     if (ex.text) lines.push(ex.text);
-    const old = learn.knowledgeBlock ? learn.knowledgeBlock(str(body.docType, 60) + " " + str(body.request, 3000)) : "";
+    const old = learn.knowledgeBlock ? learn.knowledgeBlock(str(body.docType, 60) + " " + str(body.request, 3000), null, !!body._owner) : "";
     if (old) lines.push(old.trim() + "\nUse this older information only where it really belongs to this matter (an earlier order, a rule, the history of the case); the facts of this letter come first from the person's words and papers.");
     lines.push("Write the complete document now: this is a rough copy the person will read line by line and then ask to change.");
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
@@ -462,6 +462,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     let body;
     try { body = await readBody(req, p === "/api/letter/plan" || p === "/api/letter/make" || p === "/api/letter/draft" ? 20 * 1024 * 1024 : p === "/api/scan" ? 6 * 1024 * 1024 : p.startsWith("/api/letter/") ? 1024 * 1024 : 64 * 1024); }
     catch (e) { send(res, 400, { error: e.message === "too_large" ? "The papers are too big. Please attach fewer pages." : "Bad request." }, origin); return true; }
+    if (body && typeof body === "object") body._owner = !!(isOwner && isOwner(req));
 
     try {
       if (p === "/api/letter/final") { send(res, 200, await letterFinal(body, req), origin); return true; }

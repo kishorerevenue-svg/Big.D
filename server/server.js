@@ -39,7 +39,7 @@ const voice = require("./voice.js")({ DATA_DIR });
 const baseUrl = req => (req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")) + "://" + (req.headers.host || "localhost");
 // created after the helpers below exist (see "extras" near the web server)
 let extras = null;
-const formats = require("./formats.js")({ DATA_DIR, learn, MODEL });   // example letters the owner adds on the Teach page
+const formats = require("./formats.js")({ DATA_DIR, learn, MODEL });
 
 /** Picks the brain for this message: fast for chat, smart for hard or many-task requests. */
 function pickModel(text, hasImage) {
@@ -503,7 +503,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
 
-  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills, formats,
+  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills, formats, isOwner,
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
   if (await gemma.handle(req, res, url, origin, { send, readBody, allowed, clientIp })) return;
