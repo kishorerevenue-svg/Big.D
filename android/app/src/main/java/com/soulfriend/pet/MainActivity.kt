@@ -892,6 +892,10 @@ class MainActivity : Activity() {
             val team = ui.input("Team password", store.teamKey).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
             put(team, 6)
             put(ui.row(ui.button("Save password") { store.teamKey = team.text.toString(); socialPage?.refresh(); toast(if (store.teamKey.isBlank()) "Removed" else "Saved") }), 8)
+            put(ui.text("🏢 Office code · ఆఫీస్ కోడ్ (from your office head: your office's old letters and files in the letter helper)", 13f, Ui.MUTED), 14)
+            val oc = ui.input("Office code", store.officeCode).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+            put(oc, 6)
+            put(ui.row(ui.button("Save code") { store.officeCode = oc.text.toString(); toast(if (store.officeCode.isBlank()) "Removed" else "Saved") }), 8)
         }, 12)
     }
 

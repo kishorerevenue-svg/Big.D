@@ -339,6 +339,10 @@ class Store(context: Context) {
         get() = p.getBoolean("feedAgreed", false)
         set(v) { p.edit().putBoolean("feedAgreed", v).apply() }
     /** Habit team password (only for the app's owner), to reply to and remove posts. */
+    /** The office code (from the office head): this phone gets the office's old files, like the owner. */
+    var officeCode: String
+        get() = p.getString("officeCode", "") ?: ""
+        set(v) { p.edit().putString("officeCode", v.trim()).apply() }
     var teamKey: String
         get() = p.getString("teamKey", "") ?: ""
         set(v) { p.edit().putString("teamKey", v.trim()).apply() }

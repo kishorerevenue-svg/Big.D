@@ -144,7 +144,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     const mine = readPapers(body.example ? [body.example] : []);
     if (mine.length) return { file: mine, text: "The LAST attached file is an EXAMPLE of the format to follow (not a paper about this matter): follow its layout, the order of its parts, headings, the way it addresses and signs off, reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places." };
     const x = formats ? formats.pick(str(body.docType, 60), str(body.request, 3000), !!body._owner) : null;
-    return { file: [], text: x ? formats.block(x).trim() : "" };
+    return { file: [], text: x ? formats.block(x, !!body._owner).trim() : "" };
   }
   const withPapers = (papers, text) => papers.length ? paperBlocks(papers).concat([{ type: "text", text }]) : text;
 
@@ -354,7 +354,7 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (office && body.docType) parts.push("Type of document: " + str(body.docType, 60));
     parts.push("What the person wrote about the matter:\n" + str(body.request, 2500));
     const ex = formats ? formats.pick(str(body.docType, 60), str(body.request, 3000), !!body._owner) : null;
-    if (ex) parts.push("An earlier letter of this kind, for its way of writing only (never copy its facts):\n" + ex.text.slice(0, 1200));
+    if (ex) parts.push("An earlier letter of this kind, for its way of writing only (never copy its facts):\n" + (ex.from && !body._owner ? formats.blank(ex.text) : ex.text).slice(0, 1200));
     const f = await ownBrain.writeJson({ system: OWN_SYSTEM(lang, office), prompt: parts.join("\n\n"), schema: OWN_SCHEMA, maxTokens: 1400, timeoutMs: 280000 });
     if (!f || !Array.isArray(f.paragraphs) || !f.paragraphs.length) throw new Error("empty_letter");
     const content = ownBlocks(f, body);
@@ -591,7 +591,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
 
     try {
       if (p === "/api/office/search" || p === "/api/office/read") {
-        if (!body._owner) { send(res, 403, { error: "Only the owner's phone (with the team key) can search the old office files." }, origin); return true; }
+        if (!body._owner) { send(res, 403, { error: "Only your office can search the old files: enter the office code in Settings." }, origin); return true; }
         if (p.endsWith("search")) { send(res, 200, { found: searchOld(body.q) }, origin); return true; }
         const id = str(body.id, 40);
         const text = /^k[a-z0-9]+$/.test(id) ? learn.readKnowledge(id.slice(1)) : "";
