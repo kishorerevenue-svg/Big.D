@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills, formats, isOwner, ownBrain }) {
+module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills, formats, isOwner, ownBrain, offices }) {
   const { send, readBody, allowed, dailyCheck, clientIp, baseUrl } = h;
   const reads = new Map(); // reading the feed has its own, bigger limit (it costs nothing)
   setInterval(() => { const now = Date.now(); for (const [k, l] of reads) if (!l.some(t => now - t < 600000)) reads.delete(k); }, 600000).unref();
@@ -143,6 +143,11 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
   function exampleFor(body) {
     const mine = readPapers(body.example ? [body.example] : []);
     if (mine.length) return { file: mine, text: "The LAST attached file is an EXAMPLE of the format to follow (not a paper about this matter): follow its layout, the order of its parts, headings, the way it addresses and signs off, reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places." };
+    if (!body._owner && offices) {
+      // a member: their own office's closest letter; anyone else: another office's, with names and numbers hidden
+      const e = offices.example(body._office ? body._office.office.id : null, str(body.docType, 60), str(body.request, 3000));
+      if (e) return { file: [], text: `EXAMPLE FORMAT (an earlier ${e.kind || "letter"}${e.own ? " of this office" : ""}). Follow its format closely: its layout, the order of its parts, its headings, the way it addresses and signs off, its reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places: those come only from the matter and the papers.\n<<<\n${e.text.slice(0, 8000)}\n>>>` };
+    }
     const x = formats ? formats.pick(str(body.docType, 60), str(body.request, 3000), !!body._owner) : null;
     return { file: [], text: x ? formats.block(x, !!body._owner).trim() : "" };
   }
@@ -255,7 +260,8 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (papers.length) lines.push(`Their ${papers.length} paper(s) about the matter are attached above (a report, an earlier letter, an order, a petition): take the references, numbers, dates, names, extents and facts from them.`);
     const ex = exampleFor(body);
     if (ex.text) lines.push(ex.text);
-    const old = learn.knowledgeBlock ? learn.knowledgeBlock(str(body.docType, 60) + " " + str(body.request, 3000), null, !!body._owner) : "";
+    const old = (learn.knowledgeBlock ? learn.knowledgeBlock(str(body.docType, 60) + " " + str(body.request, 3000), null, !!body._owner) : "")
+      + (body._office && offices ? offices.related(body._office.office.id, str(body.request, 3000)) : "");
     if (old) lines.push(old.trim() + "\nUse this older information only where it really belongs to this matter (an earlier order, a rule, the history of the case); the facts of this letter come first from the person's words and papers.");
     lines.push("Write the complete document now: this is a rough copy the person will read line by line and then ask to change.");
     const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
@@ -419,7 +425,8 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (!okContent(body.content)) throw userError("The rough copy was lost. Please start again.");
     const f = await files.create({ type: "make_file", format: body.format === "xlsx" ? "xlsx" : "docx", title: str(body.title, 80) || "Letter", content: body.content });
     // learning by itself: the owner's finished letter becomes an example of its kind (private to the owner, as text)
-    if (body._owner && formats && Array.isArray(body.content.blocks)) {
+    if (body._office && offices && Array.isArray(body.content.blocks)) offices.addText(body._office.office, str(body.title, 80), roughLines(body.content).join("\n"), str(body.docType, 60));
+    else if (body._owner && formats && Array.isArray(body.content.blocks)) {
       try { await formats.add({ text: roughLines(body.content).join("\n"), title: str(body.title, 80) || "Letter", kind: str(body.docType, 60), path: "my letters/" + (str(body.title, 80) || "letter") }); } catch (e) { }
     }
     return { url: baseUrl(req) + f.path, name: f.name, format: f.format };
@@ -587,11 +594,17 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     let body;
     try { body = await readBody(req, p === "/api/letter/plan" || p === "/api/letter/make" || p === "/api/letter/draft" ? 20 * 1024 * 1024 : p === "/api/scan" ? 6 * 1024 * 1024 : p.startsWith("/api/letter/") ? 1024 * 1024 : 64 * 1024); }
     catch (e) { send(res, 400, { error: e.message === "too_large" ? "The papers are too big. Please attach fewer pages." : "Bad request." }, origin); return true; }
-    if (body && typeof body === "object") body._owner = !!(isOwner && isOwner(req));
+    if (body && typeof body === "object") { body._owner = !!(isOwner && isOwner(req)); body._office = offices ? offices.who(req) : null; }
 
     try {
+      if ((p === "/api/office/search" || p === "/api/office/read") && body._office) {
+        const o = body._office.office;
+        if (p.endsWith("search")) { send(res, 200, { found: offices.search(o, body.q) }, origin); return true; }
+        const text = offices.read(o, str(body.id, 40));
+        send(res, text ? 200 : 404, text ? { text: text.slice(0, 60000) } : { error: "Not found." }, origin); return true;
+      }
       if (p === "/api/office/search" || p === "/api/office/read") {
-        if (!body._owner) { send(res, 403, { error: "Only your office can search the old files: enter the office code in Settings." }, origin); return true; }
+        if (!body._owner) { send(res, 403, { error: "Only your office can search the old files: join it in Office letters › 🏛 Office space." }, origin); return true; }
         if (p.endsWith("search")) { send(res, 200, { found: searchOld(body.q) }, origin); return true; }
         const id = str(body.id, 40);
         const text = /^k[a-z0-9]+$/.test(id) ? learn.readKnowledge(id.slice(1)) : "";

@@ -300,6 +300,163 @@ class LetterHelper(private val m: MainActivity) {
         }
     }
 
+    // ---------- the office space: one person makes it, the staff join with its code, and all share the old files ----------
+    private var space: JSONObject? = null        // what the server says about our office (null: not asked yet)
+    private var spaceHead = false
+    private var spaceFor = ""                    // the code the office was last asked for
+    private var spaceBusy = ""                   // "" or what is going on ("Adding 3 of 10…")
+    private var spaceForm = ""                   // "" | "create" | "join"
+    private var spaceNote = ""
+    private fun loadSpace() {
+        if (store.officeCode.isBlank()) { space = null; return }
+        spaceFor = store.officeCode; spaceNote = ""
+        m.io.execute {
+            var r = try { Net.post(store, "/api/office/me", JSONObject(), owner(), 20_000) } catch (e: Exception) { null }
+            if (r != null && r.code == 403)          // a code saved in Settings: join with it
+                r = try { Net.post(store, "/api/office/join", JSONObject().put("code", store.officeCode).put("name", store.officeName.ifBlank { "Staff" }), emptyMap(), 20_000)
+                    .let { j -> if (j.ok) Net.post(store, "/api/office/me", JSONObject(), owner(), 20_000) else j } } catch (e: Exception) { null }
+            m.runOnUiThread {
+                if (r != null && r.ok) { space = r.json.optJSONObject("office"); spaceHead = r.json.optBoolean("head") }
+                else { space = null; spaceNote = r?.error("") ?: ""; if (spaceNote.isBlank() || r?.code == 404) spaceNote = "Couldn't open the office now. Run the server update, or check the internet." }
+                m.render()
+            }
+        }
+    }
+    private fun spacePost(path: String, body: JSONObject, done: (Net.Reply) -> Unit) {
+        spaceBusy = "…"; m.render()
+        m.io.execute {
+            val r = Net.post(store, path, body, owner(), 30_000)
+            m.runOnUiThread { spaceBusy = ""; if (!r.ok) m.toast(r.error("Couldn't do it now. Run the server update and try again.")); done(r); m.render() }
+        }
+    }
+    private fun shareCode(code: String, name: String) {
+        val t = "Join our office \"$name\" in Habit AI Lite:\nOffice letters › 🏢 Office space › Join, and type the code: $code"
+        try { m.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Send the office code")) } catch (e: Exception) { }
+    }
+    private fun officeSpaceBox() {
+        if (store.officeCode.isBlank()) { space = null; spaceHead = false } else if (spaceFor != store.officeCode) loadSpace()
+        val o = space
+        m.add(ui.section("🏛 Office space · కార్యాలయ స్థలం",
+            if (o == null) "For your whole office: one person makes it, the staff join with its code. Then everyone gets the office's old letters (find by Sy.No.) and letters in your own office's way."
+            else "Your office's old letters are shared only inside this office. Other offices learn just the way of writing, with names and numbers hidden.").apply {
+            if (spaceBusy.isNotBlank()) put(ui.text("⏳ $spaceBusy", 13.5f, Ui.TEAL, bold = true), 8)
+            if (o == null) {
+                if (store.officeCode.isNotBlank() && spaceNote.isBlank()) { put(ui.text("Opening your office…", 13f, Ui.MUTED), 8); return@apply }
+                if (spaceNote.isNotBlank()) put(ui.text("⚠️ $spaceNote", 13f, Ui.DANGER), 8)
+                when (spaceForm) {
+                    "create" -> {
+                        val n = ui.input("Office name, e.g. Tahsildar Office, Pendurthi", store.officeInfo.optString("office"))
+                        val pl = ui.input("Place / Mandal, District (optional)", store.officeInfo.optString("district"))
+                        put(n, 8); put(pl, 8)
+                        put(ui.row(ui.button("Make it", "primary") {
+                            val name = n.text.toString().trim()
+                            if (name.length < 3) { m.toast("Write the office's name."); return@button }
+                            spacePost("/api/office/create", JSONObject().put("name", name).put("place", pl.text.toString().trim())) { r ->
+                                if (r.ok) {
+                                    store.officeCode = r.json.optString("code"); store.officeHead = r.json.optString("headKey"); spaceFor = store.officeCode
+                                    space = r.json.optJSONObject("office"); spaceHead = true; spaceForm = ""; spaceNote = ""
+                                    m.toast("Office space made ✓ Send the code to your staff.")
+                                }
+                            }
+                        }, ui.button("Cancel", "ghost") { spaceForm = ""; m.render() }), 10)
+                    }
+                    "join" -> {
+                        val c = ui.input("Office code, e.g. TAH-7K29Q").apply { setSingleLine(true) }
+                        val nm = ui.input("Your name (the head sees it)", store.officeName).apply { setSingleLine(true) }
+                        put(c, 8); put(nm, 8)
+                        put(ui.row(ui.button("Join", "primary") {
+                            val code = c.text.toString().trim().uppercase()
+                            if (code.length < 5) { m.toast("Type the code your office head gave."); return@button }
+                            store.officeName = nm.text.toString()
+                            spacePost("/api/office/join", JSONObject().put("code", code).put("name", store.officeName.ifBlank { "Staff" })) { r ->
+                                if (r.ok) { store.officeCode = code; spaceFor = code; store.officeHead = ""; space = r.json.optJSONObject("office"); spaceHead = false; spaceForm = ""; spaceNote = ""; m.toast("Joined ✓") }
+                            }
+                        }, ui.button("Cancel", "ghost") { spaceForm = ""; m.render() }), 10)
+                    }
+                    else -> put(ui.row(ui.button("➕ Make our office", "primary") { spaceForm = "create"; spaceNote = ""; m.render() },
+                        ui.button("🔑 Join with a code") { spaceForm = "join"; spaceNote = ""; m.render() }), 10)
+                }
+                return@apply
+            }
+            put(ui.text("🏢 " + o.optString("name"), 16f, Ui.INK, bold = true), 10)
+            put(ui.text(listOfNotNull(o.optString("place").ifBlank { null }, "${o.optInt("files")} old files", if (spaceHead) "you are the head" else null).joinToString(" · "), 12.5f, Ui.MUTED), 2)
+            put(ui.text("Code: ${store.officeCode}", 14f, Ui.TEAL, bold = true).apply { setTextIsSelectable(true) }, 8)
+            put(ui.row(ui.button("📤 Send the code") { shareCode(store.officeCode, o.optString("name")) },
+                ui.button("📎 Add old files") { pickOfficeFiles() }), 8)
+            put(ui.text("🖥 Many files or folders: on a computer open ${store.server.removePrefix("https://")}/office and drag them in.", 12f, Ui.MUTED), 6)
+            if (spaceHead) {
+                put(ui.text("Head only", 13f, Ui.INK, bold = true), 14)
+                put(ui.chip((if (o.optBoolean("share", true)) "✅" else "⬜") + " Other offices may learn our way of writing (names & numbers hidden)", o.optBoolean("share", true)) {
+                    spacePost("/api/office/settings", JSONObject().put("share", !o.optBoolean("share", true))) { r -> if (r.ok) space = r.json.optJSONObject("office") }
+                }, 6)
+                put(ui.row(ui.button("🔄 New code") {
+                    android.app.AlertDialog.Builder(m).setMessage("Make a new code? The old code stops working for new joins, and staff must type the new one.")
+                        .setPositiveButton("New code") { _, _ -> spacePost("/api/office/new-code", JSONObject()) { r -> if (r.ok) { store.officeCode = r.json.optString("code"); spaceFor = store.officeCode; m.toast("New code ready ✓") } } }
+                        .setNegativeButton("Cancel", null).show()
+                }), 8)
+                val mem = o.optJSONArray("members")
+                if (mem != null && mem.length() > 0) {
+                    put(ui.text("Staff (${mem.length()})", 13f, Ui.MUTED, bold = true), 10)
+                    for (i in 0 until mem.length()) {
+                        val x = mem.optJSONObject(i) ?: continue
+                        put(LinearLayout(m).apply {
+                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                            addView(ui.text("👤 " + x.optString("name"), 14f, Ui.INK), LinearLayout.LayoutParams(0, -2, 1f))
+                            addView(ui.button("Remove", "ghost") {
+                                android.app.AlertDialog.Builder(m).setMessage("Remove ${x.optString("name")}? That phone can't use the office's files any more.")
+                                    .setPositiveButton("Remove") { _, _ -> spacePost("/api/office/remove", JSONObject().put("d", x.optString("d"))) { r -> if (r.ok) space = r.json.optJSONObject("office") } }
+                                    .setNegativeButton("Cancel", null).show()
+                            })
+                        }, 4)
+                    }
+                }
+            }
+            put(ui.row(ui.button("Leave this office", "ghost") {
+                android.app.AlertDialog.Builder(m).setMessage(if (spaceHead) "Leave? You are the head: keep the code safe if you want to come back (as staff). The office and its files stay." else "Leave this office on this phone?")
+                    .setPositiveButton("Leave") { _, _ -> store.officeCode = ""; store.officeHead = ""; space = null; spaceHead = false; spaceFor = ""; m.render() }
+                    .setNegativeButton("Cancel", null).show()
+            }), 12)
+        }, 12)
+    }
+    private fun pickOfficeFiles() {
+        m.leavingForSystemScreen = true
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "image/jpeg", "image/png"))
+            .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        try { m.startActivityForResult(i, MainActivity.REQ_OFFICE_FILES) } catch (e: Exception) { m.leavingForSystemScreen = false; m.toast("Couldn't open your files.") }
+    }
+    /** The picked old files go to the office one by one (only their text is kept there). */
+    fun onOfficeFiles(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        spaceBusy = "Adding 1 of ${uris.size}…"; m.render()
+        m.io.execute {
+            var added = 0; var same = 0; var bad = 0; var waited = false
+            for ((k, uri) in uris.withIndex()) {
+                m.runOnUiThread { spaceBusy = "Adding ${k + 1} of ${uris.size}…"; m.render() }
+                var name = "file"; var type = m.contentResolver.getType(uri) ?: ""
+                try { m.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0)?.let { name = it } } } catch (e: Exception) { }
+                if (type.isBlank() && name.endsWith(".docx", true)) type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                val bytes = try { m.contentResolver.openInputStream(uri)?.use { inp -> val b = inp.readBytes(); if (b.size > 15 * 1024 * 1024) null else b } } catch (e: Throwable) { null }
+                if (bytes == null) { bad++; continue }
+                if (waited && !(name.endsWith(".docx", true) || name.endsWith(".txt", true))) { bad++; continue }
+                val r = Net.post(store, "/api/office/add", JSONObject().put("name", name).put("path", name).put("mediaType", type)
+                    .put("data", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)), owner(), 180_000)
+                when {
+                    r.ok && r.json.optBoolean("added") -> added++
+                    r.ok && r.json.optBoolean("same") -> same++
+                    r.code == 429 -> { waited = true; bad++ }
+                    else -> bad++
+                }
+            }
+            m.runOnUiThread {
+                spaceBusy = ""
+                m.toast(listOfNotNull("✓ $added added", if (same > 0) "$same were already there" else null, if (bad > 0) "$bad couldn't be read" else null,
+                    if (waited) "PDFs/photos wait till tomorrow (Word files go now)" else null).joinToString(" · "))
+                spaceFor = ""; m.render()
+            }
+        }
+    }
+
     private fun buildOfficeStart() {
         lettersButton()
         oldFilesBox()
@@ -327,6 +484,7 @@ class LetterHelper(private val m: MainActivity) {
             put(ui.button("✨ Prepare the rough copy · రఫ్ కాపీ తయారు చేయి", "primary") { draft() }, 14)
         }, 12)
         officeCard()
+        officeSpaceBox()
         m.add(ui.text("Papers you add are read by Claude AI only to write this document, and kept on the Habit server only until it is made (at most 6 hours). " +
             "\"Hide personal details\" doesn't cover photos and PDFs. Don't add secret or classified papers, and follow your office's rules on using AI tools.", 12f, Ui.MUTED), 10)
     }
@@ -413,6 +571,7 @@ class LetterHelper(private val m: MainActivity) {
     private fun owner(): Map<String, String> = buildMap {
         if (store.teamKey.isNotBlank()) put("X-Admin-Key", store.teamKey)
         if (store.officeCode.isNotBlank()) put("X-Office-Code", store.officeCode)    // office staff: the office's old files too
+        if (store.officeHead.isNotBlank()) put("X-Office-Head", store.officeHead)
     }
 
     private fun kb(n: Int) = if (n >= 1024 * 1024) String.format(java.util.Locale.ENGLISH, "%.1f MB", n / 1048576f) else "${maxOf(1, n / 1024)} KB"

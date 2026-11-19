@@ -70,6 +70,13 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
+      <h2>🏛 Office spaces · కార్యాలయాలు</h2>
+      <p class="hint">Offices made in the app (Office letters › 🏛 Office space). Each office's old files are only for its own staff. Delete an office that was made by mistake or misused: its files go too.</p>
+      <ul id="offList"></ul>
+      <div class="msg" id="offMsg" role="status"></div>
+    </section>
+
+    <section class="card">
       <h2>📂 Old letters & files · పాత లేఖలు, ఫైళ్లు</h2>
       <p class="hint">Drag whole folders of your old letters, reports, proceedings and orders. Each file is read once and kept only as <b>text</b> (the file itself is not kept on the server). Then: <b>format</b>, when a letter of that kind is made, Habit follows the closest one's layout; <b>information</b>, when a related matter comes, Habit uses the old information (earlier orders, history, rules). Word and text files are read free; PDFs and photos are read by the AI (a small cost each). The same file twice is kept once. Blank out personal details you don't want kept.</p>
       <div id="drop" tabindex="0" role="button" aria-label="Drop folders and files here, or click to choose" style="border:2px dashed #7c8cff;border-radius:16px;padding:34px 16px;text-align:center;margin:12px 0;cursor:pointer;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
@@ -794,10 +801,29 @@ $("ocSave").onclick = () => busy($("ocSave"), $("ocMsg"), async () => {
   $("ocCode").value = "";
   say($("ocMsg"), set ? "Saved. Staff with this code now get your office's old files." : "Removed: no office access now.", true);
 });
+async function loadOffices() {
+  const { items } = await api("offices");
+  const ul = $("offList"); ul.textContent = "";
+  say($("offMsg"), items.length ? `${items.length} offices` : "No offices yet.", true);
+  for (const o of items) {
+    const li = document.createElement("li"), d = document.createElement("div"); d.style.flex = "1";
+    const b = document.createElement("b"); b.textContent = o.name;
+    const sm = document.createElement("div"); sm.className = "hint"; sm.style.margin = "0";
+    sm.textContent = [o.place, `${o.files} files`, `${o.members} staff`, o.share ? "shares format" : "doesn't share", new Date(o.at).toLocaleDateString()].filter(Boolean).join(" · ");
+    d.append(b, sm);
+    const del = document.createElement("button"); del.className = "ghost"; del.type = "button"; del.textContent = "Delete";
+    del.onclick = async () => {
+      if (!confirm(`Delete "${o.name}" and its ${o.files} files? This can't be undone.`)) return;
+      try { await api("offices/delete", { id: o.id }); loadOffices(); } catch (e) { del.textContent = "Couldn't delete"; }
+    };
+    li.append(d, del); ul.append(li);
+  }
+}
 async function loadOffice() { const { set } = await api("office-code"); say($("ocMsg"), set ? "An office code is set." : "No office code yet.", true); }
 
 async function refresh() {
   loadOffice().catch(() => {});
+  loadOffices().catch(() => {});
   loadFormats().catch(() => {});
   loadChat().catch(() => {});
   loadPush().catch(() => {});
