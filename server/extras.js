@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills, formats, isOwner }) {
+module.exports = function makeExtras({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, adminPassword, h, skills, formats, isOwner, ownBrain }) {
   const { send, readBody, allowed, dailyCheck, clientIp, baseUrl } = h;
   const reads = new Map(); // reading the feed has its own, bigger limit (it costs nothing)
   setInterval(() => { const now = Date.now(); for (const [k, l] of reads) if (!l.some(t => now - t < 600000)) reads.delete(k); }, 600000).unref();
@@ -268,6 +268,85 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     return Object.assign(roughOut(o), { docsId: papers.length ? (/^[a-f0-9]{24}$/.test(String(body.docsId || "")) ? body.docsId : keepPapers(papers)) : "" });
   }
 
+  // ---------- the rough copy by Habit's OWN model (free, on this server) when Claude can't (no credit, busy) ----------
+  // It writes only the parts (to, subject, references, paragraphs…); the office header, From, Rc.No./date and the
+  // signature are put around them here, the same way every time. It can't read photos or PDFs.
+  const OWN_SCHEMA = { type: "object", required: ["title", "to", "subject", "paragraphs"], properties: {
+    title: { type: "string" }, to: { type: "string" }, subject: { type: "string" },
+    references: { type: "array", items: { type: "string" } }, paragraphs: { type: "array", items: { type: "string" } },
+    enclosures: { type: "array", items: { type: "string" } }, copyTo: { type: "array", items: { type: "string" } } } };
+  const OWN_SYSTEM = (lang, office) => `You write ${office ? "official letters for a government (Revenue) office in Andhra Pradesh, India" : "formal letters for ordinary people in India"}, in clear, polite, formal ${lang === "te" ? "Telugu" : lang === "en" ? "English" : "language (the language the person wrote in)"}. Use ONLY the facts the person gave: never invent names, numbers, dates, survey numbers, extents or sections. Reply with JSON only:
+{"title":"2 to 6 words","to":"the addressee, one line per part (designation, office, place)","subject":"the subject in one line","references":["only references the person gave"],"paragraphs":["3 to 7 paragraphs: the facts in order, then the request or decision"],"enclosures":[],"copyTo":[]}`;
+  function ownFields(content) {
+    if (content && content.own && Array.isArray(content.own.paragraphs)) return content.own;
+    const b = content && Array.isArray(content.blocks) ? content.blocks : [];
+    const f = { title: "", to: "", subject: "", references: [], paragraphs: [], enclosures: [], copyTo: [] };
+    for (const x of b) {
+      if (!x || typeof x !== "object") continue;
+      if (x.sub) f.subject = String(x.sub).replace(/\s*-\s*Reg\.?$/i, "");
+      else if (x.ref) f.references = String(x.ref).split("\n").map(s => s.replace(/^\s*(Read:)?\s*\d+\.\s*/i, "").trim()).filter(Boolean);
+      else if (typeof x.p === "string") {
+        const t = x.p.replace(/\*\*/g, "").trim();
+        if (/^To:/i.test(t)) f.to = t.replace(/^To:\s*/i, "");
+        else if (/^From:|^(Sir|Madam|Sir\/Madam|Respected)/i.test(t) || CLOSE.test(t)) continue;
+        else f.paragraphs.push(t);
+      }
+    }
+    return f;
+  }
+  function ownBlocks(f, body) {
+    const office = body.mode === "office", o = office && body.office && typeof body.office === "object" ? body.office : {};
+    const date = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10).split("-").reverse().join("-");
+    const list = a => (Array.isArray(a) ? a : []).map(x => str(x, 600)).filter(Boolean);
+    const who = [str(o.name, 60), str(o.desig, 60), [str(o.office, 100), str(o.district, 60)].filter(Boolean).join(", ")].filter(Boolean);
+    const blocks = [];
+    if (office && o.office) blocks.push({ center: str(o.office, 100).toUpperCase() + (o.district ? ", " + str(o.district, 60).toUpperCase() : "") });
+    if (office) blocks.push({ right: (str(o.ref, 40).replace(/[\s,]*(?:Dt|Dated|Date)[.:]?\s*[\d./-]*\s*$/i, "") || "Rc.No.            /" + date.slice(-4)) + "\nDate: " + date });
+    else blocks.push({ right: "Date: " + date });
+    if (office && who.length) blocks.push({ p: "From:\n" + who.join("\n"), justify: false });
+    if (str(f.to, 400)) blocks.push({ p: "To:\n" + str(f.to, 400), justify: false });
+    blocks.push({ p: "Sir/Madam,", justify: false });
+    if (str(f.subject, 400)) blocks.push({ sub: str(f.subject, 400).replace(/\s*-\s*Reg\.?$/i, "") + " - Reg." });
+    const refs = list(f.references);
+    if (refs.length) blocks.push({ ref: refs.map((r, i) => (i + 1) + ". " + r).join("\n") });
+    if (office) blocks.push({ center: "* * *" });
+    for (const p of list(f.paragraphs).slice(0, 20)) if (!CLOSE.test(p)) blocks.push({ p });
+    blocks.push({ sign: "Yours faithfully,\n\n" + (office ? [str(o.desig, 60), [str(o.office, 100), str(o.district, 60)].filter(Boolean).join(", ")].filter(Boolean).join("\n") : "") });
+    const enc = list(f.enclosures), cc = list(f.copyTo);
+    if (enc.length) blocks.push({ p: "**Encl:** " + enc.join("; "), justify: false });
+    if (cc.length) blocks.push({ p: "**Copy to:**\n" + cc.map((c, i) => (i + 1) + ". " + c).join("\n"), justify: false });
+    return { blocks, own: { title: str(f.title, 80), to: str(f.to, 400), subject: str(f.subject, 400), references: refs, paragraphs: list(f.paragraphs), enclosures: enc, copyTo: cc } };
+  }
+  const ownReady = async () => !!(ownBrain && ownBrain.writeJson && (await ownBrain.ready().catch(() => false)) && ownBrain.canWrite());
+  async function ownDraft(body) {
+    const lang = ["te", "en"].includes(body.lang) ? body.lang : "auto", office = body.mode === "office";
+    const parts = [];
+    if (office && body.docType) parts.push("Type of document: " + str(body.docType, 60));
+    parts.push("What the person wrote about the matter:\n" + str(body.request, 2500));
+    const ex = formats ? formats.pick(str(body.docType, 60), str(body.request, 3000), !!body._owner) : null;
+    if (ex) parts.push("An earlier letter of this kind, for its way of writing only (never copy its facts):\n" + ex.text.slice(0, 1200));
+    const f = await ownBrain.writeJson({ system: OWN_SYSTEM(lang, office), prompt: parts.join("\n\n"), schema: OWN_SCHEMA, maxTokens: 1400, timeoutMs: 280000 });
+    if (!f || !Array.isArray(f.paragraphs) || !f.paragraphs.length) throw new Error("empty_letter");
+    const content = ownBlocks(f, body);
+    const papers = (Array.isArray(body.docs) && body.docs.length) || body.docsId;
+    const te = lang === "te";
+    console.log("Letter: rough copy by our own model (Claude can't now)");
+    return { title: str(f.title, 80) || "Letter", format: "docx", content, lines: roughLines(content), own: true,
+      say: (papers ? (te ? "AI లేకపోవడంతో పత్రాలు చదవలేదు; మీరు రాసిన దాని నుంచే రాశాను. " : "Without the AI the papers couldn't be read; I wrote from what you typed. ") : "")
+        + (te ? "Habit సొంత మెదడు రాసిన రఫ్ కాపీ: ప్రతి లైన్ చూసి మార్పులు చెప్పండి." : "A rough copy by Habit's own brain: read each line and tell me what to change.") };
+  }
+  async function ownRevise(body) {
+    const lang = ["te", "en"].includes(body.lang) ? body.lang : "auto", office = body.mode === "office";
+    const f0 = ownFields(body.content);
+    const now = roughLines(body.content).map((l, i) => (i + 1) + ". " + l).join("\n").slice(0, 3500);
+    const prompt = `The letter now, line by line:\n${now}\n\nIts parts as JSON:\n${JSON.stringify(f0).slice(0, 3000)}\n\nThe change the person asks for:\n${str(body.change, 1500)}\n\nMake ONLY that change and give back ALL the parts as JSON (keep everything else exactly as it is).`;
+    const f = await ownBrain.writeJson({ system: OWN_SYSTEM(lang, office), prompt, schema: OWN_SCHEMA, maxTokens: 1400, timeoutMs: 280000 });
+    if (!f || !Array.isArray(f.paragraphs) || !f.paragraphs.length) throw new Error("empty_letter");
+    const content = ownBlocks(f, body);
+    return { title: str(f.title, 80) || str(f0.title, 80) || "Letter", format: "docx", content, lines: roughLines(content), own: true,
+      say: lang === "te" ? "మార్పు చేశాను (Habit సొంత మెదడు)." : "Done (Habit's own brain)." };
+  }
+
   /** The change they asked for ("line 5: the date is 12-11-2026", "add a line about…"), on the whole document. */
   async function letterRevise(body) {
     const lang = ["te", "en"].includes(body.lang) ? body.lang : "auto";
@@ -470,13 +549,22 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
         const draft = p.endsWith("draft");
         const hasPapers = Array.isArray(body.docs) && body.docs.length > 0;
         if (draft && str(body.request, 8000).length < 3 && !hasPapers) { send(res, 400, { error: "Write the matter first (or add the papers)." }, origin); return true; }
-        if (!API_KEY) { send(res, 500, { error: "Server has no API key yet." }, origin); return true; }
+        const claudeOk = !!API_KEY && !learn.claudeOut();
+        const own = async () => send(res, 200, draft ? await ownDraft(body) : await ownRevise(body), origin);
+        if (!claudeOk) {
+          // Claude can't now (no credit, no key): Habit's own model writes it, free
+          if (await ownReady()) {
+            try { await own(); } catch (e) { console.error("Letter: our own model couldn't (" + String(e.message || "").slice(0, 80) + ")"); send(res, 503, { error: "Habit's own brain couldn't write it just now. Please try again in a few minutes. Habit సొంత మెదడు ఇప్పుడు రాయలేకపోయింది, కొన్ని నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి." }, origin); }
+          } else send(res, 503, { error: "The AI is resting and Habit's own brain isn't ready on the server. Your text is kept: please try again later." }, origin);
+          return true;
+        }
         if (hasPapers && !papersAllowed(req)) { send(res, 429, { error: "You've reached today's limit for reading papers. Please try again tomorrow." }, origin); return true; }
         if (!hasPapers && !body.docsId) { const lim = dailyCheck(req, "msg"); if (lim) { send(res, 429, { error: lim }, origin); return true; } }
         try { send(res, 200, draft ? await letterDraft(body) : await letterRevise(body), origin); }
         catch (e) {
           if (e.user) { send(res, 400, { error: e.message }, origin); return true; }
           console.error("Letter " + (draft ? "draft" : "change") + ": the AI couldn't (" + (e.status || "") + " " + String(e.message || "").slice(0, 80) + ")");
+          if (await ownReady()) { try { await own(); return true; } catch (e2) { console.error("Letter: our own model couldn't either (" + String(e2.message || "").slice(0, 80) + ")"); } }
           send(res, 503, { error: "The AI is busy just now. Your text is kept: please try again in a few minutes. AI ఇప్పుడు బిజీగా ఉంది, కొన్ని నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి." }, origin);
         }
         return true;

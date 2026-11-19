@@ -157,7 +157,7 @@ class LetterHelper(private val m: MainActivity) {
         when (stage) {
             "planning" -> m.add(busy(if (papers.isNotEmpty()) "📄 Reading your papers and planning the questions… (up to a minute)" else "🐾 Thinking about what your letter needs…"), 12)
             "making" -> m.add(busy("✍️ Writing your letter… this can take up to a minute."), 12)
-            "drafting" -> m.add(busy(if (papers.isNotEmpty() || docsId.isNotBlank()) "📄 Reading your papers and writing the rough copy… (up to a minute)" else "✍️ Writing the rough copy… (up to a minute)"), 12)
+            "drafting" -> m.add(busy(if (papers.isNotEmpty() || docsId.isNotBlank()) "📄 Reading your papers and writing the rough copy… (up to a minute)" else "✍️ Writing the rough copy… (up to a minute; when Habit's own brain writes it, 2–4 minutes)"), 12)
             "finishing" -> m.add(busy("📄 Making the final Word file…"), 12)
             "rough" -> buildRough()
             "questions" -> buildQuestions()
@@ -802,7 +802,7 @@ class LetterHelper(private val m: MainActivity) {
         example?.let { e -> body.put("example", JSONObject().put("name", e.name).put("mediaType", e.mime).put("data", Base64.encodeToString(e.data, Base64.NO_WRAP))) }
         val heavy = body.has("docs") || body.has("example")
         m.io.execute {
-            val r = Net.post(store, "/api/letter/draft", body, owner(), if (heavy) 240_000 else 150_000)
+            val r = Net.post(store, "/api/letter/draft", body, owner(), 320_000)
             m.runOnUiThread {
                 if (!r.ok || r.json.optJSONArray("lines") == null) { stage = "start"; error = r.error("Couldn't write the rough copy. Please try again."); m.render(); return@runOnUiThread }
                 rough = r.json; change = ""; editingAt = 0L
@@ -855,7 +855,7 @@ class LetterHelper(private val m: MainActivity) {
         if (office) body.put("office", store.officeInfo)
         if (docsId.isNotBlank()) body.put("docsId", docsId)
         m.io.execute {
-            val x = Net.post(store, "/api/letter/revise", body, owner(), 150_000)
+            val x = Net.post(store, "/api/letter/revise", body, owner(), 320_000)
             m.runOnUiThread {
                 stage = "rough"
                 if (!x.ok || x.json.optJSONArray("lines") == null) { error = x.error("Couldn't make the change. Please try again."); m.render(); return@runOnUiThread }
