@@ -245,8 +245,8 @@ class LetterHelper(private val m: MainActivity) {
     private var oldFound: org.json.JSONArray? = null
     private var oldBusy = false
     private fun oldFilesBox() {
-        if (store.teamKey.isBlank()) return
-        m.add(ui.section("🔎 Old files · పాత ఫైళ్లు", "Find every old letter about a Sy.No., village or name, with dates. Only on your phone.").apply {
+        if (store.teamKey.isBlank() && store.officeCode.isBlank()) return
+        m.add(ui.section("🔎 Old files · పాత ఫైళ్లు", "Find every old letter about a Sy.No., village or name, with dates. Only for your office.").apply {
             val box = ui.input("Sy.No.165 Chinna Musidivada", oldQ).apply { setSingleLine(true); imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH }
             fun go() { oldQ = box.text.toString().trim(); if (oldQ.length >= 2) searchOld() }
             box.setOnEditorActionListener { _, _, _ -> go(); true }
@@ -410,7 +410,10 @@ class LetterHelper(private val m: MainActivity) {
     }
 
     /** The owner's phone (with the team key) also gets their own old office files; others never do. */
-    private fun owner(): Map<String, String> = if (store.teamKey.isNotBlank()) mapOf("X-Admin-Key" to store.teamKey) else emptyMap()
+    private fun owner(): Map<String, String> = buildMap {
+        if (store.teamKey.isNotBlank()) put("X-Admin-Key", store.teamKey)
+        if (store.officeCode.isNotBlank()) put("X-Office-Code", store.officeCode)    // office staff: the office's old files too
+    }
 
     private fun kb(n: Int) = if (n >= 1024 * 1024) String.format(java.util.Locale.ENGLISH, "%.1f MB", n / 1048576f) else "${maxOf(1, n / 1024)} KB"
 

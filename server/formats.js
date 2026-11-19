@@ -108,8 +108,19 @@ module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   }
 
   /** The example closest to this letter (its kind first, then the words of the matter), or null. */
+  /** An old office file with the people and numbers taken out: only its format and wording are left (for everyone). */
+  function blank(t) {
+    return String(t || "")
+      .replace(/\b(Sri|Smt|Kum|Kumari|Shri|Mr|Mrs|Ms|Miss|Dr|Late|Advocate|Adv|M\/s)\.?\s+([A-Z][\w.]*\.?\s*){1,4}/g, "$1 <name> ")
+      .replace(/\b([SWDC])\/o\.?\s+([A-Z][\w.]*\.?\s*){1,4}/g, "$1/o <name> ")
+      .replace(/(^|[\s(,:])((?:శ్రీమతి|శ్రీ|కుమారి|దివంగత)[ \t]+)?[\u0C00-\u0C7F.]+([ \t]+[\u0C00-\u0C7F.]+){0,2}[ \t]+(గారు|గారి|గారికి|గారిని)(?![\u0C00-\u0C7F])/g, "$1$2<పేరు> $4")
+      .replace(/(శ్రీమతి|శ్రీ|కుమారి|దివంగత)[ \t]+(?!<)[\u0C00-\u0C7F.]+([ \t]+(?!గారు|గారి|సంబంధ|మరియు|లకు|యొక్క|వారి)[\u0C00-\u0C7F.]+){0,2}/g, "$1 <పేరు>")
+      .replace(/\b(From|To)\b(\s*:?\s*\n)([A-Z][\w.]*\.?[ \t]*){1,4},?[ \t]*\n/g, "$1$2<name>,\n")
+      .replace(/\d{4}\s?\d{4}\s?\d{4}/g, "<number>").replace(/\+?\d[\d -]{8,}\d/g, "<number>").replace(/[A-Z]{5}\d{4}[A-Z]/g, "<number>")
+      .replace(/\d+/g, "__");
+  }
   function pick(docType, request, owner = false) {
-    const all = list().filter(x => owner || !x.from);    // the owner's own old files (from folders) only for the owner
+    const all = list();                                   // (others get the owner's old files only blanked: see block)
     if (!all.length) return null;
     const kw = words(docType), rw = new Set(words(request));
     let best = null, bs = 0;
@@ -123,11 +134,12 @@ module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   }
 
   /** The words for the AI: an example to follow for its FORMAT only. */
-  function block(x) {
+  function block(x, owner = false) {
     if (!x) return "";
-    return `\n\nEXAMPLE FORMAT ("${x.title}"${x.kind ? ", a " + x.kind : ""}). Follow its format closely: its layout, the order of its parts, its headings, the way it addresses and signs off, its reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places: those come only from the matter and the papers.\n<<<\n${x.text.slice(0, 8000)}\n>>>`;
+    const text = x.from && !owner ? blank(x.text) : x.text;
+    return `\n\nEXAMPLE FORMAT (${x.from && !owner ? "an office letter" : '"' + x.title + '"'}${x.kind ? ", a " + x.kind : ""}). Follow its format closely: its layout, the order of its parts, its headings, the way it addresses and signs off, its reference/date lines, numbering and tone. Do NOT copy its facts, names, numbers, dates or places: those come only from the matter and the papers.\n<<<\n${text.slice(0, 8000)}\n>>>`;
   }
 
-  return { list: () => list().map(view), add, remove, pick, block, textOf, kindOf, hashOf, bulkText, aiLeft: () => Math.max(0, AI_DAILY - aiUsed) };
+  return { list: () => list().map(view), add, remove, pick, block, blank, textOf, kindOf, hashOf, bulkText, aiLeft: () => Math.max(0, AI_DAILY - aiUsed) };
 };
 module.exports.docxText = docxText;

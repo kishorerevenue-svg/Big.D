@@ -61,6 +61,15 @@ summary{cursor:pointer;font-weight:600}
 
   <div id="tools" hidden>
     <section class="card">
+      <h2>🔑 Office code · ఆఫీస్ కోడ్</h2>
+      <p class="hint">Give this code to your office staff. They type it once in the Habit app (Settings › Office code), and then they get your office's old letters and files like you: the 🔎 Old files search and letters using the old information. Everyone else gets only the way of writing, with names and numbers hidden. Change it when someone leaves.</p>
+      <label for="ocCode">New office code (at least 6 letters or numbers; empty: no office access)</label>
+      <input id="ocCode" type="password" autocomplete="new-password">
+      <button id="ocSave" type="button">Save code</button>
+      <div class="msg" id="ocMsg" role="status"></div>
+    </section>
+
+    <section class="card">
       <h2>📂 Old letters & files · పాత లేఖలు, ఫైళ్లు</h2>
       <p class="hint">Drag whole folders of your old letters, reports, proceedings and orders. Each file is read once and kept only as <b>text</b> (the file itself is not kept on the server). Then: <b>format</b>, when a letter of that kind is made, Habit follows the closest one's layout; <b>information</b>, when a related matter comes, Habit uses the old information (earlier orders, history, rules). Word and text files are read free; PDFs and photos are read by the AI (a small cost each). The same file twice is kept once. Blank out personal details you don't want kept.</p>
       <div id="drop" tabindex="0" role="button" aria-label="Drop folders and files here, or click to choose" style="border:2px dashed #7c8cff;border-radius:16px;padding:34px 16px;text-align:center;margin:12px 0;cursor:pointer;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
@@ -780,7 +789,15 @@ $("bulkFolder").onchange = () => { sendAll([...$("bulkFolder").files]); $("bulkF
 $("bulkFiles").onchange = () => { sendAll([...$("bulkFiles").files]); $("bulkFiles").value = ""; };
 $("bulkStop").onclick = () => { bulkStop = true; };
 
+$("ocSave").onclick = () => busy($("ocSave"), $("ocMsg"), async () => {
+  const { set } = await api("office-code", { code: $("ocCode").value });
+  $("ocCode").value = "";
+  say($("ocMsg"), set ? "Saved. Staff with this code now get your office's old files." : "Removed: no office access now.", true);
+});
+async function loadOffice() { const { set } = await api("office-code"); say($("ocMsg"), set ? "An office code is set." : "No office code yet.", true); }
+
 async function refresh() {
+  loadOffice().catch(() => {});
   loadFormats().catch(() => {});
   loadChat().catch(() => {});
   loadPush().catch(() => {});

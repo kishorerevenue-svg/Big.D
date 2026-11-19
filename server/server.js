@@ -440,6 +440,23 @@ async function askClaude(messages, lang) {
   return r;
 }
 
+// The office code: the owner sets it on the Teach page and gives it to the office staff; with it their app gets the
+// office's old files like the owner (search, full text, letters). Kept only as a hash.
+const OFFICE_FILE = path.join(DATA_DIR, "office-code.json");
+let officeHash = ""; try { officeHash = JSON.parse(fs.readFileSync(OFFICE_FILE, "utf8")).hash || ""; } catch (e) { }
+const codeHash = c => crypto.createHash("sha256").update("office|" + String(c).trim()).digest("hex");
+function setOfficeCode(code) {
+  const c = String(code || "").trim();
+  if (c && c.length < 6) throw Object.assign(new Error("Use at least 6 letters or numbers."), { user: true });
+  officeHash = c ? codeHash(c) : "";
+  fs.writeFileSync(OFFICE_FILE, JSON.stringify({ hash: officeHash, at: Date.now() }));
+}
+function officeAllowed(req) {
+  const given = String(req.headers["x-office-code"] || "").trim();
+  if (!officeHash || !given) return false;
+  return crypto.timingSafeEqual(Buffer.from(codeHash(given)), Buffer.from(officeHash));
+}
+
 function teachAllowed(req) {
   const given = String(req.headers["x-teach-key"] || "");
   if (!TEACH_PASSWORD || !given) return false;
@@ -503,7 +520,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
 
-  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills, formats, isOwner, ownBrain,
+  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills, formats, isOwner: req => isOwner(req) || officeAllowed(req), ownBrain,
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
   if (await gemma.handle(req, res, url, origin, { send, readBody, allowed, clientIp })) return;
@@ -706,6 +723,7 @@ const server = http.createServer(async (req, res) => {
     try {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
       if (req.method === "GET" && url.pathname === "/api/teach/formats") return send(res, 200, { items: formats.list() });
+      if (req.method === "GET" && url.pathname === "/api/teach/office-code") return send(res, 200, { set: !!officeHash });
       // our own brain and the answers learned from common questions
       if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list(), claude: learn.claudeOut(), self: selfBrain.stats(), trends: trends.status(), skills: await skills.status() });
       if (req.method === "GET" && url.pathname === "/api/teach/skills") return send(res, 200, { status: await skills.status(), learned: skills.list() });
@@ -774,6 +792,7 @@ const server = http.createServer(async (req, res) => {
           return send(res, 200, { item: learn.addKnowledge(body.title || page.title, String(body.url), page.text, page.via) });
         }
         if (url.pathname === "/api/teach/formats/add") return send(res, 200, { item: await formats.add(body), items: formats.list() });
+        if (url.pathname === "/api/teach/office-code") { setOfficeCode(body.code); return send(res, 200, { set: !!officeHash }); }
         // many files at once (a folder dragged in): each is read once and kept only as TEXT (the file itself is not kept),
         // as an example format, as information for related matters, or both
         if (url.pathname === "/api/teach/bulk") {
