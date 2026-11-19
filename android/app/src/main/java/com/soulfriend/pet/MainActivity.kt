@@ -239,6 +239,7 @@ class MainActivity : Activity() {
     }
 
     override fun onResume() {
+        if (!leavingForSystemScreen && tab == "feedback") social.newMix()      // back in the app: Media in a new order
         super.onResume(); resumedNow = true; leavingForSystemScreen = false
         AppLook.refresh(this); if (AppLook.dark != builtDark) { recreate(); return }
         render()
