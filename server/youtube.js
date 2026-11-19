@@ -171,6 +171,8 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
 
   // ---------- trending today (Telugu) ----------
   const telugu = s => /[ఀ-౿]/.test(s);
+  /** A Telugu video: Telugu letters or "Telugu" in the title or channel name, or its sound is in Telugu. */
+  const teluguVideo = (title, ch, lang) => telugu(title) || /telugu|tollywood|తెలుగు/i.test((title || "") + " " + (ch || "")) || /^te/.test(lang || "");
   /** Not clickbait: not skipped by our own brain, and no "shocking", "viral", gossip or crime words in the title. */
   const fine = v => !(db.skipped || []).includes(v.id) && !BAD.test(v.title || "") && playable(v);
   // ---------- videos that won't play inside apps ("blocked from display on this website or application") ----------
@@ -204,18 +206,18 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
           } catch (e) { if (!c) throw e; }
         }
         const ours = new Set(Object.values(db.ch).map(s => s.id).filter(Boolean));
-        const isTe = v => telugu(v.snippet.title) || /^te/.test(v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || "") || ours.has(v.snippet.channelId);
+        const isTe = v => teluguVideo(v.snippet.title, v.snippet.channelTitle, v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage) || ours.has(v.snippet.channelId);
         // Telugu first; then up to 40 of India's most popular in other languages (comedy, entertainment, songs)
         list = [...items.filter(v => v.snippet && isTe(v)), ...items.filter(v => v.snippet && !isTe(v)).slice(0, 40)]
           .map(v => ({ id: v.id, title: str(v.snippet.title, 200), ch: str(v.snippet.channelTitle, 80), chId: str(v.snippet.channelId, 30), at: Date.parse(v.snippet.publishedAt) || 0, views: Number((v.statistics || {}).viewCount || 0),
-            desc: str(v.snippet.description, 600), cat: ({ "25": "news", "17": "news", "1": "movies", "10": "movies", "23": "movies", "24": "movies", "27": "jobs" })[v.snippet.categoryId] || "" }));
+            te: isTe(v), desc: str(v.snippet.description, 600), cat: ({ "25": "news", "17": "news", "1": "movies", "10": "movies", "23": "movies", "24": "movies", "27": "jobs" })[v.snippet.categoryId] || "" }));
       } catch (e) { console.error("YouTube trending:", e.message); }
     }
     {
       // with them: our channels' most-watched videos of the last 2 days (and all of it without a key)
       const since = Date.now() - 2 * 86400e3, seen = new Set(list.map(v => v.id));
       list = list.concat(Object.values(db.ch).flatMap(s => (s.videos || []).map(v => ({ ...v, chId: v.chId || s.id }))).filter(v => v.at > since && !seen.has(v.id) && seen.add(v.id)).sort((a, b) => b.views - a.views)
-        .slice(0, 60).map(v => ({ id: v.id, title: v.title, ch: v.ch, chId: v.chId || "", at: v.at, views: v.views })));
+        .slice(0, 60).map(v => ({ id: v.id, title: v.title, ch: v.ch, chId: v.chId || "", at: v.at, views: v.views, te: true })));
     }
     db.trending = { at: Date.now(), list: list.filter(fine).slice(0, 150) }; save();
   }
@@ -243,21 +245,27 @@ module.exports = function makeYouTube({ DATA_DIR, media, ownBrain, fetchImpl, h 
       const ids = [...got.keys()];
       for (let i = 0; i < ids.length; i += 50) {           // their views (1 point for 50 videos)
         try {
-          const j = await api(`videos?part=statistics,status&id=${ids.slice(i, i + 50).join(",")}`);
-          for (const v of j.items || []) { const x = got.get(v.id); if (!x) continue; if (v.status && v.status.embeddable === false) got.delete(v.id); else x.views = Number((v.statistics || {}).viewCount || 0); }
+          const j = await api(`videos?part=snippet,statistics,status&id=${ids.slice(i, i + 50).join(",")}`);
+          for (const v of j.items || []) {
+            const x = got.get(v.id); if (!x) continue;
+            if (v.status && v.status.embeddable === false) { got.delete(v.id); continue; }
+            const sn = v.snippet || {};
+            x.views = Number((v.statistics || {}).viewCount || 0);
+            x.te = teluguVideo(x.title, x.ch, sn.defaultAudioLanguage || sn.defaultLanguage);
+          }
         } catch (e) { }
       }
       const list = [...got.values()].filter(fine).sort((a, b) => b.views - a.views);
       if (list.length) { V.list = list.slice(0, 200); V.at = Date.now(); }
       for (const v of list) if (/^UC[\w-]{22}$/.test(v.chId) && v.views >= 100000) {
         const c = V.ch[v.chId] = V.ch[v.chId] || { name: v.ch, score: 0, shorts: [] };
-        c.score = Math.max(c.score || 0, v.views); c.seen = Date.now();
+        c.score = Math.max(c.score || 0, v.views); c.seen = Date.now(); c.te = !!(c.te || v.te);
       }
     }
     const keep = Object.entries(V.ch).filter(([id, c]) => Date.now() - (c.seen || 0) < 14 * 86400e3 && playable({ chId: id })).sort((a, b) => (b[1].score || 0) - (a[1].score || 0)).slice(0, 80);
     V.ch = Object.fromEntries(keep);
     for (const [id, c] of keep) {
-      try { c.shorts = (await feed(`playlist_id=UUSH${id.slice(2)}`)).slice(0, 10).map(v => ({ id: v.id, title: v.title, ch: v.ch || c.name, chId: id, at: v.at, views: v.views })); }
+      try { c.shorts = (await feed(`playlist_id=UUSH${id.slice(2)}`)).slice(0, 10).map(v => ({ id: v.id, title: v.title, ch: v.ch || c.name, chId: id, at: v.at, views: v.views, te: !!c.te || teluguVideo(v.title, c.name) })); }
       catch (e) { }
     }
     save();
@@ -374,6 +382,7 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
       }
       if (force || now - (db.runs.live || 0) > 30 * 60e3) { db.runs.live = now; save(); await checkLive(); }
       if (force || now - (db.runs.trending || 0) > 3 * 3600e3) { db.runs.trending = now; save(); await trending(); }
+      if (db.viral && (db.viral.list || []).length && !db.viral.list.some(v => "te" in v)) db.runs.viral = 0;   // (made before Telugu was marked)
       if (force || now - (db.runs.viral || 0) > 6 * 3600e3) { db.runs.viral = now; save(); await viral(); }
     } catch (e) { console.error("YouTube error:", e.message); }
     busy = false;
@@ -383,21 +392,23 @@ Reply only with JSON: {"skip": false, "title": "...", "mood": one of ${media.MOO
   // ---------- for the app: GET /api/videos?cat=news ----------
   function videos(cat) {
     const list = cat && media.CATS[cat] ? channels(cat).map(x => ({ ...x, cat })) : allChannels();
-    const view = v => ({ id: v.id, title: v.title, ch: v.ch, chId: v.chId || "", at: v.at, views: v.views || 0 });
+    const view = v => ({ id: v.id, title: v.title, ch: v.ch, chId: v.chId || "", at: v.at, views: v.views || 0, te: v.te !== false });
     const live = list.map(x => { const st = db.ch[keyOf(x)] || {}; return st.live ? { id: st.live.id, title: st.live.title, ch: x.name || st.name, cat: x.cat, since: st.live.since, live: true } : null; }).filter(Boolean);
-    const latest = list.flatMap(x => ((db.ch[keyOf(x)] || {}).videos || []).filter(fine).slice(0, 15).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.at - a.at).slice(0, 300);
+    const latest = list.flatMap(x => ((db.ch[keyOf(x)] || {}).videos || []).filter(fine).slice(0, 15).map(v => ({ ...view(v), cat: x.cat, te: true }))).sort((a, b) => b.at - a.at).slice(0, 300);
     // Shorts: new ones and every channel's most-watched ones, in a new random order each time (today's first), up to 300
     const seen = new Set(), mix = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-    const pool = list.flatMap(x => { const st = db.ch[keyOf(x)] || {}; return [...(st.shorts || []), ...(st.popShorts || [])].filter(fine).map(v => ({ ...view(v), cat: x.cat })); })
+    const pool = list.flatMap(x => { const st = db.ch[keyOf(x)] || {}; return [...(st.shorts || []), ...(st.popShorts || [])].filter(fine).map(v => ({ ...view(v), cat: x.cat, te: true })); })
       .filter(v => !seen.has(v.id) && seen.add(v.id));
     const day = Date.now() - 24 * 3600e3;
     const ours = [...mix(pool.filter(v => v.at > day)), ...mix(pool.filter(v => v.at <= day))];
     // and on the main page, the viral Shorts of every creator: one of ours, one viral, in turns
     const V = db.viral || {};
-    const vir = cat && cat !== "all" ? [] : mix([...(V.list || []), ...Object.values(V.ch || {}).flatMap(c => c.shorts || [])].filter(fine).map(v => ({ ...view(v), cat: "" }))
+    const vir = cat && cat !== "all" ? [] : mix([...(V.list || []), ...Object.values(V.ch || {}).flatMap(c => c.shorts || [])].filter(fine).map(v => ({ ...view(v), cat: "", te: !!v.te }))
       .filter(v => !seen.has(v.id) && seen.add(v.id)));
-    const shorts = [];
-    for (let i = 0; i < Math.max(ours.length, vir.length); i++) { if (vir[i]) shorts.push(vir[i]); if (ours[i]) shorts.push(ours[i]); }
+    // Telugu first (ours and the viral Telugu ones in turns), then the viral ones in other languages
+    const virTe = vir.filter(v => v.te), shorts = [];
+    for (let i = 0; i < Math.max(ours.length, virTe.length); i++) { if (virTe[i]) shorts.push(virTe[i]); if (ours[i]) shorts.push(ours[i]); }
+    shorts.push(...vir.filter(v => !v.te));
     shorts.splice(1500);
     const popular = list.flatMap(x => ((db.ch[keyOf(x)] || {}).popular || []).filter(fine).map(v => ({ ...view(v), cat: x.cat }))).sort((a, b) => b.views - a.views).slice(0, 200);
     return { live, latest, shorts, popular, trending: cat && cat !== "all" ? [] : db.trending.list, key: !!KEY() };

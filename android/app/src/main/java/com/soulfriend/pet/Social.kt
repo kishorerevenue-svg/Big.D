@@ -705,6 +705,7 @@ class SocialPage(private val m: MainActivity) {
         return (0 until a.length()).mapNotNull { a.optJSONObject(it) }.filter { it.optString("id").length == 11 }.map { o ->
             val ch = o.optString("ch")
             o.optString("chId").let { if (it.isNotBlank()) ytCh[o.optString("id")] = it }
+            if (o.has("te") && !o.optBoolean("te")) ytOther.add(o.optString("id"))        // not Telugu: after the Telugu ones
             SPost("yt:" + o.optString("id"), SUser("", ch.ifBlank { "YouTube" }, "", "", "", if (live || o.optBoolean("live")) "🔴" else "▶️", false, false, 0, 0, 0, false, false),
                 o.optLong("at"), o.optString("title"), "", emptyList(), o.optString("id"), ch, "", "", "", "", "YouTube · $ch", "", o.optString("cat"), "▶️", 0, false, o.optInt("views"), 0, false)
         }
@@ -731,9 +732,12 @@ class SocialPage(private val m: MainActivity) {
             "popular" -> toPosts(v?.optJSONArray("popular")) + trending
             else -> toPosts(v?.optJSONArray("latest")) + toPosts(v?.optJSONArray("popular"))
         }.shuffled(rnd)
-        // ones not watched yet first, every time in a new order; the watched ones after them
+        // every time in a new order: Telugu ones not watched yet first, then other languages, then the ones already watched
         val watched = store.seenVideos()
-        val fresh = { l: List<SPost> -> l.filter { it.ytId !in watched } + l.filter { it.ytId in watched } }
+        val fresh = { l: List<SPost> ->
+            val (old, new) = l.partition { it.ytId in watched }
+            new.filter { it.ytId !in ytOther } + new.filter { it.ytId in ytOther } + old.filter { it.ytId !in ytOther } + old.filter { it.ytId in ytOther }
+        }
         val seen = HashSet<String>()
         val tube = (live.take(2) + fresh(long)).filter { seen.add(it.ytId) }
         val sh = fresh((toPosts(mineJ?.optJSONArray("shorts")) + toPosts(v?.optJSONArray("shorts"))).shuffled(rnd)).filter { seen.add(it.ytId) }
@@ -800,6 +804,7 @@ class SocialPage(private val m: MainActivity) {
 
     // "Your channels": the newest videos of the channels watched or followed in Habit (no YouTube login needed)
     private val ytCh = HashMap<String, String>()        // video id → its channel's id
+    private val ytOther = HashSet<String>()             // videos in other languages (Telugu ones come first)
     private var mineFor = ""
     private var mineAt = 0L
     private var mineJson: JSONObject? = null
@@ -843,6 +848,7 @@ class SocialPage(private val m: MainActivity) {
         val all = (0 until a.length()).mapNotNull { a.optJSONObject(it) }.filter { it.optString("id").length == 11 }.map { o ->
             val ch = o.optString("ch")
             o.optString("chId").let { if (it.isNotBlank()) ytCh[o.optString("id")] = it }
+            if (o.has("te") && !o.optBoolean("te")) ytOther.add(o.optString("id"))        // not Telugu: after the Telugu ones
             SPost("yt:" + o.optString("id"), SUser("", ch.ifBlank { "YouTube" }, "", "", "", if (live) "🔴" else "▶️", false, false, 0, 0, 0, false, false),
                 o.optLong("at"), o.optString("title"), "", emptyList(), o.optString("id"), ch, "", "", "", "", "YouTube · $ch", "", o.optString("cat"), "▶️", 0, false, o.optInt("views"), 0, false)
         }
