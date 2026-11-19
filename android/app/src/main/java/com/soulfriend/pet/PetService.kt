@@ -1078,7 +1078,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (ScreenCaptureService.wantsScreen(text)) { readScreen(text); return }
         lookToken++; autoLooks = 0
         // "look at this shirt", "what's written on this board?", "what colour is my shirt?": the pet looks with the camera itself
-        Eyes.wants(text, lastLook)?.let { l -> lastQuestion = l.ask; look(l); return }
+        Eyes.wants(text, lastLook)?.let { l -> offerLook = null; lastQuestion = l.ask; look(l); return }
+        offerLook?.let { l ->
+            offerLook = null
+            if (Regex("^\\s*(yes|yeah|ok|okay|sure|look|see|please|అవును|ఔను|సరే|ఓకే|చూడు|చూడండి|చూసి చెప్పు|హా|ఆ)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text) ||
+                Regex("^\\s*(అవును|ఔను|సరే|ఓకే|చూడు|చూడండి|హా)").containsMatchIn(text)) { lastQuestion = l.ask; look(l); return }
+        }
         // "హ్యాబిట్ ద్వారా రోజాకి కాల్ చేయి": a Habit call at once from here (never a normal phone call)
         Talk.habitCall(text, store.wakeName)?.let { (who, video) ->
             lastQuestion = text
@@ -1155,6 +1160,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private var lastLook: Eyes.Look? = null
     private var lookingSince = 0L
     private var lookToken = 0          // a new question (or tapping me to talk) stops a "look again" that is waiting
+    private var offerLook: Eyes.Look? = null      // it offered to look ("Shall I look?"): a yes opens its eyes
     private var autoLooks = 0          // "move a little left… looking again": at most twice per question
 
     /** Opens the pet's eyes: a small note at the top, ONE photo from the camera (no camera window), then the AI answers about it. */
@@ -1275,7 +1281,15 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         else if (ask != null) say(ask, PuppyView.Mood.HAPPY, delayMs = wait)
         else if (reply.isBlank() && did.isNotEmpty()) say(did.joinToString(" "), PuppyView.moodOf(json.optString("emotion")), delayMs = wait)
         else say(reply, PuppyView.moodOf(json.optString("emotion")), extra, delayMs = wait)
-        lookAt?.let { l -> main.postDelayed({ look(l, announce = false) }, 300) }
+        lookAt?.let { l ->
+            val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
+            if (store.autoLookDay != today) { store.autoLookDay = today; main.postDelayed({ look(l, announce = false) }, 300) }
+            else {
+                // already looked by itself today: it asks, and looks when they say yes
+                offerLook = l
+                main.postDelayed({ say(if (te()) "👀 చూడమంటారా? \"చూడు\" అనండి." else "👀 Shall I look? Say \"look\".", PuppyView.Mood.HAPPY, local = true) }, 1200)
+            }
+        }
         lookAgain?.let { l ->
             autoLooks++
             val token = ++lookToken

@@ -639,6 +639,8 @@ const server = http.createServer(async (req, res) => {
       { // it has seen the photo already: only "look again" (after telling them how to hold the phone), and only for photos its own eyes took
         const last = messages[messages.length - 1].content;
         if (Array.isArray(last)) { const eyes = /^\[Your eyes/.test(String((last[1] && last[1].text) || "")); out.actions = (out.actions || []).filter(a => a.type !== "look" || (eyes && a.again === true)); }
+        // nothing could see the photo now (Claude resting, our own model has no eyes): don't open the camera at all
+        else if ((!API_KEY || learn.claudeOut()) && !ownBrain.quick().vision) out.actions = (out.actions || []).filter(a => a.type !== "look");
       }
       out.actions = await makeFileActions(out.actions, req);
       if (typeof out.reply === "string") out.reply = learn.noCites(out.reply);   // learned and own-brain answers too

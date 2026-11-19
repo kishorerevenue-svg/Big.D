@@ -187,6 +187,10 @@ class Store(context: Context) {
     var exampleMime: String
         get() = p.getString("exampleMime", "image/jpeg") ?: "image/jpeg"
         set(v) { p.edit().putString("exampleMime", v).apply() }
+    /** The day the pet last looked through the camera by itself (once a day; more only when asked). */
+    var autoLookDay: String
+        get() = p.getString("autoLookDay", "") ?: ""
+        set(v) { p.edit().putString("autoLookDay", v).apply() }
     /** How big a nod must be: 0 small moves, 1 normal, 2 big moves only. */
     var headLevel: Int
         get() = p.getInt("headLevel", 1)
