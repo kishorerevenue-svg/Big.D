@@ -343,6 +343,13 @@ class Store(context: Context) {
     var officeCode: String
         get() = p.getString("officeCode", "") ?: ""
         set(v) { p.edit().putString("officeCode", v.trim()).apply() }
+    /** Videos and Shorts already watched here (newest last, at most 800): the feed puts new ones first. */
+    fun seenVideos(): Set<String> = (p.getString("seenVids", "") ?: "").split(',').filter { it.isNotBlank() }.toHashSet()
+    fun seenVideo(id: String) {
+        if (id.length != 11) return
+        val l = (p.getString("seenVids", "") ?: "").split(',').filter { it.isNotBlank() && it != id }.takeLast(799) + id
+        p.edit().putString("seenVids", l.joinToString(",")).apply()
+    }
     /** The office head's key (only on the phone that made the office space). */
     var officeHead: String
         get() = p.getString("officeHead", "") ?: ""

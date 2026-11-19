@@ -135,6 +135,7 @@ class WatchActivity : Activity() {
         val w = web ?: makeWeb().also { web = it; videoBox.addView(it, FrameLayout.LayoutParams(-1, -1)) }
         w.onResume()
         val id = item.src.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(11)
+        prefs.seenVideo(id)
         val origin = server.trimEnd('/')
         val html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
             "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head><body>" +

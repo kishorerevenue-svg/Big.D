@@ -339,6 +339,7 @@ class MediaViewer : Activity() {
         pager.locked = false
         for (k in pages.indices) { if (k >= i - 1 && k <= i + 1) fill(k) else if (k < i - 2 || k > i + 2) clear(k) }
         val cur = items[i]
+        if (cur.kind == "short" || cur.kind == "video") prefs.seenVideo(cur.src)      // seen: next time the feed shows new ones first
         count.text = "${i + 1} / ${items.size}"
         count.visibility = if (items.size > 1) View.VISIBLE else View.GONE
         who.text = cur.who

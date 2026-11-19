@@ -366,7 +366,12 @@ class SocialPage(private val m: MainActivity) {
     private var topOpen = false
     private var searchOpen = false
     /** A new mix of videos (each time the Media page is opened). */
-    fun newMix() { mixSeed = System.nanoTime(); tubeShown = 20 }
+    fun newMix() {
+        mixSeed = System.nanoTime(); tubeShown = 20
+        // and fresh videos from the server too, when the last ones are older than 2 minutes
+        val now = System.currentTimeMillis()
+        for (k in vidsAt.keys.toList()) if (now - (vidsAt[k] ?: 0L) > 2 * 60_000L) vidsAt[k] = 0L
+    }
     /** What opens under ▾: search any song or video, mood and issue, your profile, make a cartoon. */
     private fun moreTop(mine: SUser?) {
         if (filterable) {
@@ -726,9 +731,12 @@ class SocialPage(private val m: MainActivity) {
             "popular" -> toPosts(v?.optJSONArray("popular")) + trending
             else -> toPosts(v?.optJSONArray("latest")) + toPosts(v?.optJSONArray("popular"))
         }.shuffled(rnd)
+        // ones not watched yet first, every time in a new order; the watched ones after them
+        val watched = store.seenVideos()
+        val fresh = { l: List<SPost> -> l.filter { it.ytId !in watched } + l.filter { it.ytId in watched } }
         val seen = HashSet<String>()
-        val tube = (live.take(2) + long).filter { seen.add(it.ytId) }
-        val sh = (toPosts(mineJ?.optJSONArray("shorts")) + toPosts(v?.optJSONArray("shorts")).take(300)).shuffled(rnd).filter { seen.add(it.ytId) }
+        val tube = (live.take(2) + fresh(long)).filter { seen.add(it.ytId) }
+        val sh = fresh((toPosts(mineJ?.optJSONArray("shorts")) + toPosts(v?.optJSONArray("shorts"))).shuffled(rnd)).filter { seen.add(it.ytId) }
         return tube to sh
     }
     private fun loadMine() {
