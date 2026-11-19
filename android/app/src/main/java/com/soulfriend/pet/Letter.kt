@@ -931,6 +931,7 @@ class LetterHelper(private val m: MainActivity) {
         m.stopListening(); listeningId = ""
         stage = "finishing"; error = ""; m.render()
         val body = JSONObject().put("content", r.optJSONObject("content")).put("title", r.optString("title")).put("format", r.optString("format", "docx"))
+            .apply { if (office && officeType.isNotEmpty()) put("docType", officeType) }
         m.io.execute {
             val x = Net.post(store, "/api/letter/final", body, owner(), 90_000)
             m.runOnUiThread {
