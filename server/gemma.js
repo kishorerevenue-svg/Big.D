@@ -129,7 +129,19 @@ module.exports = function makeGemma({ DATA_DIR, SERVER_DIR, ownBrain, learn, HF_
       ratings = ratings.filter(x => !drop.has(x.id));
     }
     save("gemma-ratings.json", ratings);
+    autoLesson(id);
     return { ok: true };
+  }
+  /** Learning by itself: an answer Habit's own model wrote (clean: no Claude words in it) that two different phones
+   *  liked and nobody disliked becomes a lesson at once (used in answers right away, and in the next training). */
+  function autoLesson(id) {
+    const all = ratings.filter(x => x.rid === id);
+    if (!all.length || all.some(x => !x.good)) return;
+    const r = all[all.length - 1];
+    if (!r.clean || r.brain !== "own" || new Set(all.map(x => x.dev)).size < 2) return;
+    if (lessons.some(l => l.a === r.reply)) return;
+    const out = addLesson({ q: r.q, a: r.reply, topic: "liked by people" }, "gemma");
+    if (out.ok) { for (const x of all) { x.status = "lesson"; x.lesson = out.lesson.id; } save("gemma-ratings.json", ratings); console.log("Own brain: learned a liked answer by itself"); }
   }
 
   // ---------- the owner's lessons ----------

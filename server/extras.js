@@ -418,6 +418,10 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
   async function letterFinal(body, req) {
     if (!okContent(body.content)) throw userError("The rough copy was lost. Please start again.");
     const f = await files.create({ type: "make_file", format: body.format === "xlsx" ? "xlsx" : "docx", title: str(body.title, 80) || "Letter", content: body.content });
+    // learning by itself: the owner's finished letter becomes an example of its kind (private to the owner, as text)
+    if (body._owner && formats && Array.isArray(body.content.blocks)) {
+      try { await formats.add({ text: roughLines(body.content).join("\n"), title: str(body.title, 80) || "Letter", kind: str(body.docType, 60), path: "my letters/" + (str(body.title, 80) || "letter") }); } catch (e) { }
+    }
     return { url: baseUrl(req) + f.path, name: f.name, format: f.format };
   }
 
