@@ -268,6 +268,36 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     return Object.assign(roughOut(o), { docsId: papers.length ? (/^[a-f0-9]{24}$/.test(String(body.docsId || "")) ? body.docsId : keepPapers(papers)) : "" });
   }
 
+  // ---------- the owner's old office files: search by Sy.No., village or name (no AI, only for the owner) ----------
+  function oldFiles() {
+    const out = [], seen = new Set();
+    for (const it of learn.listKnowledge()) if (String(it.source || "").startsWith("bulk:")) {
+      const text = learn.readKnowledge(it.id); if (!text) continue;
+      seen.add(it.source.slice(5)); out.push({ id: "k" + it.id, title: it.title, text });
+    }
+    return out;
+  }
+  function searchOld(q) {
+    q = str(q, 120);
+    const nums = (q.match(/\d+(?:\s*[\/-]\s*\w+)*/g) || []).map(n => n.replace(/\s+/g, ""));
+    const words = q.replace(/\d+(?:\s*[\/-]\s*\w+)*/g, " ").split(/[^\p{L}\p{M}]+/u).map(w => w.toLowerCase()).filter(w => w.length >= 3 && !/^(sy|syno|survey|no|number|of|the|and|village|గ్రామం|సర్వే|నెంబర్|నంబర్|వివరాలు|details)$/.test(w));
+    if (!nums.length && !words.length) return [];
+    const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const numRe = nums.map(n => new RegExp("(?<![\\d/])" + esc(n) + "(?![\\d])", "i"));
+    const res = [];
+    for (const f of oldFiles()) {
+      const low = f.text.toLowerCase();
+      if (!numRe.every(r => r.test(f.text)) || !words.every(w => low.includes(w))) continue;
+      const lines = f.text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+      const hits = lines.filter(l => numRe.some(r => r.test(l)) || words.some(w => l.toLowerCase().includes(w))).slice(0, 3).map(l => l.slice(0, 220));
+      const date = (f.text.match(/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})\b/) || [])[0] || "";
+      const rc = ((f.text.match(/\b(?:\(M\))?\s*(?:R\.?\s?C\.?|Lr|D\.Dis)\.?\s*No\.?[^\n]{0,40}/i) || [])[0] || "").trim().slice(0, 60);
+      const sort = date ? date.replace(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/, (m, d, mo, y) => y + mo.padStart(2, "0") + d.padStart(2, "0")) : "0";
+      res.push({ id: f.id, title: f.title, date, rc, hits, sort });
+    }
+    return res.sort((a, b) => a.sort.localeCompare(b.sort)).slice(0, 40).map(({ sort, ...r }) => r);
+  }
+
   // ---------- the rough copy by Habit's OWN model (free, on this server) when Claude can't (no credit, busy) ----------
   // It writes only the parts (to, subject, references, paragraphs…); the office header, From, Rc.No./date and the
   // signature are put around them here, the same way every time. It can't read photos or PDFs.
@@ -335,6 +365,18 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
       say: (papers ? (te ? "AI లేకపోవడంతో పత్రాలు చదవలేదు; మీరు రాసిన దాని నుంచే రాశాను. " : "Without the AI the papers couldn't be read; I wrote from what you typed. ") : "")
         + (te ? "Habit సొంత మెదడు రాసిన రఫ్ కాపీ: ప్రతి లైన్ చూసి మార్పులు చెప్పండి." : "A rough copy by Habit's own brain: read each line and tell me what to change.") };
   }
+  /** No AI at all (Claude resting, our own model too small): the person's own words become the body, in the proper layout. */
+  function plainDraft(body) {
+    const te = body.lang === "te";
+    const pieces = str(body.request, 8000).split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const first = (pieces[0] || "").split(/(?<=[.!?।])\s/)[0].slice(0, 140);
+    const f = { title: str(body.docType, 40) || "Letter", to: "", subject: (str(body.docType, 40) ? str(body.docType, 40) + ": " : "") + first, references: [], paragraphs: pieces.length ? pieces : [first], enclosures: [], copyTo: [] };
+    const content = ownBlocks(f, body);
+    console.log("Letter: laid out without AI (none could write now)");
+    return { title: f.title, format: "docx", content, lines: roughLines(content), own: true,
+      say: te ? "ఇప్పుడు AI అందుబాటులో లేదు: మీరు రాసిన మాటలతోనే లేఖ రూపం తయారు చేశాను. 'To' మరియు విషయం సరిచేయండి." : "No AI is available now: I laid out the letter with your own words. Please check the To and the subject." };
+  }
+
   async function ownRevise(body) {
     const lang = ["te", "en"].includes(body.lang) ? body.lang : "auto", office = body.mode === "office";
     const f0 = ownFields(body.content);
@@ -530,7 +572,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
 
   const handle = async function handle(req, res, url, origin) {
     const p = url.pathname;
-    if (!p.startsWith("/api/letter/") && p !== "/api/scan" && !p.startsWith("/api/feed")) return false;
+    if (!p.startsWith("/api/letter/") && p !== "/api/scan" && !p.startsWith("/api/feed") && !p.startsWith("/api/office/")) return false;
 
     if (req.method === "GET" && p === "/api/feed") {
       if (!allowed("f:" + clientIp(req), reads, 400)) { send(res, 429, { error: "Too many requests." }, origin); return true; }
@@ -544,6 +586,13 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (body && typeof body === "object") body._owner = !!(isOwner && isOwner(req));
 
     try {
+      if (p === "/api/office/search" || p === "/api/office/read") {
+        if (!body._owner) { send(res, 403, { error: "Only the owner's phone (with the team key) can search the old office files." }, origin); return true; }
+        if (p.endsWith("search")) { send(res, 200, { found: searchOld(body.q) }, origin); return true; }
+        const id = str(body.id, 40);
+        const text = /^k[a-z0-9]+$/.test(id) ? learn.readKnowledge(id.slice(1)) : "";
+        send(res, text ? 200 : 404, text ? { text: text.slice(0, 60000) } : { error: "Not found." }, origin); return true;
+      }
       if (p === "/api/letter/final") { send(res, 200, await letterFinal(body, req), origin); return true; }
       if (p === "/api/letter/draft" || p === "/api/letter/revise") {
         const draft = p.endsWith("draft");
@@ -555,7 +604,8 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
           // Claude can't now (no credit, no key): Habit's own model writes it, free
           if (await ownReady()) {
             try { await own(); } catch (e) { console.error("Letter: our own model couldn't (" + String(e.message || "").slice(0, 80) + ")"); send(res, 503, { error: "Habit's own brain couldn't write it just now. Please try again in a few minutes. Habit సొంత మెదడు ఇప్పుడు రాయలేకపోయింది, కొన్ని నిమిషాల తర్వాత మళ్లీ ప్రయత్నించండి." }, origin); }
-          } else send(res, 503, { error: "The AI is resting and Habit's own brain isn't ready on the server. Your text is kept: please try again later." }, origin);
+          } else if (draft) send(res, 200, plainDraft(body), origin);
+          else send(res, 503, { error: "No AI can make changes just now. Copy the line, fix it in the Word file after Final copy, or try again later. ఇప్పుడు మార్పులు చేయగల AI లేదు; తర్వాత మళ్లీ ప్రయత్నించండి." }, origin);
           return true;
         }
         if (hasPapers && !papersAllowed(req)) { send(res, 429, { error: "You've reached today's limit for reading papers. Please try again tomorrow." }, origin); return true; }
