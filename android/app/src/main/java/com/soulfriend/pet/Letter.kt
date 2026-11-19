@@ -240,8 +240,69 @@ class LetterHelper(private val m: MainActivity) {
         }, 12)
     }
 
+    // ---------- the owner's old office files: find by Sy.No., village or name (only on the owner's phone) ----------
+    private var oldQ = ""
+    private var oldFound: org.json.JSONArray? = null
+    private var oldBusy = false
+    private fun oldFilesBox() {
+        if (store.teamKey.isBlank()) return
+        m.add(ui.section("🔎 Old files · పాత ఫైళ్లు", "Find every old letter about a Sy.No., village or name, with dates. Only on your phone.").apply {
+            val box = ui.input("Sy.No.165 Chinna Musidivada", oldQ).apply { setSingleLine(true); imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH }
+            fun go() { oldQ = box.text.toString().trim(); if (oldQ.length >= 2) searchOld() }
+            box.setOnEditorActionListener { _, _, _ -> go(); true }
+            put(LinearLayout(m).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(box, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(ui.button(if (oldBusy) "…" else "🔎", "primary") { go() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = m.dp(8) })
+            }, 8)
+            val f = oldFound
+            if (f != null && !oldBusy) {
+                if (f.length() == 0) put(ui.text("Nothing found for \"$oldQ\".", 13f, Ui.MUTED), 8)
+                else put(ui.text("${f.length()} found · oldest first · tap one to read", 12.5f, Ui.MUTED, bold = true), 8)
+                for (i in 0 until f.length()) {
+                    val o = f.optJSONObject(i) ?: continue
+                    put(LinearLayout(m).apply {
+                        orientation = LinearLayout.VERTICAL; setPadding(m.dp(12), m.dp(9), m.dp(12), m.dp(9)); background = ui.round(Ui.FIELD, 12, Ui.LINE)
+                        addView(ui.text(listOf(o.optString("date"), o.optString("title")).filter { it.isNotBlank() }.joinToString(" · "), 14f, Ui.INK, bold = true))
+                        if (o.optString("rc").isNotBlank()) addView(ui.text(o.optString("rc"), 12f, Ui.MUTED))
+                        val h = o.optJSONArray("hits")
+                        if (h != null && h.length() > 0) addView(ui.text(h.optString(0), 12.5f, Ui.INK).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+                        setOnClickListener { readOld(o.optString("id"), o.optString("title")) }
+                    }, 6)
+                }
+            }
+        }, 12)
+    }
+    private fun searchOld() {
+        oldBusy = true; m.render()
+        m.io.execute {
+            val r = try { Net.post(store, "/api/office/search", JSONObject().put("q", oldQ), owner(), 30_000) } catch (e: Exception) { null }
+            m.runOnUiThread {
+                oldBusy = false
+                if (r != null && r.ok) oldFound = r.json.optJSONArray("found") ?: org.json.JSONArray()
+                else m.toast(r?.json?.optString("error")?.ifBlank { null } ?: "Couldn't search now. Run the server update and try again.")
+                m.render()
+            }
+        }
+    }
+    private fun readOld(id: String, title: String) {
+        m.io.execute {
+            val r = try { Net.post(store, "/api/office/read", JSONObject().put("id", id), owner(), 30_000) } catch (e: Exception) { null }
+            m.runOnUiThread {
+                val text = r?.json?.optString("text").orEmpty()
+                if (r == null || !r.ok || text.isBlank()) { m.toast("Couldn't open it."); return@runOnUiThread }
+                val v = TextView(m).apply { this.text = text; textSize = 14f; setTextColor(Ui.INK); setTextIsSelectable(true); setPadding(m.dp(18), m.dp(8), m.dp(18), m.dp(8)) }
+                android.app.AlertDialog.Builder(m).setTitle(title)
+                    .setView(android.widget.ScrollView(m).apply { addView(v) })
+                    .setPositiveButton("➕ Use in this letter") { _, _ -> pieces.add("From the old file \"$title\": " + text.take(2500)); m.render(); m.toast("Added to the matter box") }
+                    .setNegativeButton("Close", null).show()
+            }
+        }
+    }
+
     private fun buildOfficeStart() {
         lettersButton()
+        oldFilesBox()
         m.add(ui.section("🏢 Office letters · కార్యాలయ లేఖలు",
             "Letters, reports, memos, proceedings and notices in office format. Add the petition or the earlier letter, and I'll read it first.").apply {
             put(ui.text("1. What to prepare? (slide ⟷)", 14f, Ui.INK, bold = true), 12)
