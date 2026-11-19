@@ -61,8 +61,8 @@ module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   const AI_DAILY = Math.max(0, Number(process.env.BULK_AI_DAILY || 300));
   let aiDay = "", aiUsed = 0;
   /** A file's text for the bulk upload: { text } or { same } (this very file came before) or { wait } (the AI's daily count is used up). */
-  async function bulkText(name, type, data) {
-    const h = rawHash(data);
+  async function bulkText(name, type, data, scope = "") {
+    const h = (scope ? scope + ":" : "") + rawHash(data);      // (each office keeps its own: the same file can go to two offices)
     if (seen[h]) return { same: true };
     const free = /\.(docx|txt|md|csv)$/i.test(name) || type.includes("wordprocessingml") || /^text\//.test(type);
     if (!free) {
@@ -111,8 +111,8 @@ module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   /** An old office file with the people and numbers taken out: only its format and wording are left (for everyone). */
   function blank(t) {
     return String(t || "")
-      .replace(/\b(Sri|Smt|Kum|Kumari|Shri|Mr|Mrs|Ms|Miss|Dr|Late|Advocate|Adv|M\/s)\.?\s+([A-Z][\w.]*\.?\s*){1,4}/g, "$1 <name> ")
-      .replace(/\b([SWDC])\/o\.?\s+([A-Z][\w.]*\.?\s*){1,4}/g, "$1/o <name> ")
+      .replace(/\b(Sri|Smt|Kum|Kumari|Shri|Mr|Mrs|Ms|Miss|Dr|Late|Advocate|Adv|M\/s)\.?[ \t]+((?![SWDC]\/)[A-Z][\w.]*\.?[ \t]*){1,4}/g, "$1 <name> ")
+      .replace(/\b([SWDC])\/o\.?[ \t]+([A-Z][\w.]*\.?[ \t]*){1,4}/g, "$1/o <name> ")
       .replace(/(^|[\s(,:])((?:శ్రీమతి|శ్రీ|కుమారి|దివంగత)[ \t]+)?[\u0C00-\u0C7F.]+([ \t]+[\u0C00-\u0C7F.]+){0,2}[ \t]+(గారు|గారి|గారికి|గారిని)(?![\u0C00-\u0C7F])/g, "$1$2<పేరు> $4")
       .replace(/(శ్రీమతి|శ్రీ|కుమారి|దివంగత)[ \t]+(?!<)[\u0C00-\u0C7F.]+([ \t]+(?!గారు|గారి|సంబంధ|మరియు|లకు|యొక్క|వారి)[\u0C00-\u0C7F.]+){0,2}/g, "$1 <పేరు>")
       .replace(/\b(From|To)\b(\s*:?\s*\n)([A-Z][\w.]*\.?[ \t]*){1,4},?[ \t]*\n/g, "$1$2<name>,\n")

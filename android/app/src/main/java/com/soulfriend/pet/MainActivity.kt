@@ -107,6 +107,7 @@ class MainActivity : Activity() {
         const val REQ_MSG_CAMERA = 4411
         const val REQ_MSG_PHOTO = 4412
         const val REQ_VAULT_CARDS = 4413
+        const val REQ_OFFICE_FILES = 4414
         const val REQ_CAM_INTENT = 24
         const val REQ_CAM_MIRROR = 25
         const val REQ_CARD_PERM = 26
@@ -1996,6 +1997,13 @@ class MainActivity : Activity() {
                 findCards(list)
             }
             REQ_LETTER_PDF -> { if (resultCode == RESULT_OK) data?.data?.let { letter.onPdf(it) } }
+            REQ_OFFICE_FILES -> {
+                if (resultCode != RESULT_OK || data == null) return
+                val list = ArrayList<Uri>()
+                data.clipData?.let { c -> for (k in 0 until c.itemCount) c.getItemAt(k).uri?.let { list.add(it) } }
+                if (list.isEmpty()) data.data?.let { list.add(it) }
+                letter.onOfficeFiles(list)
+            }
             REQ_LETTER_PHOTOS -> {
                 if (resultCode != RESULT_OK || data == null) return
                 val list = ArrayList<Uri>()

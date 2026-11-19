@@ -403,7 +403,7 @@ function send(res, status, obj, origin) {
 function cors(origin) {
   return ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes("*")
     ? { "Access-Control-Allow-Origin": origin, "Vary": "Origin",
-        "Access-Control-Allow-Methods": "POST, GET, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, X-Device" }
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, X-Device, X-Office-Code, X-Office-Head" }
     : {};
 }
 function readBody(req, max = 64 * 1024) {
@@ -506,6 +506,8 @@ const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, medi
 // Habit Chat: chats and groups between people who use the app, locked end to end on the phones (the server can't read them)
 // Firebase push: a Habit call rings (and a new message shows) while Habit is closed on that phone; no words in the push
 const push = require("./push.js")({ DATA_DIR });
+// Offices: each office's own private space (its staff join with a code; its old files kept only as text)
+const offices = require("./offices.js")({ DATA_DIR, formats, h: { send, readBody, allowed, clientIp } });
 const chat = require("./chat.js")({ DATA_DIR, social, push, h: { send, readBody, allowed, clientIp, baseUrl } });
 // The fake messages list (app: Tasks › 🛡️ Fake messages): people warn each other about fraud messages they got, with votes and comments
 const fakes = require("./fakes.js")({ DATA_DIR, social, learn, MODEL, API_KEY,
@@ -520,7 +522,8 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
 
-  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills, formats, isOwner: req => isOwner(req) || officeAllowed(req), ownBrain,
+  if (await offices.handle(req, res, url, origin)) return;
+  if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills, formats, isOwner: req => isOwner(req) || officeAllowed(req), ownBrain, offices,
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
   if (await gemma.handle(req, res, url, origin, { send, readBody, allowed, clientIp })) return;
@@ -724,6 +727,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
       if (req.method === "GET" && url.pathname === "/api/teach/formats") return send(res, 200, { items: formats.list() });
       if (req.method === "GET" && url.pathname === "/api/teach/office-code") return send(res, 200, { set: !!officeHash });
+      if (req.method === "GET" && url.pathname === "/api/teach/offices") return send(res, 200, { items: offices.listAll() });
       // our own brain and the answers learned from common questions
       if (req.method === "GET" && url.pathname === "/api/teach/brain") return send(res, 200, { brain: await ownBrain.status(), learning: answers.list(), claude: learn.claudeOut(), self: selfBrain.stats(), trends: trends.status(), skills: await skills.status() });
       if (req.method === "GET" && url.pathname === "/api/teach/skills") return send(res, 200, { status: await skills.status(), learned: skills.list() });
@@ -793,6 +797,7 @@ const server = http.createServer(async (req, res) => {
         }
         if (url.pathname === "/api/teach/formats/add") return send(res, 200, { item: await formats.add(body), items: formats.list() });
         if (url.pathname === "/api/teach/office-code") { setOfficeCode(body.code); return send(res, 200, { set: !!officeHash }); }
+        if (url.pathname === "/api/teach/offices/delete") return send(res, 200, { ok: offices.removeOffice(String(body.id || "")), items: offices.listAll() });
         // many files at once (a folder dragged in): each is read once and kept only as TEXT (the file itself is not kept),
         // as an example format, as information for related matters, or both
         if (url.pathname === "/api/teach/bulk") {
@@ -876,6 +881,7 @@ const server = http.createServer(async (req, res) => {
     let p = url.pathname === "/" ? "/index.html" : url.pathname;
     if (p === "/privacy") p = "/privacy.html";
     if (p === "/teach") p = "/teach.html";
+    if (p === "/office") p = "/office.html";
     if (p === "/rules" || p === "/child-safety") p = "/rules.html";
     if (p === "/delete-account" || p === "/delete") p = "/delete-account.html";
     const file = path.normalize(path.join(PUBLIC_DIR, p));

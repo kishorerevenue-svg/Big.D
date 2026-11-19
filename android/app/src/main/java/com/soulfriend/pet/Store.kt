@@ -343,6 +343,13 @@ class Store(context: Context) {
     var officeCode: String
         get() = p.getString("officeCode", "") ?: ""
         set(v) { p.edit().putString("officeCode", v.trim()).apply() }
+    /** The office head's key (only on the phone that made the office space). */
+    var officeHead: String
+        get() = p.getString("officeHead", "") ?: ""
+        set(v) { p.edit().putString("officeHead", v.trim()).apply() }
+    var officeName: String
+        get() = p.getString("officeName", "") ?: ""
+        set(v) { p.edit().putString("officeName", v.trim()).apply() }
     var teamKey: String
         get() = p.getString("teamKey", "") ?: ""
         set(v) { p.edit().putString("teamKey", v.trim()).apply() }
