@@ -985,12 +985,16 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { p ->
                     if (p.isBlank()) return@let
                     heardSpeech = true; heardNow = true; showBubble("“$p”", 0)
-                    // when the words stay the same a moment, they have finished: it stops listening and answers. Some phones'
-                    // voice typing (above all when it gets the sound from the quiet ear) otherwise waits 30 seconds or more
-                    // after the last word, with the words just sitting on the screen. A call stops sooner.
+                    // like a person: it keeps listening while they talk, and in each small pause it already starts thinking
+                    // about what it heard so far (quietly, nothing is said). More words, or a correction ("Musapet… no,
+                    // Gajuwaka"): that thought is dropped and it thinks again with the whole sentence. When they have really
+                    // finished, the answer is often ready at once. It only ends the listening itself when the words stay the
+                    // same for a while (longer after "and…", "ఇంకా…", "కాదు…": they are still going), because some phones'
+                    // voice typing otherwise waits 30 seconds after the last word. A call is done sooner.
                     lastPartial = p
                     val call = Talk.plainCall(p, store.wakeName) != null || Talk.habitCall(p, store.wakeName) != null
-                    main.postDelayed({ if (lastPartial == p && listening && recognizer === rec) finishWith(rec, p) }, if (call) 1300L else 2000L)
+                    if (!call) main.postDelayed({ if (lastPartial == p && listening && recognizer === rec) thinkAhead(p) }, 1100)
+                    main.postDelayed({ if (lastPartial == p && listening && recognizer === rec) finishWith(rec, p) }, if (call) 1300L else if (unfinished(p)) 5000L else 3000L)
                 }
             }
             override fun onResults(results: Bundle?) {
@@ -1023,6 +1027,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, LetterHelper.showing?.petLang() ?: if (store.lang == "en") "en-IN" else "te-IN")   // (a letter in English: English)
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            // a short pause to think in the middle of a sentence is not the end (phones that honour it)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
         // someone started talking while the pet waited quietly: the voice typing gets the ear's sound (Android 13+), from a
         // moment before the talking, so the first word isn't cut; otherwise the ear lets go and the voice typing opens the microphone
         if (ear != null && !(Ears.feedOk(this, ear.key) && ear.attach(i))) endEar()
@@ -1052,6 +1059,37 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             lastPartial = ""
             heardWords(p)
         }, 1200)
+    }
+
+    // ---- thinking while they are still talking ----
+    private var draftText = ""                                       // what it is thinking about (the words so far)
+    private var draftReply: JSONObject? = null                       // the answer, when it has come
+    private var draftWait: ((JSONObject?) -> Unit)? = null           // they finished before the answer came: it waits for it
+
+    /** The words so far end like the sentence goes on: "and", "but", "ఇంకా", "కాదు" (a correction is coming)… */
+    private fun unfinished(p: String): Boolean {
+        val last = p.trim().trimEnd('.', ',', '…').split(Regex("\\s+")).lastOrNull()?.lowercase() ?: return false
+        return last in setOf("and", "but", "or", "then", "so", "no", "not", "with", "the", "to", "for", "about", "of", "in", "at", "like", "wait",
+            "ఇంకా", "మరియు", "కానీ", "కాని", "లేదా", "తర్వాత", "తరువాత", "అంటే", "మరి", "కాదు", "ఆగు", "అలాగే", "కూడా", "ఏంటంటే", "అది", "ఆ")
+    }
+
+    /** A small pause: think about the words so far, quietly (only for questions that go to the brain). */
+    private fun thinkAhead(p: String) {
+        if (p.trim().length < 4 || p == draftText || voiceMode || replyVoice || convoAsking) return
+        if (Talk.isStop(p) || Talk.isStay(p) || GamesActivity.shown != null || LetterHelper.showing != null || pickFrom != null) return
+        if (Eyes.wants(p, lastLook) != null || ScreenCaptureService.wantsScreen(p) || Talk.game(p) != null || HandsFree.match(p) != null) return
+        draftText = p; draftReply = null; draftWait = null
+        brain.draft().ask(p, onReply = { j -> if (draftText == p) { draftReply = j; draftWait?.let { w -> draftWait = null; w(j) } } },
+            onError = { if (draftText == p) { draftText = ""; draftWait?.let { w -> draftWait = null; w(null) } } })
+    }
+
+    /** They finished: if it already thought about exactly these words, that answer (now or as soon as it comes). */
+    private fun useDraft(text: String, done: (JSONObject?) -> Unit): Boolean {
+        if (draftText.isBlank() || draftText.trim() != text.trim()) { draftText = ""; draftReply = null; draftWait = null; return false }
+        draftText = ""
+        draftReply?.let { draftReply = null; done(it); return true }
+        draftWait = done
+        return true
     }
 
     /** What they said, from the shown words (the voice typing didn't give its own final words). */
@@ -1177,13 +1215,22 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             showBubble(if (te) "జవాబు రావడానికి చాలా సమయం పడుతోంది. నెట్ చూసి మళ్లీ అడగండి." else "The answer is taking too long. Please check the internet and ask again.", 7000)
             if (convoOn) endConvo(quiet = true)
         }, 60_000)
-        brain.ask(if (context.isBlank()) text else "[$context]\n$text", onReply = { json -> if (askNo == no) { askNo = 0; handleReply(json, byVoice = byVoice) } }, onError = { err ->
-            if (askNo == no) {
-                askNo = 0
-                pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000)
-                if (convoOn) endConvo(quiet = true)
-            }
-        })
+        val ask = {
+            brain.ask(if (context.isBlank()) text else "[$context]\n$text", onReply = { json -> if (askNo == no) { askNo = 0; handleReply(json, byVoice = byVoice) } }, onError = { err ->
+                if (askNo == no) {
+                    askNo = 0
+                    pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000)
+                    if (convoOn) endConvo(quiet = true)
+                }
+            })
+        }
+        // it already started thinking about these words while they were talking: that answer (no second wait)
+        if (context.isBlank() && useDraft(text) { j ->
+                if (askNo == no) {
+                    if (j == null) ask() else { askNo = 0; brain.adopt(text, j); handleReply(j, byVoice = byVoice) }
+                }
+            }) return
+        ask()
     }
     private var askSeq = 0
 

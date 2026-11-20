@@ -54,7 +54,7 @@ object TinyBrain {
          else "The phone has no internet right now, so you are answering with your small offline brain. ") +
         (when (store.lang) { "te" -> "Always reply in simple spoken Telugu, in Telugu script. "; "en" -> "Reply in simple English. "
             else -> "Reply in the language the person uses (Telugu script for Telugu). " }) +
-        "Your reply is read aloud: 1 to 4 short, warm sentences. If you are not sure about a fact, say so honestly; never make up numbers, names, prices or news. " +
+        "Your reply is read aloud: 1 to 4 short, warm sentences. Their words come from voice typing: if they correct themselves midway, go by the last correction, and ignore stray words from a TV or other people. If you are not sure about a fact, say so honestly; never make up numbers, names, prices or news. " +
         "For health or money, give only safe, general advice and suggest asking a doctor or the bank."
 
     /** Asks it (main thread). [done] gets the answer, or null when it can't answer (not installed, brain not downloaded, too slow). */

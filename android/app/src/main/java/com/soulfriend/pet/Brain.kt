@@ -13,11 +13,22 @@ import java.util.concurrent.Executors
 
 /** Talks to your server, which talks to Claude. The API key stays on the server. */
 class Brain(private val store: Store) {
-    private val pool = Executors.newSingleThreadExecutor()
+    private val pool = POOL
     private val main = Handler(Looper.getMainLooper())
     private val history = mutableListOf<JSONObject>()
 
     fun clear() = history.clear()
+
+    companion object {
+        // shared by the pet's brain and its quick "thinking while they talk" copies (idle threads end after a minute)
+        private val POOL = Executors.newCachedThreadPool()
+    }
+
+    /** A copy that thinks about what they are still saying (the pet is still listening): it sees the conversation so
+     *  far but adds nothing to it, and the server doesn't keep it for learning. [adopt] keeps the answer if it is used. */
+    fun draft(): Brain = Brain(store).also { it.history.addAll(history); it.drafting = true }
+    private var drafting = false
+    fun adopt(text: String, j: JSONObject) = keep(text, j)
 
     /** Something the pet said by itself (an interesting fact in a pause), so "yes, tell me more" is understood. */
     fun noteSaid(text: String) {
@@ -39,7 +50,7 @@ class Brain(private val store: Store) {
             .put("tz", ZoneId.systemDefault().id)
             .put("todos", todos).put("notes", notes)
             .put("memories", JSONArray().also { a -> (store.memories() + store.noticedLines()).forEach { a.put(it) } })   // (and what Habit noticed, when they allowed it)
-            .put("learn", store.learnShare)
+            .put("learn", store.learnShare && !drafting)
         // who is talking now, only when they said it in this conversation (family members share the phone)
         store.speakerNow()?.let { body.put("speaker", it); store.touchSpeaker() }
         if (photo != null) body.put("image", JSONObject().put("mediaType", photo.first).put("data", photo.second))
