@@ -1091,6 +1091,15 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 .put("actions", org.json.JSONArray().put(JSONObject().put("type", "habit_call").put("contact", who).put("video", video))), byVoice = byVoice)
             return
         }
+        // "కాల్ టు సాంబ వీఆర్ఓ", "call Roja": a normal phone call at once from here (no waiting for the server)
+        Talk.plainCall(text, store.wakeName)?.let { who ->
+            lastQuestion = text
+            val digits = who.filter { it.isDigit() || it == '+' }
+            val num = if (digits.count { it.isDigit() } >= 3 && who.none { it.isLetter() }) digits else ""
+            handleReply(JSONObject().put("reply", "").put("emotion", "happy")
+                .put("actions", org.json.JSONArray().put(JSONObject().put("type", "call").put("number", num).put("contact", if (num.isBlank()) who else ""))), byVoice = byVoice)
+            return
+        }
         // "చిరంజీవి పాటలు పెట్టు": played at once from here (the brain sometimes only SAID it was playing)
         Talk.playQuery(text, store.wakeName)?.let { (q, short) ->
             lastQuestion = text

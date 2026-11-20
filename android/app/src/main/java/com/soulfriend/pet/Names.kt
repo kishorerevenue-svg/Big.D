@@ -67,11 +67,33 @@ object Names {
         return prev[b.length]
     }
 
+    // English letters as they are said in Telugu: "వీఆర్ఓ" is VRO, "ఎంఆర్ఓ" MRO, "ఆర్ఐ" RI, "డీటీ" DT
+    private val LETTERS = listOf("డబ్ల్యూ" to "w", "డబ్లు" to "w", "ఎక్స్" to "x", "హెచ్" to "h", "ఎయిచ్" to "h", "క్యూ" to "q", "జెడ్" to "z",
+        "ఎఫ్" to "f", "ఎల్" to "l", "ఎం" to "m", "ఎమ్" to "m", "ఎన్" to "n", "ఆర్" to "r", "ఎస్" to "s", "వై" to "y", "ఐ" to "i", "ఏ" to "a",
+        "ఎ" to "a", "బీ" to "b", "బి" to "b", "సీ" to "c", "సి" to "c", "డీ" to "d", "డి" to "d", "ఈ" to "e", "జీ" to "g", "జి" to "g",
+        "జే" to "j", "కే" to "k", "ఓ" to "o", "పీ" to "p", "పి" to "p", "టీ" to "t", "టి" to "t", "యూ" to "u", "యు" to "u", "వీ" to "v", "వి" to "v")
+    /** "వీఆర్ఓ" → "vro" (a word made only of English letter names, 2 or more); null for any other word. */
+    fun initials(word: String): String? {
+        val w = word.replace("\u200c", "").replace(".", "")
+        val out = StringBuilder(); var i = 0
+        while (i < w.length) {
+            val hit = LETTERS.filter { w.startsWith(it.first, i) }.maxByOrNull { it.first.length } ?: return null
+            out.append(hit.second); i += hit.first.length
+        }
+        return out.toString().takeIf { it.length >= 2 }
+    }
+
     /**
      * How well the saved name answers to the said one: 2 = the same name (the whole of it, or one of its words),
-     * 1 = nearly (one letter apart, as "Kishore" and "కిషోర్"), 0 = no.
+     * 1 = nearly (one letter apart, as "Kishore" and "కిషోర్"), 0 = no. English letters said in Telugu count as letters.
      */
     fun match(said: String, saved: String): Int {
+        val m = match1(said, saved)
+        if (m == 2) return m
+        val alt = said.trim().split(Regex("\\s+")).joinToString(" ") { initials(it) ?: it }
+        return if (alt != said.trim()) maxOf(m, match1(alt, saved)) else m
+    }
+    private fun match1(said: String, saved: String): Int {
         val q = key(said)
         if (q.length < 2) return 0
         val full = key(saved)
