@@ -976,7 +976,16 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             override fun onPartialResults(partial: Bundle?) {
                 if (voiceMode) return
-                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) { heardSpeech = true; heardNow = true; showBubble("“$it”", 0) } }
+                partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { p ->
+                    if (p.isBlank()) return@let
+                    heardSpeech = true; heardNow = true; showBubble("“$p”", 0)
+                    // a whole call ("కాల్ టు సాంబ వీఆర్వో"): when the words stay the same a moment, it stops listening and calls
+                    // (the phone's voice typing otherwise waits a long time after the last word)
+                    if (Talk.plainCall(p, store.wakeName) != null || Talk.habitCall(p, store.wakeName) != null) {
+                        lastPartial = p
+                        main.postDelayed({ if (lastPartial == p && listening) try { recognizer?.stopListening() } catch (e: Exception) { } }, 1300)
+                    } else lastPartial = ""
+                }
             }
             override fun onResults(results: Bundle?) {
                 endEar(learn = true)
@@ -1030,6 +1039,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     private fun stopListening() { endEar(); try { recognizer?.stopListening() } catch (e: Exception) { }; setListening(false); unhushSoon() }
 
+    private var lastPartial = ""
     private fun setListening(on: Boolean) {
         listening = on; pet.listening = on
         if (on) pet.mood = PuppyView.Mood.HAPPY
