@@ -1367,13 +1367,29 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun watchCalls() {
         if (Build.VERSION.SDK_INT < 31) return
         try {
-            val l = android.media.AudioManager.OnModeChangedListener { main.post { if (onPhone()) quietForCall() } }
+            val l = android.media.AudioManager.OnModeChangedListener { main.post {
+                if (onPhone()) { inCall = true; quietForCall() }
+                else if (inCall) { inCall = false; afterCall() }
+            } }
             audioMgr.addOnModeChangedListener(mainExecutor, l); modeWatch = l
         } catch (e: Exception) { }
     }
     private fun unwatchCalls() {
         if (Build.VERSION.SDK_INT < 31) return
         try { (modeWatch as? android.media.AudioManager.OnModeChangedListener)?.let { audioMgr.removeOnModeChangedListener(it) } } catch (e: Exception) { }
+    }
+    private var inCall = false
+    private var petCalledAt = 0L          // when the pet last made a call for them
+    /** A call the pet made has ended: it asks what's next and listens (as in a conversation), once. */
+    private fun afterCall() {
+        if (System.currentTimeMillis() - petCalledAt > 3 * 3600_000L) return
+        petCalledAt = 0L
+        if (store.convo == "off" || !store.voiceOn || batteryLow()) return
+        main.postDelayed({
+            if (onPhone() || listening || voiceMode || pet.talking) return@postDelayed
+            say(if (te()) "కాల్ అయిపోయింది. ఇంకేమైనా చేయాలా?" else "Call done. Anything else?", PuppyView.Mood.HAPPY, local = true)
+            afterSpeech = { if (!onPhone() && !listening) { convoOn = true; startListening() } }
+        }, 1500)
     }
     private fun quietForCall() {
         val busy = pet.talking || listening || convoOn
@@ -1434,6 +1450,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         speakPhone(if (te) "$name కి కాల్ చేస్తున్నాను" else "Calling $name")
         val go = Runnable {
             pendingCall = null
+            petCalledAt = System.currentTimeMillis()
             try { if (!PhoneApp.call(this@PetService, tel)) startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(tel))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             catch (e: Exception) { showBubble(if (te) "కాల్ చేయలేకపోయాను." else "I couldn't place the call.", 5000) }
         }
