@@ -67,11 +67,46 @@ object Names {
         return prev[b.length]
     }
 
+    // English letters as they are said in Telugu: "వీఆర్ఓ" is VRO, "ఎంఆర్ఓ" MRO, "ఆర్ఐ" RI, "డీటీ" DT
+    private val LETTERS = listOf("డబ్ల్యూ" to "w", "డబ్లు" to "w", "ఎక్స్" to "x", "హెచ్" to "h", "ఎయిచ్" to "h", "క్యూ" to "q", "జెడ్" to "z",
+        "ఎఫ్" to "f", "ఎల్" to "l", "ఎం" to "m", "ఎమ్" to "m", "ఎన్" to "n", "ఆర్" to "r", "ఎస్" to "s", "వై" to "y", "ఐ" to "i", "ఏ" to "a",
+        "ఎ" to "a", "బీ" to "b", "బి" to "b", "సీ" to "c", "సి" to "c", "డీ" to "d", "డి" to "d", "ఈ" to "e", "జీ" to "g", "జి" to "g",
+        "జే" to "j", "కే" to "k", "ఓ" to "o", "పీ" to "p", "పి" to "p", "టీ" to "t", "టి" to "t", "యూ" to "u", "యు" to "u", "వీ" to "v", "వి" to "v",
+        "వో" to "o", "వొ" to "o")                                              // (ఆర్వో, ఆర్డీవో: the O said with a v)
+    // office words said in one breath
+    private val WORDS = mapOf("ఎమ్మార్వో" to "mro", "ఎమ్మార్ఓ" to "mro", "ఎమ్మారో" to "mro", "ఎమ్మెల్యే" to "mla", "ఎమ్మెల్సీ" to "mlc",
+        "ఎమ్మెల్లే" to "mla", "తాసిల్దార్" to "tahsildar", "తహసీల్దార్" to "tahsildar", "తహశీల్దార్" to "tahsildar")
+    /** "వీఆర్ఓ" → "vro" (a word made only of English letter names, 2 or more); null for any other word. */
+    fun initials(word: String, min: Int = 2): String? {
+        val w = word.replace("\u200c", "").replace(".", "")
+        WORDS[w]?.let { return it }
+        val out = StringBuilder(); var i = 0
+        while (i < w.length) {
+            val hit = LETTERS.filter { w.startsWith(it.first, i) }.maxByOrNull { it.first.length } ?: return null
+            out.append(hit.second); i += hit.first.length
+        }
+        return out.toString().takeIf { it.length >= min }
+    }
+
     /**
      * How well the saved name answers to the said one: 2 = the same name (the whole of it, or one of its words),
-     * 1 = nearly (one letter apart, as "Kishore" and "కిషోర్"), 0 = no.
+     * 1 = nearly (one letter apart, as "Kishore" and "కిషోర్"), 0 = no. English letters said in Telugu count as letters.
      */
     fun match(said: String, saved: String): Int {
+        val m = match1(said, saved)
+        if (m == 2) return m
+        // "వీఆర్ఓ" and "వి ఆర్ ఓ" (said letter by letter) are both VRO
+        val parts = ArrayList<String>(); val run = StringBuilder()
+        fun flush() { if (run.isNotEmpty()) { parts.add(run.toString()); run.clear() } }
+        for (w in said.trim().split(Regex("\\s+"))) {
+            val one = initials(w, 1)
+            if (one != null && (one.length >= 2 || w.length <= 3)) run.append(one) else { flush(); parts.add(w) }
+        }
+        flush()
+        val alt = parts.joinToString(" ")
+        return if (alt != said.trim()) maxOf(m, match1(alt, saved)) else m
+    }
+    private fun match1(said: String, saved: String): Int {
         val q = key(said)
         if (q.length < 2) return 0
         val full = key(saved)

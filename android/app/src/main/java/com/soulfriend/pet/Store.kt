@@ -343,6 +343,12 @@ class Store(context: Context) {
     var officeCode: String
         get() = p.getString("officeCode", "") ?: ""
         set(v) { p.edit().putString("officeCode", v.trim()).apply() }
+    /** Once in 3 days at most: the tip about getting the phone brain. */
+    fun brainTipDue(): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - p.getLong("brainTipAt", 0L) < 3 * 86400_000L) return false
+        p.edit().putLong("brainTipAt", now).apply(); return true
+    }
     /** Videos and Shorts already watched here (newest last, at most 800): the feed puts new ones first. */
     fun seenVideos(): Set<String> = (p.getString("seenVids", "") ?: "").split(',').filter { it.isNotBlank() }.toHashSet()
     fun seenVideo(id: String) {

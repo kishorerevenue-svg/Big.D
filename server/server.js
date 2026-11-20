@@ -338,6 +338,8 @@ async function askPet(messages, lang, ctx, ownOnly = false) {
   // 1. the self brain, when it knows (at once); 2. our own brain (slow on a small server); 3. the self brain's best try
   const fast = await selfBrain.answer(q, lang, sctx, { strong: true, info });
   if (fast) return fast;
+  // the phone has its own brain (Habit Brain): it answers there, for free, and the server's small brain stays free for others
+  if (ctx.phone) return { reply: "", emotion: "happy", actions: [], usePhone: true, why };
   if (await ownBrain.ready()) {
     try { const own = await ownBrain.pet(messages, lang, ctx, PETS[ctx.pet] || PETS.puppy); return strip({ ...parsePet(own.text), actions: [], sources: own.sources, brain: "own", own: true, clean: own.clean }); }
     catch (e) { console.error("Our own brain couldn't answer:", e.message); }
@@ -643,7 +645,7 @@ const server = http.createServer(async (req, res) => {
       // who is talking now (they said their name in this conversation): a name only, nothing else
       speaker: ((String(body.speaker || "").match(/^[\p{L}\p{M} .'-]+/u) || [""])[0]).trim().slice(0, 40),
       knowledge: learn.knowledgeBlock(messages[messages.length - 1].content),
-      learn: body.learn !== false, why, admin: isOwner(req),
+      learn: body.learn !== false, why, admin: isOwner(req), phone: body.phone === true && !body.image,
       device: crypto.createHash("sha256").update("self|" + (String(req.headers["x-device"] || "") || clientIp(req))).digest("hex").slice(0, 16)
     };
     const img = body.image;
