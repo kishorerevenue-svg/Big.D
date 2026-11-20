@@ -93,6 +93,10 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     // Reads the words on ID cards in screenshots, on the phone (Vault › Find my cards). The model comes with Google Play services.
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    // The pet's small eyes on the phone, for when no AI on the server can see: what is in a photo (labels) and faces
+    // (how many, a smile). Free, and the photo stays on the phone. The models also come with Google Play services.
+    implementation("com.google.android.gms:play-services-mlkit-image-labeling:16.0.8")
+    implementation("com.google.android.gms:play-services-mlkit-face-detection:17.1.0")
     // Habit calls ring and new chat messages show while Habit is closed (Firebase Cloud Messaging, Push.kt). It starts only
     // when the Habit server has Firebase set up: the app's Firebase ids come from the server, not from this public code.
     implementation("com.google.firebase:firebase-messaging:24.1.0")
