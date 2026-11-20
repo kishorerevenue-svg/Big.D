@@ -105,6 +105,9 @@ def settings():
                    help="auto: Big Gemma writes lessons again after 30 days (and finishes ones it didn't finish); yes; no")
     p.add_argument("--hours", type=float, default=6.0, help="at most this many hours for writing lessons (Kaggle stops at 12)")
     p.add_argument("--no-aya", action="store_true", help="don't add the Aya dataset")
+    p.add_argument("--phone", default="public", choices=["public", "private", "no"],
+                   help="E2B only: also a phone version (.litertlm) for the Habit Brain app, in <you>/habit-gemma-phone. "
+                        "public: phones can download it (it has only lessons, never anyone's private files); private; no")
     p.add_argument("--stage", default="", help=argparse.SUPPRESS)
     a = p.parse_args()
     if not a.test and not a.full and not a.stage:
@@ -722,6 +725,16 @@ def stage_train(cfg):
     shutil.rmtree(out, ignore_errors=True)
     shutil.rmtree(os.path.join(BIG, "train"), ignore_errors=True)
     free_space()
+    merged = os.path.join(BIG, "merged")
+    shutil.rmtree(merged, ignore_errors=True)
+    if cfg.size == "E2B" and cfg.phone != "no":
+        try:   # the whole taught model (16-bit safetensors): the phone version is made from it after the exam
+            say("Keeping the whole model for the phone version (5 to 10 minutes)...")
+            model.save_pretrained_merged(merged, tok, save_method="merged_16bit")
+            say(f"Whole model ✓ ({sum(os.path.getsize(p) for p in glob.glob(os.path.join(merged, '*')) if os.path.isfile(p)) // 2 ** 20} MB)")
+        except Exception as e:
+            shutil.rmtree(merged, ignore_errors=True)
+            say("⚠️ couldn't keep the whole model, so there will be no phone version this time:", str(e)[:300])
     disk_note("before saving")
     # E2B: a 16-bit file. E4B: 8-bit (Q8_0, almost the same quality), so the merge and the file fit in Kaggle's disk
     kind = "f16" if cfg.size == "E2B" else "q8_0"
@@ -750,7 +763,7 @@ def stage_train(cfg):
 def train(cfg):
     step("4. Teaching small Gemma " + cfg.size)
     ollama_down()   # all GPU memory for teaching
-    args = [sys.executable, os.path.abspath(__file__), "--stage", "train", "--size", cfg.size, "--test" if cfg.mode == "test" else "--full"]
+    args = [sys.executable, os.path.abspath(__file__), "--stage", "train", "--size", cfg.size, "--test" if cfg.mode == "test" else "--full", "--phone", cfg.phone]
     env = dict(os.environ, HF_TOKEN=cfg.hf, CUDA_VISIBLE_DEVICES="0")
     if subprocess.run(args, env=env, cwd=BIG).returncode != 0:
         stop("teaching didn't finish (see the messages above).")
@@ -931,6 +944,63 @@ def keep(cfg, blob, blocks, quant, report):
     return repo
 
 
+def phone(cfg, report):
+    """habit-gemma for phones: Google's litert-torch makes a .litertlm file (the format the Habit Brain app runs) from the
+    whole taught model. It goes to <you>/habit-gemma-phone. If anything here fails, the server model is already kept."""
+    merged = os.path.join(BIG, "merged")
+    if cfg.size != "E2B" or cfg.phone == "no":
+        return None
+    step("8. habit-gemma for phones (the Habit Brain app)")
+    if not glob.glob(os.path.join(merged, "*.safetensors")):
+        say("⚠️ no whole model was kept, so no phone version this time.")
+        return None
+    out = os.path.join(BIG, "phone")
+    shutil.rmtree(out, ignore_errors=True)
+    venv = os.path.join(BIG, "litert")
+    say("Installing Google's litert-torch (in its own corner, 5 to 10 minutes)...")
+    sh(f"pip install -q uv >/dev/null 2>&1; uv venv -q --python 3.11 {venv} || python -m venv {venv}", check=False, quiet=True)
+    py = os.path.join(venv, "bin", "python")
+    if sh(f"uv pip install -q --python {py} litert-torch-nightly", check=False, quiet=True).returncode != 0:
+        sh(f"{py} -m pip install -q litert-torch-nightly", check=False, quiet=True)
+    tool = os.path.join(venv, "bin", "litert-torch")
+    if not os.access(tool, os.X_OK):
+        say("⚠️ couldn't install litert-torch, so no phone version this time.")
+        return None
+    say("Making the phone file (20 to 60 minutes)...")
+    env = dict(os.environ, HF_TOKEN=cfg.hf, CUDA_VISIBLE_DEVICES="")
+    r = sh(f"{tool} export_hf --model={merged} --output_dir={out} --externalize_embedder "
+           f"--jinja_chat_template_override=litert-community/gemma-4-E2B-it-litert-lm", check=False, quiet=True, env=env)
+    files = [p for p in glob.glob(os.path.join(out, "**", "*"), recursive=True) if os.path.isfile(p)]
+    main_file = next((p for p in files if p.endswith(".litertlm")), None)
+    if r.returncode != 0 or not main_file:
+        print((r.stdout or "")[-1500:], (r.stderr or "")[-1500:], flush=True)
+        say("⚠️ the phone file wasn't made (the messages are above). The server model is kept; send these lines to fix it.")
+        return None
+    shutil.rmtree(merged, ignore_errors=True)
+    api = hf_api(cfg)
+    repo = f"{cfg.user}/habit-gemma-phone" + ("-test" if cfg.mode == "test" else "")
+    private = cfg.phone == "private" or cfg.mode == "test"
+    api.create_repo(repo, private=private, exist_ok=True)
+    try:
+        api.update_repo_settings(repo_id=repo, private=private)
+    except Exception:
+        pass
+    up = []
+    for p in files:
+        name = os.path.relpath(p, out)
+        say(f"Uploading {name} ({os.path.getsize(p) // 2 ** 20} MB) to {repo}{' (private)' if private else ''}...")
+        api.upload_file(path_or_fileobj=p, path_in_repo=name, repo_id=repo)
+        up.append({"file": name, "bytes": os.path.getsize(p)})
+    info = {"made": report["made"], "file": os.path.relpath(main_file, out), "files": up, "exam": report["exam"]["habit"]["score"],
+            "url": f"https://huggingface.co/{repo}/resolve/main/{os.path.relpath(main_file, out)}", "public": not private,
+            "rule": report["rule"]}
+    p = os.path.join(BIG, "phone.json")
+    json.dump(info, open(p, "w"), indent=1)
+    api.upload_file(path_or_fileobj=p, path_in_repo="phone.json", repo_id=repo)
+    say(f"✓ phone version: https://huggingface.co/{repo}")
+    return info
+
+
 def main():
     cfg = settings()
     if cfg.stage == "train":
@@ -974,7 +1044,14 @@ def main():
               "Add more lessons on the Teach page (or check the exam answers in exam-habit-gemma.json), then run again.", flush=True)
         return
     repo = keep(cfg, blob, blocks, quant, report)
+    try:
+        ph = phone(cfg, report)
+    except Exception as e:
+        ph = None
+        say("⚠️ the phone version stopped:", str(e)[:300])
     print("\n" + "=" * 72, flush=True)
+    if ph:
+        print("📱 Phone version ✓ " + ph["url"], flush=True)
     if cfg.mode == "test":
         print(f"✅ THE TEST WORKED ({hours():.1f} hours). Now the real one: change --test to --full in the cell, then Save Version › Save & Run All.", flush=True)
     else:

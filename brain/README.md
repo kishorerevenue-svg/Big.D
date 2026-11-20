@@ -90,6 +90,12 @@ server.
 **5. Real run (4 to 8 hours).** Change `--test` to `--full` and *Save & Run All* again. At the end it shows the exam:
 habit-gemma against the plain Gemma, for each part. **✅ habit-gemma IS READY** means it is in `<you>/habit-gemma`.
 
+**📱 Phone version.** The same run also makes habit-gemma for phones (a `.litertlm` file for the Habit Brain app), in
+`<you>/habit-gemma-phone`. It is public, so phones can download it: it holds only lessons, never anyone's private files or
+Claude's words. Add `--phone private` to keep it private, or `--phone no` to skip it. The test run's phone version stays
+private, in `<you>/habit-gemma-phone-test`. Our 3 GB server is too small for habit-gemma (it needs about 6 GB), but phones
+with 6 GB or more can run it.
+
 **6. Put it on the server.** On the Teach page, go to 🎓 Teach Gemma › 5 › **Put habit-gemma on this server**. Or run
 this on the server:
 
