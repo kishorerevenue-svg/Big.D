@@ -249,9 +249,9 @@ class MainActivity : Activity() {
         // a new version out? (Habit AI Lite asks the server at most every 6 hours; the card appears on Home)
         if (BuildConfig.SELF_UPDATE) { val had = Updates.waiting(store)?.code; Updates.check(store) { info -> if (info != null && info.code != had && tab == "home" && !isFinishing) render() } }
         if (store.onboarded) {
+            // the app itself never looks at them when it opens: the floating pet looks once a day, and any other time only
+            // when they ask ("look at me", or 😊 Look at me now on the Pet page)
             if (pendingMirror) { pendingMirror = false; content.postDelayed({ lookAtMe(false) }, 500) }
-            else if (store.mirrorOn && (tab == "home" || tab == "pet") && System.currentTimeMillis() - store.mirrorAt > 3 * 3600_000L)
-                content.postDelayed({ if (!isFinishing && hasWindowFocus() && (tab == "home" || tab == "pet")) lookAtMe(true) }, 1500)
             pendingShare?.let { pendingShare = null; messages.checkShared(it) }
             // the pet heard "make a letter…": a letter already half filled isn't thrown away without asking
             pendingLetter?.let { req -> pendingLetter = null
