@@ -17,9 +17,31 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
   const model = () => process.env.OWN_BRAIN_MODEL || (conf() || {}).model || "";
   const stats = { answered: 0, failed: 0, skippedClaude: 0, lastProblem: "", lastMs: 0 };
 
+  // ---------- the home brain: the owner's own computer (optional) ----------
+  // A PC at home with more memory runs a bigger model (Ollama) and is reached over a private link (Tailscale), never
+  // the open internet. It does the writing jobs (Media posts, letters) that the small model here can't do well, and
+  // answers chats when the brain here isn't there. When the PC is off, everything goes on as before.
+  const HOME = String(process.env.HOME_BRAIN_URL || "").trim().replace(/\/+$/, "");
+  const homeModel = () => String(process.env.HOME_BRAIN_MODEL || "gemma3:4b").trim();
+  let home = { at: 0, ok: false };
+  async function homeReady() {
+    if (!HOME || off()) return false;
+    if (Date.now() - home.at < 30000) return home.ok;
+    let ok = false;
+    try {
+      const j = await fetch(HOME + "/api/tags", { signal: AbortSignal.timeout(3000) }).then(r => r.json());
+      const names = (j.models || []).map(m => String(m.name || m.model || ""));
+      ok = names.includes(homeModel()) || names.includes(homeModel() + ":latest");
+    } catch (e) { ok = false; }
+    home = { at: Date.now(), ok };
+    return ok;
+  }
+
   // ---------- is it there? ----------
   let seen = { at: 0, ok: false, vision: false };
-  async function ready() {
+  /** The own brain here or the home brain can answer. */
+  async function ready() { const [l, h] = await Promise.all([localReady(), homeReady()]); return l || h; }
+  async function localReady() {
     if (off() || !model()) return false;
     if (Date.now() - seen.at < 30000) return seen.ok;
     let ok = false, vision = false;
@@ -201,7 +223,9 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
 
   /** The answer's text (JSON: {emotion, reply, sound}) and clean: false when Claude's words were among its facts. Throws if it can't. */
   async function pet(messages, lang, ctx, petInfo) {
-    if (!(await ready())) throw Object.assign(new Error("Our own brain isn't installed or running yet."), { status: 503, user: true });
+    const here = await localReady();
+    const atHome = !here && await homeReady();
+    if (!here && !atHome) throw Object.assign(new Error("Our own brain isn't installed or running yet."), { status: 503, user: true });
     const t0 = Date.now();
     lastAsked = t0;
     const last = messages[messages.length - 1];
@@ -213,16 +237,16 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
     const msgs = messages.slice(-4).map((m, i, all) => {
       const text = Array.isArray(m.content) ? String((m.content.find(c => c.type === "text") || {}).text || "") : String(m.content || "");
       const o = { role: m.role === "assistant" ? "assistant" : "user", content: text.slice(0, i === all.length - 1 ? 1200 : 400) };
-      if (i === all.length - 1 && photo && seen.vision && photo.source && photo.source.data) o.images = [photo.source.data];
+      if (i === all.length - 1 && photo && here && seen.vision && photo.source && photo.source.data) o.images = [photo.source.data];
       return o;
     });
     const body = {
-      model: model(), stream: false, keep_alive: "30m", format: SCHEMA,
-      messages: [{ role: "system", content: prompt(lang, ctx, petInfo, found, !!(photo && seen.vision)) }, ...msgs],
-      options: { num_ctx: 4096, num_predict: 260, temperature: 0.6, num_thread: Math.max(1, os.cpus().length - 1) }
+      model: here ? model() : homeModel(), stream: false, keep_alive: "30m", format: SCHEMA,
+      messages: [{ role: "system", content: prompt(lang, ctx, petInfo, found, !!(photo && here && seen.vision)) }, ...msgs],
+      options: here ? { num_ctx: 4096, num_predict: 260, temperature: 0.6, num_thread: Math.max(1, os.cpus().length - 1) } : { num_ctx: 4096, num_predict: 260, temperature: 0.6 }
     };
     try {
-      const r = await fetch(BASE + "/api/chat", { method: "POST", body: JSON.stringify(body), signal: AbortSignal.timeout(80000) });
+      const r = await fetch((here ? BASE : HOME) + "/api/chat", { method: "POST", body: JSON.stringify(body), signal: AbortSignal.timeout(here ? 80000 : 120000) });
       const j = await r.json();
       if (!r.ok) throw Object.assign(new Error(j.error || "own brain error " + r.status), { status: 502 });
       const text = String((j.message || {}).content || "").trim();
@@ -231,19 +255,38 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
       return { text, sources: [], clean: !used.claude };
     } catch (e) {
       stats.failed++; stats.lastProblem = new Date().toISOString() + " " + String(e.message || e).slice(0, 120);
-      seen.at = 0;   // check again next time
+      if (here) seen.at = 0; else home.at = 0;   // check again next time
       throw Object.assign(e, { status: e.status || 502 });
     }
   }
 
   // ---------- writing in the background (Media posts): no one is waiting, so it may take its time ----------
   /** True when the installed model is big enough to write good Telugu posts (the 1B model answers chats, but writes poorly). */
-  const canWrite = () => !/(?:^|[:\-_])(?:270m|0\.5b|1b|1\.5b)\b/i.test(model()) || /^(1|true|yes)$/i.test(process.env.OWN_BRAIN_WRITES || "");
+  const localWrites = () => !/(?:^|[:\-_])(?:270m|0\.5b|1b|1\.5b)\b/i.test(model()) || /^(1|true|yes)$/i.test(process.env.OWN_BRAIN_WRITES || "");
+  /** (the home brain, when it is on, writes; else the model here, if it is big enough) */
+  const canWrite = () => (home.ok && !!HOME) || localWrites();
   /** Writes JSON that fits [schema]. Throws (status 503, with a reason) if the own brain isn't there or can't write well
    *  ("not_ready", "too_small"), or if Claude is down ("busy": then people need the own brain for chat). */
   async function writeJson({ system, prompt, schema, maxTokens = 700, timeoutMs = 240000 }) {
-    if (!(await ready())) throw Object.assign(new Error("own brain not ready"), { status: 503, reason: "not_ready" });
-    if (!canWrite()) throw Object.assign(new Error("own brain model is too small to write posts"), { status: 503, reason: "too_small" });
+    // the home PC first: it has the bigger model, and people chatting here don't wait for it
+    if (await homeReady()) {
+      try {
+        const r = await fetch(HOME + "/api/chat", { method: "POST", signal: AbortSignal.timeout(Math.max(timeoutMs, 300000)), body: JSON.stringify({
+          model: homeModel(), stream: false, keep_alive: "30m", format: schema,
+          messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+          options: { num_ctx: 4096, num_predict: maxTokens, temperature: 0.5 } }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || "home brain error " + r.status);
+        const out = JSON.parse(String((j.message || {}).content || ""));
+        stats.wrote = (stats.wrote || 0) + 1; stats.homeWrote = (stats.homeWrote || 0) + 1;
+        return out;
+      } catch (e) {
+        home.at = 0; stats.lastProblem = new Date().toISOString() + " home: " + String(e.message || e).slice(0, 120);
+        if (!localWrites()) throw Object.assign(new Error("home brain couldn't write: " + (e.message || e)), { status: 502 });
+      }
+    }
+    if (!(await localReady())) throw Object.assign(new Error("own brain not ready"), { status: 503, reason: "not_ready" });
+    if (!localWrites()) throw Object.assign(new Error("own brain model is too small to write posts"), { status: 503, reason: "too_small" });
     if (Date.now() < claude.skipUntil) throw Object.assign(new Error("own brain is busy answering people"), { status: 503, reason: "busy" });
     const r = await fetch(BASE + "/api/chat", { method: "POST", signal: AbortSignal.timeout(timeoutMs), body: JSON.stringify({
       model: model(), stream: false, keep_alive: "10m", format: schema,
@@ -288,11 +331,12 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
     try { log = fs.readFileSync(LOG, "utf8").split("\n").slice(-12).join("\n"); } catch (e) { }
     return { on: !off(), installed: !!model(), model: model(), ready: ok, vision: ok && seen.vision, installing: installing(), writes: ok && canWrite(),
       answered: stats.answered, wrote: stats.wrote || 0, failed: stats.failed, skippedClaude: stats.skippedClaude, lastSeconds: Math.round(stats.lastMs / 1000), lastProblem: stats.lastProblem,
-      claudeResting: Date.now() < claude.skipUntil, log };
+      claudeResting: Date.now() < claude.skipUntil, log,
+      home: { set: !!HOME, model: HOME ? homeModel() : "", ready: HOME ? await homeReady() : false, wrote: stats.homeWrote || 0 } };
   }
 
   /** For /health: what we know right now, without waiting (it checks again in the background). */
-  function quick() { ready().catch(() => {}); return { installed: !!model(), model: model() || "none", ready: seen.ok, vision: seen.ok && seen.vision, answered: stats.answered }; }
+  function quick() { ready().catch(() => {}); return { installed: !!model(), model: model() || "none", ready: seen.ok || home.ok, vision: seen.ok && seen.vision, answered: stats.answered, home: home.ok }; }
 
   return { ready, pet, writeJson, canWrite, facts, ownerLesson, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
 };

@@ -399,6 +399,9 @@ async function loadBrain() {
   else if (brain.installing) say(st, "Installing… this can take 10 to 40 minutes (a few GB to download). You can close this page.", true);
   else if (brain.installed) say(st, `Installed (${brain.model}) but not running right now. Press the button to repair it.`, false);
   else say(st, "Not installed yet. It needs a server with at least 4 GB memory (8 GB or more is better).", false);
+  if (brain.home && brain.home.set) st.textContent += brain.home.ready
+    ? ` 🏠 Home brain (your PC, ${brain.home.model}) is on: it writes the posts and letters${brain.home.wrote ? " (" + brain.home.wrote + " so far)" : ""}.`
+    : ` 🏠 Home brain (your PC) is off or not reachable right now: the server carries on by itself.`;
   $("brainInstall").textContent = brain.installed ? "Update / repair our own brain" : "Install our own brain";
   $("brainInstall").disabled = !!brain.installing;
   $("brainLog").hidden = !brain.log; $("brainLog").textContent = brain.log || "";
