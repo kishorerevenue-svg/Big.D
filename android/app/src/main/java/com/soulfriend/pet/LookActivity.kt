@@ -242,6 +242,62 @@ class LookActivity : Activity() {
 
 /** When the AI can't be reached: the phone reads the English letters in the photo by itself (Google's on-phone text reader). */
 object EyesOffline {
+    private val TE = mapOf(
+        "Person" to "మనిషి", "Smile" to "చిరునవ్వు", "Selfie" to "సెల్ఫీ", "Hand" to "చేయి", "Child" to "చిన్నారి", "Baby" to "పాపాయి",
+        "Plant" to "మొక్క", "Flower" to "పువ్వు", "Tree" to "చెట్టు", "Sky" to "ఆకాశం", "Cloud" to "మేఘాలు", "Water" to "నీళ్ళు",
+        "Food" to "ఆహారం", "Cup" to "కప్పు", "Tableware" to "పాత్రలు", "Bottle" to "బాటిల్", "Fruit" to "పండ్లు", "Vegetable" to "కూరగాయలు",
+        "Dog" to "కుక్క", "Cat" to "పిల్లి", "Bird" to "పక్షి", "Cow" to "ఆవు", "Pet" to "పెంపుడు జంతువు", "Car" to "కారు", "Bicycle" to "సైకిల్",
+        "Motorcycle" to "బైక్", "Building" to "భవనం", "House" to "ఇల్లు", "Room" to "గది", "Window" to "కిటికీ", "Door" to "తలుపు",
+        "Chair" to "కుర్చీ", "Table" to "టేబుల్", "Desk" to "డెస్క్", "Couch" to "సోఫా", "Bed" to "మంచం", "Curtain" to "కర్టెన్",
+        "Shelf" to "అల్మారా", "Television" to "టీవీ", "Computer" to "కంప్యూటర్", "Laptop" to "ల్యాప్‌టాప్", "Mobile phone" to "ఫోన్",
+        "Paper" to "కాగితం", "Poster" to "పోస్టర్", "Bag" to "బ్యాగ్", "Glasses" to "కళ్ళద్దాలు", "Sunglasses" to "సన్ గ్లాసెస్", "Shoe" to "చెప్పులు",
+        "Jacket" to "జాకెట్", "Hat" to "టోపీ", "Saree" to "చీర", "Toy" to "బొమ్మ", "Musical instrument" to "సంగీత వాయిద్యం", "Temple" to "గుడి",
+        "Road" to "రోడ్డు", "Grass" to "గడ్డి", "Garden" to "తోట", "Beach" to "సముద్ర తీరం", "Mountain" to "కొండ", "Sunset" to "సూర్యాస్తమయం",
+        "Lighthouse" to "లైట్‌హౌస్", "Bridge" to "వంతెన", "Ceiling" to "పైకప్పు", "Wall" to "గోడ", "Light" to "లైట్", "Lamp" to "దీపం", "Cake" to "కేక్",
+        "Book" to "పుస్తకం", "Pen" to "పెన్", "Clock" to "గడియారం", "Cool" to "స్టైల్", "Fun" to "సరదా", "Team" to "బృందం", "Crowd" to "జనం")
+    private val SKIP = setOf("Person", "Smile", "Selfie", "Skin", "Eyelash", "Beard", "Hair", "Fun", "Cool", "Team", "Crowd", "Event", "Flesh", "Moustache", "Muscle", "Ear", "Nail")
+
+    /** Blocking: what the phone itself sees in the photo, said kindly (faces, a smile, a few things, any English letters),
+     *  or null when it finds nothing. For when no AI can look: Google's small on-phone models, nothing leaves the phone. */
+    fun describe(jpeg: ByteArray, te: Boolean): String? = try {
+        val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: throw Exception("no picture")
+        val img = InputImage.fromBitmap(bmp, 0)
+        val faces = try {
+            val d = com.google.mlkit.vision.face.FaceDetection.getClient(com.google.mlkit.vision.face.FaceDetectorOptions.Builder()
+                .setClassificationMode(com.google.mlkit.vision.face.FaceDetectorOptions.CLASSIFICATION_MODE_ALL).setMinFaceSize(0.08f).build())
+            try { Tasks.await(d.process(img), 20, TimeUnit.SECONDS) } finally { try { d.close() } catch (e: Throwable) { } }
+        } catch (e: Throwable) { emptyList() }
+        val labels = try {
+            val l = com.google.mlkit.vision.label.ImageLabeling.getClient(com.google.mlkit.vision.label.defaults.ImageLabelerOptions.Builder().setConfidenceThreshold(0.62f).build())
+            try { Tasks.await(l.process(img), 20, TimeUnit.SECONDS).sortedByDescending { it.confidence }.map { it.text } } finally { try { l.close() } catch (e: Throwable) { } }
+        } catch (e: Throwable) { emptyList() }
+        val letters = read(jpeg)
+        val r = java.util.Random()
+        fun pick(vararg s: String) = s[r.nextInt(s.size)]
+        val parts = ArrayList<String>()
+        val smiles = faces.count { (it.smilingProbability ?: 0f) > 0.55f }
+        val sleepy = faces.size == 1 && (faces[0].leftEyeOpenProbability ?: 1f) < 0.25f && (faces[0].rightEyeOpenProbability ?: 1f) < 0.25f
+        when {
+            faces.size == 1 && sleepy -> parts += if (te) "కళ్ళు మూసుకున్నారు! నిద్ర వస్తోందా? 😄 అయినా చాలా ప్రశాంతంగా కనిపిస్తున్నారు." else "Your eyes are closed! Sleepy? 😄 Still, you look so peaceful."
+            faces.size == 1 && smiles == 1 -> parts += if (te) pick("ఆహా, ఎంత అందమైన చిరునవ్వు! 😊 ఈరోజు మీ ముఖం వెలిగిపోతోంది.", "మీ నవ్వు చూస్తే నాకూ సంతోషం వేసింది! 😊 చాలా బాగున్నారు.", "వావ్, ఆ చిరునవ్వు సూపర్! ✨ ఈరోజు చాలా ఫ్రెష్‌గా ఉన్నారు.")
+                else pick("What a lovely smile! 😊 Your face is glowing today.", "Your smile made me happy too! 😊 You look great.", "Wow, that smile! ✨ You look so fresh today.")
+            faces.size == 1 -> parts += if (te) pick("మిమ్మల్ని చూశాను! ప్రశాంతంగా, చక్కగా ఉన్నారు. 😊 ఒక్క చిరునవ్వు ఇవ్వండి, ఇంకా బాగుంటారు!", "హాయ్! ఈరోజు చాలా నీట్‌గా కనిపిస్తున్నారు. 👌 కొంచెం నవ్వండి చూద్దాం!")
+                else pick("I see you! You look calm and nice. 😊 Give me a smile, it suits you even more!", "Hi! You look really neat today. 👌 Show me a little smile!")
+            faces.size > 1 -> parts += if (te) "${faces.size} మందిని చూశాను! " + (if (smiles > 0) "అందరూ నవ్వుతూ ఎంత బాగున్నారు! 😊" else "కలిసి చక్కగా ఉన్నారు! 🤝")
+                else "I see ${faces.size} people! " + (if (smiles > 0) "Everyone smiling, how lovely! 😊" else "You all look nice together! 🤝")
+        }
+        val things = labels.filter { it !in SKIP }.distinct().take(4)
+        if (things.isNotEmpty()) {
+            val names = things.map { if (te) TE[it] ?: it else it.lowercase() }
+            val list = if (names.size == 1) names[0] else names.dropLast(1).joinToString(", ") + (if (te) " మరియు " else " and ") + names.last()
+            parts += if (te) (if (faces.isEmpty()) "ఇక్కడ $list కనిపిస్తున్నాయి." else "వెనకాల $list కూడా కనిపిస్తున్నాయి.")
+                     else (if (faces.isEmpty()) "I can see $list here." else "I can also see $list around you.")
+        }
+        if (letters != null) parts += (if (te) "ఇక్కడ రాసి ఉంది: " else "It says: ") + letters.take(300)
+        if (parts.isEmpty()) null
+        else parts.joinToString(" ") + (if (te) "\n(నా పెద్ద మెదడు విశ్రాంతిలో ఉంది, ఫోన్‌లోని నా చిన్న కళ్ళతో చూశాను 🐾)" else "\n(My big brain is resting, so I looked with my small eyes on the phone 🐾)")
+    } catch (e: Throwable) { null }
+
     /** Blocking: call it off the main thread. null when there are no letters it can read. */
     fun read(jpeg: ByteArray): String? = try {
         val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)

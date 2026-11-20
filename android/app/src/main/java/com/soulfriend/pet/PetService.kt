@@ -1205,13 +1205,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         pet.mood = PuppyView.Mood.THINKING
         showBubble("👀 “$ask”\n…", 0)
         brain.ask(Eyes.question(l), onReply = { json -> handleReply(json, fromPhoto = true, eyes = true) }, onError = { err ->
-            if (!back) { pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }
-            else Thread {
-                val letters = EyesOffline.read(jpeg)
+            // no AI can look now: the phone's own small eyes (faces, a smile, things, letters), nothing leaves the phone
+            Thread {
+                val seen = EyesOffline.describe(jpeg, te)
                 main.post {
-                    if (letters == null) { pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }
-                    else say((if (te) "నా పెద్ద మెదడు ఇప్పుడు అందుబాటులో లేదు, కానీ ఇక్కడ రాసి ఉన్న ఇంగ్లీష్ అక్షరాలు నేనే చదవగలను: " else "I can't reach my big brain right now, but I can read the letters here myself: ") +
-                        letters.take(600), PuppyView.Mood.THINKING, local = true)
+                    if (seen == null) { pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000) }
+                    else say(seen, if (seen.contains("😊")) PuppyView.Mood.HAPPY else PuppyView.Mood.THINKING, local = true)
                 }
             }.start()
         }, photo = "image/jpeg" to android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP), local = false)
