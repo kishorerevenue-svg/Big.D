@@ -830,8 +830,8 @@ class MainActivity : Activity() {
         add(briefingCard(), 12)
 
         // the tiny brain for no internet (Habit AI Lite: a separate, optional app)
-        if (BuildConfig.SELF_UPDATE) add(ui.section("📴 Tiny brain for no internet", "An optional small AI that runs on this phone, so your pet can still talk when there is no internet at all. " +
-            "It is a separate app, Habit Brain. It needs a 64-bit phone with about 6 GB memory, and the brain is about 2.6 GB (downloaded once, over Wi-Fi). Nothing you ask it leaves the phone.").apply {
+        if (BuildConfig.SELF_UPDATE) add(ui.section("🧠 Habit's phone brain · ఫోన్‌లో సొంత మెదడు", "An AI brain that runs on this phone: free, private (nothing you ask leaves the phone) and it works even without internet. " +
+            "When the big AI is resting, your pet talks with it. It is a separate app, Habit Brain: it needs a 64-bit phone with about 6 GB memory, and the brain is about 2.6 GB (downloaded once, over Wi-Fi).").apply {
             if (TinyBrain.installed(this@MainActivity)) {
                 put(ui.text("✓ Habit Brain is installed. Open it to download the brain or try it.", 13.5f, Ui.TEAL_DARK), 6)
                 put(ui.row(ui.button("🧠 Open Habit Brain", "primary") { leavingForSystemScreen = true; TinyBrain.open(this@MainActivity, store) }), 10)

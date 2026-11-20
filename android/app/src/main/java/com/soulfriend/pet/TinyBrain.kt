@@ -35,9 +35,23 @@ object TinyBrain {
         } catch (e: Exception) { }
     }
 
+    /** When it last couldn't answer (not downloaded, too slow): then the server is asked as before, for a while. */
+    @Volatile var failedAt = 0L
+    fun usable(ctx: Context) = installed(ctx) && System.currentTimeMillis() - failedAt > 10 * 60_000L
+
+    /** The question with the talk so far and a few things it knows about them (all of it stays on this phone). */
+    fun prompt(store: Store, history: List<org.json.JSONObject>, text: String): String {
+        val mem = store.memories().takeLast(12)
+        val talk = history.takeLast(6).joinToString("\n") { h -> (if (h.optString("role") == "user") "Them: " else "You: ") + h.optString("content").take(400) }
+        return (if (mem.isNotEmpty()) "What you know about them:\n" + mem.joinToString("\n") { "- " + it.take(200) } + "\n\n" else "") +
+            (if (talk.isNotBlank()) "The talk so far:\n$talk\n\n" else "") +
+            "They say now: $text"
+    }
+
     /** What the tiny brain is told about itself. */
-    fun system(store: Store) = "You are Habit, a kind cartoon pet friend who lives on the person's phone. The phone has no internet right now, " +
-        "so you are answering with your small offline brain. " +
+    fun system(store: Store, online: Boolean = false) = "You are Habit, a kind cartoon pet friend who lives on the person's phone. " +
+        (if (online) "You are answering with your own brain on this phone (it is free and private: nothing leaves the phone). "
+         else "The phone has no internet right now, so you are answering with your small offline brain. ") +
         (when (store.lang) { "te" -> "Always reply in simple spoken Telugu, in Telugu script. "; "en" -> "Reply in simple English. "
             else -> "Reply in the language the person uses (Telugu script for Telugu). " }) +
         "Your reply is read aloud: 1 to 4 short, warm sentences. If you are not sure about a fact, say so honestly; never make up numbers, names, prices or news. " +

@@ -43,6 +43,9 @@ class Brain(private val store: Store) {
         // who is talking now, only when they said it in this conversation (family members share the phone)
         store.speakerNow()?.let { body.put("speaker", it); store.touchSpeaker() }
         if (photo != null) body.put("image", JSONObject().put("mediaType", photo.first).put("data", photo.second))
+        // the brain on this phone (Habit Brain) is there: when the big AI is away, the server lets it answer (free, and the
+        // server stays light however many people talk); the server still does what needs it (news, weather, panchangam…)
+        else if (local && TinyBrain.usable(store.ctx)) body.put("phone", true)
         val server = store.server
         if (server.contains("YOUR-DOMAIN") || !server.startsWith("https://")) {
             history.removeAt(history.lastIndex)
@@ -54,6 +57,26 @@ class Brain(private val store: Store) {
                 val (code, out) = post("$server/api/pet", body.toString())
                 val json = try { JSONObject(out) } catch (e: Exception) { JSONObject() }
                 if (json.has("reply")) json.put("reply", Talk.plain(json.optString("reply")))   // no citation marks shown or read (older servers)
+                if (code in 200..299 && json.optBoolean("usePhone")) {
+                    main.post {
+                        history.removeAt(history.lastIndex)
+                        // reminders, alarms, calls and apps: the phone's small brain does these itself
+                        val dev = try { LocalBrain.device(store.ctx, store, text) } catch (e: Exception) { null }
+                        if (dev != null) { keep(text, dev); onReply(dev); return@post }
+                        TinyBrain.ask(store.ctx, TinyBrain.system(store, online = true), TinyBrain.prompt(store, history, text)) { t ->
+                            if (t != null) {
+                                val j = JSONObject().put("reply", Talk.plain(t)).put("emotion", "happy").put("actions", JSONArray()).put("tiny", true)
+                                keep(text, j); onReply(j)
+                            } else { TinyBrain.failedAt = System.currentTimeMillis(); ask(text, onReply, onError, null, local) }   // the server answers this time
+                        }
+                    }
+                    return@execute
+                }
+                // the big AI is away and this phone has no brain of its own yet: now and then, say how to get it
+                if (code in 200..299 && photo == null && (json.optBoolean("own") || json.optBoolean("self")) && !TinyBrain.installed(store.ctx) && store.brainTipDue()) {
+                    json.put("reply", json.optString("reply") + if (store.lang == "te") "\n\n💡 నాకు ఈ ఫోన్‌లోనే సొంత మెదడు ఇవ్వండి (ఉచితం, ఇంటర్నెట్ లేకపోయినా మాట్లాడతాను): Settings › 🧠 Habit's phone brain."
+                        else "\n\n💡 Give me my own brain on this phone (free, and I can talk even without internet): Settings › 🧠 Habit's phone brain.")
+                }
                 if (code in 200..299 && !json.has("reply")) main.post {
                     history.removeAt(history.lastIndex)
                     onError("That server address is not a Habit AI server. Check the address in the Habit AI app.")
