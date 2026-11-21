@@ -92,7 +92,8 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
   const decode = s => String(s).replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, "\"").replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
 
   async function news(q, te) {
-    const topic = q.replace(/\b(latest|today'?s?|news|headlines|tell me|the|about|on|what'?s|what is|in)\b/gi, " ").replace(/వార్తలు|వార్త|న్యూస్|ఈరోజు|ఈ రోజు|తాజా|చెప్పు|గురించి/g, " ").replace(/[?.!]/g, " ").trim();
+    const topic = q.replace(/\b(latest|today'?s?|news|headlines?|tell me|the|about|on|what'?s|what is|in|of|any|top|please|updates?|give|show|me|some|now|current|recent|breaking|habit|hey)\b/gi, " ")
+      .replace(/వార్తలు|వార్త|న్యూస్|ఈరోజు|ఈ రోజు|ఇవాళ|తాజా|చెప్పండి|చెప్పు|గురించి|అప్\u200c?డేట్(?:స్)?|అప్\u200c?డేటు|ఇవ్వు|ఇవ్వండి|చూపించు|ఇప్పుడు|ఇప్పటి|నాకు|ఏమైనా|ఏవైనా|హ్యాబిట్|హాబిట్|బ్రేకింగ్|ముఖ్య/g, " ").replace(/[?.!,]/g, " ").replace(/\s+/g, " ").trim();
     const hl = te ? "hl=te&gl=IN&ceid=IN:te" : "hl=en-IN&gl=IN&ceid=IN:en";
     const u = topic.length > 2 ? `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&${hl}` : `https://news.google.com/rss?${hl}`;
     const xml = await get(u).then(r => r.text());
