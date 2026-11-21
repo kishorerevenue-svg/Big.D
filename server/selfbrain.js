@@ -389,8 +389,8 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
       // what it learned from Claude, and the owner's library
       const learnedHit = answers && answers.lookup ? answers.lookup(q, { min: strong ? 0.75 : 0.6 }) : null;
       if (learnedHit) { if (answers.used) answers.used(learnedHit.id); return R("learned", learnedHit.answer, "happy", { sources: learnedHit.sources || [], learned: true }); }
-      const k = learn && learn.searchKnowledge ? learn.searchKnowledge(q, 1)[0] : null;
-      if (k && k.of >= (strong ? 0.6 : 0.5) && k.score >= 2.5) return R("library", say(te, `📚 "${k.title}" ప్రకారం: `, `📚 From "${k.title}": `) + clip(k.text, 600), "thinking");
+      const k = learn && learn.searchKnowledge ? learn.searchKnowledge(q, 1, false, (ctx && ctx.uid) || "")[0] : null;
+      if (k && k.of >= (strong ? 0.6 : 0.5) && k.score >= 2.5) return R("library", say(te, `📚 ${k.scope && k.scope.startsWith("my:") ? "మీ ఫైల్ " : ""}"${k.title}" ప్రకారం: `, `📚 From ${k.scope && k.scope.startsWith("my:") ? "your file " : ""}"${k.title}": `) + clip(k.text, 600), "thinking");
       const m = searchPosts(q, strong ? 0.66 : 0.5);
       if (m) return R("media", say(te, "📰 హ్యాబిట్ మీడియాలో దీని గురించి: ", "📰 Here's what Habit Media has on this: ") + `${String(m.it.title).replace(/^[^\p{L}\p{N}]+/u, "")}\n${clip(m.it.body, 650)}`, "thinking", { sources: srcOf(m.it) });
       if (!strong || DEFINE.test(q)) { const wk = await wiki(q, te); if (wk) return wk; }

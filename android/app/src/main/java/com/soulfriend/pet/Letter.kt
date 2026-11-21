@@ -218,6 +218,7 @@ class LetterHelper(private val m: MainActivity) {
 
     private fun buildPublicStart() {
         lettersButton()
+        m.library.box()                        // 📚 the public library and 📁 my files
         m.add(ui.section("✨ Letter helper · లేఖ సహాయకుడు",
             "Write or speak 🎤 everything in one box (➕ Add more as many times as you need). I'll write a rough copy with line numbers; tell me what to change, then get the final Word file.").apply {
             matterBlock(this, "What do you need? Write everything about it here, e.g. \"Leave letter for 2 days, from 18-11 to 19-11, for my sister's marriage\"")
@@ -460,6 +461,7 @@ class LetterHelper(private val m: MainActivity) {
     private fun buildOfficeStart() {
         lettersButton()
         oldFilesBox()
+        m.library.box()                        // 📚 the public library and 📁 my files
         m.add(ui.section("🏢 Office letters · కార్యాలయ లేఖలు",
             "Letters, reports, memos, proceedings and notices in office format. Add the petition or the earlier letter, and I'll read it first.").apply {
             put(ui.text("1. What to prepare? (slide ⟷)", 14f, Ui.INK, bold = true), 12)

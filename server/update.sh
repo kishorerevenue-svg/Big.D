@@ -26,6 +26,13 @@ if ! python3 -c "import PIL" >/dev/null 2>&1; then
   python3 -c "import PIL" >/dev/null 2>&1 && echo "Pillow installed" || echo "Pillow install failed (will try again next time)"
 fi
 
+# reading files for free (no AI): PDFs with text, and Telugu + English OCR for photos and scanned pages (installed once)
+if ! command -v pdftotext >/dev/null 2>&1 || ! command -v tesseract >/dev/null 2>&1 || ! tesseract --list-langs 2>/dev/null | grep -qx tel; then
+  echo "installing the free file reader (PDF text, Telugu OCR)..."
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-tel >/dev/null 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get update -y -q >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -q poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-tel >/dev/null 2>&1; }
+  command -v tesseract >/dev/null 2>&1 && echo "free file reader installed" || echo "free file reader install failed (will try again next time)"
+fi
+
 cd "$REPO_DIR" || exit 1
 old="$(git rev-parse HEAD)"
 git pull -q || { echo "git pull failed"; exit 1; }

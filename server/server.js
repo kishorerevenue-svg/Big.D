@@ -532,6 +532,8 @@ const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, medi
 const push = require("./push.js")({ DATA_DIR });
 // Offices: each office's own private space (its staff join with a code; its old files kept only as text)
 const offices = require("./offices.js")({ DATA_DIR, formats, h: { send, readBody, allowed, clientIp } });
+// 📚 the public library (anyone logged in adds, everyone reads, the pet answers from it) and 📁 each person's own files
+const library = require("./library.js")({ learn, formats, social, h: { send, readBody, allowed, clientIp } });
 const chat = require("./chat.js")({ DATA_DIR, social, push, h: { send, readBody, allowed, clientIp, baseUrl } });
 // The fake messages list (app: Tasks › 🛡️ Fake messages): people warn each other about fraud messages they got, with votes and comments
 const fakes = require("./fakes.js")({ DATA_DIR, social, learn, MODEL, API_KEY,
@@ -547,6 +549,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204, cors(origin)); return res.end(); }
 
   if (await offices.handle(req, res, url, origin)) return;
+  if (await library.handle(req, res, url, origin)) return;
   if (!extras) extras = require("./extras.js")({ DATA_DIR, learn, files, MODEL, SMART_MODEL, API_KEY, skills, formats, isOwner: req => isOwner(req) || officeAllowed(req), ownBrain, offices,
     adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, dailyCheck, clientIp, baseUrl } });
   if (await extras(req, res, url, origin)) return;
@@ -668,7 +671,8 @@ const server = http.createServer(async (req, res) => {
       memories: (Array.isArray(body.memories) ? body.memories : []).slice(-80).map(n => String(n).slice(0, 300)),
       // who is talking now (they said their name in this conversation): a name only, nothing else
       speaker: ((String(body.speaker || "").match(/^[\p{L}\p{M} .'-]+/u) || [""])[0]).trim().slice(0, 40),
-      knowledge: learn.knowledgeBlock(messages[messages.length - 1].content),
+      knowledge: learn.knowledgeBlock(messages[messages.length - 1].content, null, false, social.who(req)),
+      uid: social.who(req),
       learn: body.learn !== false, why, admin: isOwner(req), phone: body.phone === true && !body.image,
       device: crypto.createHash("sha256").update("self|" + (String(req.headers["x-device"] || "") || clientIp(req))).digest("hex").slice(0, 16)
     };
@@ -750,7 +754,7 @@ const server = http.createServer(async (req, res) => {
     if (tries.length >= 10) return send(res, 429, { error: "Too many tries. Wait 10 minutes." });
     if (!teachAllowed(req)) { hits.set(tk, [...tries, Date.now()]); return send(res, 401, { error: "Wrong password." }); }
     try {
-      if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge() });
+      if (req.method === "GET" && url.pathname === "/api/teach/list") return send(res, 200, { items: learn.listKnowledge().filter(i => !String(i.scope || "").startsWith("my:") && !i.held).map(i => Object.assign({}, i, { byName: i.byName || "" })) });
       if (req.method === "GET" && url.pathname === "/api/teach/formats") return send(res, 200, { items: formats.list() });
       if (req.method === "GET" && url.pathname === "/api/teach/office-code") return send(res, 200, { set: !!officeHash });
       if (req.method === "GET" && url.pathname === "/api/teach/offices") return send(res, 200, { items: offices.listAll() });
@@ -765,6 +769,13 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/teach/cartoon") return send(res, 200, cartoon.status());
       if (req.method === "GET" && url.pathname === "/api/teach/chat") return send(res, 200, { stats: chat.stats(), reports: chat.reports(), fakes: fakes.stats() });
       if (req.method === "GET" && url.pathname === "/api/teach/push") return send(res, 200, { push: push.status(), phones: chat.pushPhones() });
+      // the library: files waiting for a look (ID numbers), what people added to the public library, people's own files (titles)
+      if (req.method === "GET" && url.pathname === "/api/teach/library") return send(res, 200, library.overview());
+      if (req.method === "GET" && url.pathname === "/api/teach/library/read") {
+        const it = learn.itemOf(String(url.searchParams.get("id") || ""));
+        if (!it || String(it.scope || "").startsWith("my:")) return send(res, 404, { error: "Not found" });   // (people's own files: not read by the owner)
+        return send(res, 200, { title: it.title, text: learn.readKnowledge(it.id).slice(0, 200000) });
+      }
       if (req.method === "GET" && url.pathname === "/api/teach/feedback") {
         let lines = [];
         try { lines = fs.readFileSync(path.join(DATA_DIR, "feedback.jsonl"), "utf8").trim().split("\n").filter(Boolean).slice(-200).map(l => JSON.parse(l)).reverse(); } catch (e) { }
@@ -773,6 +784,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "POST") {
         const body = await readBody(req, 30 * 1024 * 1024);
         if (url.pathname === "/api/teach/delete") return send(res, 200, { ok: learn.removeKnowledge(String(body.id || "")) });
+        if (url.pathname === "/api/teach/library/approve") return send(res, 200, { ok: library.approve(String(body.id || "")) });
         if (url.pathname === "/api/teach/push/setup") return send(res, 200, await push.setup(body.app, body.admin));
         if (url.pathname === "/api/teach/push/remove") return send(res, 200, push.remove());
         if (url.pathname === "/api/teach/brain/install") return send(res, 200, ownBrain.install());
@@ -908,6 +920,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/privacy") p = "/privacy.html";
     if (p === "/teach") p = "/teach.html";
     if (p === "/office") p = "/office.html";
+    if (p === "/library" || p === "/my") p = "/library.html";
     if (p === "/rules" || p === "/child-safety") p = "/rules.html";
     if (p === "/delete-account" || p === "/delete") p = "/delete-account.html";
     const file = path.normalize(path.join(PUBLIC_DIR, p));

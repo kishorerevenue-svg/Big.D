@@ -318,6 +318,18 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
+      <h2>📚 Library · గ్రంథాలయం (what people added)</h2>
+      <p class="hint">The <b>Public library</b> is like Wikipedia: anyone who has logged in adds GOs, circulars, scheme details, notices; everyone can read them and the pet answers from them. A file with Aadhaar, PAN, phone or bank numbers <b>waits here</b> until you let it in or delete it. <b>My files</b> are each person's own: you see only the titles (to remove misuse), not what they say. Only the text of a file is kept. People can also open it on the web: <a href="/library" target="_blank">/library</a>.</p>
+      <h3 style="margin:12px 0 4px">⏳ Waiting for you (ID / phone / bank numbers)</h3>
+      <ul id="libHeld"></ul>
+      <h3 style="margin:12px 0 4px">🌐 Added to the public library by people</h3>
+      <ul id="libPub"></ul>
+      <h3 style="margin:12px 0 4px">📁 People's own files (titles only)</h3>
+      <ul id="libMy"></ul>
+      <div class="msg" id="libMsg" role="status"></div>
+    </section>
+
+    <section class="card">
       <h2>What the puppy knows</h2>
       <ul id="list"></ul>
       <p class="hint" id="empty">Nothing yet. Add your first file above.</p>
@@ -804,6 +816,43 @@ $("ocSave").onclick = () => busy($("ocSave"), $("ocMsg"), async () => {
   $("ocCode").value = "";
   say($("ocMsg"), set ? "Saved. Staff with this code now get your office's old files." : "Removed: no office access now.", true);
 });
+async function loadLibrary() {
+  const d = await api("library");
+  const mk = (id, title, small, buttons) => {
+    const li = document.createElement("li"), box = document.createElement("div"); box.style.flex = "1";
+    const b = document.createElement("b"); b.textContent = title; const sm = document.createElement("small"); sm.textContent = small;
+    box.append(b, sm); li.append(box);
+    for (const [label, fn, sure] of buttons) {
+      const bt = document.createElement("button"); bt.className = "ghost"; bt.type = "button"; bt.textContent = label; bt.style.marginLeft = "6px";
+      bt.onclick = async () => {
+        if (sure && bt.dataset.sure !== "1") { bt.dataset.sure = "1"; bt.textContent = "Tap again"; return; }
+        try { await fn(box); } catch (e) { bt.textContent = "Couldn't"; }
+      };
+      li.append(bt);
+    }
+    return li;
+  };
+  const read = async (id, box) => {
+    if (box.querySelector("pre")) { box.querySelector("pre").remove(); return; }
+    const r = await api("library/read?id=" + encodeURIComponent(id));
+    const pre = document.createElement("pre"); pre.style.whiteSpace = "pre-wrap"; pre.style.maxHeight = "320px"; pre.style.overflow = "auto"; pre.textContent = r.text; box.append(pre);
+  };
+  const del = id => async () => { await api("delete", { id }); loadLibrary(); };
+  const when = t => new Date(t).toLocaleDateString();
+  const held = $("libHeld"); held.textContent = "";
+  for (const it of d.held) held.append(mk(it.id, it.title, `${it.by || "someone"} · ${when(it.added)} · ${it.chars.toLocaleString()} characters`,
+    [["Read", b => read(it.id, b)], ["✅ Let it in", async () => { await api("library/approve", { id: it.id }); loadLibrary(); }], ["Delete", del(it.id), true]]));
+  if (!d.held.length) held.append(Object.assign(document.createElement("li"), { textContent: "Nothing waiting." }));
+  const pub = $("libPub"); pub.textContent = "";
+  for (const it of d.public.slice(0, 200)) pub.append(mk(it.id, it.title, `${it.by || "someone"} · ${when(it.added)} · ${it.chars.toLocaleString()} characters · read ${it.via === "claude" ? "by Claude" : "here"}`,
+    [["Read", b => read(it.id, b)], ["Delete", del(it.id), true]]));
+  if (!d.public.length) pub.append(Object.assign(document.createElement("li"), { textContent: "Nobody has added to the public library yet." }));
+  const my = $("libMy"); my.textContent = "";
+  for (const pp of d.people) for (const f of pp.files) my.append(mk(f.id, f.title, `${pp.name || "someone"} · ${when(f.added)} · ${f.chars.toLocaleString()} characters`, [["Delete", del(f.id), true]]));
+  if (!d.people.length) my.append(Object.assign(document.createElement("li"), { textContent: "No one's own files yet." }));
+  say($("libMsg"), `${d.public.length} in the public library from people · ${d.held.length} waiting · ${d.people.reduce((n, p) => n + p.files.length, 0)} own files of ${d.people.length} people`, true);
+}
+
 async function loadOffices() {
   const { items } = await api("offices");
   const ul = $("offList"); ul.textContent = "";
@@ -827,6 +876,7 @@ async function loadOffice() { const { set } = await api("office-code"); say($("o
 async function refresh() {
   loadOffice().catch(() => {});
   loadOffices().catch(() => {});
+  loadLibrary().catch(() => {});
   loadFormats().catch(() => {});
   loadChat().catch(() => {});
   loadPush().catch(() => {});
@@ -844,7 +894,7 @@ async function refresh() {
     const li = document.createElement("li");
     const d = document.createElement("div");
     const b = document.createElement("b"); b.textContent = it.title;
-    const s = document.createElement("small"); s.textContent = `${new Date(it.added).toLocaleDateString()} · ${it.chars.toLocaleString()} characters · ${it.source}`;
+    const s = document.createElement("small"); s.textContent = `${new Date(it.added).toLocaleDateString()} · ${it.chars.toLocaleString()} characters · ${it.byName ? "added by " + it.byName + " (public library)" : it.source}`;
     d.append(b, s);
     const del = document.createElement("button"); del.className = "ghost"; del.type = "button"; del.textContent = "Delete";
     del.onclick = async () => {

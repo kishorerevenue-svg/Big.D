@@ -821,5 +821,16 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
   function linkDevice(dk, uid) { db.devices[dk] = uid; save(); }
   function unlinkDevice(dk) { if (db.devices[dk]) { delete db.devices[dk]; save(); } }
 
-  return { handle, stats, engagement, postCartoon, who, person, byHandle, findPeople, byPhoneCodes, hasPhone, devKey, linkDevice, unlinkDevice };
+  /** For the library: who this is — from the phone (X-Device), or from the web with { login (number/email), password }. */
+  async function account(req, body) {
+    if (body && body.login) {
+      const c = await checkLogin(req, { id: body.login, password: body.password });
+      if (!c.user) return { status: c.status, error: c.error };
+      return { uid: c.user.uid, name: c.user.name || "", login: true, banned: !!c.user.banned };
+    }
+    const uid = uidOf(req, false), u = uid && db.users[uid];
+    return { uid: uid || "", name: (u && u.name) || "", login: !!(u && u.login), banned: !!(u && u.banned) || db.bannedDevices.includes(devHash(req)) };
+  }
+  const nameOf = uid => { const u = db.users[uid]; return (u && u.name) || ""; };
+  return { handle, stats, engagement, postCartoon, who, person, byHandle, findPeople, byPhoneCodes, hasPhone, devKey, linkDevice, unlinkDevice, account, nameOf, isAdmin };
 };
