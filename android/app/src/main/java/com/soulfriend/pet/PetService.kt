@@ -766,11 +766,23 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private val wakeChecks = ArrayDeque<Long>()        // when talk was checked for the name (a TV nearby: less often)
     private var wakeLocal = true                       // the phone's own offline voice typing works for this
     private var wakeBlocked = false                    // the microphone gives only silence here (the service needs the app opened once)
-    private val wakeTick = object : Runnable { override fun run() { if (!store.wakeOn) stopWaking() else wakeUp(); main.postDelayed(this, 4000) } }
+    private val wakeTick = object : Runnable { override fun run() {
+        // the microphone gave only silence (another app had it): try again every few minutes, never give up for good
+        if (wakeBlocked && System.currentTimeMillis() - wakeBlockedAt > 3 * 60_000L) wakeBlocked = false
+        if (!store.wakeOn) stopWaking() else wakeUp(); main.postDelayed(this, 4000)
+    } }
 
     private fun musicPlaying() = try { getSystemService(android.media.AudioManager::class.java)?.isMusicActive == true } catch (e: Exception) { false }
+    // like a smart speaker: it waits for its name all the time, also with talk, a TV or music around (then it needs its
+    // name a bit louder), and on a low battery until 5 %. It only stops while it is itself talking or listening, during a
+    // call (the call has the microphone), or when Android gives it no microphone.
     private fun wakeBusy() = !store.wakeOn || wakeBlocked || listening || pet.talking || quietEar != null || voiceMode || onPhone() || CallManager.active != null ||
-        panel != null || !micFgs || batteryLow() || musicPlaying() || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+        panel != null || !micFgs || batteryEmpty() || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+    private fun batteryEmpty(): Boolean = try {
+        val bm = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
+        bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) in 1..5 && !bm.isCharging
+    } catch (e: Exception) { false }
+    private var wakeBlockedAt = 0L
     private fun wakeUseLocal() = wakeLocal && Build.VERSION.SDK_INT >= 31 && try { SpeechRecognizer.isOnDeviceRecognitionAvailable(this) } catch (e: Exception) { false }
 
     /** Starts waiting for its name, when nothing else is going on. */
@@ -778,12 +790,14 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (wakeEar != null || wakeRec != null || wakeBusy()) return
         val now = System.currentTimeMillis()
         while (wakeChecks.isNotEmpty() && now - wakeChecks.first() > 60_000L) wakeChecks.removeFirst()
-        if (wakeChecks.size >= 8) return                               // a lot of talk around: a short rest
+        // (before, a lot of talk around made it rest; now it never rests, it just needs its name clearer)
         val me = arrayOfNulls<QuietEar>(1)
         val ear = QuietEar(if (wakeUseLocal()) "ondevice" else feedKey(),
             onTalk = { val e = me[0]; if (e != null && wakeEar === e) wakeCheck(e) },
-            onDone = { blocked -> val e = me[0]; if (e != null && wakeEar === e) { wakeEar = null; e.stop(); if (blocked) wakeBlocked = true } })
+            onDone = { blocked -> val e = me[0]; if (e != null && wakeEar === e) { wakeEar = null; e.stop(); if (blocked) { wakeBlocked = true; wakeBlockedAt = System.currentTimeMillis() } } })
         me[0] = ear
+        // talk, a TV or a song nearby: only clearly louder talk wakes the check (its name said to it)
+        ear.strict = 1.0 + minOf(wakeChecks.size, 12) * 0.15 + (if (musicPlaying()) 1.0 else 0.0)
         if (ear.start(10 * 60_000L)) wakeEar = ear
     }
 
