@@ -88,6 +88,10 @@ class QuietEar(val key: String, private val onTalk: () -> Unit, private val onDo
     @Volatile private var attached = false
     /** Above 1: only clearly louder talk counts (after noise woke it for nothing). */
     @Volatile var strict = 1.0
+    /** Habit's own ear for its name ([WakeWord]): with it, only its name counts, not any talk. Set before [start]. */
+    var detector: WakeWord.Detector? = null
+    /** Its own ear heard its name (not just someone talking). */
+    @Volatile var heardName = false
 
     @android.annotation.SuppressLint("MissingPermission")
     fun start(maxMs: Long): Boolean {
@@ -136,7 +140,12 @@ class QuietEar(val key: String, private val onTalk: () -> Unit, private val onDo
                     if (rms == 0.0) zeros++
                     if (frames == 75 && zeros >= 74) { main.post { if (running) { running = false; onDone(true) } }; break }   // 1.5 s of only silence: not ours here
                     if (floor < 0 || (frames <= 10 && rms < floor)) floor = rms   // starts from the quietest of the first moments
-                    if (frames > 5 && rms > maxOf(floor * 3.0, 250.0) * strict) { if (++loud >= (3 * strict).toInt()) { talked = true; main.post { if (running) onTalk() } } }
+                    val det = detector
+                    if (det != null) {                                        // its own ear: only its name wakes it
+                        val heard = try { det.feed(frame, n) } catch (e: Exception) { detector = null; det.close(); false }
+                        if (heard) { heardName = true; talked = true; main.post { if (running) onTalk() } }
+                    }
+                    else if (frames > 5 && rms > maxOf(floor * 3.0, 250.0) * strict) { if (++loud >= (3 * strict).toInt()) { talked = true; main.post { if (running) onTalk() } } }
                     else { loud = 0; floor = floor * 0.95 + rms * 0.05 }       // learns how quiet the room is
                     if (android.os.SystemClock.elapsedRealtime() > end) { main.post { if (running) { running = false; onDone(false) } }; break }
                 }
@@ -144,6 +153,7 @@ class QuietEar(val key: String, private val onTalk: () -> Unit, private val onDo
             finally {
                 try { rec.stop() } catch (e: Exception) { }
                 rec.release()
+                detector?.close()
                 try { feed?.close() } catch (e: Exception) { }
                 feed = null
             }

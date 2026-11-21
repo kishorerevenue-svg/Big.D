@@ -97,6 +97,9 @@ dependencies {
     // (how many, a smile). Free, and the photo stays on the phone. The models also come with Google Play services.
     implementation("com.google.android.gms:play-services-mlkit-image-labeling:16.0.8")
     implementation("com.google.android.gms:play-services-mlkit-face-detection:17.1.0")
+    // Habit's own ear for its name (WakeWord.kt): TensorFlow Lite from Google Play services (small, nothing big in the app),
+    // running openWakeWord's speech features (assets/wake, Apache 2.0) and the ear made on Kaggle (brain/habit_wake.py).
+    implementation("com.google.android.gms:play-services-tflite-java:16.4.0")
     // Habit calls ring and new chat messages show while Habit is closed (Firebase Cloud Messaging, Push.kt). It starts only
     // when the Habit server has Firebase set up: the app's Firebase ids come from the server, not from this public code.
     implementation("com.google.firebase:firebase-messaging:24.1.0")

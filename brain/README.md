@@ -198,3 +198,15 @@ The last lines say what to do:
 7. **ఇంకా నేర్పించడం:** Teach పేజీలో పాఠాలు జోడించండి, కొత్త లింక్ చేయండి, 5వ దశ మళ్ళీ రన్ చేయండి.
 
 ఏదైనా ఆగిపోతే, చివరి లైన్లలో ఏం చేయాలో ఉంటుంది. అర్థం కాకపోతే చివరి 30 లైన్లు పంపండి. టోకెన్, లింక్ మాత్రం పంపకండి.
+
+## habit-wake: Habit's own ear for its name (like a smart speaker)
+
+`brain/habit_wake.py` makes a small "is this my name?" ear, so the phone wakes only for "Habit" / "హ్యాబిట్" without sending
+any other talk to the voice typing. Kaggle notebook, Internet on (GPU optional), secret `HF_TOKEN` (Write), one cell:
+
+    !curl -fsSL https://raw.githubusercontent.com/kishorerevenue-svg/Big.D/main/brain/habit_wake.py -o habit_wake.py && python habit_wake.py --full
+
+`--test` is a quick try (not sent to the phone). `--full` takes 1 to 2 hours and keeps `habit_wake.json` in your public
+Hugging Face repo `<you>/habit-wake`. The server finds it with its `HF_TOKEN` (or `WAKE_MODEL_URL`), and the phone downloads it
+(Settings › Voice › 🎧 Get the new ear). Data: synthetic Piper voices (English, Telugu, Hindi), LibriSpeech (CC BY 4.0),
+OpenSLR 66 Telugu (CC BY-SA 4.0); features: openWakeWord v0.5.1 (Apache 2.0). No one's own voice.
