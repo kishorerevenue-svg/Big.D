@@ -344,9 +344,17 @@ class Store(context: Context) {
         get() = p.getString("officeCode", "") ?: ""
         set(v) { p.edit().putString("officeCode", v.trim()).apply() }
     /** Once in 3 days at most: the tip about getting the phone brain. */
+    /** true at most once in [ms] for this key (small notes that shouldn't repeat on every answer) */
+    fun onceEvery(key: String, ms: Long): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - p.getLong("once_$key", 0L) < ms) return false
+        p.edit().putLong("once_$key", now).apply(); return true
+    }
+    /** the pet's "Hi! I'm Habit AI…" when it starts: only the first few times */
+    fun introDue(): Boolean { val n = p.getInt("petIntro", 0); if (n >= 3) return false; p.edit().putInt("petIntro", n + 1).apply(); return true }
     fun brainTipDue(): Boolean {
         val now = System.currentTimeMillis()
-        if (now - p.getLong("brainTipAt", 0L) < 3 * 86400_000L) return false
+        if (now - p.getLong("brainTipAt", 0L) < 7 * 86400_000L) return false
         p.edit().putLong("brainTipAt", now).apply(); return true
     }
     /** Videos and Shorts already watched here (newest last, at most 800): the feed puts new ones first. */

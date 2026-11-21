@@ -110,6 +110,7 @@ class MainActivity : Activity() {
         const val REQ_OFFICE_FILES = 4414
         const val REQ_CAM_INTENT = 24
         const val REQ_CAM_MIRROR = 25
+        const val REQ_CAM_DAILY = 61
         const val REQ_CARD_PERM = 26
         const val REQ_CHAT_CONTACTS = 27
         const val REQ_PET_CALL = 28
@@ -252,6 +253,7 @@ class MainActivity : Activity() {
             // the app itself never looks at them when it opens: the floating pet looks once a day, and any other time only
             // when they ask ("look at me", or 😊 Look at me now on the Pet page)
             if (pendingMirror) { pendingMirror = false; content.postDelayed({ lookAtMe(false) }, 500) }
+            else if (!store.mirrorAsked && tab == "home") content.postDelayed({ if (!isFinishing && hasWindowFocus()) askDailyLook() }, 1500)
             pendingShare?.let { pendingShare = null; messages.checkShared(it) }
             // the pet heard "make a letter…": a letter already half filled isn't thrown away without asking
             pendingLetter?.let { req -> pendingLetter = null
@@ -816,7 +818,7 @@ class MainActivity : Activity() {
             "and if it can't see well it tells you how to hold the phone and looks again.\n" +
             "One photo, sent to Claude AI only to answer you, not saved. For your phone's screen, say \"my screen\".").apply {
             put(ui.button("😊 Look at me now", "primary") { lookAtMe(false) }, 10)
-            put(ui.check("👀 Look at me when I open the app (at most every 3 hours)", store.mirrorOn && store.mirrorAsked) { on -> store.mirrorOn = on; store.mirrorAsked = true; if (on && !granted(Manifest.permission.CAMERA)) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }, 8)
+            put(ui.check("👀 The pet looks at me once a day (the first time I use the phone)", store.mirrorOn && store.mirrorAsked) { on -> store.mirrorOn = on; store.mirrorAsked = true; if (on && !granted(Manifest.permission.CAMERA)) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_MIRROR) }, 8)
         }, 12)
 
         add(ui.section("Permissions · అనుమతులు").apply { permissionRows(this) }, 12)
@@ -1403,6 +1405,18 @@ class MainActivity : Activity() {
 
     /** The pet looks at you: no camera window, just the pet's note at the top ("👀 Looking at you…"); one photo from the
      *  front camera, then a kind comment from Claude, read aloud. (Android shows its own green camera dot meanwhile.) */
+    /** Asked once: may the floating pet look at them once a day? (only the question here: the app itself doesn't look) */
+    private fun askDailyLook() {
+        if (store.mirrorAsked) return
+        store.mirrorAsked = true
+        AlertDialog.Builder(this).setTitle("👀 Can your pet look at you once a day?")
+            .setMessage("The first time you use your phone each day, the floating pet can take a quick look at you with the front camera and say good morning (and a tip if you look tired).\n\n" +
+                "Only one photo; it is not saved. You can turn it off on the Pet page.\n\nరోజుకి ఒకసారి, మీరు ఫోన్ మొదటిసారి వాడినప్పుడు, పెట్ మిమ్మల్ని చూసి శుభోదయం చెబుతుంది.")
+            .setPositiveButton("Yes") { _, _ -> store.mirrorOn = true; if (!granted(Manifest.permission.CAMERA)) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAM_DAILY) }
+            .setNegativeButton("No, thanks") { _, _ -> store.mirrorOn = false }
+            .show()
+    }
+
     internal fun lookAtMe(auto: Boolean) {
         if (mirrorShowing || isFinishing) return
         if (auto && !store.mirrorAsked) {
@@ -2055,6 +2069,7 @@ class MainActivity : Activity() {
             if (AutoCards.allowed(this)) { store.autoCards = true; AutoCards.schedule(this); startAutoScan() }
             else toast("Allow Photos so I can look at your screenshots, or tap \"choose pictures yourself\".")
         }
+        if (requestCode == REQ_CAM_DAILY && !yes) { store.mirrorOn = false; toast("OK. The pet won't use the camera.") }
         if (requestCode == REQ_CAM_MIRROR) { if (yes) content.postDelayed({ lookAtMe(false) }, 300) else { store.mirrorOn = false; toast("OK. I won't use the camera.") } }
         if (requestCode == REQ_LOCATION) family.onLocationAnswer()
         if (requestCode == REQ_CALL && grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED)

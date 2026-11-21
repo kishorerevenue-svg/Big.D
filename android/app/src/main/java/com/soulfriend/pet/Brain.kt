@@ -84,7 +84,7 @@ class Brain(private val store: Store) {
                     return@execute
                 }
                 // the big AI is away and this phone has no brain of its own yet: now and then, say how to get it
-                if (code in 200..299 && photo == null && (json.optBoolean("own") || json.optBoolean("self")) && !TinyBrain.installed(store.ctx) && store.brainTipDue()) {
+                if (code in 200..299 && photo == null && text.trim().length > 15 && (json.optBoolean("own") || json.optBoolean("self")) && !TinyBrain.installed(store.ctx) && store.brainTipDue()) {
                     json.put("reply", json.optString("reply") + if (store.lang == "te") "\n\n💡 నాకు ఈ ఫోన్‌లోనే సొంత మెదడు ఇవ్వండి (ఉచితం, ఇంటర్నెట్ లేకపోయినా మాట్లాడతాను): Settings › 🧠 Habit's phone brain."
                         else "\n\n💡 Give me my own brain on this phone (free, and I can talk even without internet): Settings › 🧠 Habit's phone brain.")
                 }
