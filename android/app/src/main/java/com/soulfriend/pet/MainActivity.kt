@@ -995,7 +995,7 @@ class MainActivity : Activity() {
             "వాయిస్ టైపింగ్ మొదటి మాటలు చూస్తుంది (వీలైతే ఫోన్‌లోనే, లేకపోతే మామూలు వాయిస్ టైపింగ్‌లా Google ది). నా పేరు వింటేనే పలుకుతాను; " +
             "మిగతా మాటలు దాచను, Habit కి పంపను. కాల్స్‌లో మాత్రం వినను (మైక్ కాల్ దగ్గర ఉంటుంది)."), 12f, Ui.MUTED), 4)
         // Habit's own ear for its name (like a smart speaker): made on Kaggle, kept on the phone
-        WakeWord.prepare(this)
+        WakeWord.prepare(this@MainActivity)
         val ear = WakeWord.model()
         val earLine = ui.text(if (ear != null) t("👂 Habit's own ear is on this phone (made ${ear.made}): it hears \"Habit\" about ${Math.round(ear.recall * 100)}% of the time, even in noise, and wakes by mistake about ${"%.1f".format(ear.wakesPerHour)} times an hour of other talk. Nothing goes to the voice typing until it hears its name.",
                 "👂 హ్యాబిట్ సొంత చెవి ఈ ఫోన్‌లో ఉంది (${ear.made}): శబ్దంలో కూడా \"హ్యాబిట్\" అని పిలిస్తే దాదాపు ${Math.round(ear.recall * 100)}% సార్లు వింటుంది. పేరు వినే వరకు వాయిస్ టైపింగ్‌కి ఏమీ వెళ్ళదు.")
@@ -1004,7 +1004,7 @@ class MainActivity : Activity() {
         put(earLine, 4)
         put(ui.button(t("🎧 Get the new ear", "🎧 కొత్త చెవి తీసుకో"), "ghost") {
             toast(t("Looking for Habit's ear…", "హ్యాబిట్ చెవి కోసం చూస్తున్నాను…"))
-            WakeWord.refresh(this, store, now = true) { r ->
+            WakeWord.refresh(this@MainActivity, store, now = true) { r ->
                 toast(when (r) {
                     "new" -> t("👂 Got it! Habit's own ear is on. Say \"Habit\" any time.", "👂 వచ్చింది! హ్యాబిట్ సొంత చెవి పని చేస్తోంది. ఎప్పుడైనా \"హ్యాబిట్\" అనండి.")
                     "same" -> t("You already have the newest ear.", "కొత్త చెవి ఇప్పటికే ఉంది.")
