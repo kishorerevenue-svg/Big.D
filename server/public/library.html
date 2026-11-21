@@ -4,36 +4,44 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Habit Library · హ్యాబిట్ గ్రంథాలయం</title>
-<meta name="description" content="Habit AI's public library: GOs, circulars, scheme details and notices people added. And your own files.">
+<meta name="description" content="Habit AI's library: a public box for everyone (GOs, circulars, notices, scheme details) and an office box for each office's own files.">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
-:root{--bg:#EEF1FA;--card:#fff;--ink:#1C2140;--muted:#5F6688;--line:#D8DDF0;--mari:#F5A524;--teal:#13877A;--ok:#1D9E75;--bad:#C0392B}
-@media (prefers-color-scheme:dark){:root{--bg:#0F1226;--card:#1A1F3D;--ink:#ECEEFB;--muted:#A3A9CC;--line:#2C3360;--teal:#3CC4B2}}
+:root{--bg:#EEF1FA;--card:#fff;--ink:#1C2140;--muted:#5F6688;--line:#D8DDF0;--mari:#F5A524;--teal:#13877A;--blue:#4A5BD4;--ok:#1D9E75;--bad:#C0392B}
+@media (prefers-color-scheme:dark){:root{--bg:#0F1226;--card:#1A1F3D;--ink:#ECEEFB;--muted:#A3A9CC;--line:#2C3360;--teal:#3CC4B2;--blue:#8C9BFF}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,"Noto Sans Telugu",sans-serif}
-main{max-width:760px;margin:0 auto;padding:22px 16px 48px}
+main{max-width:1000px;margin:0 auto;padding:22px 16px 48px}
 h1{font-size:26px;margin:0}
-.sub{color:var(--muted);margin:4px 0 16px}
-.tabs{display:flex;gap:8px;flex-wrap:wrap}
-.tabs button{margin:0;background:var(--card);color:var(--ink);border:1px solid var(--line)}
-.tabs button[aria-selected=true]{background:var(--teal);color:#fff;border-color:var(--teal)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-top:14px}
-h2{font-size:18px;margin:0 0 4px}
-.hint{color:var(--muted);font-size:14px;margin:0 0 12px}
-input,textarea{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
-textarea{min-height:120px}
-label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
-button{font:600 15px system-ui,sans-serif;border:0;border-radius:999px;padding:10px 18px;cursor:pointer;background:var(--mari);color:#1C1406;margin-top:12px}
+.sub{color:var(--muted);margin:4px 0 14px}
+.boxes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.boxes{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-top:14px;min-width:0}
+.boxes .card{margin-top:0}
+.card.pub{border-top:6px solid var(--teal)}
+.card.off{border-top:6px solid var(--blue)}
+h2{font-size:19px;margin:0 0 4px}
+.hint{color:var(--muted);font-size:14px;margin:0 0 10px}
+input{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+button{font:600 15px system-ui,sans-serif;border:0;border-radius:999px;padding:10px 18px;cursor:pointer;background:var(--mari);color:#1C1406;margin-top:10px}
 button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);padding:6px 12px}
 button:disabled{opacity:.5;cursor:default}
-button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visible,.hit:focus-visible{outline:2px solid var(--mari);outline-offset:2px}
-.msg{font-size:14px;margin-top:10px;min-height:1.2em;white-space:pre-line}
+button:focus-visible,input:focus-visible,.drop:focus-visible,.hit:focus-visible{outline:2px solid var(--mari);outline-offset:2px}
+.msg{font-size:14px;margin-top:8px;min-height:1.2em;white-space:pre-line}
 .msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
-.drop{border:2px dashed #7c8cff;border-radius:16px;padding:26px 16px;text-align:center;margin:12px 0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
-.drop a{color:var(--teal)}
+.drop{border:2px dashed var(--line);border-radius:16px;padding:26px 14px;text-align:center;margin:10px 0 0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:150px;justify-content:center}
+.pub .drop{border-color:var(--teal)} .off .drop{border-color:var(--blue)}
+.drop a{color:inherit}
+.drop[aria-disabled=true]{opacity:.45;cursor:not-allowed}
 .row{display:flex;gap:8px;align-items:center}
 .row input{flex:1;min-width:0}
 .row button{margin-top:0}
+.who{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:600}
+.who span{flex:1;min-width:0;overflow-wrap:anywhere}
+.who button{margin-top:0}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+.tabs button{margin:0;background:transparent;color:var(--ink);border:1px solid var(--line);padding:7px 14px}
+.tabs button[aria-selected=true]{background:var(--ink);color:var(--card);border-color:var(--ink)}
 .hit{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px;cursor:pointer;display:flex;gap:8px;align-items:flex-start}
 .hit>div{flex:1;min-width:0}
 .hit b{display:block;overflow-wrap:anywhere}
@@ -46,162 +54,133 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.55 system-ui,"Noto S
 <body>
 <main>
   <h1>📚 Habit Library · గ్రంథాలయం</h1>
-  <p class="sub">Like Wikipedia for everyday rules: GOs, circulars, scheme details, notices. Everyone can read them, and the Habit pet answers from them. Your own files are only for you.</p>
-  <div class="tabs" role="tablist">
-    <button id="tPub" role="tab" aria-selected="true" type="button">🌐 Public library</button>
-    <button id="tMy" role="tab" aria-selected="false" type="button">📁 My files</button>
-  </div>
+  <p class="sub">Two boxes. <b>Public</b>: for everyone, like Wikipedia (GOs, circulars, notices, scheme details); everyone can read them and the Habit app learns from all of them. <b>Office</b>: your office's own old files; only your office's staff, with the office code. Drop whole folders. Only the text of each file is kept.</p>
 
-  <!-- the public library -->
-  <div id="pPub">
-    <section class="card">
-      <h2>🔎 Find</h2>
-      <div class="row"><input id="q" placeholder="e.g. GO 30 assignment, pension rules, e-crop" aria-label="Search the public library"><button id="find" type="button">Find</button></div>
-      <div class="msg" id="findMsg" role="status"></div>
-      <div id="hits"></div>
-    </section>
-    <section class="card">
-      <h2>➕ Add to the public library</h2>
-      <p class="hint">Only things that are right for everyone: GOs, circulars, notices, scheme details, rules. <b>Not</b> anyone's personal papers: a file with Aadhaar, PAN, phone or bank numbers waits for the owner before it goes public. Only the text is kept. Log in with your Habit mobile number and password.</p>
-      <div class="who" data-for="pub"></div>
-      <div class="drop" id="dropPub" tabindex="0" role="button" aria-label="Drop files here, or click to choose">
-        <div style="font-size:30px">📄</div><b>Drop files here</b>
-        <span class="hint" style="margin:0">or <a href="#" data-pick="pub">choose files</a> · Word, PDF, photos, text · up to 15 MB</span>
+  <div class="boxes">
+    <!-- 🌐 the public box -->
+    <section class="card pub" aria-labelledby="hPub">
+      <h2 id="hPub">🌐 Public box · అందరికీ</h2>
+      <p class="hint">Log in once with your Habit mobile number and password. Everyone, office staff too, can add here.</p>
+      <div id="pubWho"></div>
+      <div class="drop" id="dropPub" tabindex="0" role="button" aria-label="Public box: drop files or folders here, or click to choose">
+        <div style="font-size:32px">🌐</div><b>Drop files or folders</b>
+        <span class="hint" style="margin:0"><a href="#" data-pick="pub" data-folder="1">choose a folder</a> · <a href="#" data-pick="pub">choose files</a></span>
+        <span class="hint" style="margin:0">Word, PDF, photos, text · up to 15 MB each</span>
       </div>
       <div class="msg" id="pubMsg" role="status" aria-live="polite"></div>
     </section>
-  </div>
 
-  <!-- my files -->
-  <div id="pMy" hidden>
-    <section class="card">
-      <h2>📁 My files</h2>
-      <p class="hint">Your own small files: only you can open them, here and in the Habit app, and your pet answers from them ("what does my land paper say?"). The owner sees only their titles (to stop misuse), not what they say.</p>
-      <div class="who" data-for="my"></div>
-      <div id="myIn" hidden>
-        <div class="drop" id="dropMy" tabindex="0" role="button" aria-label="Drop your files here, or click to choose">
-          <div style="font-size:30px">📁</div><b>Drop your files here</b>
-          <span class="hint" style="margin:0">or <a href="#" data-pick="my">choose files</a> · Word, PDF, photos, text · up to 15 MB</span>
-        </div>
-        <div class="msg" id="myMsg" role="status" aria-live="polite"></div>
-        <div class="row" style="margin-top:8px"><input id="mq" placeholder="Find in my files" aria-label="Find in my files"><button id="mfind" type="button">Find</button></div>
-        <div id="myList"></div>
+    <!-- 🏛 the office box -->
+    <section class="card off" aria-labelledby="hOff">
+      <h2 id="hOff">🏛 Office box · మా ఆఫీస్</h2>
+      <p class="hint">Your office's own files: only your staff can read them. The office code is made in the Habit app (Files › 🏢 Office › 🏛 Office space).</p>
+      <div id="offWho"></div>
+      <div class="drop" id="dropOff" tabindex="0" role="button" aria-label="Office box: drop files or folders here, or click to choose">
+        <div style="font-size:32px">🏛</div><b>Drop files or folders</b>
+        <span class="hint" style="margin:0"><a href="#" data-pick="off" data-folder="1">choose a folder</a> · <a href="#" data-pick="off">choose files</a></span>
+        <span class="hint" style="margin:0">Word, PDF, photos, text · up to 15 MB each</span>
       </div>
+      <div class="msg" id="offMsg" role="status" aria-live="polite"></div>
     </section>
   </div>
+  <button id="stopAll" type="button" class="ghost" hidden>Stop adding</button>
+
+  <!-- finding and reading -->
+  <section class="card">
+    <h2>🔎 Find and read</h2>
+    <div class="tabs" role="tablist">
+      <button id="tPub" role="tab" aria-selected="true" type="button">🌐 Public</button>
+      <button id="tOff" role="tab" aria-selected="false" type="button">🏛 Our office</button>
+      <button id="tMy" role="tab" aria-selected="false" type="button">📁 My files</button>
+    </div>
+    <div class="row"><input id="q" placeholder="e.g. GO 30 assignment, pension rules, Sy.No.165" aria-label="Search"><button id="find" type="button">Find</button></div>
+    <div class="msg" id="findMsg" role="status"></div>
+    <div id="myAdd" hidden><p class="hint" style="margin:8px 0 0">📁 My files are only yours (your pet answers from them). <a href="#" data-pick="my">Add my files</a></p><div class="msg" id="myMsg" role="status"></div></div>
+    <div id="hits"></div>
+  </section>
 
   <section class="card" id="reader" hidden><h2 id="rTitle"></h2><small id="rInfo" class="hint"></small><pre id="rText"></pre></section>
   <input id="pick" type="file" multiple accept=".docx,.pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" hidden>
+  <input id="pickFolder" type="file" webkitdirectory directory multiple hidden>
 </main>
 <script>
 const $ = id => document.getElementById(id);
 const store = { get(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }, set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) { } } };
 function say(el, t, ok) { el.textContent = t; el.className = "msg " + (ok ? "ok" : "bad"); }
-let login = store.get("habitLogin"), password = "", myName = "";   // (the password stays only in this page, never saved)
-async function call(path, body) {
+const el = (tag, props) => Object.assign(document.createElement(tag), props || {});
+
+// ---------- who: the Habit login (public box, my files) and the office code (office box) ----------
+let login = store.get("habitLogin"), password = "", myName = "";      // (the password stays only in this page)
+let code = store.get("officeCode"), officeName = "";
+let device = store.get("officeDevice");
+if (!device) { device = "pc-" + Math.random().toString(36).slice(2) + Date.now().toString(36); store.set("officeDevice", device); }
+
+async function lib(path, body) {
   const r = await fetch("/api/library/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  let j = {}; try { j = await r.json(); } catch (e) { }
+  if (!r.ok) throw Object.assign(new Error(j.error || "Something went wrong."), { status: r.status });
+  return j;
+}
+async function off(path, body) {
+  const r = await fetch("/api/office/" + path, { method: "POST", headers: { "Content-Type": "application/json", "X-Office-Code": code, "X-Device": device }, body: JSON.stringify(body || {}) });
   let j = {}; try { j = await r.json(); } catch (e) { }
   if (!r.ok) throw Object.assign(new Error(j.error || "Something went wrong."), { status: r.status });
   return j;
 }
 const auth = o => Object.assign({ login, password }, o || {});
 
-// ----- tabs -----
-function tab(which) {
-  $("tPub").setAttribute("aria-selected", which === "pub"); $("tMy").setAttribute("aria-selected", which === "my");
-  $("pPub").hidden = which !== "pub"; $("pMy").hidden = which !== "my"; $("reader").hidden = true;
-  if (which === "my" && password) loadMine();
-}
-$("tPub").onclick = () => tab("pub"); $("tMy").onclick = () => tab("my");
-
-// ----- log in (the same mobile number / email and password as in the Habit app) -----
-function drawWho() {
-  for (const box of document.querySelectorAll(".who")) {
-    box.textContent = "";
-    if (password) {
-      const d = document.createElement("div"); d.className = "row";
-      const s = document.createElement("span"); s.style.flex = "1"; s.textContent = "👤 " + (myName || "Logged in");
-      const out = document.createElement("button"); out.className = "ghost"; out.type = "button"; out.textContent = "Log out";
-      out.onclick = () => { password = ""; myName = ""; $("myIn").hidden = true; drawWho(); };
-      d.append(s, out); box.append(d);
-    } else {
-      const l1 = Object.assign(document.createElement("input"), { placeholder: "Mobile number or email", value: login, autocomplete: "username" });
-      const l2 = Object.assign(document.createElement("input"), { type: "password", placeholder: "Password", autocomplete: "current-password" });
-      l2.style.marginTop = "8px";
-      const go = Object.assign(document.createElement("button"), { type: "button", textContent: "Log in" });
-      const m = document.createElement("div"); m.className = "msg";
-      go.onclick = async () => {
-        login = l1.value.trim(); password = l2.value;
-        if (!login || !password) { say(m, "Type your mobile number and password.", false); password = ""; return; }
-        try { const j = await call("my-list", auth()); myName = j.name; store.set("habitLogin", login); drawWho(); $("myIn").hidden = false; showMine(j.items); }
-        catch (e) { password = ""; say(m, e.status === 401 ? "Wrong mobile number / email or password. (No Habit login yet? Make one in the Habit app first.)" : e.message, false); }
-      };
-      l2.addEventListener("keydown", e => { if (e.key === "Enter") go.click(); });
-      box.append(l1, l2, go, m);
-    }
+function drawPub() {
+  const box = $("pubWho"); box.textContent = "";
+  $("dropPub").setAttribute("aria-disabled", password ? "false" : "true");
+  if (password) {
+    const d = el("div", { className: "who" }); d.append(el("span", { textContent: "👤 " + (myName || login) }));
+    const out = el("button", { className: "ghost", type: "button", textContent: "Log out" });
+    out.onclick = () => { password = ""; myName = ""; drawPub(); if (tab === "my") show(); };
+    d.append(out); box.append(d); return;
   }
+  const l1 = el("input", { placeholder: "Mobile number or email", value: login, autocomplete: "username" });
+  const l2 = el("input", { type: "password", placeholder: "Password", autocomplete: "current-password" }); l2.style.marginTop = "8px";
+  const go = el("button", { type: "button", textContent: "Log in" }), m = el("div", { className: "msg" });
+  go.onclick = async () => {
+    login = l1.value.trim(); password = l2.value;
+    if (!login || !password) { password = ""; say(m, "Type your mobile number and password.", false); return; }
+    try { const j = await lib("my-list", auth()); myName = j.name; store.set("habitLogin", login); drawPub(); if (tab === "my") show(); }
+    catch (e) { password = ""; say(m, e.status === 401 ? "Wrong mobile number / email or password. (No Habit login yet? Make one in the Habit app first.)" : e.message, false); }
+  };
+  l2.addEventListener("keydown", e => { if (e.key === "Enter") go.click(); });
+  box.append(l1, l2, go, m);
 }
-drawWho();
-
-// ----- reading -----
-async function read(id, title, info) {
+async function openOffice() {
   try {
-    const j = await call("read", auth({ id }));
-    $("rTitle").textContent = title; $("rInfo").textContent = info || ""; $("rText").textContent = j.text || "";
-    $("reader").hidden = false; $("reader").scrollIntoView({ behavior: "smooth" });
-  } catch (e) { alert(e.message); }
+    let j;
+    try { j = await off("me"); }
+    catch (e) { if (e.status !== 403) throw e; await off("join", { code, name: "Computer" }); j = await off("me"); }
+    officeName = j.office.name + (j.office.files ? ` · ${j.office.files} ${j.office.files === 1 ? "file" : "files"}` : "");
+    store.set("officeCode", code);
+  } catch (e) { officeName = ""; code = ""; store.set("officeCode", ""); drawOff(e.message); return; }
+  drawOff();
 }
-function hit(o, list, canDelete) {
-  const d = document.createElement("div"); d.className = "hit"; d.tabIndex = 0;
-  const box = document.createElement("div");
-  const b = document.createElement("b"); b.textContent = o.title;
-  const info = [o.added ? new Date(o.added).toLocaleDateString() : "", o.by ? "added by " + o.by : "", o.chars ? o.chars.toLocaleString() + " characters" : ""].filter(Boolean).join(" · ");
-  const s = document.createElement("small"); s.textContent = o.snippet || info;
-  box.append(b, s); d.append(box);
-  d.onclick = d.onkeydown = ev => { if (ev.type === "keydown" && ev.key !== "Enter") return; if (ev.target.tagName === "BUTTON") return; read(o.id, o.title, info); };
-  if (canDelete) {
-    const x = Object.assign(document.createElement("button"), { className: "ghost", type: "button", textContent: "Delete" });
-    x.onclick = async ev => {
-      ev.stopPropagation();
-      if (x.dataset.sure !== "1") { x.dataset.sure = "1"; x.textContent = "Tap again"; return; }
-      try { await call("delete", auth({ id: o.id })); d.remove(); } catch (e) { x.textContent = "Couldn't"; }
-    };
-    d.append(x);
+function drawOff(err) {
+  const box = $("offWho"); box.textContent = "";
+  $("dropOff").setAttribute("aria-disabled", code && officeName ? "false" : "true");
+  if (code && officeName) {
+    const d = el("div", { className: "who" }); d.append(el("span", { textContent: "🏢 " + officeName }));
+    const out = el("button", { className: "ghost", type: "button", textContent: "Close" });
+    out.onclick = () => { code = ""; officeName = ""; store.set("officeCode", ""); drawOff(); if (tab === "off") show(); };
+    d.append(out); box.append(d); return;
   }
-  list.append(d);
+  const r = el("div", { className: "row" });
+  const c = el("input", { placeholder: "Office code, e.g. PDT-7K29Q", autocomplete: "off", spellcheck: false });
+  const go = el("button", { type: "button", textContent: "Open" }), m = el("div", { className: "msg" });
+  go.onclick = () => { code = c.value.trim().toUpperCase(); if (code.length < 5) { say(m, "Type the office code.", false); return; } say(m, "Opening…", true); openOffice(); };
+  c.addEventListener("keydown", e => { if (e.key === "Enter") go.click(); });
+  r.append(c, go); box.append(r, m);
+  if (err) say(m, err, false);
 }
+drawPub(); drawOff(); if (code) openOffice();
 
-// ----- the public library -----
-async function find() {
-  const q = $("q").value.trim();
-  say($("findMsg"), "Looking…", true); $("hits").textContent = "";
-  try {
-    const j = await call("search", { q });
-    const f = j.found || [];
-    say($("findMsg"), q.length < 2 ? `Newest${j.total ? ` (of ${j.total})` : ""} · click one to read` : f.length ? `${f.length} found · click one to read` : `Nothing found for "${q}".`, !!f.length || q.length < 2);
-    for (const o of f) hit(o, $("hits"), false);
-  } catch (e) { say($("findMsg"), e.message, false); }
-}
-$("find").onclick = find;
-$("q").addEventListener("keydown", e => { if (e.key === "Enter") find(); });
-find();
-
-// ----- my files -----
-function showMine(items) {
-  const l = $("myList"); l.textContent = "";
-  if (!items.length) { l.append(Object.assign(document.createElement("p"), { className: "hint", textContent: "No files yet. Drop your first one above." })); return; }
-  for (const o of items) hit(o, l, true);
-}
-async function loadMine() { try { const j = await call("my-list", auth()); showMine(j.items); } catch (e) { say($("myMsg"), e.message, false); } }
-$("mfind").onclick = async () => {
-  const q = $("mq").value.trim(); if (q.length < 2) { loadMine(); return; }
-  try { const j = await call("my-search", auth({ q })); $("myList").textContent = ""; (j.found || []).forEach(o => hit(o, $("myList"), true)); if (!(j.found || []).length) say($("myMsg"), `Nothing found for "${q}".`, false); }
-  catch (e) { say($("myMsg"), e.message, false); }
-};
-$("mq").addEventListener("keydown", e => { if (e.key === "Enter") $("mfind").click(); });
-
-// ----- adding files -----
-const OK_EXT = /\.(docx|pdf|txt|md|csv|jpe?g|png|webp)$/i;
+// ---------- adding: whole folders or files, one by one ----------
+const OK_EXT = /\.(docx|pdf|txt|md|csv|jpe?g|png|webp)$/i, FREE = /\.(docx|txt|md|csv)$/i;
 function typeOf(f) {
   const n = f.name.toLowerCase();
   if (n.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -211,38 +190,133 @@ function typeOf(f) {
   if (n.endsWith(".webp")) return "image/webp";
   return "text/plain";
 }
-let busy = false, pickFor = "pub";
+async function walk(entry, out) {
+  if (entry.isFile) { await new Promise(ok => entry.file(f => { f.where = entry.fullPath.replace(/^\//, ""); out.push(f); ok(); }, () => ok())); return; }
+  if (!entry.isDirectory) return;
+  const reader = entry.createReader();
+  for (;;) { const batch = await new Promise(ok => reader.readEntries(ok, () => ok([]))); if (!batch.length) break; for (const e of batch) await walk(e, out); }
+}
+let busy = false, stop = false;
 async function sendAll(files, where) {
-  const msg = where === "pub" ? $("pubMsg") : $("myMsg");
-  if (!password) { say(msg, "Log in first (above).", false); return; }
-  if (busy) { say(msg, "Still adding the last files…", false); return; }
-  const good = files.filter(f => OK_EXT.test(f.name) && f.size > 0 && f.size <= 15 * 1024 * 1024);
-  if (!good.length) { say(msg, "No files to add (Word, PDF, photos or text, up to 15 MB).", false); return; }
-  busy = true;
-  let done = 0, same = 0, held = 0, failed = 0, why = "";
+  const msg = where === "pub" ? $("pubMsg") : where === "off" ? $("offMsg") : $("myMsg");
+  if ((where === "pub" || where === "my") && !password) { say(msg, "Log in first (in the 🌐 Public box).", false); return; }
+  if (where === "off" && !(code && officeName)) { say(msg, "Open your office with its code first.", false); return; }
+  if (busy) { say(msg, "Still adding the last files… (or tap Stop adding)", false); return; }
+  const good = files.filter(f => OK_EXT.test(f.name) && f.size > 0 && f.size <= 15 * 1024 * 1024 && !f.name.startsWith("~$"));
+  const skipped = files.length - good.length;
+  if (!good.length) { say(msg, "No files to add (Word, PDF, photos or text, up to 15 MB)" + (skipped ? `; ${skipped} skipped` : "") + ".", false); return; }
+  busy = true; stop = false; $("stopAll").hidden = false;
+  good.sort((a, b) => (FREE.test(b.name) ? 1 : 0) - (FREE.test(a.name) ? 1 : 0));   // Word and text first (fastest)
+  let done = 0, same = 0, held = 0, failed = 0, later = 0, why = "";
+  const line = () => `✓ ${done} added` + (same ? ` · ${same} already there` : "") + (held ? ` · ⏳ ${held} wait for the owner (ID/phone/bank numbers)` : "") +
+    (later ? ` · ${later} for tomorrow` : "") + (failed ? ` · ✕ ${failed} couldn't be read${why ? " (" + why + ")" : ""}` : "") + (skipped ? ` · ${skipped} skipped` : "");
   for (const [k, f] of good.entries()) {
-    say(msg, `Adding ${k + 1} of ${good.length}…`, true);
+    if (stop) break;
+    say(msg, `Adding ${k + 1} of ${good.length}… ` + line(), true);
     try {
       const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = bad; r.readAsDataURL(f); });
-      const j = await call(where === "pub" ? "add" : "my-add", auth({ name: f.name, mediaType: typeOf(f), data }));
+      const j = where === "off" ? await off("add", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data })
+        : await lib(where === "pub" ? "add" : "my-add", auth({ name: f.name, mediaType: typeOf(f), data }));
       if (j.same) same++; else if (j.held) held++; else done++;
-    } catch (e) { failed++; why = e.message; if (e.status === 401 || e.status === 429) break; }
+    } catch (e) {
+      if (/used up|tomorrow/i.test(e.message)) later++;
+      else { failed++; why = e.message.slice(0, 80); }
+      if (e.status === 401 || e.status === 403) break;
+      if (e.status === 429 && /Too many/.test(e.message)) await new Promise(ok => setTimeout(ok, 60000));
+    }
   }
-  busy = false;
-  say(msg, [`✓ ${done} added`, same ? `${same} already there` : "", held ? `⏳ ${held} wait for the owner (they have ID, phone or bank numbers)` : "", failed ? `✕ ${failed} couldn't be added: ${why}` : ""].filter(Boolean).join(" · "), !failed);
-  if (where === "pub") find(); else loadMine();
+  busy = false; $("stopAll").hidden = true;
+  say(msg, (stop ? "Stopped. " : "Done. ") + line(), !failed);
+  if (where === "off") openOffice();
+  if ((where === "pub" && tab === "pub") || (where === "my" && tab === "my")) show();
 }
-for (const [id, where] of [["dropPub", "pub"], ["dropMy", "my"]]) {
+$("stopAll").onclick = () => { stop = true; };
+let pickFor = "pub";
+for (const [id, where] of [["dropPub", "pub"], ["dropOff", "off"]]) {
   const d = $(id);
   ["dragenter", "dragover"].forEach(t => d.addEventListener(t, e => { e.preventDefault(); d.style.background = "rgba(124,140,255,.12)"; }));
   ["dragleave", "drop"].forEach(t => d.addEventListener(t, e => { e.preventDefault(); d.style.background = ""; }));
-  d.addEventListener("drop", e => sendAll([...e.dataTransfer.files], where));
+  d.addEventListener("drop", async e => {
+    const items = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    const files = [];
+    if (items.length) { say(where === "pub" ? $("pubMsg") : $("offMsg"), "Finding the files in the folders…", true); for (const en of items) await walk(en, files); }
+    else files.push(...e.dataTransfer.files);
+    sendAll(files, where);
+  });
   d.addEventListener("click", e => { if (e.target.tagName !== "A") { pickFor = where; $("pick").click(); } });
   d.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickFor = where; $("pick").click(); } });
 }
-document.querySelectorAll("[data-pick]").forEach(a => a.onclick = e => { e.preventDefault(); pickFor = a.dataset.pick; $("pick").click(); });
+document.querySelectorAll("[data-pick]").forEach(a => a.onclick = e => { e.preventDefault(); pickFor = a.dataset.pick; (a.dataset.folder ? $("pickFolder") : $("pick")).click(); });
 $("pick").onchange = () => { sendAll([...$("pick").files], pickFor); $("pick").value = ""; };
-if (location.hash === "#my") tab("my");
+$("pickFolder").onchange = () => { sendAll([...$("pickFolder").files], pickFor); $("pickFolder").value = ""; };
+
+// ---------- finding and reading ----------
+let tab = "pub";
+function setTab(t) {
+  tab = t;
+  for (const [id, k] of [["tPub", "pub"], ["tOff", "off"], ["tMy", "my"]]) $(id).setAttribute("aria-selected", t === k);
+  $("myAdd").hidden = t !== "my"; $("reader").hidden = true;
+  $("q").placeholder = t === "off" ? "Sy.No., village, name, R.C. number…" : t === "my" ? "Find in my files" : "e.g. GO 30 assignment, pension rules, e-crop";
+  show();
+}
+$("tPub").onclick = () => setTab("pub"); $("tOff").onclick = () => setTab("off"); $("tMy").onclick = () => setTab("my");
+async function read(o, info) {
+  try {
+    const j = tab === "off" ? await off("read", { id: o.id }) : await lib("read", auth({ id: o.id }));
+    $("rTitle").textContent = o.title; $("rInfo").textContent = info || ""; $("rText").textContent = j.text || "";
+    $("reader").hidden = false; $("reader").scrollIntoView({ behavior: "smooth" });
+  } catch (e) { say($("findMsg"), e.message, false); }
+}
+function hit(o, canDelete) {
+  const d = el("div", { className: "hit", tabIndex: 0 }), box = el("div");
+  const title = [o.date, o.title].filter(Boolean).join(" · ");
+  const info = [o.added ? new Date(o.added).toLocaleDateString() : "", o.by ? "added by " + o.by : "", o.chars ? o.chars.toLocaleString() + " characters" : "", o.rc || ""].filter(Boolean).join(" · ");
+  box.append(el("b", { textContent: title }), el("small", { textContent: o.snippet || (o.hits || [])[0] || info }));
+  d.append(box);
+  d.onclick = d.onkeydown = ev => { if (ev.type === "keydown" && ev.key !== "Enter") return; if (ev.target.tagName === "BUTTON") return; read(o, info); };
+  if (canDelete) {
+    const x = el("button", { className: "ghost", type: "button", textContent: "Delete" });
+    x.onclick = async ev => {
+      ev.stopPropagation();
+      if (x.dataset.sure !== "1") { x.dataset.sure = "1"; x.textContent = "Tap again"; return; }
+      try { await lib("delete", auth({ id: o.id })); d.remove(); } catch (e) { x.textContent = "Couldn't"; }
+    };
+    d.append(x);
+  }
+  $("hits").append(d);
+}
+async function show() {
+  const q = $("q").value.trim();
+  $("hits").textContent = "";
+  try {
+    if (tab === "pub") {
+      say($("findMsg"), "Looking…", true);
+      const j = await lib("search", { q });
+      const f = j.found || [];
+      say($("findMsg"), q.length < 2 ? `Newest${j.total ? ` (${j.total} in the public box)` : ""} · click one to read` : f.length ? `${f.length} found · click one to read` : `Nothing found for "${q}".`, !!f.length || q.length < 2);
+      f.forEach(o => hit(o, false));
+    } else if (tab === "off") {
+      if (!(code && officeName)) { say($("findMsg"), "Open your office with its code (in the 🏛 Office box) to search its files.", false); return; }
+      if (q.length < 2) { say($("findMsg"), "Type a Sy.No., village, name or R.C. number.", true); return; }
+      say($("findMsg"), "Looking…", true);
+      const j = await off("search", { q });
+      const f = j.found || [];
+      say($("findMsg"), f.length ? `${f.length} found · oldest first · click one to read` : `Nothing found for "${q}".`, !!f.length);
+      f.forEach(o => hit(o, false));
+    } else {
+      if (!password) { say($("findMsg"), "Log in (in the 🌐 Public box) to see your own files.", false); return; }
+      const j = q.length < 2 ? await lib("my-list", auth()) : await lib("my-search", auth({ q }));
+      const f = j.items || j.found || [];
+      say($("findMsg"), f.length ? `${f.length} of your files · click one to read` : q.length < 2 ? "No files yet. Add your first one above." : `Nothing found for "${q}".`, true);
+      f.forEach(o => hit(o, true));
+    }
+  } catch (e) { say($("findMsg"), e.message, false); }
+}
+$("find").onclick = show;
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") show(); });
+if (location.pathname === "/office" || location.hash === "#office") setTab("off");
+else if (location.hash === "#my") setTab("my");
+else show();
 </script>
 </body>
 </html>
