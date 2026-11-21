@@ -126,7 +126,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         ChatSync.hold(this, "pet")       // while the pet floats, Habit Chat messages come at once
         tts = TextToSpeech(this, this)
         SoundFx.load(this)
-        say("Hi! I'm Habit AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
+        // the hello and how to close it: only the first few times (after that it just appears, quietly)
+        if (store.introDue()) say(if (te()) "హాయ్! నేను హ్యాబిట్. నన్ను తాకి మాట్లాడండి. మూసేయాలంటే నన్ను కిందకి ✕ దగ్గరికి లాగండి."
+            else "Hi! I'm Habit AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
         main.postDelayed(wakeTick, 6000)
     }
 
@@ -1372,8 +1374,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val src = json.optJSONArray("sources")
         if (src != null && src.length() > 0)
             extra += "\n\nSources:\n" + (0 until src.length()).joinToString("\n") { i -> src.optJSONObject(i)?.let { "• " + it.optString("title") + "\n  " + it.optString("url") } ?: "" }
-        // which brain answered, when it wasn't the big AI (shown, not spoken)
-        if (json.optBoolean("self")) extra += "\n\n🧠 " + (if (store.lang == "te") "హ్యాబిట్ సొంత మెదడు, తను నేర్చుకున్న దాని నుంచి జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "Habit's own brain answered from what it has learned (the big AI is away right now)")
+        // which brain answered, when it wasn't the big AI (shown, not spoken): once in a while, not under every answer
+        val note = (json.optBoolean("self") || json.optBoolean("own")) && store.onceEvery("brainNote", 12 * 3600_000L)
+        if (!note && (json.optBoolean("self") || json.optBoolean("own"))) { }
+        else if (json.optBoolean("self")) extra += "\n\n🧠 " + (if (store.lang == "te") "హ్యాబిట్ సొంత మెదడు, తను నేర్చుకున్న దాని నుంచి జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "Habit's own brain answered from what it has learned (the big AI is away right now)")
         else if (json.optBoolean("own")) extra += "\n\n🧠 " + (if (store.lang == "te") "హ్యాబిట్ సొంత మెదడు జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "Habit's own brain answered (the big AI is away right now)")
         else if (json.optBoolean("learned")) extra += "\n\n📚 " + (if (store.lang == "te") "ముందే సిద్ధం చేసిన జవాబు" else "A prepared answer to a common question")
         else if (json.optBoolean("tiny")) extra += "\n\n📴 " + (if (store.lang == "te") "ఇంటర్నెట్ లేదు, ఫోన్‌లోని చిన్న మెదడు జవాబిచ్చింది" else "No internet: the tiny brain on this phone answered")
