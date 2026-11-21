@@ -396,6 +396,8 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
       if (m) return R("media", say(te, "📰 హ్యాబిట్ మీడియాలో దీని గురించి: ", "📰 Here's what Habit Media has on this: ") + `${String(m.it.title).replace(/^[^\p{L}\p{N}]+/u, "")}\n${clip(m.it.body, 650)}`, "thinking", { sources: srcOf(m.it) });
       if (!strong || DEFINE.test(q)) { const wk = await wiki(q, te); if (wk) return wk; }
     } catch (e) { console.error("Self brain:", e.message); }
+    // no answer: it studies this by itself in a few minutes, so the next time it knows
+    if (answers && answers.missed) answers.missed(q, (ctx && ctx.device) || "?");
     return strong ? null : fallback(te, ctx, info);
   }
   function fallback(te, ctx, info) {

@@ -235,6 +235,7 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
     const question = lastText.replace(/^\[Your eyes:[^\]]*\]\s*(\(looking again\)\s*)?/, "");
     const used = {};
     const found = photo ? [] : await facts(question, lang, used, (ctx && ctx.uid) || "");
+    if (!photo && !found.length && answers && answers.missed) answers.missed(question, (ctx && ctx.device) || "?");   // (it will study this)
     const msgs = messages.slice(-4).map((m, i, all) => {
       const text = Array.isArray(m.content) ? String((m.content.find(c => c.type === "text") || {}).text || "") : String(m.content || "");
       const o = { role: m.role === "assistant" ? "assistant" : "user", content: text.slice(0, i === all.length - 1 ? 1200 : 400) };

@@ -82,6 +82,46 @@ module.exports = function makeAnswers({ DATA_DIR, learn }) {
     if (keys.length > 6000) { keys.sort((a, b) => (qs[a].last < qs[b].last ? -1 : 1)).slice(0, 1000).forEach(x => delete qs[x]); }
   }
 
+  // ---------- studying by itself (selfstudy.js): questions it couldn't answer well, even asked once ----------
+  let studier = null;
+  /** The server gives the studier once it is made (it needs our own brain, made after this). */
+  function setStudy(fn) { studier = fn; }
+  /** Habit had no good answer to this general question: it studies it by itself soon (free sources, our own brain). */
+  function missed(q, who) {
+    if (off() || !general(q)) return;
+    note(q, who);
+    let k = key(q); if (!k) return;
+    if (!qs[k]) { let best = "", sc = 0; for (const o of Object.keys(qs)) { const x = alike(k, o); if (x > sc) { sc = x; best = o; } } if (sc >= 0.8) k = best; }
+    if (qs[k]) { qs[k].missed = (qs[k].missed || 0) + 1; dirty = true; }
+  }
+  let studying = false;
+  /** Studies a few missed (or common) questions with free sources. Runs every 10 minutes; nothing is sent to Claude. */
+  async function selfStudy(max = Number(process.env.SELF_STUDY_PER_RUN || 6)) {
+    if (off() || studying || !studier) return { made: 0 };
+    studying = true;
+    let made = 0, none = 0;
+    try {
+      const now = Date.now(), month = 30 * 86400e3;
+      const todo = Object.entries(qs)
+        .filter(([k, e]) => (e.missed || e.askers.length >= MIN()) && !e.skip && !learned.some(a => a.key === k && now - Date.parse(a.at) < month) &&
+          (!e.tried || now - Date.parse(e.tried) > (e.tries >= 3 ? 7 : 1) * 86400e3))
+        .sort((a, b) => (b[1].missed || 0) - (a[1].missed || 0) || b[1].askers.length - a[1].askers.length || (a[1].last < b[1].last ? 1 : -1)).slice(0, max);
+      for (const [k, e] of todo) {
+        e.tried = new Date().toISOString(); e.tries = (e.tries || 0) + 1; dirty = true;
+        let r = null;
+        try { r = await studier(e.q, e.lang); } catch (x) { r = null; }
+        if (!r) { none++; continue; }
+        learned = learned.filter(a => a.key !== k);
+        learned.push({ id: crypto.randomBytes(5).toString("hex"), key: k, q: e.q, lang: e.lang, answer: r.answer, sources: r.sources || [], at: new Date().toISOString(), uses: 0, from: "self", how: r.how });
+        e.found = true; made++;
+      }
+    } finally { studying = false; save(); }
+    if (made || none) console.log(`self study: learned ${made}, nothing found for ${none}`);
+    return { made, none };
+  }
+  setTimeout(() => selfStudy().catch(() => {}), 60000).unref();
+  setInterval(() => selfStudy().catch(() => {}), 10 * 60000).unref();
+
   /** The learned answer for a question, if one fits: { answer, score, id, from }. */
   function lookup(q, { min = 0.75 } = {}) {
     if (off()) return null;
@@ -158,6 +198,7 @@ Reply only with JSON: {"answer": "...", "skip": false}`;
       const todo = Object.entries(qs)
         .filter(([k, e]) => e.askers.length >= MIN() && !learned.some(a => a.key === k && now - Date.parse(a.at) < month))
         .sort((a, b) => b[1].askers.length - a[1].askers.length).slice(0, max);
+      if (learn.claudeOut && learn.claudeOut()) { preparing = false; return await selfStudy(max); }   // Claude is resting: Habit studies by itself
       for (const [k, e] of todo) {
         try {
           const out = await learn.callClaude({ system: PREP(e.lang), messages: [{ role: "user", content: e.q }], maxTokens: 900, search: true, maxSources: 2 });
@@ -169,6 +210,8 @@ Reply only with JSON: {"answer": "...", "skip": false}`;
           made++; dirty = true;
         } catch (x) { console.error("learning: couldn't prepare an answer:", x.status || "", x.message); break; }   // AI down: try tomorrow
       }
+      // Claude couldn't (or there was nothing for it): Habit studies the rest by itself
+      if (!made) { preparing = false; const r = await selfStudy(max); made += r.made; preparing = true; }
       // forget questions nobody else asked in 30 days
       for (const [k, e] of Object.entries(qs)) if (now - Date.parse(e.last) > month && e.askers.length < MIN()) { delete qs[k]; dirty = true; }
     } finally { preparing = false; save(); }
@@ -181,15 +224,17 @@ Reply only with JSON: {"answer": "...", "skip": false}`;
 
   // ---------- for the Teach page ----------
   function list() {
-    const top = Object.entries(qs).map(([k, e]) => ({ key: k, q: e.q, lang: e.lang, people: e.askers.length, times: e.n, last: e.last, skipped: !!e.skip }))
-      .sort((a, b) => b.people - a.people || b.times - a.times).slice(0, 60);
+    const top = Object.entries(qs).map(([k, e]) => ({ key: k, q: e.q, lang: e.lang, people: e.askers.length, times: e.n, last: e.last, skipped: !!e.skip,
+      missed: e.missed || 0, tried: e.tries || 0, found: !!e.found || learned.some(a => a.key === k) }))
+      .sort((a, b) => (b.missed && !b.found ? 1 : 0) - (a.missed && !a.found ? 1 : 0) || b.people - a.people || b.times - a.times).slice(0, 80);
     const sorted = learned.slice().sort((a, b) => (b.uses || 0) - (a.uses || 0) || (Date.parse(b.at) - Date.parse(a.at)));
     return { on: !off(), fromClaude: !/^(off|no|false|0)$/i.test(process.env.LEARN_FROM_CLAUDE || ""), minPeople: MIN(), questions: top,
       learned: sorted.slice(0, 300).map(a => Object.assign({}, a, { from: a.from || "night" })), total: learned.length, fromChat: learned.filter(a => a.from === "chat").length };
   }
   function remove(id) { const n = learned.length; learned = learned.filter(a => a.id !== id); dirty = true; save(); return learned.length < n; }
   function forget(k) { const had = !!qs[k]; delete qs[k]; learned = learned.filter(a => a.key !== k); dirty = true; save(); return had; }
-  function stats() { return { on: !off(), questions: Object.keys(qs).length, learned: learned.length, fromChat: learned.filter(a => a.from === "chat").length, used: learned.reduce((s, a) => s + (a.uses || 0), 0) }; }
+  function stats() { return { on: !off(), questions: Object.keys(qs).length, learned: learned.length, fromChat: learned.filter(a => a.from === "chat").length,
+    bySelf: learned.filter(a => a.from === "self").length, used: learned.reduce((s, a) => s + (a.uses || 0), 0) }; }
 
-  return { note, lookup, used, keep, direct, general, prepare, list, remove, forget, stats, _key: key };
+  return { note, lookup, used, keep, direct, general, prepare, list, remove, forget, stats, missed, setStudy, selfStudy, _key: key };
 };

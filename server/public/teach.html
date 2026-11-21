@@ -145,10 +145,11 @@ summary{cursor:pointer;font-weight:600}
     <section class="card">
       <h2>📚 Learned answers · నేర్చుకున్న జవాబులు</h2>
       <p class="hint">Habit learns from Claude as it talks: when Claude answers a general question that is right for anyone (never anything about a person), the answer is kept here for 90 days, so Habit can answer it by itself when Claude can't (for example when this month's limit is used up). Delete any answer you don't want. </p>
+      <p class="hint">🧠 <b>Studies by itself (free, no Claude):</b> a general question Habit couldn't answer well, even asked once, is looked up a few minutes later in the public library, Wikipedia (Telugu and English) and DuckDuckGo, written short by our own brain (the home PC when it is on), and kept here with its sources. The next time it answers at once.</p>
       <p class="hint">When <span id="minPeople">3</span> or more different people ask the same general question, an answer is prepared at night (with Claude and the internet) and kept here. The same question is then answered at once, and our own brain uses it when Claude can't answer. Only the question is counted, never who asked; questions about a person, about today, or with long numbers are never kept. Delete any answer you don't like.</p>
       <ul id="learned"></ul>
       <p class="hint" id="learnedEmpty">No learned answers yet.</p>
-      <button id="prepare" type="button" class="ghost">Prepare answers now</button>
+      <button id="prepare" type="button" class="ghost">Study / prepare answers now</button>
       <p id="prepMsg" class="msg"></p>
       <h2 style="margin-top:18px">Common questions</h2>
       <ul id="questions"></ul>
@@ -424,7 +425,7 @@ async function loadBrain() {
   $("minPeople").textContent = learning.minPeople;
   const ul = $("learned"); ul.textContent = "";
   $("learnedEmpty").hidden = learning.learned.length > 0;
-  for (const a of learning.learned) ul.append(row(a.q, a.answer, `used ${a.uses || 0} times · ${a.from === "chat" ? "learned from Claude in a chat" : "prepared"} ${new Date(a.at).toLocaleDateString()} · ${a.lang === "te" ? "Telugu" : "English"}`, "Delete", () => api("learned/delete", { id: a.id })));
+  for (const a of learning.learned) ul.append(row(a.q, a.answer, `used ${a.uses || 0} times · ${a.from === "chat" ? "learned from Claude in a chat" : a.from === "self" ? "🧠 studied by itself" + ((a.sources || []).length ? " from " + a.sources.map(x => x.title.split(":")[0]).join(", ") : "") : "prepared"} ${new Date(a.at).toLocaleDateString()} · ${a.lang === "te" ? "Telugu" : "English"}`, "Delete", () => api("learned/delete", { id: a.id })));
   if (learning.total > learning.learned.length) ul.append(row(`…and ${learning.total - learning.learned.length} more`, "", "the most used are shown", "", null));
   try {
     const sk = await api("skills");
@@ -437,7 +438,7 @@ async function loadBrain() {
   } catch (e) { }
   const qu = $("questions"); qu.textContent = "";
   $("qEmpty").hidden = learning.questions.length > 0;
-  for (const q of learning.questions) qu.append(row(q.q, "", `${q.people} ${q.people === 1 ? "person" : "people"} · asked ${q.times} times${q.skipped ? " · no general answer (it depends on the person or the day)" : ""}`, "Forget", () => api("questions/forget", { key: q.key })));
+  for (const q of learning.questions) qu.append(row(q.q, "", `${q.people} ${q.people === 1 ? "person" : "people"} · asked ${q.times} times${q.skipped ? " · no general answer (it depends on the person or the day)" : ""}${q.missed ? (q.found ? " · 🧠 studied ✓" : q.tried ? ` · 🔎 nothing found yet (tried ${q.tried}×): teach it in 🎓 Your lessons` : " · 🧠 will study it soon") : ""}`, "Forget", () => api("questions/forget", { key: q.key })));
 }
 $("brainInstall").onclick = async () => {
   $("brainInstall").disabled = true;

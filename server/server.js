@@ -510,6 +510,9 @@ setTimeout(() => freeVoice.ready(), 30000).unref();
 const trends = require("./trends.js")();
 // Habit's self brain: answers at once without any AI model (news, panchangam, festivals, stories, jokes, learned answers…)
 const selfBrain = require("./selfbrain.js")({ media, answers, learn, trends, PETS, EMOTIONS: PET_EMOTIONS });
+// Habit studies by itself: questions it couldn't answer are looked up in free places and kept (no Claude needed)
+const selfStudy = require("./selfstudy.js")({ learn, ownBrain });
+answers.setStudy(selfStudy.study);
 /** The owner (the Team password in the app, X-Admin-Key). */
 function isOwner(req) {
   const given = String(req.headers["x-admin-key"] || ""), pw = process.env.ADMIN_PASSWORD || TEACH_PASSWORD;
