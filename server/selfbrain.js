@@ -243,7 +243,8 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     // news (on a topic, if they named one)
     if (re("\\bnews\\b|headline|varthalu|vartalu|vaartalu|vaarthalu|వార్త|న్యూస్|ముఖ్యాంశాలు").test(q)) {
       const all = posts("news", { days: 3 });
-      const topic = q.replace(new RegExp("\\b(latest|today'?s?|news|headlines?|tell me|the|about|on|what'?s|what is|in|of|any|top|please|varthalu|vartalu|vaartalu|cheppu)\\b|వార్తలు|వార్త|న్యూస్|ఈరోజు|ఈ రోజు|తాజా|చెప్పండి|చెప్పు|గురించి|సమాచారం|ముఖ్య|ఏమిటి|ఏంటి", "gi"), " ").replace(/[?.!,]/g, " ").replace(/\s+/g, " ").trim();
+      // (words that only ask for news, like "update", "give me", "now", the pet's name: not a topic — "న్యూస్ అప్డేట్ చెప్పు" is the top news)
+      const topic = q.replace(new RegExp("\\b(latest|today'?s?|news|headlines?|tell me|the|about|on|what'?s|what is|in|of|any|top|please|varthalu|vartalu|vaartalu|cheppu|updates?|update|give|show|me|some|now|current|recent|breaking|habit|hey|read|say)\\b|వార్తలు|వార్త|న్యూస్|ఈరోజు|ఈ రోజు|ఇవాళ|తాజా|చెప్పండి|చెప్పు|గురించి|సమాచారం|ముఖ్య|ఏమిటి|ఏంటి|అప్\u200c?డేట్(?:స్)?|అప్\u200c?డేటు|ఇవ్వు|ఇవ్వండి|చూపించు|వినిపించు|ఇప్పుడు|ఇప్పటి|నాకు|కొన్ని|ఏమైనా|ఏవైనా|ఉన్నాయా|హ్యాబిట్|హాబిట్|బ్రేకింగ్", "gi"), " ").replace(/[?.!,]/g, " ").replace(/\s+/g, " ").trim();
       const tw = words(topic);
       if (tw.length) {
         const hit = all.concat(posts("news", { days: 14 })).filter((i, k, a) => a.indexOf(i) === k).filter(i => { const t = tokensOf(i); return tw.every(w => t.title.some(x => same(x, w)) || t.body.some(x => same(x, w))); });

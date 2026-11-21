@@ -145,7 +145,7 @@ class QuietEar(val key: String, private val onTalk: () -> Unit, private val onDo
                         val heard = try { det.feed(frame, n) } catch (e: Exception) { detector = null; det.close(); false }
                         if (heard) { heardName = true; talked = true; main.post { if (running) onTalk() } }
                     }
-                    else if (frames > 5 && rms > maxOf(floor * 3.0, 250.0) * strict) { if (++loud >= (3 * strict).toInt()) { talked = true; main.post { if (running) onTalk() } } }
+                    else if (frames > 5 && rms > maxOf(floor * 3.0, 250.0) * strict) { if (++loud >= (8 * strict).toInt()) {   // 160 ms of talk, not a click or a tick talked = true; main.post { if (running) onTalk() } } }
                     else { loud = 0; floor = floor * 0.95 + rms * 0.05 }       // learns how quiet the room is
                     if (android.os.SystemClock.elapsedRealtime() > end) { main.post { if (running) { running = false; onDone(false) } }; break }
                 }

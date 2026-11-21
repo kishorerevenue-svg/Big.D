@@ -736,6 +736,14 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (left < 1_500L) return false
         endEar()
         if (wokeByEar) { wokeByEar = false; falseWakes++ }             // noise woke it for nothing: from now only clearly louder talk
+        // noise keeps waking it (a TV, a fan, people around): no more starting the voice typing again and again (each start
+        // beeps and the mic dot blinks): it stops listening quietly; a tap brings it back
+        if (falseWakes >= 3) {
+            noMore = true; setListening(false)
+            if (convoOn) endConvo(quiet = true)
+            showBubble(if (te()) "🔇 చుట్టూ శబ్దం ఎక్కువగా ఉంది, వినడం ఆపాను. అవసరమైతే నన్ను తట్టండి." else "🔇 Too much noise around, so I stopped listening. Tap me when you need me.", 4000)
+            return true
+        }
         val me = arrayOfNulls<QuietEar>(1)
         val ear = QuietEar(feedKey(),
             onTalk = { val e = me[0]; if (e != null && quietEar === e) startListening(again = true, ear = e) },   // someone talks: now the voice typing
