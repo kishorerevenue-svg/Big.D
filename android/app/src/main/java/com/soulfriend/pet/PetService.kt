@@ -130,6 +130,44 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         if (store.introDue()) say(if (te()) "హాయ్! నేను హ్యాబిట్. నన్ను తాకి మాట్లాడండి. మూసేయాలంటే నన్ను కిందకి ✕ దగ్గరికి లాగండి."
             else "Hi! I'm Habit AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
         main.postDelayed(wakeTick, 6000)
+        watchUnlock()
+        main.postDelayed({ dailyLook() }, 5000)
+    }
+
+    // ---------------- the first look of the day: the pet (not the app) looks at them once a day ----------------
+    private var unlockWatch: android.content.BroadcastReceiver? = null
+    private fun watchUnlock() {
+        val r = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: Intent?) { main.postDelayed({ dailyLook() }, 2500) }
+        }
+        try {
+            val f = android.content.IntentFilter(Intent.ACTION_USER_PRESENT)
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(r, f, android.content.Context.RECEIVER_EXPORTED) else registerReceiver(r, f)
+            unlockWatch = r
+        } catch (e: Exception) { }
+    }
+
+    /** The first time they use the phone each day (from 5 in the morning), the pet opens its eyes: the front camera,
+     *  one photo, then a good-morning word about how they look (a small tip if they look tired). Not at night, not on
+     *  a call, not with the screen locked; off when "👀 The pet looks at me once a day" is off on the Pet page. */
+    private fun dailyLook() {
+        if (!running || !store.mirrorOn || !store.mirrorAsked) return
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
+        val now = java.util.Calendar.getInstance()
+        if (now.get(java.util.Calendar.HOUR_OF_DAY) < 5) return
+        val last = java.util.Calendar.getInstance().apply { timeInMillis = store.mirrorAt }
+        if (store.mirrorAt > 0 && last.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) &&
+            last.get(java.util.Calendar.DAY_OF_YEAR) == now.get(java.util.Calendar.DAY_OF_YEAR)) return
+        val pm = getSystemService(android.os.PowerManager::class.java)
+        val kg = getSystemService(android.app.KeyguardManager::class.java)
+        if (pm?.isInteractive != true || kg?.isKeyguardLocked == true) return
+        if (onPhone() || listening || voiceMode || pet.talking || batteryLow() || GamesActivity.shown != null) { main.postDelayed({ dailyLook() }, 60_000); return }
+        store.mirrorAt = System.currentTimeMillis()
+        val te = store.lang == "te"
+        val h = now.get(java.util.Calendar.HOUR_OF_DAY)
+        val hi = if (te) (if (h < 12) "శుభోదయం" else if (h < 17) "నమస్కారం" else "శుభ సాయంత్రం") else (if (h < 12) "Good morning" else if (h < 17) "Hello" else "Good evening")
+        look(Eyes.Look(back = false, ask = if (te) "$hi! ఈ రోజు మొదటిసారి నన్ను చూస్తున్నావు: నన్ను చూసి ఒక మంచి మాట చెప్పు, అలసటగా కనిపిస్తే ఒక చిన్న చిట్కా కూడా."
+            else "$hi! This is your first look at me today: say something kind about how I look, and a small tip if I look tired."))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -167,6 +205,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     override fun onDestroy() {
         running = false
         unwatchCalls(); closeChoices(); closeAskBox()
+        try { unlockWatch?.let { unregisterReceiver(it) } } catch (e: Exception) { }
         ChatSync.release("pet")
         natural.stop(); voicePool.shutdownNow()
         MessageHub.listener = null
