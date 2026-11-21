@@ -106,6 +106,23 @@
             </intent-filter>
         </activity>
 
+        <!-- Share › "Give to Habit": a PDF, Word or text file, or a photo of a paper, for 📁 My files or the 📚 public library -->
+        <activity-alias
+            android:name=".GiveToHabit"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:label="Give to Habit (files)">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- Share › "Post on Habit Media": text, a link (YouTube, Instagram, Facebook, X…) or photos -->
         <activity-alias
             android:name=".PostToMedia"

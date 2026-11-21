@@ -61,7 +61,16 @@ pre{white-space:pre-wrap;font:14px/1.5 system-ui,"Noto Sans Telugu",sans-serif;b
 
     <section class="card">
       <h2>📂 Add old letters & files</h2>
-      <p class="hint">Drag whole folders here. Word (.docx) and text files go in at once; PDFs and photos are read by the AI, a few hundred a day. The same file twice is skipped.</p>
+      <p class="hint">Drag whole folders here. Word (.docx), text and PDF files with text go in at once; photos and scanned pages are read too (Telugu and English). The same file twice is skipped.</p>
+      <label>Where do they go?</label>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin:4px 0 6px">
+        <label style="margin:0;color:var(--ink)"><input type="radio" name="dest" value="office" checked style="width:auto"> 🏢 Our office (only our staff)</label>
+        <label style="margin:0;color:var(--ink)"><input type="radio" name="dest" value="public" style="width:auto"> 📚 Public library (everyone: GOs, circulars, notices)</label>
+      </div>
+      <div id="pubLogin" hidden>
+        <p class="hint">For the public library, log in with your Habit mobile number and password. Not personal papers: files with Aadhaar, PAN, phone or bank numbers wait for the owner. <a href="/library" target="_blank">Open the library</a></p>
+        <div class="row"><input id="plId" placeholder="Mobile number or email" autocomplete="username"><input id="plPw" type="password" placeholder="Password" autocomplete="current-password"></div>
+      </div>
       <div id="drop" tabindex="0" role="button" aria-label="Drop folders and files here, or click to choose">
         <div style="font-size:34px">📂</div>
         <b>Drop folders and files here</b>
@@ -113,6 +122,17 @@ $("code").addEventListener("keydown", e => { if (e.key === "Enter") $("go").clic
 $("out").onclick = () => { store.set("officeCode", ""); code = ""; $("inside").hidden = true; $("login").hidden = false; $("code").value = ""; say($("loginMsg"), "", true); };
 if (code) open();
 
+// ----- where the files go: our office, or the public library -----
+const dest = () => (document.querySelector("input[name=dest]:checked") || {}).value || "office";
+document.querySelectorAll("input[name=dest]").forEach(r => r.onchange = () => { $("pubLogin").hidden = dest() !== "public"; });
+async function toLibrary(body) {
+  const r = await fetch("/api/library/add", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(Object.assign({ login: $("plId").value.trim(), password: $("plPw").value }, body)) });
+  let j = {}; try { j = await r.json(); } catch (e) { }
+  if (!r.ok) throw Object.assign(new Error(j.error || "Something went wrong."), { status: r.status === 401 ? 403 : r.status });
+  return j;
+}
+
 // ----- many files at once: dragged folders and files, sent one by one -----
 const OK_EXT = /\.(docx|pdf|txt|md|csv|jpe?g|png|webp)$/i, FREE = /\.(docx|txt|md|csv)$/i;
 let running = false, stop = false;
@@ -151,7 +171,9 @@ async function sendAll(files) {
     if (aiOver && !FREE.test(f.name)) { later++; show(); continue; }
     try {
       const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = bad; r.readAsDataURL(f); });
-      const out = await call("add", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data });
+      if (dest() === "public" && (!$("plId").value.trim() || !$("plPw").value)) { stop = true; say($("exMsg"), "Log in for the public library first (mobile number and password).", false); break; }
+      const out = dest() === "public" ? await toLibrary({ name: f.name, mediaType: typeOf(f), data })
+        : await call("add", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data });
       if (out.same) same++; else done++;
     } catch (e) {
       if (/used up/.test(e.message)) { aiOver = true; later++; }

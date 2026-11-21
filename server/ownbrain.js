@@ -169,7 +169,7 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
   /** Facts for the question: the owner's lessons, what was learned, the owner's library, and the internet. Each look-up gives
    *  up after a few seconds. [used] (optional) gets claude: true when a fact came from Claude (an answer learned from Claude,
    *  or a document Claude read): then this answer is never used to teach Habit's own model. */
-  async function facts(q, lang, used) {
+  async function facts(q, lang, used, uid = "") {
     const te = lang === "te" || isTe(q);
     const out = [];
     const mine = ownerLesson(q);
@@ -177,7 +177,7 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
     const learned = answers ? answers.lookup(q) : null;
     if (learned) out.push(`A prepared answer to this common question (checked earlier with the internet):\n${learned.answer.slice(0, 1000)}`);
     const info = {};
-    const k = learn.knowledgeBlock(q, info);
+    const k = learn.knowledgeBlock(q, info, false, uid);
     if (k) out.push(k.trim().slice(0, 900));
     if (used && (learned || (k && info.claude))) used.claude = true;
     const jobs = [];
@@ -233,7 +233,7 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
     const lastText = Array.isArray(last.content) ? String((last.content.find(c => c.type === "text") || {}).text || "") : String(last.content || "");
     const question = lastText.replace(/^\[Your eyes:[^\]]*\]\s*(\(looking again\)\s*)?/, "");
     const used = {};
-    const found = photo ? [] : await facts(question, lang, used);
+    const found = photo ? [] : await facts(question, lang, used, (ctx && ctx.uid) || "");
     const msgs = messages.slice(-4).map((m, i, all) => {
       const text = Array.isArray(m.content) ? String((m.content.find(c => c.type === "text") || {}).text || "") : String(m.content || "");
       const o = { role: m.role === "assistant" ? "assistant" : "user", content: text.slice(0, i === all.length - 1 ? 1200 : 400) };

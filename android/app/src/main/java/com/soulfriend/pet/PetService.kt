@@ -62,6 +62,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_DANGER = "com.soulfriend.pet.DANGER"
         const val ACTION_REPLY = "com.soulfriend.pet.REPLY"
         const val ACTION_LOOK_DONE = "com.soulfriend.pet.LOOK_DONE"
+        const val ACTION_ASK = "com.soulfriend.pet.ASK"           // a question from the app (e.g. about a file in the library)
         private const val CHANNEL = "puppy"
     }
 
@@ -200,6 +201,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 else { pet.mood = PuppyView.Mood.HAPPY; showBubble("Okay, I won't look at your screen.", 3000) }
             }
             ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble(PuppyView.hello(pet.kind), 4000) }
+            ACTION_ASK -> { showPetAgain(); intent.getStringExtra("text")?.takeIf { it.isNotBlank() }?.let { q ->
+                pet.mood = PuppyView.Mood.THINKING; showBubble("“$q”\n…", 0); askBrain(q, byVoice = store.voiceOn, context = intent.getStringExtra("context") ?: "") } }
             ACTION_LOOK_DONE -> lookDone(intent.getStringExtra("path"), intent.getStringExtra("ask") ?: "", intent.getBooleanExtra("back", true), intent.getStringExtra("problem") ?: "")
         }
         return START_STICKY

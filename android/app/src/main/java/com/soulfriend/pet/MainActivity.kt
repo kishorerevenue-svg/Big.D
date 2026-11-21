@@ -85,6 +85,8 @@ class MainActivity : Activity() {
     private var renderedTab = ""
 
     internal val letter by lazy { LetterHelper(this) }
+    internal val library by lazy { LibraryHelper(this) }
+    private var pendingGive: List<Uri>? = null
     internal val messages by lazy { MessagesPage(this) }
     internal val chatPage by lazy { ChatPage(this) }
     private var socialPage: SocialPage? = null
@@ -111,6 +113,7 @@ class MainActivity : Activity() {
         const val REQ_CAM_INTENT = 24
         const val REQ_CAM_MIRROR = 25
         const val REQ_CAM_DAILY = 61
+        const val REQ_LIB_FILES = 62
         const val REQ_CARD_PERM = 26
         const val REQ_CHAT_CONTACTS = 27
         const val REQ_PET_CALL = 28
@@ -215,6 +218,13 @@ class MainActivity : Activity() {
         if (i.getBooleanExtra("mirror", false)) { pendingMirror = true; i.removeExtra("mirror") }
         i.getStringExtra("letter")?.let { tab = "files"; pendingLetter = it; i.removeExtra("letter") }
         val toMedia = i.component?.className?.endsWith(".PostToMedia") == true
+        if (i.component?.className?.endsWith(".GiveToHabit") == true && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
+            // Share › "Give to Habit": a PDF, Word file, text file or a photo of a paper, for the library
+            val files = sharedImages(i)
+            if (files.isNotEmpty()) { tab = "files"; pendingGive = files }
+            i.action = Intent.ACTION_MAIN
+            return
+        }
         if (toMedia && (i.action == Intent.ACTION_SEND || i.action == Intent.ACTION_SEND_MULTIPLE)) {
             // Share › "Post on Habit Media": text, a link (YouTube, Instagram…) or photos
             val t = i.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
@@ -255,6 +265,7 @@ class MainActivity : Activity() {
             if (pendingMirror) { pendingMirror = false; content.postDelayed({ lookAtMe(false) }, 500) }
             else if (!store.mirrorAsked && tab == "home") content.postDelayed({ if (!isFinishing && hasWindowFocus()) askDailyLook() }, 1500)
             pendingShare?.let { pendingShare = null; messages.checkShared(it) }
+            pendingGive?.let { pendingGive = null; content.postDelayed({ if (!isFinishing) library.given(it) }, 400) }
             // the pet heard "make a letter…": a letter already half filled isn't thrown away without asking
             pendingLetter?.let { req -> pendingLetter = null
                 if (letter.inProgress()) AlertDialog.Builder(this).setTitle(t("A letter is open", "ఒక లేఖ తెరిచి ఉంది"))
@@ -2032,6 +2043,13 @@ class MainActivity : Activity() {
                 findCards(list)
             }
             REQ_LETTER_PDF -> { if (resultCode == RESULT_OK) data?.data?.let { letter.onPdf(it) } }
+            REQ_LIB_FILES -> {
+                if (resultCode != RESULT_OK || data == null) { render(); return }
+                val list = ArrayList<Uri>()
+                data.clipData?.let { c -> for (k in 0 until c.itemCount) c.getItemAt(k).uri?.let { list.add(it) } }
+                if (list.isEmpty()) data.data?.let { list.add(it) }
+                library.onPicked(list)
+            }
             REQ_OFFICE_FILES -> {
                 if (resultCode != RESULT_OK || data == null) return
                 val list = ArrayList<Uri>()
