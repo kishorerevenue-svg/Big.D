@@ -990,10 +990,30 @@ class MainActivity : Activity() {
         }, 8)
         put(ui.text(t("While it's on I listen for my name all the time: the microphone dot stays on and it uses a little more battery. When someone talks near the phone, " +
             "the voice typing checks the first words (on the phone itself when it can, otherwise Google's voice typing, as with any voice typing). Only my name wakes me; " +
-            "other talk isn't kept or sent to Habit. Not during calls, or while a video or song plays.",
+            "other talk isn't kept or sent to Habit. Not during calls (the call has the microphone).",
             "ఇది ఆన్‌లో ఉన్నంతసేపు నా పేరు కోసం ఎప్పుడూ వింటాను: మైక్ చుక్క వెలుగుతుంది, బ్యాటరీ కొంచెం ఎక్కువ ఖర్చవుతుంది. ఫోన్ దగ్గర ఎవరైనా మాట్లాడితే, " +
             "వాయిస్ టైపింగ్ మొదటి మాటలు చూస్తుంది (వీలైతే ఫోన్‌లోనే, లేకపోతే మామూలు వాయిస్ టైపింగ్‌లా Google ది). నా పేరు వింటేనే పలుకుతాను; " +
-            "మిగతా మాటలు దాచను, Habit కి పంపను. కాల్స్‌లో, వీడియో లేదా పాట వస్తున్నప్పుడు వినను."), 12f, Ui.MUTED), 4)
+            "మిగతా మాటలు దాచను, Habit కి పంపను. కాల్స్‌లో మాత్రం వినను (మైక్ కాల్ దగ్గర ఉంటుంది)."), 12f, Ui.MUTED), 4)
+        // Habit's own ear for its name (like a smart speaker): made on Kaggle, kept on the phone
+        WakeWord.prepare(this)
+        val ear = WakeWord.model()
+        val earLine = ui.text(if (ear != null) t("👂 Habit's own ear is on this phone (made ${ear.made}): it hears \"Habit\" about ${Math.round(ear.recall * 100)}% of the time, even in noise, and wakes by mistake about ${"%.1f".format(ear.wakesPerHour)} times an hour of other talk. Nothing goes to the voice typing until it hears its name.",
+                "👂 హ్యాబిట్ సొంత చెవి ఈ ఫోన్‌లో ఉంది (${ear.made}): శబ్దంలో కూడా \"హ్యాబిట్\" అని పిలిస్తే దాదాపు ${Math.round(ear.recall * 100)}% సార్లు వింటుంది. పేరు వినే వరకు వాయిస్ టైపింగ్‌కి ఏమీ వెళ్ళదు.")
+            else t("👂 Habit's own ear (like a smart speaker's) isn't on this phone yet: it is made once on Kaggle (brain/habit_wake.py). Until then the voice typing checks for my name.",
+                "👂 హ్యాబిట్ సొంత చెవి (స్మార్ట్ స్పీకర్ లాంటిది) ఇంకా ఈ ఫోన్‌లో లేదు: Kaggle లో ఒకసారి తయారు చేస్తాం. అప్పటి వరకు వాయిస్ టైపింగ్ నా పేరు చూస్తుంది."), 12f, Ui.MUTED)
+        put(earLine, 4)
+        put(ui.button(t("🎧 Get the new ear", "🎧 కొత్త చెవి తీసుకో"), "ghost") {
+            toast(t("Looking for Habit's ear…", "హ్యాబిట్ చెవి కోసం చూస్తున్నాను…"))
+            WakeWord.refresh(this, store, now = true) { r ->
+                toast(when (r) {
+                    "new" -> t("👂 Got it! Habit's own ear is on. Say \"Habit\" any time.", "👂 వచ్చింది! హ్యాబిట్ సొంత చెవి పని చేస్తోంది. ఎప్పుడైనా \"హ్యాబిట్\" అనండి.")
+                    "same" -> t("You already have the newest ear.", "కొత్త చెవి ఇప్పటికే ఉంది.")
+                    "no net" -> t("No connection. Try again.", "నెట్ లేదు. మళ్ళీ ప్రయత్నించండి.")
+                    else -> t("Not made yet: run brain/habit_wake.py on Kaggle first.", "ఇంకా తయారు కాలేదు: ముందు Kaggle లో habit_wake.py నడపండి.")
+                })
+                if (r == "new" && !isFinishing) render()
+            }
+        }, 6)
         val callName = ui.input(t("Another name to call me (optional), e.g. చిన్ను", "నన్ను పిలిచే ఇంకో పేరు (ఉంటే), ఉదా: చిన్ను"), store.wakeName)
         callName.isSingleLine = true
         callName.onText { store.wakeName = it.take(40) }

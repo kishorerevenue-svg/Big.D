@@ -416,6 +416,28 @@ function readBody(req, max = 64 * 1024) {
     req.on("error", reject);
   });
 }
+// ---- Habit's ear for its name: WAKE_MODEL_URL, or the owner's Hugging Face repo <user>/habit-wake (found with HF_TOKEN)
+let wakeCache = { at: 0, v: null };
+async function wakeEar() {
+  if (wakeCache.v && Date.now() - wakeCache.at < (wakeCache.v.ready ? 3600_000 : 300_000)) return wakeCache.v;
+  let u = String(process.env.WAKE_MODEL_URL || "").trim();
+  if (!u && process.env.HF_TOKEN) {
+    try {
+      const j = await fetch("https://huggingface.co/api/whoami-v2", { headers: { Authorization: "Bearer " + process.env.HF_TOKEN }, signal: AbortSignal.timeout(8000) }).then(r => r.json());
+      if (j && j.name) u = `https://huggingface.co/${j.name}/habit-wake/resolve/main/habit_wake.json`;
+    } catch (e) { }
+  }
+  let v = { ready: false, url: u };
+  if (u) {
+    try {
+      const r = await fetch(u, { method: "HEAD", redirect: "follow", signal: AbortSignal.timeout(8000) });
+      v = { ready: r.ok, url: u, etag: r.headers.get("x-linked-etag") || r.headers.get("etag") || r.headers.get("last-modified") || "" };
+    } catch (e) { v = { ready: false, url: u, error: "can't reach it now" }; }
+  }
+  wakeCache = { at: Date.now(), v };
+  return v;
+}
+
 function clientIp(req) {
   return String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "?";
 }
@@ -558,6 +580,8 @@ const server = http.createServer(async (req, res) => {
       filesMade: sk.made, answers: ans.learned, knowledge: learn.listKnowledge().length, model: sk.model, claude: learn.claudeOut() ? "resting" : (API_KEY ? "on" : "off"),
       lastLearned: sk.lastLearned }, origin);
   }
+  // where the phone gets Habit's own ear for its name (made on Kaggle by brain/habit_wake.py, in <you>/habit-wake)
+  if (req.method === "GET" && url.pathname === "/brain/wake") return send(res, 200, await wakeEar(), origin);
   // where Habit Brain (the tiny brain on the phone) downloads its model from; the owner can name another place
   if (req.method === "GET" && url.pathname === "/brain/phone") {
     return send(res, 200, { url: process.env.PHONE_BRAIN_URL || "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",

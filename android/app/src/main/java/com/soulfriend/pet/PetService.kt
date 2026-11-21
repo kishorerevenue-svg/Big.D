@@ -132,6 +132,9 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         main.postDelayed(wakeTick, 6000)
         watchUnlock()
         main.postDelayed({ dailyLook() }, 5000)
+        // Habit's own ear for its name (made on Kaggle, kept on the phone): ready it, and look for a newer one once a day
+        WakeWord.prepare(this)
+        if (store.wakeOn) WakeWord.refresh(this, store)
     }
 
     // ---------------- the first look of the day: the pet (not the app) looks at them once a day ----------------
@@ -796,8 +799,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             onTalk = { val e = me[0]; if (e != null && wakeEar === e) wakeCheck(e) },
             onDone = { blocked -> val e = me[0]; if (e != null && wakeEar === e) { wakeEar = null; e.stop(); if (blocked) { wakeBlocked = true; wakeBlockedAt = System.currentTimeMillis() } } })
         me[0] = ear
-        // talk, a TV or a song nearby: only clearly louder talk wakes the check (its name said to it)
-        ear.strict = 1.0 + minOf(wakeChecks.size, 12) * 0.15 + (if (musicPlaying()) 1.0 else 0.0)
+        // its own ear, when it has one: only its name wakes it (like a smart speaker), nothing goes to the voice typing before
+        val det = if (WakeWord.forName(store.wakeName)) WakeWord.detector(this) else null
+        ear.detector = det
+        // without it: talk, a TV or a song nearby: only clearly louder talk wakes the check (its name said to it)
+        ear.strict = if (det != null) 1.0 else 1.0 + minOf(wakeChecks.size, 12) * 0.15 + (if (musicPlaying()) 1.0 else 0.0)
         if (ear.start(10 * 60_000L)) wakeEar = ear
     }
 
@@ -807,8 +813,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     }
 
     /** Someone is talking near the phone: do the words start with the pet's name? */
+    private var wakeSure = false                        // its own ear heard its name (not just talk)
     private fun wakeCheck(ear: QuietEar) {
         if (wakeBusy()) { stopWaking(); return }
+        wakeSure = ear.heardName
         wakeChecks.addLast(System.currentTimeMillis())
         val local = ear.key == "ondevice"
         val rec = try { if (local && Build.VERSION.SDK_INT >= 31) SpeechRecognizer.createOnDeviceSpeechRecognizer(this) else Ears.create(this, ears ?: Ears.start(this)) }
@@ -851,7 +859,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         try { rec.destroy() } catch (e: Exception) { }
         wakeEar?.let { e -> wakeEar = null; e.stop(); e.taken()?.let { Ears.fed(this, e.key, it) } }
         unhushSoon()
-        val rest = afterName(text) ?: return                           // not its name: let it go (it waits again)
+        // not its name: let it go (it waits again). But when its own ear heard the name, the voice typing only misheard
+        // it: it answers "yes?" and listens (like a smart speaker)
+        val rest = afterName(text) ?: (if (!wakeSure) return
+            else text.trim().split(Regex("\\s+")).let { w -> if (w.size >= 3) w.drop(1).joinToString(" ") else "" })   // (the first word: the misheard name)
+        wakeSure = false
         if (listening || pet.talking || CallManager.active != null || onPhone()) return
         wakeChecks.clear()
         noMore = false; tapStopped = false; unclearTries = 0

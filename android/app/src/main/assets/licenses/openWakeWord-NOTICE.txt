@@ -1,0 +1,5 @@
+assets/wake/melspectrogram.tflite and assets/wake/embedding_model.tflite come from openWakeWord v0.5.1
+(https://github.com/dscripka/openWakeWord), Apache License 2.0. The embedding model is a re-implementation of
+Google's speech_embedding model (https://tfhub.dev/google/speech_embedding/1), Apache License 2.0.
+Habit's own ear (habit_wake.json) is made with brain/habit_wake.py from synthetic Piper voices, LibriSpeech (CC BY 4.0)
+and OpenSLR 66 Telugu (CC BY-SA 4.0).
