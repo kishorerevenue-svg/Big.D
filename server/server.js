@@ -919,8 +919,8 @@ const server = http.createServer(async (req, res) => {
     let p = url.pathname === "/" ? "/index.html" : url.pathname;
     if (p === "/privacy") p = "/privacy.html";
     if (p === "/teach") p = "/teach.html";
-    if (p === "/office") p = "/office.html";
-    if (p === "/library" || p === "/my") p = "/library.html";
+    // one page with the two boxes: 🌐 public and 🏛 office (bigdai.tech/office opens it on the office side)
+    if (p === "/library" || p === "/my" || p === "/office" || p === "/office.html") p = "/library.html";
     if (p === "/rules" || p === "/child-safety") p = "/rules.html";
     if (p === "/delete-account" || p === "/delete") p = "/delete-account.html";
     const file = path.normalize(path.join(PUBLIC_DIR, p));

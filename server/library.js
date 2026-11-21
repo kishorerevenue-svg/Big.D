@@ -22,7 +22,7 @@ module.exports = function makeLibrary({ learn, formats, social, h }) {
   ];
   const personal = t => ID_RE.some(r => r.test(t));
 
-  // a few uploads per person per day (the library must not be flooded)
+  // no real limit for people adding files; only a guard against a runaway script flooding the server
   const per = new Map();
   setInterval(() => per.clear(), 24 * 3600e3).unref();
   const tooMany = (k, n) => { const c = (per.get(k) || 0) + 1; per.set(k, c); return c > n; };
@@ -97,7 +97,7 @@ module.exports = function makeLibrary({ learn, formats, social, h }) {
     const p = url.pathname;
     if (!p.startsWith("/api/library/")) return false;
     if (req.method !== "POST") { send(res, 404, { error: "Not found" }, origin); return true; }
-    if (!allowed("lib:" + clientIp(req), undefined, 300)) { send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); req.resume(); return true; }
+    if (!allowed("lib:" + clientIp(req), undefined, 1200)) { send(res, 429, { error: "Too many requests. Please wait a few minutes." }, origin); req.resume(); return true; }
     let body;
     try { body = await readBody(req, /\/(add|my-add)$/.test(p) ? 21 * 1024 * 1024 : 64 * 1024); }
     catch (e) { send(res, e.message === "too_large" ? 413 : 400, { error: e.message === "too_large" ? "That file is too big (15 MB at most)." : "Bad request." }, origin); return true; }
@@ -129,13 +129,13 @@ module.exports = function makeLibrary({ learn, formats, social, h }) {
     if (who.banned) return no(403, "This account can't add files."), true;
 
     if (p === "/api/library/add") {
-      if (tooMany("pub:" + who.uid, 40)) return no(429, "That's a lot for one day. Add more tomorrow."), true;
+      if (tooMany("pub:" + who.uid, 3000)) return no(429, "That's a lot for one day. Add more tomorrow."), true;
       const r = await add(req, body, who, "public");
       if (r.error) return no(r.status, r.error), true;
       return ok({ item: r.item, same: !!r.same, held: !!r.held }), true;
     }
     if (p === "/api/library/my-add") {
-      if (tooMany("my:" + who.uid, 100)) return no(429, "That's a lot for one day. Add more tomorrow."), true;
+      if (tooMany("my:" + who.uid, 3000)) return no(429, "That's a lot for one day. Add more tomorrow."), true;
       const r = await add(req, body, who, "mine");
       if (r.error) return no(r.status, r.error), true;
       return ok({ item: r.item, same: !!r.same, text: r.text || "" }), true;
