@@ -242,7 +242,12 @@ function parsePet(text) {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
     if (a >= 0 && b > a) { try { obj = JSON.parse(text.slice(a, b + 1)); } catch (e2) { } }
   }
-  const reply = learn.noCites(String((obj && obj.reply) || (obj ? "" : text) || "")).trim().slice(0, 4000) || "Woof!";
+  // (a small brain sometimes copies the clock line of its instructions or breaks its JSON: `…కదా!", 2026-11-21T22:45:25+05:30 Asia/Kolkata.`)
+  const tidy = t => String(t)
+    .replace(/["”“]?\s*,?\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?\s*(?:[A-Z][a-z]+\/[A-Za-z_]+)?\.?/g, "")
+    .replace(/\s*["”]\s*,?\s*"?(emotion|sound|actions|everyone)"?\s*:[\s\S]*$/i, "")
+    .replace(/["”]\s*,?\s*$/, "").replace(/^\s*["“]/, "").trim();
+  const reply = tidy(learn.noCites(String((obj && obj.reply) || (obj ? "" : text) || ""))).slice(0, 4000) || "Woof!";
   const emotion = PET_EMOTIONS.includes(obj && obj.emotion) ? obj.emotion : "happy";
   const sound = PET_SOUNDS.includes(obj && obj.sound) ? obj.sound : "";
   const actions = (obj && Array.isArray(obj.actions) ? obj.actions : [])
