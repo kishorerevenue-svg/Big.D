@@ -524,6 +524,8 @@ function isOwner(req) {
   if (!pw || !given) return false;
   return crypto.timingSafeEqual(crypto.createHash("sha256").update(given).digest(), crypto.createHash("sha256").update(pw).digest());
 }
+// Habit's own cute pictures and clips made on Kaggle (brain/habit_cartoons.py) come into Media › Fun, a few a day
+const hfCartoons = require("./hfcartoons.js")({ DATA_DIR, media });
 const cartoon = require("./cartoon.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice, h: { send, readBody, allowed, clientIp },
   engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, freeVoice, trends, claudeOut: learn.claudeOut,
   isAdmin: isOwner });   // the owner: no daily cartoon limits
@@ -779,6 +781,8 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/teach/push") return send(res, 200, { push: push.status(), phones: chat.pushPhones() });
       // the library: files waiting for a look (ID numbers), what people added to the public library, people's own files (titles)
       if (req.method === "GET" && url.pathname === "/api/teach/library") return send(res, 200, library.overview());
+      if (req.method === "GET" && url.pathname === "/api/teach/cartoons") return send(res, 200, await hfCartoons.status());
+      if (req.method === "POST" && url.pathname === "/api/teach/cartoons/post") { req.resume(); return send(res, 200, await hfCartoons.run(true)); }
       if (req.method === "GET" && url.pathname === "/api/teach/library/read") {
         const it = learn.itemOf(String(url.searchParams.get("id") || ""));
         if (!it || String(it.scope || "").startsWith("my:")) return send(res, 404, { error: "Not found" });   // (people's own files: not read by the owner)

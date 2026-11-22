@@ -210,3 +210,10 @@ any other talk to the voice typing. Kaggle notebook, Internet on (GPU optional),
 Hugging Face repo `<you>/habit-wake`. The server finds it with its `HF_TOKEN` (or `WAKE_MODEL_URL`), and the phone downloads it
 (Settings › Voice › 🎧 Get the new ear). Data: synthetic Piper voices (English, Telugu, Hindi), LibriSpeech (CC BY 4.0),
 OpenSLR 66 Telugu (CC BY-SA 4.0); features: openWakeWord v0.5.1 (Apache 2.0). No one's own voice.
+
+## habit-cartoons: cute pictures and clips of Habit's own characters
+
+`brain/habit_cartoons.py` (Kaggle, GPU T4 x2, Internet on, secret `HF_TOKEN`) draws ~20 cute 3D-style pictures of Habit's own
+pets doing everyday Telugu things (Stable Diffusion XL) and ~6 short clips (Wan 2.1 1.3B, or a gentle zoom of the picture
+when that can't run), with Telugu + English captions marked 🤖 AI-made, into the public dataset `<you>/habit-cartoons`.
+The server (`hfcartoons.js`) posts a few a day into Media › Fun. `--test` makes 4 pictures and 1 clip without sending.
