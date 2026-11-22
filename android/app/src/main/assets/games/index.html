@@ -173,6 +173,24 @@ function fitAll(heard, target) {
   if (!t.length || !h.length) return 0;
   return t.filter(w => h.some(x => x === w || (Math.min(x.length, w.length) >= 3 && sameW(x, w)))).length / t.length;
 }
+// The Telugu voice typing writes English words in Telugu letters ("జూపిటర్" for Jupiter, "మార్స్" for Mars): a rough
+// Latin spelling of Telugu letters, then a "sound key" (the consonants), so "జూపిటర్" fits "Jupiter" and "ఎర్త్" fits "Earth".
+const TE2L = { "అ": "a", "ఆ": "aa", "ఇ": "i", "ఈ": "ii", "ఉ": "u", "ఊ": "uu", "ఋ": "ru", "ఎ": "e", "ఏ": "e", "ఐ": "ai", "ఒ": "o", "ఓ": "o", "ఔ": "au",
+  "క": "k", "ఖ": "kh", "గ": "g", "ఘ": "gh", "ఙ": "n", "చ": "ch", "ఛ": "ch", "జ": "j", "ఝ": "jh", "ఞ": "n", "ట": "t", "ఠ": "th", "డ": "d", "ఢ": "dh", "ణ": "n",
+  "త": "t", "థ": "th", "ద": "d", "ధ": "dh", "న": "n", "ప": "p", "ఫ": "f", "బ": "b", "భ": "bh", "మ": "m", "య": "y", "ర": "r", "ల": "l", "వ": "v", "శ": "sh",
+  "ష": "sh", "స": "s", "హ": "h", "ళ": "l", "ఱ": "r", "ా": "aa", "ి": "i", "ీ": "ii", "ు": "u", "ూ": "uu", "ృ": "ru", "ె": "e", "ే": "e", "ై": "ai", "ొ": "o",
+  "ో": "o", "ౌ": "au", "ం": "m", "ః": "h", "్": "" };
+const latin = s => String(s).replace(/[\u0C00-\u0C7F]/g, c => TE2L[c] != null ? TE2L[c] : "");
+const soundKey = w => latin(w).toLowerCase().replace(/ph/g, "f").replace(/(th|dh)/g, "t").replace(/(sh|ch)/g, "s").replace(/ck/g, "k").replace(/c(?=[eiy])/g, "s").replace(/c/g, "k").replace(/q/g, "k").replace(/x/g, "ks").replace(/[^a-z0-9]/g, "")
+  .replace(/^[aeiouy]+/, "").replace(/[aeiouyhw]/g, "").replace(/[dt]/g, "t").replace(/[gk]/g, "k").replace(/[bp]/g, "p").replace(/[vw]/g, "v").replace(/[zsj]/g, "s").replace(/m/g, "n").replace(/(.)\1+/g, "$1");
+/** How well what they said sounds like [target] (0 to 1), word by word by sound. */
+function soundFit(heard, target) {
+  const t = norm(target).split(" ").filter(w => w && !SMALL.has(w) && w.length > 1).map(soundKey).filter(k => k.length >= 2);
+  const h = norm(heard).split(" ").filter(Boolean).map(soundKey).filter(k => k.length >= 2);
+  if (!t.length || !h.length) return 0;
+  return t.filter(k => h.some(x => x === k || (Math.min(x.length, k.length) >= 3 && (x.startsWith(k) || k.startsWith(x))) ||
+    (x.length > k.length && x.length <= k.length + 2 && x.endsWith(k)))).length / t.length;   // ("న్యూఢిల్లీ" = "New Delhi" in one word)
+}
 /** True when what they said has at least half of the main words of [target]. */
 const says = (heard, target) => fit(heard, target) >= 0.5;
 const ORD = [[/\b(first|one|1|a)\b|మొదటి|మొదటిది|ఒకటి|ఒకటో/, 0], [/\b(second|two|2|b)\b|రెండో|రెండవ|రెండు/, 1], [/\b(third|three|3|c)\b|మూడో|మూడవ|మూడు/, 2], [/\b(fourth|four|4|d)\b|నాలుగో|నాలుగవ|నాలుగు/, 3]];
@@ -349,8 +367,9 @@ function quiz() {
     CUR = { game: "quiz", voice: h => {
       if (answered) { if (CMD.next.test(h) || CMD.yes.test(h)) { nextBtn().click(); return true; } return false; }
       if (CMD.dontknow.test(h) || CMD.answer.test(h)) { reveal(); return true; }
-      // the choice whose words fit best (two fitting the same: they say which one)
-      let fits = order.map(key => norm(it.o[key][L]) === h ? 2 : fit(h, it.o[key][L]));
+      // the choice whose words fit best, in Telugu or English, or by sound ("జూపిటర్" = Jupiter = బృహస్పతి); two fitting
+      // the same: they say which one
+      let fits = order.map(key => norm(it.o[key][L]) === h ? 2 : Math.max(fit(h, it.o[key][L]), fit(h, it.o[key][1 - L] || ""), soundFit(h, it.o[key][0]), soundFit(h, it.o[key][1])));
       let top = Math.max(...fits);
       if (top >= 0.5 && fits.filter(f => f === top).length > 1) {   // a tie: count every word of the tied choices
         fits = fits.map((f, j) => f === top ? 1 + fitAll(h, it.o[order[j]][L]) : 0);
@@ -359,6 +378,11 @@ function quiz() {
       let k = top >= 0.5 && fits.filter(f => f === top).length === 1 ? fits.indexOf(top) : -1;
       if (k < 0 && h.split(" ").length <= 3) for (const [re, pos] of ORD) if (re.test(h)) { k = pos; break; }
       if (k < 0 && top >= 0.5) { petSays(T("Which one? Say first, second, third or fourth.", "ఏది? మొదటిది, రెండోది, మూడోది లేదా నాలుగోది అని చెప్పండి."), "", true); return true; }
+      // a short answer that is none of the choices: said at once here (not a slow trip to the brain)
+      if (k < 0 && h.split(" ").length <= 3 && !/\?|ఎందుకు|ఏమిటి|ఎలా|why|what|how/.test(h)) {
+        petSays(T(`Hmm, that's not one of them. Say one of: ${order.map(key => it.o[key][L]).join(", ")}.`, `అది ఆప్షన్లలో లేదు. వీటిలో ఒకటి చెప్పండి: ${order.map(key => it.o[key][L]).join(", ")}.`), "", true);
+        return true;
+      }
       if (k < 0) return false;
       opts.children[k].click();
       return true;
