@@ -436,6 +436,7 @@ class LetterHelper(private val m: MainActivity) {
                 m.runOnUiThread { spaceBusy = "Adding ${k + 1} of ${uris.size}…"; m.render() }
                 var name = "file"; var type = m.contentResolver.getType(uri) ?: ""
                 try { m.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0)?.let { name = it } } } catch (e: Exception) { }
+                if (uri.scheme == "file") name = (uri.lastPathSegment ?: name).substringAfter('_')
                 if (type.isBlank() && name.endsWith(".docx", true)) type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 val bytes = try { m.contentResolver.openInputStream(uri)?.use { inp -> val b = inp.readBytes(); if (b.size > 15 * 1024 * 1024) null else b } } catch (e: Throwable) { null }
                 if (bytes == null) { bad++; continue }
