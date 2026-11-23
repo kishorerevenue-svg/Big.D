@@ -53,7 +53,9 @@ module.exports = function makeOffices({ DATA_DIR, formats, h }) {
   const count = id => files(id).length;
   async function addFile(o, body) {
     const name = str(body.name, 200), type = str(body.mediaType, 120);
-    if (count(o.id) >= 5000) throw userError("This office already keeps 5000 files.");
+    // (only the text is kept, a few KB a file; the owner can raise it with OFFICE_MAX_FILES as the server grows)
+    const max = Math.max(1000, Number(process.env.OFFICE_MAX_FILES || 20000));
+    if (count(o.id) >= max) throw userError(`This office already keeps ${max} files. Ask the Habit owner to allow more.`);
     const got = await formats.bulkText(name, type, String(body.data || ""), "o" + o.id);
     if (got.same) return { same: true };
     if (got.wait) throw Object.assign(userError("Today's AI reading for PDFs and photos is used up. Word and text files still go in; the rest tomorrow."), { wait: true });
