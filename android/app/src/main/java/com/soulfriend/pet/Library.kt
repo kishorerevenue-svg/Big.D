@@ -200,6 +200,50 @@ class LibraryHelper(private val m: MainActivity) {
     /** Shared from another app (Share › Give to Habit): which box? */
     fun given(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        // a .zip (WhatsApp often sends a training kit or a bundle of GOs as one zip): its files go in, unpacked here
+        val names = uris.map { u -> var n = ""; try { m.contentResolver.query(u, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) n = c.getString(0) ?: "" } } catch (e: Exception) { }; n }
+        if (uris.indices.any { names[it].endsWith(".zip", true) || (m.contentResolver.getType(uris[it]) ?: "").contains("zip") }) {
+            m.toast(t("Opening the zip…", "జిప్ తెరుస్తున్నాను…"))
+            m.io.execute {
+                val out = ArrayList<Uri>()
+                for ((k, u) in uris.withIndex()) {
+                    if (!(names[k].endsWith(".zip", true) || (m.contentResolver.getType(u) ?: "").contains("zip"))) { out.add(u); continue }
+                    out.addAll(unzip(u, names[k].removeSuffix(".zip").removeSuffix(".ZIP").ifBlank { "zip" }))
+                }
+                m.runOnUiThread { if (out.isEmpty()) m.toast(t("No Word, Excel, PDF, photo or text files in that zip.", "ఆ జిప్‌లో చదవగల ఫైళ్లు లేవు.")) else choose(out) }
+            }
+            return
+        }
+        choose(uris)
+    }
+
+    /** The readable files inside a zip, put in the app's cache (removed the next time). */
+    private fun unzip(uri: Uri, label: String): List<Uri> {
+        val dir = java.io.File(m.cacheDir, "given/" + label.replace(Regex("[^\\p{L}\\p{N} ._-]"), "_").take(60))
+        dir.deleteRecursively(); dir.mkdirs()
+        val ok = Regex("\\.(docx|doc|xlsx|xls|odt|pdf|txt|md|csv|jpe?g|png|webp)$", RegexOption.IGNORE_CASE)
+        val out = ArrayList<Uri>()
+        try {
+            m.contentResolver.openInputStream(uri)?.use { inp ->
+                java.util.zip.ZipInputStream(inp).use { z ->
+                    var e = z.nextEntry; var seen = 0
+                    while (e != null && seen < 3000) {
+                        val name = e.name.substringAfterLast('/')
+                        if (!e.isDirectory && ok.containsMatchIn(name) && !e.name.contains("__MACOSX") && !name.startsWith(".")) {
+                            val f = java.io.File(dir, "${out.size}_" + name.replace(Regex("[\\\\/:*?\"<>|]"), "_"))
+                            var size = 0L
+                            f.outputStream().use { o -> val b = ByteArray(65536); while (true) { val n = z.read(b); if (n < 0) break; size += n; if (size > 15L * 1024 * 1024) break; o.write(b, 0, n) } }
+                            if (size in 1..15L * 1024 * 1024) out.add(Uri.fromFile(f)) else f.delete()
+                        }
+                        seen++; e = z.nextEntry
+                    }
+                }
+            }
+        } catch (t: Throwable) { }
+        return out
+    }
+
+    private fun choose(uris: List<Uri>) {
         val boxes = mutableListOf(t("📁 My files (only me)", "📁 నా ఫైళ్లు (నాకు మాత్రమే)") to "my", t("🌐 Public library (everyone)", "🌐 పబ్లిక్ గ్రంథాలయం (అందరికీ)") to "public")
         if (store.officeCode.isNotBlank()) boxes.add(t("🏛 Our office files", "🏛 మా ఆఫీస్ ఫైళ్లు") to "office")
         AlertDialog.Builder(m).setTitle(t("Where should Habit keep ${if (uris.size == 1) "it" else "these ${uris.size} files"}?", "హ్యాబిట్ ఎక్కడ ఉంచాలి?"))
@@ -217,6 +261,7 @@ class LibraryHelper(private val m: MainActivity) {
                 m.runOnUiThread { busy = t("Adding ${k + 1} of ${uris.size}… (reading a PDF or photo takes a moment)", "${uris.size} లో ${k + 1} చేరుస్తున్నాను…"); m.render() }
                 var name = "file"; var type = m.contentResolver.getType(uri) ?: ""
                 try { m.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0)?.let { name = it } } } catch (e: Exception) { }
+                if (uri.scheme == "file") name = (uri.lastPathSegment ?: name).substringAfter('_')
                 if (type.isBlank() && name.endsWith(".docx", true)) type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 if (type.isBlank() && name.endsWith(".pdf", true)) type = "application/pdf"
                 val bytes = try { m.contentResolver.openInputStream(uri)?.use { inp -> val b = inp.readBytes(); if (b.size > 15 * 1024 * 1024) null else b } } catch (e: Throwable) { null }
