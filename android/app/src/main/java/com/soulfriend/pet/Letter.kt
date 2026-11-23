@@ -245,6 +245,8 @@ class LetterHelper(private val m: MainActivity) {
     private var oldQ = ""
     private var oldFound: org.json.JSONArray? = null
     private var oldBusy = false
+    private var oldAnswer = ""                   // Habit's own words about what the files say ("" while thinking or none)
+    private var oldThinking = false
     private fun oldFilesBox() {
         if (store.teamKey.isBlank() && store.officeCode.isBlank()) return
         m.add(ui.section("🔎 Old files · పాత ఫైళ్లు", "Find every old letter about a Sy.No., village or name, with dates. Only for your office.").apply {
@@ -257,10 +259,18 @@ class LetterHelper(private val m: MainActivity) {
                 addView(ui.button(if (oldBusy) "…" else "🔎", "primary") { go() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = m.dp(8) })
             }, 8)
             val f = oldFound
+            if (f != null && !oldBusy && f.length() > 0 && (oldThinking || oldAnswer.isNotBlank())) put(LinearLayout(m).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(m.dp(14), m.dp(12), m.dp(14), m.dp(12)); background = ui.round(Ui.TEAL_SOFT, 14, Ui.LINE)
+                addView(ui.text("🧠 What Habit found · హ్యాబిట్ చెప్పేది", 14f, Ui.TEAL_DARK, bold = true))
+                addView(ui.text(if (oldThinking) "Reading the files… · ఫైళ్లు చదువుతున్నాను…" else oldAnswer, 14f, Ui.INK).apply { setTextIsSelectable(true); setLineSpacing(0f, 1.15f) },
+                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = m.dp(6) })
+            }, 8)
             if (f != null && !oldBusy) {
                 if (f.length() == 0) put(ui.text("Nothing found for \"$oldQ\".", 13f, Ui.MUTED), 8)
-                else put(ui.text(if (f.optJSONObject(0)?.optBoolean("weak") == true) "${f.length()} found, but not in the same line (may not be about this) · tap one to read"
-                                 else "${f.length()} found · oldest first · tap one to read", 12.5f, Ui.MUTED, bold = true), 8)
+                else put(ui.text(when {
+                        f.optJSONObject(0)?.optBoolean("aside") == true -> "Only staff / election / other lists have these words (not land records) · tap one to read"
+                        f.optJSONObject(0)?.optBoolean("weak") == true -> "${f.length()} found, but not in the same line (may not be about this) · tap one to read"
+                        else -> "${f.length()} found · Sy.No. matches first · tap one to read" }, 12.5f, Ui.MUTED, bold = true), 8)
                 for (i in 0 until f.length()) {
                     val o = f.optJSONObject(i) ?: continue
                     put(LinearLayout(m).apply {
@@ -282,8 +292,25 @@ class LetterHelper(private val m: MainActivity) {
             val r = try { Net.post(store, "/api/office/search", JSONObject().put("q", oldQ), owner(), 30_000) } catch (e: Exception) { null }
             m.runOnUiThread {
                 oldBusy = false
-                if (r != null && r.ok) oldFound = r.json.optJSONArray("found") ?: org.json.JSONArray()
+                if (r != null && r.ok) {
+                    oldFound = r.json.optJSONArray("found") ?: org.json.JSONArray()
+                    oldAnswer = ""
+                    if ((oldFound?.length() ?: 0) > 0 && store.officeCode.isNotBlank()) askOld(oldQ)
+                }
                 else m.toast(r?.json?.optString("error")?.ifBlank { null } ?: "Couldn't search now. Run the server update and try again.")
+                m.render()
+            }
+        }
+    }
+    /** Habit reads what was found and says, in plain words, what the files show about it and what each is for. */
+    private fun askOld(q: String) {
+        oldThinking = true
+        m.io.execute {
+            val r = try { Net.post(store, "/api/office/ask", JSONObject().put("q", q).put("lang", store.lang), owner(), 90_000) } catch (e: Exception) { null }
+            m.runOnUiThread {
+                if (q != oldQ) return@runOnUiThread
+                oldThinking = false
+                oldAnswer = if (r != null && r.ok) r.json.optString("answer").trim() else ""
                 m.render()
             }
         }

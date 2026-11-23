@@ -353,6 +353,31 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     if (cc.length) blocks.push({ p: "**Copy to:**\n" + cc.map((c, i) => (i + 1) + ". " + c).join("\n"), justify: false });
     return { blocks, own: { title: str(f.title, 80), to: str(f.to, 400), subject: str(f.subject, 400), references: refs, paragraphs: list(f.paragraphs), enclosures: enc, copyTo: cc } };
   }
+  /** Old files search, understood: what the office's records say about this matter, file by file, and what each is for. */
+  async function officeAnswer(o, q, lang) {
+    if (!offices || q.length < 2) return { answer: "" };
+    const found = offices.search(o, q, 6).slice(0, 8);
+    if (!found.length) return { answer: "" };
+    const rows = found.map((f, i) => `[${i + 1}] File: ${f.title}${f.about ? " (" + f.about + ")" : ""}${f.date ? ", dated " + f.date : ""}${f.aside ? " [kept aside: not land work]" : ""}\n` +
+      f.hits.map(h => "   " + h).join("\n")).join("\n\n");
+    const system = `You are Habit, a careful helper in a Tahsildar (revenue) office in Andhra Pradesh. A staff member searched the office's old files for: "${q}". Below are the rows that were found (lists are tab-separated rows). ` +
+      `Tell them in short, plain lines what the office records say about this matter. For each file that really is about it: what it shows (the holder's name, scheme or GO, extent, ward or block, date) and what it can be used for (for example: proof of a house-site patta, regularised under GO 388). ` +
+      `If a row is clearly not about this matter (for example a staff list, or the number is only a serial number), say so in a few words. Use only what is in the rows; never invent. At most 8 lines, no greeting. ` + langRule(lang);
+    if (API_KEY && !learn.claudeOut()) {
+      try {
+        const out = await learn.callClaude({ system, messages: [{ role: "user", content: rows.slice(0, 9000) }], maxTokens: 700, search: false, model: MODEL });
+        const t = String(out.text || "").trim();
+        if (t) return { answer: t.slice(0, 3000), by: "claude" };
+      } catch (e) { }
+    }
+    if (ownBrain && ownBrain.homeReady && (await ownBrain.homeReady())) {
+      try {
+        const j = await ownBrain.writeJson({ system, prompt: rows.slice(0, 5000), schema: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] }, maxTokens: 500, timeoutMs: 120000 });
+        if (j && j.answer) return { answer: str(j.answer, 3000), by: "home" };
+      } catch (e) { }
+    }
+    return { answer: "" };
+  }
   const ownReady = async () => !!(ownBrain && ownBrain.writeJson && (await ownBrain.ready().catch(() => false)) && ownBrain.canWrite());
   async function ownDraft(body) {
     const lang = ["te", "en"].includes(body.lang) ? body.lang : "auto", office = body.mode === "office";
@@ -597,6 +622,10 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     if (body && typeof body === "object") { body._owner = !!(isOwner && isOwner(req)); body._office = offices ? offices.who(req) : null; }
 
     try {
+      if (p === "/api/office/ask") {
+        if (!body._office) { send(res, 403, { error: "Join your office first." }, origin); return true; }
+        send(res, 200, await officeAnswer(body._office.office, str(body.q, 120), body.lang), origin); return true;
+      }
       if ((p === "/api/office/search" || p === "/api/office/read") && body._office) {
         const o = body._office.office;
         if (p.endsWith("search")) { send(res, 200, { found: offices.search(o, body.q) }, origin); return true; }
