@@ -259,6 +259,8 @@ class LetterHelper(private val m: MainActivity) {
                 addView(ui.button(if (oldBusy) "…" else "🔎", "primary") { go() }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = m.dp(8) })
             }, 8)
             val f = oldFound
+            if (f != null && !oldBusy && f.length() > 0 && store.officeCode.isNotBlank())
+                put(ui.row(ui.button(if (histBusy) "📜 Writing the history… · చరిత్ర రాస్తున్నాను…" else "📜 Full history with references · పూర్తి చరిత్ర", "primary") { if (!histBusy) askHistory(oldQ) }), 8)
             if (f != null && !oldBusy && f.length() > 0 && (oldThinking || oldAnswer.isNotBlank())) put(LinearLayout(m).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(m.dp(14), m.dp(12), m.dp(14), m.dp(12)); background = ui.round(Ui.TEAL_SOFT, 14, Ui.LINE)
                 addView(ui.text("🧠 What Habit found · హ్యాబిట్ చెప్పేది", 14f, Ui.TEAL_DARK, bold = true))
@@ -302,6 +304,27 @@ class LetterHelper(private val m: MainActivity) {
             }
         }
     }
+    /** A history note of a Sy.No. / village / name from all the office's files: in date order with references, the present
+     *  position, what is missing or doubtful, and ideas for the next step. */
+    private var histBusy = false
+    private fun askHistory(q: String) {
+        histBusy = true; m.render()
+        m.io.execute {
+            val r = try { Net.post(store, "/api/office/ask", JSONObject().put("q", q).put("lang", store.lang).put("history", true), owner(), 180_000) } catch (e: Exception) { null }
+            m.runOnUiThread {
+                histBusy = false; m.render()
+                val t = r?.json?.optString("answer")?.trim().orEmpty()
+                if (t.isBlank()) { m.toast(if (r?.json?.optBoolean("none") == true) "Nothing about \"$q\" in the office files yet." else "No AI could write it just now (Claude resting and the home PC off). Try again later."); return@runOnUiThread }
+                val v = TextView(m).apply { text = t; textSize = 14.5f; setTextColor(Ui.INK); setTextIsSelectable(true); setLineSpacing(0f, 1.2f); setPadding(m.dp(18), m.dp(8), m.dp(18), m.dp(8)) }
+                android.app.AlertDialog.Builder(m).setTitle("📜 History · $q")
+                    .setView(android.widget.ScrollView(m).apply { addView(v) })
+                    .setPositiveButton("➕ Use in a letter") { _, _ -> pieces.add("History of $q from the office files:\n$t"); m.render(); m.toast("Added to the matter box") }
+                    .setNeutralButton("📤 Share") { _, _ -> try { m.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "History · $q\n\n$t"), "Share")) } catch (e: Exception) { } }
+                    .setNegativeButton("Close", null).show()
+            }
+        }
+    }
+
     /** Habit reads what was found and says, in plain words, what the files show about it and what each is for. */
     private fun askOld(q: String) {
         oldThinking = true
