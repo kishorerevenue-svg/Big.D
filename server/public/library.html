@@ -256,17 +256,24 @@ async function sendAll(files, where) {
   for (const [k, f] of good.entries()) {
     if (stop) break;
     say(msg, `Adding ${k + 1} of ${good.length}… ` + line(), true);
-    try {
-      const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = bad; r.readAsDataURL(f); });
-      const j = where === "off" ? await off("add", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data })
-        : await lib(where === "pub" ? "add" : "my-add", auth({ name: f.name, mediaType: typeOf(f), data }));
-      if (j.same) same++; else if (j.held) held++; else done++;
-      if (j.oldFont) { oldF++; oldName = j.oldFont; }
-    } catch (e) {
-      if (/used up|tomorrow/i.test(e.message)) later++;
-      else { failed++; why = e.message.slice(0, 80); }
-      if (e.status === 401 || e.status === 403) break;
-      if (e.status === 429 && /Too many/.test(e.message)) await new Promise(ok => setTimeout(ok, 60000));
+    for (let tries = 0; ; tries++) {          // the server says "too many, wait": wait a minute and send the same file again
+      try {
+        const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = bad; r.readAsDataURL(f); });
+        const j = where === "off" ? await off("add", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data })
+          : await lib(where === "pub" ? "add" : "my-add", auth({ name: f.name, mediaType: typeOf(f), data }));
+        if (j.same) same++; else if (j.held) held++; else done++;
+        if (j.oldFont) { oldF++; oldName = j.oldFont; }
+      } catch (e) {
+        if (e.status === 429 && /Too many/.test(e.message) && tries < 10 && !stop) {
+          say(msg, `Adding ${k + 1} of ${good.length}… (the server asked for a short break: going on in a minute) ` + line(), true);
+          await new Promise(ok => setTimeout(ok, 60000)); continue;
+        }
+        if (/used up|tomorrow/i.test(e.message)) later++;
+        else { failed++; why = e.message.slice(0, 80); }
+        if (e.status === 401 || e.status === 403) { stop = true; }
+        if (/keeps \d+ files/.test(e.message)) stop = true;     // the office is full
+      }
+      break;
     }
   }
   busy = false; $("stopAll").hidden = true;
