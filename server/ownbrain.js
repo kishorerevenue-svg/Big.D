@@ -26,14 +26,16 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
   let home = { at: 0, ok: false };
   async function homeReady() {
     if (!HOME || off()) return false;
-    if (Date.now() - home.at < 30000) return home.ok;
+    if (Date.now() - home.at < (home.ok ? 30000 : 10000)) return home.ok;   // (off: looked at again sooner)
     let ok = false;
     try {
-      const j = await fetch(HOME + "/api/tags", { signal: AbortSignal.timeout(3000) }).then(r => r.json());
+      // (a home PC over the private link can be slow to answer the first time: 10 seconds)
+      const j = await fetch(HOME + "/api/tags", { signal: AbortSignal.timeout(10000) }).then(r => r.json());
       const names = (j.models || []).map(m => String(m.name || m.model || ""));
       ok = names.includes(homeModel()) || names.includes(homeModel() + ":latest");
-    } catch (e) { ok = false; }
-    home = { at: Date.now(), ok };
+      home.why = ok ? "" : "the PC answered, but it has no " + homeModel() + " (it has: " + (names.join(", ") || "nothing") + ")";
+    } catch (e) { ok = false; home.why = "the PC didn't answer (" + String(e.message || e).slice(0, 60) + ")"; }
+    home = { at: Date.now(), ok, why: home.why };
     return ok;
   }
 
@@ -334,7 +336,7 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
     return { on: !off(), installed: !!model(), model: model(), ready: ok, vision: ok && seen.vision, installing: installing(), writes: ok && canWrite(),
       answered: stats.answered, wrote: stats.wrote || 0, failed: stats.failed, skippedClaude: stats.skippedClaude, lastSeconds: Math.round(stats.lastMs / 1000), lastProblem: stats.lastProblem,
       claudeResting: Date.now() < claude.skipUntil, log,
-      home: { set: !!HOME, model: HOME ? homeModel() : "", ready: HOME ? await homeReady() : false, wrote: stats.homeWrote || 0 } };
+      home: { set: !!HOME, model: HOME ? homeModel() : "", ready: HOME ? await homeReady() : false, wrote: stats.homeWrote || 0, why: home.why || "" } };
   }
 
   /** For /health: what we know right now, without waiting (it checks again in the background). */
