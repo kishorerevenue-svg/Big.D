@@ -342,5 +342,5 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
   /** For /health: what we know right now, without waiting (it checks again in the background). */
   function quick() { ready().catch(() => {}); return { installed: !!model(), model: model() || "none", ready: seen.ok || home.ok, vision: seen.ok && seen.vision, answered: stats.answered, home: home.ok }; }
 
-  return { ready, pet, writeJson, canWrite, facts, ownerLesson, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
+  return { ready, homeReady, pet, writeJson, canWrite, facts, ownerLesson, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
 };

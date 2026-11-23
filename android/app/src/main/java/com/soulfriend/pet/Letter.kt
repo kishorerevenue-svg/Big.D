@@ -259,16 +259,18 @@ class LetterHelper(private val m: MainActivity) {
             val f = oldFound
             if (f != null && !oldBusy) {
                 if (f.length() == 0) put(ui.text("Nothing found for \"$oldQ\".", 13f, Ui.MUTED), 8)
-                else put(ui.text("${f.length()} found · oldest first · tap one to read", 12.5f, Ui.MUTED, bold = true), 8)
+                else put(ui.text(if (f.optJSONObject(0)?.optBoolean("weak") == true) "${f.length()} found, but not in the same line (may not be about this) · tap one to read"
+                                 else "${f.length()} found · oldest first · tap one to read", 12.5f, Ui.MUTED, bold = true), 8)
                 for (i in 0 until f.length()) {
                     val o = f.optJSONObject(i) ?: continue
                     put(LinearLayout(m).apply {
                         orientation = LinearLayout.VERTICAL; setPadding(m.dp(12), m.dp(9), m.dp(12), m.dp(9)); background = ui.round(Ui.FIELD, 12, Ui.LINE)
                         addView(ui.text(listOf(o.optString("date"), o.optString("title")).filter { it.isNotBlank() }.joinToString(" · "), 14f, Ui.INK, bold = true))
+                        if (o.optString("about").isNotBlank()) addView(ui.text("📌 " + o.optString("about"), 12.5f, Ui.TEAL_DARK, bold = true))
                         if (o.optString("rc").isNotBlank()) addView(ui.text(o.optString("rc"), 12f, Ui.MUTED))
                         val h = o.optJSONArray("hits")
                         if (h != null && h.length() > 0) addView(ui.text(h.optString(0), 12.5f, Ui.INK).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
-                        setOnClickListener { readOld(o.optString("id"), o.optString("title")) }
+                        setOnClickListener { readOld(o.optString("id"), o.optString("title"), o.optString("about")) }
                     }, 6)
                 }
             }
@@ -286,7 +288,7 @@ class LetterHelper(private val m: MainActivity) {
             }
         }
     }
-    private fun readOld(id: String, title: String) {
+    private fun readOld(id: String, title: String, about: String = "") {
         m.io.execute {
             val r = try { Net.post(store, "/api/office/read", JSONObject().put("id", id), owner(), 30_000) } catch (e: Exception) { null }
             m.runOnUiThread {
@@ -296,9 +298,31 @@ class LetterHelper(private val m: MainActivity) {
                 android.app.AlertDialog.Builder(m).setTitle(title)
                     .setView(android.widget.ScrollView(m).apply { addView(v) })
                     .setPositiveButton("➕ Use in this letter") { _, _ -> pieces.add("From the old file \"$title\": " + text.take(2500)); m.render(); m.toast("Added to the matter box") }
+                    .setNeutralButton("✏️ What is this file?") { _, _ -> tellAbout(id, title, about) }
                     .setNegativeButton("Close", null).show()
             }
         }
+    }
+
+    /** Someone in the office says what a file is ("GO 388 regularised list", "Election: polling stations, 2024"): Habit keeps it. */
+    private fun tellAbout(id: String, title: String, about: String) {
+        val box = ui.input("e.g. GO 388 regularisation, approved list, 2024", about)
+        android.app.AlertDialog.Builder(m).setTitle("What is \"$title\"?")
+            .setMessage("Say it in a few words, so Habit and your staff understand it (what it is for, which GO or scheme, the year). This file only; only your office sees it.")
+            .setView(LinearLayout(m).apply { setPadding(m.dp(20), m.dp(4), m.dp(20), 0); addView(box, LinearLayout.LayoutParams(-1, -2)) })
+            .setPositiveButton("Save") { _, _ ->
+                val a = box.text.toString().trim()
+                m.io.execute {
+                    val r = try { Net.post(store, "/api/office/about", JSONObject().put("id", id).put("about", a), owner(), 20_000) } catch (e: Exception) { null }
+                    m.runOnUiThread {
+                        if (r != null && r.ok) {
+                            val f = oldFound
+                            if (f != null) for (i in 0 until f.length()) f.optJSONObject(i)?.takeIf { it.optString("id") == id }?.put("about", r.json.optString("about"))
+                            m.toast("Saved ✓ Habit knows what this file is"); m.render()
+                        } else m.toast(r?.json?.optString("error")?.ifBlank { null } ?: "Couldn't save now. Run the server update and try again.")
+                    }
+                }
+            }.setNegativeButton("Cancel", null).show()
     }
 
     // ---------- the office space: one person makes it, the staff join with its code, and all share the old files ----------

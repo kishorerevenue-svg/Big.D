@@ -542,7 +542,7 @@ const social = require("./social.js")({ DATA_DIR, API_BASE, API_KEY, MODEL, medi
 // Firebase push: a Habit call rings (and a new message shows) while Habit is closed on that phone; no words in the push
 const push = require("./push.js")({ DATA_DIR });
 // Offices: each office's own private space (its staff join with a code; its old files kept only as text)
-const offices = require("./offices.js")({ DATA_DIR, formats, h: { send, readBody, allowed, clientIp } });
+const offices = require("./offices.js")({ DATA_DIR, formats, ownBrain, h: { send, readBody, allowed, clientIp } });
 // 📚 the public library (anyone logged in adds, everyone reads, the pet answers from it) and 📁 each person's own files
 const library = require("./library.js")({ learn, formats, social, h: { send, readBody, allowed, clientIp } });
 const chat = require("./chat.js")({ DATA_DIR, social, push, h: { send, readBody, allowed, clientIp, baseUrl } });
