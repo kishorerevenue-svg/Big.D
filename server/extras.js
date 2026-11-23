@@ -354,25 +354,34 @@ For an Excel file: {"title":"...","format":"xlsx","content":{"sheets":[{"name":"
     return { blocks, own: { title: str(f.title, 80), to: str(f.to, 400), subject: str(f.subject, 400), references: refs, paragraphs: list(f.paragraphs), enclosures: enc, copyTo: cc } };
   }
   /** Old files search, understood: what the office's records say about this matter, file by file, and what each is for. */
-  async function officeAnswer(o, q, lang) {
+  async function officeAnswer(o, q, lang, history = false) {
     if (!offices || q.length < 2) return { answer: "" };
-    const found = offices.search(o, q, 6).slice(0, 8);
-    if (!found.length) return { answer: "" };
+    const found = offices.search(o, q, history ? 12 : 6).filter(f => !(history && f.aside)).slice(0, history ? 20 : 8);
+    if (!found.length) return { answer: "", none: true };
     const rows = found.map((f, i) => `[${i + 1}] File: ${f.title}${f.about ? " (" + f.about + ")" : ""}${f.date ? ", dated " + f.date : ""}${f.aside ? " [kept aside: not land work]" : ""}\n` +
       f.hits.map(h => "   " + h).join("\n")).join("\n\n");
-    const system = `You are Habit, a careful helper in a Tahsildar (revenue) office in Andhra Pradesh. A staff member searched the office's old files for: "${q}". Below are the rows that were found (lists are tab-separated rows). ` +
+    const system = history ?
+      `You are Habit, a careful helper in a Tahsildar (revenue) office in Andhra Pradesh. A staff member asked for the HISTORY of: "${q}" (a survey number and village, or a name). ` +
+      `Below are the rows from the office's old files that mention it (lists are tab-separated rows; a number under "S.No."/"Sl.No." is only a row number, under "Sy.No." it is the survey number). ` +
+      `Write a short, clear history note:\n` +
+      `1. "History" — what happened to this land/matter, in date order, one line each, every line ending with its reference in brackets [file name, date, R.C./GO No. if seen].\n` +
+      `2. "Present position" — what the latest record says (holder, extent, scheme, status), in 1-3 lines.\n` +
+      `3. "Gaps / to check" — what is missing or doubtful (e.g. no mutation record, two different names, extent differs), so the staff know what to verify in Webland/RSR/FMB.\n` +
+      `4. "Ideas" — 2-4 practical next steps for the office (which record to call for, which report or letter fits).\n` +
+      `Leave out rows that are not about this matter (staff lists, serial numbers). Use ONLY what is in the rows; never invent names, dates or numbers. If the rows are too few, say so plainly. ` + langRule(lang)
+      : `You are Habit, a careful helper in a Tahsildar (revenue) office in Andhra Pradesh. A staff member searched the office's old files for: "${q}". Below are the rows that were found (lists are tab-separated rows). ` +
       `Tell them in short, plain lines what the office records say about this matter. For each file that really is about it: what it shows (the holder's name, scheme or GO, extent, ward or block, date) and what it can be used for (for example: proof of a house-site patta, regularised under GO 388). ` +
       `If a row is clearly not about this matter (for example a staff list, or the number is only a serial number), say so in a few words. Use only what is in the rows; never invent. At most 8 lines, no greeting. ` + langRule(lang);
     if (API_KEY && !learn.claudeOut()) {
       try {
-        const out = await learn.callClaude({ system, messages: [{ role: "user", content: rows.slice(0, 9000) }], maxTokens: 700, search: false, model: MODEL });
+        const out = await learn.callClaude({ system, messages: [{ role: "user", content: rows.slice(0, history ? 24000 : 9000) }], maxTokens: history ? 1800 : 700, search: false, model: history ? (SMART_MODEL || MODEL) : MODEL });
         const t = String(out.text || "").trim();
         if (t) return { answer: t.slice(0, 3000), by: "claude" };
       } catch (e) { }
     }
     if (ownBrain && ownBrain.homeReady && (await ownBrain.homeReady())) {
       try {
-        const j = await ownBrain.writeJson({ system, prompt: rows.slice(0, 5000), schema: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] }, maxTokens: 500, timeoutMs: 120000 });
+        const j = await ownBrain.writeJson({ system, prompt: rows.slice(0, history ? 9000 : 5000), schema: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] }, maxTokens: history ? 1200 : 500, timeoutMs: 240000 });
         if (j && j.answer) return { answer: str(j.answer, 3000), by: "home" };
       } catch (e) { }
     }
@@ -624,7 +633,7 @@ Reply with only a JSON object: {"ok":true|false,"reason":"<if rejected: one shor
     try {
       if (p === "/api/office/ask") {
         if (!body._office) { send(res, 403, { error: "Join your office first." }, origin); return true; }
-        send(res, 200, await officeAnswer(body._office.office, str(body.q, 120), body.lang), origin); return true;
+        send(res, 200, await officeAnswer(body._office.office, str(body.q, 120), body.lang, body.history === true), origin); return true;
       }
       if ((p === "/api/office/search" || p === "/api/office/read") && body._office) {
         const o = body._office.office;
