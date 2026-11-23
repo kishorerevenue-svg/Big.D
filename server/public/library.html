@@ -65,7 +65,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.55 system-ui,"Noto S
       <div class="drop" id="dropPub" tabindex="0" role="button" aria-label="Public box: drop files or folders here, or click to choose">
         <div style="font-size:32px">🌐</div><b>Drop files or folders</b>
         <span class="hint" style="margin:0"><a href="#" data-pick="pub" data-folder="1">choose a folder</a> · <a href="#" data-pick="pub">choose files</a></span>
-        <span class="hint" style="margin:0">Word, PDF, photos, text · up to 15 MB each</span>
+        <span class="hint" style="margin:0">Word, Excel, PDF, photos, text, zip · up to 15 MB each</span>
       </div>
       <div class="msg" id="pubMsg" role="status" aria-live="polite"></div>
     </section>
@@ -78,7 +78,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.55 system-ui,"Noto S
       <div class="drop" id="dropOff" tabindex="0" role="button" aria-label="Office box: drop files or folders here, or click to choose">
         <div style="font-size:32px">🏛</div><b>Drop files or folders</b>
         <span class="hint" style="margin:0"><a href="#" data-pick="off" data-folder="1">choose a folder</a> · <a href="#" data-pick="off">choose files</a></span>
-        <span class="hint" style="margin:0">Word, PDF, photos, text · up to 15 MB each</span>
+        <span class="hint" style="margin:0">Word, Excel, PDF, photos, text, zip · up to 15 MB each</span>
       </div>
       <div class="msg" id="offMsg" role="status" aria-live="polite"></div>
     </section>
@@ -100,7 +100,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.55 system-ui,"Noto S
   </section>
 
   <section class="card" id="reader" hidden><h2 id="rTitle"></h2><small id="rInfo" class="hint"></small><pre id="rText"></pre></section>
-  <input id="pick" type="file" multiple accept=".docx,.doc,.xlsx,.xls,.odt,.pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" hidden>
+  <input id="pick" type="file" multiple accept=".zip,.docx,.doc,.xlsx,.xls,.odt,.pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" hidden>
   <input id="pickFolder" type="file" webkitdirectory directory multiple hidden>
 </main>
 <script>
@@ -201,8 +201,46 @@ async function walk(entry, out) {
   for (;;) { const batch = await new Promise(ok => reader.readEntries(ok, () => ok([]))); if (!batch.length) break; for (const e of batch) await walk(e, out); }
 }
 let busy = false, stop = false;
+/** A .zip (from WhatsApp, e-mail…): its files, unpacked here in the browser (stored or deflate; up to 300 MB). */
+async function unzip(file) {
+  const buf = new Uint8Array(await file.arrayBuffer()), dv = new DataView(buf.buffer);
+  let e = -1; for (let i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) return [];
+  const n = dv.getUint16(e + 10, true); let at = dv.getUint32(e + 16, true); const out = [];
+  const dec = new TextDecoder();
+  for (let k = 0; k < n && at + 46 <= buf.length; k++) {
+    const flags = dv.getUint16(at + 8, true), method = dv.getUint16(at + 10, true), size = dv.getUint32(at + 20, true);
+    const nl = dv.getUint16(at + 28, true), xl = dv.getUint16(at + 30, true), cl = dv.getUint16(at + 32, true), local = dv.getUint32(at + 42, true);
+    const name = dec.decode(buf.subarray(at + 46, at + 46 + nl));
+    at += 46 + nl + xl + cl;
+    if (name.endsWith("/") || /(^|\/)(__MACOSX|\.)/.test(name) || !OK_EXT.test(name) || flags & 1) continue;
+    const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+    const raw = buf.subarray(start, start + size);
+    let data;
+    try {
+      if (method === 0) data = raw;
+      else if (method === 8) data = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+      else continue;
+    } catch (x) { continue; }
+    const f = new File([data], name.replace(/^.*\//, ""));
+    f.where = file.name.replace(/\.zip$/i, "") + "/" + name;
+    out.push(f);
+  }
+  return out;
+}
 async function sendAll(files, where) {
   const msg = where === "pub" ? $("pubMsg") : where === "off" ? $("offMsg") : $("myMsg");
+  // zip files: their insides go in (WhatsApp often sends a training kit or a bundle of GOs as one .zip)
+  if (files.some(f => /\.zip$/i.test(f.name))) {
+    say(msg, "Opening the zip…", true);
+    const all = [];
+    for (const f of files) {
+      if (!/\.zip$/i.test(f.name)) { all.push(f); continue; }
+      if (f.size > 300 * 1024 * 1024) continue;
+      try { all.push(...await unzip(f)); } catch (x) { }
+    }
+    files = all;
+  }
   if ((where === "pub" || where === "my") && !password) { say(msg, "Log in first (in the 🌐 Public box).", false); return; }
   if (where === "off" && !(code && officeName)) { say(msg, "Open your office with its code first.", false); return; }
   if (busy) { say(msg, "Still adding the last files… (or tap Stop adding)", false); return; }
