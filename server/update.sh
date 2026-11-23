@@ -32,6 +32,12 @@ if ! command -v pdftotext >/dev/null 2>&1 || ! command -v tesseract >/dev/null 2
   DEBIAN_FRONTEND=noninteractive apt-get install -y -q poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-tel >/dev/null 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get update -y -q >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -q poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-tel >/dev/null 2>&1; }
   command -v tesseract >/dev/null 2>&1 && echo "free file reader installed" || echo "free file reader install failed (will try again next time)"
 fi
+# old Word (.doc) and Excel (.xls) files from office hard disks: read for free
+if ! command -v catdoc >/dev/null 2>&1 || ! command -v antiword >/dev/null 2>&1; then
+  echo "installing the old Word/Excel reader (catdoc, antiword)…"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q catdoc antiword >/dev/null 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get update -y -q >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -q catdoc antiword >/dev/null 2>&1; }
+  command -v catdoc >/dev/null 2>&1 && echo "old Word/Excel reader installed" || echo "old Word/Excel reader install failed (will try again next time)"
+fi
 
 cd "$REPO_DIR" || exit 1
 old="$(git rev-parse HEAD)"

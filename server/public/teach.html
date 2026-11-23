@@ -84,10 +84,10 @@ summary{cursor:pointer;font-weight:600}
         <div style="font-size:40px">📂</div>
         <b>Drag folders and files here</b>
         <span class="hint" style="margin:0">or <a href="#" id="pickFolder">choose a folder</a> · <a href="#" id="pickFiles">choose files</a></span>
-        <span class="hint" style="margin:0">Word .docx, PDF, photos (JPG/PNG), .txt · up to 15 MB each · old .doc files: save as .docx first</span>
+        <span class="hint" style="margin:0">Word (.docx, old .doc), Excel, PDF, photos (JPG/PNG), .txt · up to 15 MB each</span>
       </div>
       <input id="bulkFolder" type="file" webkitdirectory directory multiple hidden>
-      <input id="bulkFiles" type="file" multiple accept=".docx,.pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" hidden>
+      <input id="bulkFiles" type="file" multiple accept=".docx,.doc,.xlsx,.xls,.odt,.pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" hidden>
       <label>Keep them as</label>
       <div style="display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 10px">
         <label style="font-weight:400"><input type="radio" name="use" value="both" checked> Both (format + information)</label>
@@ -747,11 +747,15 @@ async function loadFormats() {
   }
 }
 // ----- many files at once: dragged folders and files, sent one by one -----
-const OK_EXT = /\.(docx|pdf|txt|md|csv|jpe?g|png|webp)$/i;
+const OK_EXT = /\.(docx|doc|xlsx|xls|odt|pdf|txt|md|csv|jpe?g|png|webp)$/i;
 let bulkRunning = false, bulkStop = false;
 function typeOf(f) {
   const n = f.name.toLowerCase();
   if (n.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (n.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (n.endsWith(".doc")) return "application/msword";
+  if (n.endsWith(".xls")) return "application/vnd.ms-excel";
+  if (n.endsWith(".odt")) return "application/vnd.oasis.opendocument.text";
   if (n.endsWith(".pdf")) return "application/pdf";
   if (/\.jpe?g$/.test(n)) return "image/jpeg";
   if (n.endsWith(".png")) return "image/png";
@@ -780,10 +784,10 @@ async function sendAll(files) {
   const show = () => say($("exMsg"), `Reading ${done + same + failed + later} of ${good.length}… ✓ ${done} added` + (same ? ` · ${same} already there` : "") + (failed ? ` · ✕ ${failed} couldn't be read` : "") + (later ? ` · ⏳ ${later} PDFs/photos for tomorrow` : "") + (skipped ? ` · ${skipped} skipped` : ""), true);
   show();
   // Word and text files first (free), then PDFs and photos (read by the AI)
-  good.sort((a, b) => (/\.(docx|txt|md|csv)$/i.test(b.name) ? 1 : 0) - (/\.(docx|txt|md|csv)$/i.test(a.name) ? 1 : 0));
+  good.sort((a, b) => (/\.(docx|doc|xlsx|xls|odt|txt|md|csv)$/i.test(b.name) ? 1 : 0) - (/\.(docx|doc|xlsx|xls|odt|txt|md|csv)$/i.test(a.name) ? 1 : 0));
   for (const f of good) {
     if (bulkStop) break;
-    if (aiOver && !/\.(docx|txt|md|csv)$/i.test(f.name)) { later++; show(); continue; }
+    if (aiOver && !/\.(docx|doc|xlsx|xls|odt|txt|md|csv)$/i.test(f.name)) { later++; show(); continue; }
     try {
       const data = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = bad; r.readAsDataURL(f); });
       const out = await api("bulk", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data, use });

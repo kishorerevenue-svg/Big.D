@@ -66,7 +66,10 @@ module.exports = function makeOffices({ DATA_DIR, formats, h }) {
       kind: formats.kindOf(where + " " + name), text, at: Date.now(), hash: hh, by: str(body.by, 40) };
     fs.writeFileSync(path.join(filesDir(o.id), f.id + ".json"), JSON.stringify(f));
     files(o.id).push(f);
-    return { added: true, title: f.title, kind: f.kind };
+    // typed in an old Telugu font (Anu, Shree-Lipi…): the Telugu in it reads as English letters; say so
+    let oldFont = "";
+    if (/\.docx$/i.test(name)) try { oldFont = require("./formats.js").oldFontOf(Buffer.from(String(body.data || ""), "base64")); } catch (e) { }
+    return { added: true, title: f.title, kind: f.kind, ...(oldFont ? { oldFont } : {}) };
   }
 
   /** A finished letter of this office: kept as an example and as history (learning by itself). */

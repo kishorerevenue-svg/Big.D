@@ -100,7 +100,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.55 system-ui,"Noto S
   </section>
 
   <section class="card" id="reader" hidden><h2 id="rTitle"></h2><small id="rInfo" class="hint"></small><pre id="rText"></pre></section>
-  <input id="pick" type="file" multiple accept=".docx,.pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" hidden>
+  <input id="pick" type="file" multiple accept=".docx,.doc,.xlsx,.xls,.odt,.pdf,.txt,.md,.csv,image/jpeg,image/png,image/webp" hidden>
   <input id="pickFolder" type="file" webkitdirectory directory multiple hidden>
 </main>
 <script>
@@ -180,10 +180,14 @@ function drawOff(err) {
 drawPub(); drawOff(); if (code) openOffice();
 
 // ---------- adding: whole folders or files, one by one ----------
-const OK_EXT = /\.(docx|pdf|txt|md|csv|jpe?g|png|webp)$/i, FREE = /\.(docx|txt|md|csv)$/i;
+const OK_EXT = /\.(docx|doc|xlsx|xls|odt|pdf|txt|md|csv|jpe?g|png|webp)$/i, FREE = /\.(docx|doc|xlsx|xls|odt|txt|md|csv)$/i;
 function typeOf(f) {
   const n = f.name.toLowerCase();
   if (n.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (n.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (n.endsWith(".doc")) return "application/msword";
+  if (n.endsWith(".xls")) return "application/vnd.ms-excel";
+  if (n.endsWith(".odt")) return "application/vnd.oasis.opendocument.text";
   if (n.endsWith(".pdf")) return "application/pdf";
   if (/\.jpe?g$/.test(n)) return "image/jpeg";
   if (n.endsWith(".png")) return "image/png";
@@ -207,9 +211,10 @@ async function sendAll(files, where) {
   if (!good.length) { say(msg, "No files to add (Word, PDF, photos or text, up to 15 MB)" + (skipped ? `; ${skipped} skipped` : "") + ".", false); return; }
   busy = true; stop = false; $("stopAll").hidden = false;
   good.sort((a, b) => (FREE.test(b.name) ? 1 : 0) - (FREE.test(a.name) ? 1 : 0));   // Word and text first (fastest)
-  let done = 0, same = 0, held = 0, failed = 0, later = 0, why = "";
+  let done = 0, same = 0, held = 0, failed = 0, later = 0, why = "", oldF = 0, oldName = "";
   const line = () => `✓ ${done} added` + (same ? ` · ${same} already there` : "") + (held ? ` · ⏳ ${held} wait for the owner (ID/phone/bank numbers)` : "") +
-    (later ? ` · ${later} for tomorrow` : "") + (failed ? ` · ✕ ${failed} couldn't be read${why ? " (" + why + ")" : ""}` : "") + (skipped ? ` · ${skipped} skipped` : "");
+    (later ? ` · ${later} for tomorrow` : "") + (failed ? ` · ✕ ${failed} couldn't be read${why ? " (" + why + ")" : ""}` : "") + (skipped ? ` · ${skipped} skipped` : "") +
+    (oldF ? `\n⚠️ ${oldF} typed in an old Telugu font (${oldName}): their Telugu can't be read yet; English parts are kept` : "");
   for (const [k, f] of good.entries()) {
     if (stop) break;
     say(msg, `Adding ${k + 1} of ${good.length}… ` + line(), true);
@@ -218,6 +223,7 @@ async function sendAll(files, where) {
       const j = where === "off" ? await off("add", { name: f.name, path: f.where || f.webkitRelativePath || f.name, mediaType: typeOf(f), data })
         : await lib(where === "pub" ? "add" : "my-add", auth({ name: f.name, mediaType: typeOf(f), data }));
       if (j.same) same++; else if (j.held) held++; else done++;
+      if (j.oldFont) { oldF++; oldName = j.oldFont; }
     } catch (e) {
       if (/used up|tomorrow/i.test(e.message)) later++;
       else { failed++; why = e.message.slice(0, 80); }

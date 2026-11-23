@@ -28,7 +28,7 @@ module.exports = function makeLibrary({ learn, formats, social, h }) {
   const tooMany = (k, n) => { const c = (per.get(k) || 0) + 1; per.set(k, c); return c > n; };
 
   async function textOf(name, type, data) {
-    if (/\.docx$/i.test(name) || type.includes("wordprocessingml")) return { text: await formats.textOf(name, type, data), via: "file" };
+    if (require("./formats.js").OWN_FORMAT.test(name || "") || type.includes("wordprocessingml") || type.includes("spreadsheetml")) return { text: await formats.textOf(name, type, data), via: "file" };
     return learn.fileToTextVia(name || "file", type, data);
   }
   const hashOf = t => crypto.createHash("sha1").update(String(t).replace(/\s+/g, " ").trim()).digest("hex").slice(0, 16);

@@ -6,29 +6,108 @@ const path = require("path");
 const zlib = require("zlib");
 const crypto = require("crypto");
 
-/** The text of a Word (.docx) file: its word/document.xml, paragraphs on their own lines. */
-function docxText(buf) {
-  // the zip's central directory: find word/document.xml, then read and unpack it
+/** The files inside a zip (Word .docx, Excel .xlsx, .odt): those whose name passes [want], unpacked. */
+function zipRead(buf, want) {
   const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  if (eocd < 0) throw Object.assign(new Error("That Word file couldn't be opened. Save it as PDF and try again."), { user: true });
+  if (eocd < 0) throw Object.assign(new Error("That file couldn't be opened. Save it as PDF and try again."), { user: true });
   const count = buf.readUInt16LE(eocd + 10);
   let at = buf.readUInt32LE(eocd + 16);
+  const out = {};
   for (let i = 0; i < count && at + 46 <= buf.length; i++) {
     const method = buf.readUInt16LE(at + 10), size = buf.readUInt32LE(at + 20);
     const nameLen = buf.readUInt16LE(at + 28), extraLen = buf.readUInt16LE(at + 30), noteLen = buf.readUInt16LE(at + 32);
     const local = buf.readUInt32LE(at + 42);
     const name = buf.toString("utf8", at + 46, at + 46 + nameLen);
-    if (name === "word/document.xml") {
+    if (want(name)) {
       const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
       const raw = buf.subarray(start, start + size);
-      const xml = (method === 8 ? zlib.inflateRawSync(raw) : raw).toString("utf8");
-      return xml.replace(/<w:tab\/>/g, "\t").replace(/<w:br\/>/g, "\n").replace(/<\/w:p>/g, "\n").replace(/<[^>]+>/g, "")
-        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&apos;/g, "'")
-        .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+      try { out[name] = (method === 8 ? zlib.inflateRawSync(raw) : raw).toString("utf8"); } catch (e) { }
     }
     at += 46 + nameLen + extraLen + noteLen;
   }
-  throw Object.assign(new Error("No text was found in that Word file."), { user: true });
+  return out;
+}
+const unxml = s => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&apos;/g, "'")
+  .replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(Number(n)));
+const tidy = s => s.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+
+/** The text of a Word (.docx) file: its word/document.xml, paragraphs on their own lines. */
+function docxText(buf) {
+  const xml = zipRead(buf, n => n === "word/document.xml")["word/document.xml"];
+  if (!xml) throw Object.assign(new Error("No text was found in that Word file."), { user: true });
+  return tidy(unxml(xml.replace(/<w:tab\/>/g, "\t").replace(/<w:br\/>/g, "\n").replace(/<\/w:p>/g, "\n").replace(/<[^>]+>/g, "")));
+}
+
+/** Old Telugu typing fonts (Anu, Shree-Lipi, Priyanka…) keep Telugu as English letters: the words can't be read as Telugu. */
+const OLD_FONT = /\b(anu|shree|sree|priyanka|telugu ?lipi|tlw|eenadu|vaartha|hemalatha|kruti)/i;
+function oldFontOf(buf) {
+  try {
+    const f = zipRead(buf, n => n === "word/fontTable.xml" || n === "word/document.xml");
+    const used = new Set([...String(f["word/document.xml"] || "").matchAll(/w:ascii="([^"]+)"/g)].map(m => m[1]));
+    for (const u of used) if (OLD_FONT.test(u)) return u;
+  } catch (e) { }
+  return "";
+}
+
+/** The text of an Excel (.xlsx) file: each sheet's rows, cells split by tabs. */
+function xlsxText(buf) {
+  const f = zipRead(buf, n => n === "xl/sharedStrings.xml" || /^xl\/worksheets\/sheet\d+\.xml$/.test(n));
+  const shared = [...String(f["xl/sharedStrings.xml"] || "").matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => unxml(m[1].replace(/<rPh[\s\S]*?<\/rPh>/g, "").replace(/<[^>]+>/g, "")));
+  const sheets = Object.keys(f).filter(n => n.startsWith("xl/worksheets/")).sort((a, b) => parseInt(a.replace(/\D/g, "")) - parseInt(b.replace(/\D/g, "")));
+  const out = [];
+  for (const n of sheets) {
+    for (const row of f[n].matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+      const cells = [];
+      for (const c of row[1].matchAll(/<c([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const t = (/\bt="([^"]+)"/.exec(c[1]) || [])[1], body = c[2] || "";
+        const v = (/<v>([\s\S]*?)<\/v>/.exec(body) || [])[1];
+        cells.push(t === "s" ? (shared[Number(v)] || "") : t === "inlineStr" ? unxml(body.replace(/<[^>]+>/g, "")) : unxml(v || ""));
+      }
+      if (cells.some(x => x.trim())) out.push(cells.join("\t"));
+    }
+    out.push("");
+  }
+  const text = tidy(out.join("\n"));
+  if (!text) throw Object.assign(new Error("No text was found in that Excel file."), { user: true });
+  return text;
+}
+
+/** The text of an OpenDocument (.odt) file. */
+function odtText(buf) {
+  const xml = zipRead(buf, n => n === "content.xml")["content.xml"];
+  if (!xml) throw Object.assign(new Error("No text was found in that file."), { user: true });
+  return tidy(unxml(xml.replace(/<text:tab\/>/g, "\t").replace(/<text:line-break\/>/g, "\n").replace(/<\/text:(p|h)>/g, "\n").replace(/<[^>]+>/g, "")));
+}
+
+/** Old Word (.doc) and Excel (.xls) files: read with catdoc / antiword / xls2csv (free, on the server; update.sh installs them). */
+function runTool(cmd, args, input) {
+  const { execFile } = require("child_process");
+  return new Promise(ok => {
+    const p = execFile(cmd, args, { timeout: 60000, maxBuffer: 20 * 1024 * 1024, encoding: "utf8" }, (e, out) => ok(e ? null : out));
+    if (input) { p.stdin.on("error", () => { }); p.stdin.end(input); }
+  });
+}
+async function oldOfficeText(name, buf) {
+  const os = require("os");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "habit-old-"));
+  try {
+    const xls = /\.xls$/i.test(name);
+    const f = path.join(dir, xls ? "in.xls" : "in.doc"); fs.writeFileSync(f, buf);
+    let t = xls ? await runTool("xls2csv", ["-d", "utf-8", f]) : await runTool("catdoc", ["-d", "utf-8", "-w", f]);
+    if (!xls && (!t || t.replace(/\s+/g, "").length < 40)) t = await runTool("antiword", ["-m", "UTF-8.txt", f]);
+    t = tidy(String(t || "").replace(/\r/g, ""));
+    if (t.replace(/\s+/g, "").length < 20) throw Object.assign(new Error((xls ? "That old Excel" : "That old Word") + " file couldn't be read. Open it in Word/Excel and save it as .docx/.xlsx or PDF."), { user: true });
+    return t;
+  } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { } }
+}
+/** Files read here for free, by name. */
+const OWN_FORMAT = /\.(docx|doc|xlsx|xls|odt)$/i;
+async function ownText(name, type, buf) {
+  const n = String(name || "").toLowerCase();
+  if (n.endsWith(".docx") || String(type).includes("wordprocessingml")) return docxText(buf);
+  if (n.endsWith(".xlsx") || String(type).includes("spreadsheetml")) return xlsxText(buf);
+  if (n.endsWith(".odt")) return odtText(buf);
+  return oldOfficeText(n, buf);
 }
 
 module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
@@ -48,7 +127,7 @@ module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   const hashOf = t => crypto.createHash("sha1").update(String(t).replace(/\s+/g, " ").trim()).digest("hex").slice(0, 16);
   /** The text of an uploaded file: Word and text files are read here (free); PDF and photos by the AI. */
   async function textOf(name, type, data, opt) {
-    if (/\.docx$/i.test(name) || type.includes("wordprocessingml")) return docxText(Buffer.from(data, "base64"));
+    if (OWN_FORMAT.test(name || "") || String(type).includes("wordprocessingml") || String(type).includes("spreadsheetml")) return ownText(name, type, Buffer.from(data, "base64"));
     return learn.fileToText(name || "file", type, data, opt);
   }
   // ---------- many files at once: the same file is never read twice, and the AI reads only so many a day ----------
@@ -64,15 +143,21 @@ module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   async function bulkText(name, type, data, scope = "") {
     const h = (scope ? scope + ":" : "") + rawHash(data);      // (each office keeps its own: the same file can go to two offices)
     if (seen[h]) return { same: true };
-    const free = /\.(docx|txt|md|csv)$/i.test(name) || type.includes("wordprocessingml") || /^text\//.test(type);
+    const free = /\.(docx|doc|xlsx|xls|odt|txt|md|csv)$/i.test(name) || type.includes("wordprocessingml") || type.includes("spreadsheetml") || /^text\//.test(type);
+    let text = null;
     if (!free) {
-      const day = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
-      if (day !== aiDay) { aiDay = day; aiUsed = 0; }
-      if (aiUsed >= AI_DAILY) return { wait: true };
-      aiUsed++;
+      // PDFs and photos: first read here for free (pdftotext, and Telugu+English OCR for scans and photos); the AI only
+      // when that can't read it, and only so many a day
+      try { text = (await learn.fileToTextVia(name || "file", type, data, { free: true })).text; } catch (e) { text = null; }
+      if (!text) {
+        const day = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+        if (day !== aiDay) { aiDay = day; aiUsed = 0; }
+        if (aiUsed >= AI_DAILY) return { wait: true };
+        aiUsed++;
+      }
     }
     // (the regular AI, not the bigger one: many files, and plain text is enough)
-    const text = await textOf(name, type, data, { model: MODEL || undefined, maxTokens: 8000 });
+    if (!text) text = await textOf(name, type, data, { model: MODEL || undefined, maxTokens: 8000 });
     seen[h] = Date.now(); saveSeen();
     return { text };
   }
@@ -143,3 +228,7 @@ module.exports = function makeFormats({ DATA_DIR, learn, MODEL }) {
   return { list: () => list().map(view), add, remove, pick, block, blank, textOf, kindOf, hashOf, bulkText, aiLeft: () => Math.max(0, AI_DAILY - aiUsed) };
 };
 module.exports.docxText = docxText;
+module.exports.xlsxText = xlsxText;
+module.exports.oldFontOf = oldFontOf;
+module.exports.OWN_FORMAT = OWN_FORMAT;
+module.exports.ownText = ownText;
