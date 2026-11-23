@@ -20,6 +20,8 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 
@@ -68,7 +70,8 @@ class BrainActivity : Activity() {
                   else "A tiny brain that works on this phone, so your Habit pet can still talk when there is no internet at all. Nothing you ask it leaves the phone.", 15f, muted), 6)
 
         val ram = Model.ramGb(this)
-        add(text(if (ram >= 6) "📱 This phone: $ram GB memory ✓" else "⚠️ This phone has $ram GB memory. The tiny brain needs about 6 GB; it may be slow or stop.", 14f, if (ram >= 6) teal else Color.parseColor("#B45309")), 14)
+        val cur = Model.size(this)
+        add(text(if (ram >= cur.ramGb) "📱 This phone: $ram GB memory ✓" else "⚠️ This phone has $ram GB memory. This brain wants about ${cur.ramGb} GB; it may be slow or stop.", 14f, if (ram >= cur.ramGb) teal else Color.parseColor("#B45309")), 14)
 
         val box = card()
         when {
@@ -84,12 +87,18 @@ class BrainActivity : Activity() {
                 }
                 box.addView(ask, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
                 box.addView(answer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-                box.addView(button(if (te) "🗑 మెదడును తొలగించు (2.6 GB ఖాళీ అవుతుంది)" else "🗑 Delete the brain (frees 2.6 GB)", false) { Model.delete(this); show() },
-                    LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
+                val gb = "%.1f".format(cur.mb / 1000.0)
+                box.addView(text((if (cur === Model.SMALL) "🐣 Small brain" else "🧠 Big brain") + " · $gb GB", 13.5f, muted), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+                val other = if (cur === Model.SMALL) Model.BIG else Model.SMALL
+                box.addView(button(if (other === Model.BIG) (if (te) "🧠 పెద్ద మెదడుకు మారు (2.6 GB, తెలుగు బాగా)" else "🧠 Change to the big brain (2.6 GB, better Telugu)")
+                                   else (if (te) "🐣 చిన్న మెదడుకు మారు (0.6 GB)" else "🐣 Change to the small brain (0.6 GB)"), false) {
+                    Model.delete(this); Model.choose(this, other); show() }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+                box.addView(button(if (te) "🗑 మెదడును తొలగించు ($gb GB ఖాళీ అవుతుంది)" else "🗑 Delete the brain (frees $gb GB)", false) { Model.delete(this); show() },
+                    LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
             }
             Model.downloading(this) -> {
                 val p = Model.progress(this)
-                val done = (p?.first ?: 0L) / 1_000_000; val all = (p?.second ?: 0L).takeIf { it > 0 }?.div(1_000_000) ?: Model.SIZE_MB.toLong()
+                val done = (p?.first ?: 0L) / 1_000_000; val all = (p?.second ?: 0L).takeIf { it > 0 }?.div(1_000_000) ?: cur.mb.toLong()
                 box.addView(text("⬇ " + (if (te) "డౌన్‌లోడ్ అవుతోంది" else "Downloading") + "… ${"%.1f".format(done / 1000.0)} GB / ${"%.1f".format(all / 1000.0)} GB", 16f, bold = true))
                 box.addView(text(if (te) "మీరు ఈ యాప్ మూసేసినా డౌన్‌లోడ్ కొనసాగుతుంది." else "It keeps going if you close this app. It may wait for Wi-Fi.", 13.5f, muted))
                 box.addView(button(if (te) "ఆపు" else "Cancel", false) { Model.cancel(this); show() }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
@@ -97,18 +106,35 @@ class BrainActivity : Activity() {
             }
             else -> {
                 Model.prefs(this).getString("problem", "")?.takeIf { it.isNotBlank() }?.let { box.addView(text("⚠️ $it", 14f, Color.parseColor("#B45309"))) }
-                box.addView(text(if (te) "మెదడును డౌన్‌లోడ్ చేయండి (సుమారు 2.6 GB, ఒక్కసారే). దీనికి ఫోన్‌లో 3 GB ఖాళీ కావాలి." else "Download the brain (about 2.6 GB, only once). It needs 3 GB of free space on the phone.", 15f))
+                box.addView(text(if (te) "ఏ మెదడు కావాలి? (ఒక్కసారే డౌన్‌లోడ్)" else "Which brain? (downloaded only once)", 15f, bold = true))
+                val pick = RadioGroup(this)
+                val small = RadioButton(this).apply { id = View.generateViewId(); textSize = 14.5f
+                    text = if (te) "🐣 చిన్నది · 0.6 GB — వేగం, రోజువారీ మాటలు (తెలుగు కొంచెం)" else "🐣 Small · 0.6 GB — quick, everyday talk (Telugu is basic)" }
+                val big = RadioButton(this).apply { id = View.generateViewId(); textSize = 14.5f
+                    text = if (te) "🧠 పెద్దది · 2.6 GB — తెలివైనది, తెలుగు బాగా (6 GB మెమరీ కావాలి)" else "🧠 Big · 2.6 GB — smarter, better Telugu (needs 6 GB memory)" }
+                pick.addView(small); pick.addView(big)
+                pick.check(if (cur === Model.BIG) big.id else small.id)
+                box.addView(pick, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
                 val mobile = CheckBox(this).apply { text = if (te) "మొబైల్ డేటాతో కూడా (Wi-Fi లేకపోతే)" else "Use mobile data too (not only Wi-Fi)"; textSize = 14f }
                 box.addView(mobile, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
                 box.addView(button(if (te) "⬇ మెదడును డౌన్‌లోడ్ చెయ్యి" else "⬇ Download the brain") {
+                    val size = if (pick.checkedRadioButtonId == big.id) Model.BIG else Model.SMALL
                     val free = getExternalFilesDir(null)?.usableSpace ?: 0L
-                    if (free < 3_000_000_000L) { box.addView(text(if (te) "ఫోన్‌లో ఖాళీ సరిపోదు. కొన్ని ఫోటోలు/వీడియోలు తొలగించండి." else "Not enough free space. Free up some photos or videos first.", 14f, Color.parseColor("#B45309"))); return@button }
-                    Thread { val url = Model.url(this); h.post { Model.start(this, url, mobile.isChecked); show() } }.start()
+                    if (free < size.mb * 1_150_000L) { box.addView(text(if (te) "ఫోన్‌లో ఖాళీ సరిపోదు. కొన్ని ఫోటోలు/వీడియోలు తొలగించండి." else "Not enough free space. Free up some photos or videos first.", 14f, Color.parseColor("#B45309"))); return@button }
+                    Model.choose(this, size)
+                    Thread {
+                        val (url, problem) = Model.url(this, size)
+                        h.post {
+                            if (url == null) Model.prefs(this).edit().putString("problem", problem).apply() else Model.start(this, size, url, mobile.isChecked)
+                            show()
+                        }
+                    }.start()
                 }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
             }
         }
         add(box, 16)
-        add(text("Google's Gemma 4 (E2B) model, Apache 2.0 licence, running with Google's LiteRT-LM. " +
+        add(text("Small: Google's Gemma 3 (1B) model. Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms. " +
+            "Big: Google's Gemma 4 (E2B) model, Apache 2.0 licence. Both run with Google's LiteRT-LM. " +
             "Answers from a small brain are simpler than Habit's big AI; check important things.", 12.5f, muted), 18)
     }
 

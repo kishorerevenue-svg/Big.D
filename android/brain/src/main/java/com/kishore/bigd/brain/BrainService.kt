@@ -57,8 +57,10 @@ class BrainService : Service() {
 
     /** The phone's graphics chip is faster; if this phone can't use it, the main chip. Takes a few seconds once. */
     private fun load(): Engine {
-        engine?.let { return it }
         val path = Model.file(this).absolutePath
+        if (engine != null && loaded != path) closeEngine()        // the brain was changed (small <-> big)
+        engine?.let { return it }
+        loaded = path
         val e = try {
             Engine(EngineConfig(modelPath = path, backend = Backend.GPU(), cacheDir = cacheDir.path)).also { it.initialize() }
         } catch (t: Throwable) {
@@ -68,6 +70,7 @@ class BrainService : Service() {
         return e
     }
 
+    private var loaded = ""
     private fun closeEngine() { try { engine?.close() } catch (t: Throwable) { }; engine = null }
 
     override fun onDestroy() {

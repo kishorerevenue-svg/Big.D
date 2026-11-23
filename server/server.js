@@ -526,6 +526,7 @@ function isOwner(req) {
 }
 // Habit's own cute pictures and clips made on Kaggle (brain/habit_cartoons.py) come into Media › Fun, a few a day
 const hfCartoons = require("./hfcartoons.js")({ DATA_DIR, media });
+const phoneBrain = require("./phonebrain.js")({ DATA_DIR });
 const cartoon = require("./cartoon.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice, h: { send, readBody, allowed, clientIp },
   engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, freeVoice, trends, claudeOut: learn.claudeOut,
   isAdmin: isOwner });   // the owner: no daily cartoon limits
@@ -597,9 +598,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/brain/wake") return send(res, 200, await wakeEar(), origin);
   // where Habit Brain (the tiny brain on the phone) downloads its model from; the owner can name another place
   if (req.method === "GET" && url.pathname === "/brain/phone") {
+    // (big: Gemma 4 E2B, 2.6 GB, straight from Hugging Face; small: Gemma 3 1B, 0.6 GB, from this server — see phonebrain.js)
+    const host = String(req.headers.host || "localhost");
+    const base = /^(localhost|127\.|\[::1\])/.test(host) ? baseUrl(req) : "https://" + host;
     return send(res, 200, { url: process.env.PHONE_BRAIN_URL || "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
-      name: "gemma-4-E2B-it.litertlm", sizeMb: 2600, licence: "Apache 2.0 (Google Gemma 4)" }, origin);
+      name: "gemma-4-E2B-it.litertlm", sizeMb: 2600, licence: "Apache 2.0 (Google Gemma 4)", small: phoneBrain.info(base) }, origin);
   }
+  if ((req.method === "GET" || req.method === "HEAD") && url.pathname === "/brain/phone/small") return phoneBrain.serve(req, res);
   if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, model: MODEL, smartModel: SMART_MODEL, smartMode: SMART_MODE, keySet: !!API_KEY, webSearch: WEB_SEARCH, teaching: !!TEACH_PASSWORD, tts: voice.enabled, ...(voice.enabled ? { ttsMonth: voice.usage() } : {}), ai: learn.aiStatus(), own: ownBrain.quick(), learning: answers.stats(), media: media.stats(), youtube: youtube.stats(), aiVideos: (({ on, madeToday, daily, monthSpentUsd, monthLimitUsd, lastError }) => ({ on, madeToday, daily, monthSpentUsd, monthLimitUsd, lastError }))(aiVideo.status()), reels: reels.stats(), social: social.stats() }, origin);
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
@@ -782,6 +787,7 @@ const server = http.createServer(async (req, res) => {
       // the library: files waiting for a look (ID numbers), what people added to the public library, people's own files (titles)
       if (req.method === "GET" && url.pathname === "/api/teach/library") return send(res, 200, library.overview());
       if (req.method === "GET" && url.pathname === "/api/teach/cartoons") return send(res, 200, await hfCartoons.status());
+      if (req.method === "GET" && url.pathname === "/api/teach/phonebrain") return send(res, 200, phoneBrain.status());
       if (req.method === "POST" && url.pathname === "/api/teach/cartoons/post") { req.resume(); return send(res, 200, await hfCartoons.run(true)); }
       if (req.method === "GET" && url.pathname === "/api/teach/library/read") {
         const it = learn.itemOf(String(url.searchParams.get("id") || ""));
