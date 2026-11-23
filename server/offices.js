@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-module.exports = function makeOffices({ DATA_DIR, formats, h }) {
+module.exports = function makeOffices({ DATA_DIR, formats, ownBrain, h }) {
   const DIR = path.join(DATA_DIR, "offices");
   fs.mkdirSync(DIR, { recursive: true });
   const INDEX = path.join(DIR, "index.json");
@@ -84,7 +84,71 @@ module.exports = function makeOffices({ DATA_DIR, formats, h }) {
     try { fs.writeFileSync(path.join(filesDir(o.id), f.id + ".json"), JSON.stringify(f)); files(o.id).push(f); } catch (e) { }
   }
 
+  // ---------- what each file is about ("Election: polling stations", "GO 388 regularisation", "COVID-19 relief, 2021") ----------
+  // Right away from its name and words (below); then Habit's home brain writes a better line (labeler); and anyone in the
+  // office can say it in their own words (✏️ in the app): that one is kept and never changed by the brain.
+  const TOPICS = [
+    [/\b(polling station|ps names?|blo'?s?|booth level|epic|electoral|voter|e-?roll|form[ -]?[678]\b|assembly constituency|ac[ -]?no)/i, "Election work"],
+    [/\b(covid|corona|quarantine|isolation|vaccinat)/i, "COVID-19 (old relief work)"],
+    [/\b(census|houselisting|enumerat|npr)\b/i, "Census"],
+    [/\b(pension|ysr pension|ntr bharosa|old age|widow)/i, "Pensions"],
+    [/\b(ration|rice card|civil supplies|fp shop|pds)\b/i, "Civil supplies / ration"],
+    [/\b(house sites?|navaratnalu|pedalandariki|patta|d\.?\s?form patta|assignment|assigned land)/i, "House sites / land assignment"],
+    [/\b(regulari[sz]|encroach)/i, "Regularisation of encroachments"],
+    [/\b(land acquisition|\bla\b|award|compensation)/i, "Land acquisition"],
+    [/\b(water bod|tank|vagu|kunta|cheruvu|canal)/i, "Water bodies"],
+    [/\b(mutation|adangal|pahani|1-?b|webland|rsr|fmb|resurvey|re-survey)/i, "Land records / resurvey"],
+    [/\b(caste|income|residence|ews|nativity) certificate/i, "Certificates"],
+    [/\b(grievance|spandana|pgrs|petition)/i, "Public grievances"],
+    [/\b(flood|cyclone|relief|crop loss|enumeration of damage)/i, "Disaster relief"],
+  ];
+  function guessAbout(f) {
+    const head = (f.title + " \n" + f.text.slice(0, 4000));
+    const go = (/\bG\.?\s?O\.?\s*(?:Ms\.?|Rt\.?|MS|RT)?\s*(?:No\.?)?\s*(\d{1,4})\b/i.exec(f.title) || /\bG\.?\s?O\.?\s*(?:Ms\.?|Rt\.?)\s*(?:No\.?)?\s*(\d{1,4})\b/i.exec(head) || [])[1];
+    const topic = (TOPICS.find(([re]) => re.test(f.title)) || TOPICS.find(([re]) => re.test(head)) || [])[1] || "";
+    const years = [...head.matchAll(/\b(19[89]\d|20[0-3]\d)\b/g)].map(m => Number(m[1]));
+    const year = years.length ? Math.max(...years) : 0;
+    const list = f.text.split(/\n/).filter(l => /\t|\s{2,}/.test(l)).length > 30;
+    const parts = [topic, go ? "GO " + go : "", list ? "list" : "", year ? String(year) : ""].filter(Boolean);
+    return parts.join(" · ");
+  }
+  const aboutOf = f => f.about || (f._guess ??= guessAbout(f));
+  function saveFile(o, f) { const { _guess, _skel, ...keep } = f; try { fs.writeFileSync(path.join(filesDir(o.id), f.id + ".json"), JSON.stringify(keep)); } catch (e) { } }
+  /** Someone in the office says what a file is (it stays: the brain doesn't change it). */
+  function setAbout(o, id, about, by) {
+    const f = files(o.id).find(x => "o" + x.id === id || x.id === id);
+    if (!f) throw userError("That file isn't here any more.");
+    f.about = str(about, 120); f.aboutBy = f.about ? "staff" : ""; delete f._guess;
+    saveFile(o, f);
+    return { id: "o" + f.id, about: aboutOf(f) };
+  }
+  // the home brain writes a one-line "what is this" for each file, one at a time, only while the home PC is on
+  let labeling = false;
+  async function labelOne() {
+    if (labeling || !ownBrain || !ownBrain.homeReady || !(await ownBrain.homeReady())) return;
+    labeling = true;
+    try {
+      for (const o of Object.values(offices)) {
+        const f = files(o.id).find(x => !x.aboutBy);
+        if (!f) continue;
+        try {
+          const j = await ownBrain.writeJson({
+            system: "You label old files of an Indian government office (a Tahsildar / revenue office in Andhra Pradesh). Read the start of a file and say in a few words what it is: the subject, the scheme or GO, the kind (letter, list, report, proforma) and the year if seen. English, at most 12 words. No names of people. If unsure, say what you can see.",
+            prompt: `File name: ${f.title}\n\nStart of the file:\n${f.text.slice(0, 1800)}`,
+            schema: { type: "object", properties: { about: { type: "string" } }, required: ["about"] }, maxTokens: 60, timeoutMs: 120000 });
+          const a = str(j && j.about, 120).replace(/^["']|["']$/g, "");
+          f.about = a || guessAbout(f); f.aboutBy = "brain"; delete f._guess; saveFile(o, f);
+        } catch (e) { f.aboutBy = "tried"; }
+        break;
+      }
+    } finally { labeling = false; }
+  }
+  setInterval(() => { labelOne().catch(() => { }); }, 20000).unref?.();
+
   // ---------- search: by Sy.No., village or name (no AI) ----------
+  // In lists (election lists, beneficiary lists…) a number and a village far apart in the file mean nothing: what counts is
+  // the same row. So files where one line has all of it come first; files that only have them apart come only when
+  // nothing better is found (marked "weak").
   function search(o, q) {
     q = str(q, 120);
     const nums = (q.match(/\d+(?:\s*[\/-]\s*\w+)*/g) || []).map(n => n.replace(/\s+/g, ""));
@@ -93,18 +157,28 @@ module.exports = function makeOffices({ DATA_DIR, formats, h }) {
     if (!nums.length && !words.length) return [];
     const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const numRe = nums.map(n => new RegExp("(?<![\\d/])" + esc(n) + "(?![\\d])", "i"));
-    const res = [];
+    // village names are spelt many ways (Chinamushidiwada / Chinna Musidivada): compare the letters without vowels and doubles
+    const skel = w => w.toLowerCase().replace(/[^a-z]/g, "").replace(/([bcdgjkpst])h/g, "$1").replace(/w/g, "v").replace(/z/g, "j")
+      .replace(/[aeiouy]/g, "").replace(/(.)\1+/g, "$1");
+    const skelText = t => skel(t);      // (spaces too go: "Chinna Musidivada" = "Chinamushidiwada")
+    const wordRe = words.map(w => /^[a-z]+$/.test(w) && w.length >= 5 && skel(w).length >= 2 ? { test: (t, sk) => t.toLowerCase().includes(w) || (sk ?? skelText(t)).includes(skel(w)) } : { test: t => t.toLowerCase().includes(w) });
+    const all = l => numRe.every(r => r.test(l)) && wordRe.every(r => r.test(l));
+    const strong = [], weak = [];
     for (const f of files(o.id)) {
-      const low = f.text.toLowerCase();
-      if (!numRe.every(r => r.test(f.text)) || !words.every(w => low.includes(w))) continue;
+      if (!numRe.every(r => r.test(f.text))) continue;
+      const whole = f.text + " " + f.title;
+      if (!wordRe.every(r => r.test(whole, (f._skel ??= skelText(whole))))) continue;
       const lines = f.text.split(/\n+/).map(l => l.trim()).filter(Boolean);
-      const hits = lines.filter(l => numRe.some(r => r.test(l)) || words.some(w => l.toLowerCase().includes(w))).slice(0, 3).map(l => l.slice(0, 220));
+      const best = lines.filter(all);
+      const isStrong = best.length > 0 || lines.length < 40;          // a short letter: anywhere in it counts
+      const hits = (best.length ? best : lines.filter(l => numRe.some(r => r.test(l)) || wordRe.some(r => r.test(l)))).slice(0, 3).map(l => l.slice(0, 220));
       const date = (f.text.match(/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})\b/) || [])[0] || "";
       const rc = ((f.text.match(/\b(?:\(M\))?\s*(?:R\.?\s?C\.?|Lr|D\.Dis)\.?\s*No\.?[^\n]{0,40}/i) || [])[0] || "").trim().slice(0, 60);
       const sort = date ? date.replace(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/, (m, d, mo, y) => y + mo.padStart(2, "0") + d.padStart(2, "0")) : "0";
-      res.push({ id: "o" + f.id, title: f.title, date, rc, hits, sort });
+      (isStrong ? strong : weak).push({ id: "o" + f.id, title: f.title, about: aboutOf(f), date, rc, hits, sort, rows: best.length, ...(isStrong ? {} : { weak: true }) });
     }
-    return res.sort((a, b) => a.sort.localeCompare(b.sort)).slice(0, 40).map(({ sort, ...r }) => r);
+    const out = strong.length ? strong : weak;
+    return out.sort((a, b) => a.sort.localeCompare(b.sort)).slice(0, 40).map(({ sort, ...r }) => r);
   }
 
   // ---------- for letters: the office's old information, and examples of the format ----------
@@ -122,7 +196,7 @@ module.exports = function makeOffices({ DATA_DIR, formats, h }) {
     }).filter(x => x.s >= 4).sort((a, b) => b.s - a.s).slice(0, max);
     if (!scored.length) return "";
     return "\n\nYOUR OFFICE'S EARLIER FILES ABOUT THIS (history of the matter; use only what really belongs to it):\n" +
-      scored.map(({ f }) => `--- ${f.title} ---\n${f.text.slice(0, 3500)}`).join("\n\n");
+      scored.map(({ f }) => `--- ${f.title}${aboutOf(f) ? " (" + aboutOf(f) + ")" : ""} ---\n${f.text.slice(0, 3500)}`).join("\n\n");
   }
   /** The closest earlier letter of this kind: the member's own office as it is; else another office that shares, blanked. */
   function example(officeId, docType, request) {
@@ -171,6 +245,7 @@ module.exports = function makeOffices({ DATA_DIR, formats, h }) {
       if (!w) { send(403, { error: "Join your office first (Office letters › My office)." }); return true; }
       const o = w.office;
       if (p === "/api/office/me") { send(200, { office: view(o, w.head), head: w.head }); return true; }
+      if (p === "/api/office/about") { send(200, setAbout(o, str(body.id, 40), body.about, w.head ? "head" : w.device)); return true; }
       if (p === "/api/office/add") {
         const out = await addFile(o, { ...body, by: w.head ? "head" : w.device });
         send(200, out); return true;
