@@ -225,6 +225,16 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
+      <h2>🎬 Habit Studio · వీడియోలు</h2>
+      <p class="hint">Our own explainer videos, made free on this server: a topic (useful things people ask, or the festival of the day) → Claude writes a 30-45 second Telugu script → our free Telugu voice reads it → the puppy presents it as a whiteboard or motion-graphics animation. Nothing goes out by itself: each new video waits here. ✓ Post puts it in Media with the "🤖 AI-made" label; ✕ Drop deletes it.</p>
+      <p id="studioState" class="msg"></p>
+      <label for="studioTopic">Make one now about… (optional)</label>
+      <input id="studioTopic" type="text" maxlength="120" placeholder="e.g. PM Kisan ela apply cheyali / UPI fraud jagrattalu">
+      <button id="studioMake" type="button">🎬 Make a video</button>
+      <div id="studioList" style="margin-top:14px"></div>
+    </section>
+
+    <section class="card">
       <h2>📰 Media posts · మీడియా పోస్టులు</h2>
       <p class="hint">All day, new stories come from these news feeds. The server opens each story, and our own brain writes a short Telugu post from its facts with a link to it (Claude writes them when our own brain can't, up to a limit a day). Stories that many papers report come first. Every morning Claude also writes a few posts per section, and the server adds the panchangam (4 AM), weather warnings for farmers (6 AM and 6 PM) and mandi prices (2 PM, needs DATA_GOV_KEY).</p>
       <p id="mediaState" class="msg"></p>
@@ -493,6 +503,33 @@ function showMedia(m) {
   if (was) sel.value = was;
 }
 async function loadMedia() { showMedia(await api("media")); }
+async function loadStudio() {
+  const d = await api("studio");
+  say($("studioState"), `${d.busy ? "⏳ Making a video now… " : ""}Made today: ${d.madeToday}/${d.daily} · voice: ${d.voice}${d.lastError ? " · last problem: " + d.lastError : ""}`, !d.lastError);
+  const box = $("studioList"); box.textContent = "";
+  for (const it of d.items) {
+    const row = document.createElement("div");
+    row.style.cssText = "border:1px solid #ddd;border-radius:12px;padding:10px;margin:8px 0";
+    const h = document.createElement("b");
+    h.textContent = ({ making: "⏳ ", waiting: "🕒 ", posted: "✅ ", dropped: "🗑 ", failed: "⚠️ " }[it.status] || "") + (it.title || it.topic);
+    row.appendChild(h);
+    const info = document.createElement("div"); info.className = "hint";
+    info.textContent = `${it.status}${it.dur ? " · " + it.dur + "s" : ""}${it.by ? " · written by " + it.by : ""}${it.voiced ? " · with voice" : it.status === "waiting" ? " · music only (voice not ready)" : ""}${it.error ? " · " + it.error : ""}`;
+    row.appendChild(info);
+    if (it.video && it.status === "waiting") {
+      const v = document.createElement("video"); v.src = it.video; v.poster = it.poster; v.controls = true; v.preload = "none";
+      v.style.cssText = "width:100%;max-width:300px;border-radius:10px;margin-top:6px;display:block";
+      row.appendChild(v);
+      const ok = document.createElement("button"); ok.type = "button"; ok.textContent = "✓ Post in Media";
+      const no = document.createElement("button"); no.type = "button"; no.textContent = "✕ Drop"; no.className = "ghost";
+      ok.onclick = async () => { try { await api("studio/approve", { id: it.id }); loadStudio(); } catch (e) { alert(e.message); } };
+      no.onclick = async () => { if (confirm("Delete this video?")) { try { await api("studio/drop", { id: it.id }); loadStudio(); } catch (e) { alert(e.message); } } };
+      row.appendChild(ok); row.appendChild(no);
+    }
+    box.appendChild(row);
+  }
+}
+
 async function mediaDo(btn, work) {
   btn.disabled = true;
   try { say($("feedMsg"), await work(), true); } catch (e) { say($("feedMsg"), e.message, false); }
@@ -892,6 +929,11 @@ async function refresh() {
   loadBrain().catch(() => {});
   loadGemma().catch(() => {});
   loadMedia().catch(() => {});
+  loadStudio().catch(() => {});
+  $("studioMake").onclick = async () => {
+    try { await api("studio/make", { topic: $("studioTopic").value.trim() }); $("studioTopic").value = ""; say($("studioState"), "⏳ Making the video (2-5 minutes)… this list updates by itself.", true); setTimeout(() => loadStudio().catch(() => {}), 60000); setTimeout(() => loadStudio().catch(() => {}), 180000); setTimeout(() => loadStudio().catch(() => {}), 360000); }
+    catch (e) { say($("studioState"), e.message, false); }
+  };
   loadYt().catch(() => {});
   const { items } = await api("list");
   const ul = $("list"); ul.textContent = "";

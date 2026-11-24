@@ -535,6 +535,8 @@ function isOwner(req) {
 }
 // Habit's own cute pictures and clips made on Kaggle (brain/habit_cartoons.py) come into Media › Fun, a few a day
 const hfCartoons = require("./hfcartoons.js")({ DATA_DIR, media });
+// Habit Studio: our own explainer videos (topic → script → free Telugu voice → animation), each waits for the owner's ✓
+const studio = require("./studio.js")({ DATA_DIR, learn, MODEL, ownBrain, freeVoice, media, trends });
 const phoneBrain = require("./phonebrain.js")({ DATA_DIR });
 const cartoon = require("./cartoon.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice, h: { send, readBody, allowed, clientIp },
   engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, freeVoice, trends, claudeOut: learn.claudeOut,
@@ -798,6 +800,18 @@ const server = http.createServer(async (req, res) => {
       // the library: files waiting for a look (ID numbers), what people added to the public library, people's own files (titles)
       if (req.method === "GET" && url.pathname === "/api/teach/library") return send(res, 200, library.overview());
       if (req.method === "GET" && url.pathname === "/api/teach/cartoons") return send(res, 200, await hfCartoons.status());
+      if (req.method === "GET" && url.pathname === "/api/teach/studio") return send(res, 200, studio.list());
+      if (req.method === "POST" && url.pathname.startsWith("/api/teach/studio/")) {
+        let body = {};
+        try { body = await readBody(req, 64 * 1024); } catch (e) { }
+        const what = url.pathname.slice("/api/teach/studio/".length);
+        try {
+          if (what === "make") { studio.make(String(body.topic || "").slice(0, 120) || undefined).catch(() => {}); return send(res, 200, { ok: true, started: true }); }
+          if (what === "approve") return send(res, 200, { ok: true, item: studio.approve(String(body.id || "")) });
+          if (what === "drop") return send(res, 200, { ok: true, item: studio.drop(String(body.id || "")) });
+        } catch (e) { return send(res, 400, { error: String(e.message || e) }); }
+        return send(res, 404, { error: "Not found." });
+      }
       if (req.method === "GET" && url.pathname === "/api/teach/phonebrain") return send(res, 200, phoneBrain.status());
       if (req.method === "POST" && url.pathname === "/api/teach/cartoons/post") { req.resume(); return send(res, 200, await hfCartoons.run(true)); }
       if (req.method === "GET" && url.pathname === "/api/teach/library/read") {
