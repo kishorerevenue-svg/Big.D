@@ -51,6 +51,8 @@ class Brain(private val store: Store) {
             .put("todos", todos).put("notes", notes)
             .put("memories", JSONArray().also { a -> (store.memories() + store.noticedLines()).forEach { a.put(it) } })   // (and what Habit noticed, when they allowed it)
             .put("learn", store.learnShare && !drafting)
+        heardAlt.filter { it.isNotBlank() && it.trim() != text.trim() }.take(3).takeIf { it.isNotEmpty() }?.let { a -> body.put("heardAlt", JSONArray(a)) }
+        if (!drafting) heardAlt = emptyList()
         // who is talking now, only when they said it in this conversation (family members share the phone)
         store.speakerNow()?.let { body.put("speaker", it); store.touchSpeaker() }
         if (photo != null) body.put("image", JSONObject().put("mediaType", photo.first).put("data", photo.second))
@@ -151,6 +153,13 @@ class Brain(private val store: Store) {
         val cm = store.ctx.getSystemService(android.net.ConnectivityManager::class.java)
         cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     } catch (e: Exception) { true }
+
+    /** The phone did something itself, without the brain ("call Roja" → a phone call): kept in the talk, so when they say
+     *  "no, I meant on Habit" the brain knows what was done and can put it right. */
+    fun noteLocal(text: String, did: String) { keep(text, JSONObject().put("reply", "($did)")) }
+
+    /** Other ways the voice typing heard the same words (the brain picks the meaning, like a person who half-heard). */
+    @Volatile var heardAlt: List<String> = emptyList()
 
     private fun keep(text: String, j: JSONObject) {
         history.add(JSONObject().put("role", "user").put("content", Privacy.maybe(store, text)))

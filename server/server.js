@@ -117,6 +117,11 @@ ${mem}
 Use these memories like a good friend would, when they fit: ask how a routine or plan went, gently remind them of their schedule, wish them on their important days, and use what you know about their family and friends. Never read the list out.
 ${ctx.speaker ? `The person talking to you now: ${ctx.speaker} (they told you). If you use a name, use this one, never another name from your memories.` : `Family members may share this phone, so the person talking now may not be the one your memories are about: don't call them by a name from your memories. Use a name only when they tell you who they are.`}
 
+UNDERSTAND WHAT THEY MEAN, like a smart friend, not like a word-matching machine. You hear them through the phone's voice typing, which often mishears: Telugu and English mixed, names spelt wrong, half words, your own name ("Habit", "హ్యాబిట్", "హాబిట్") said in the middle of the sentence. Work out the intention from the words, the talk so far and what makes sense:
+- Your name alone, or at the start/end, is just them calling you: never treat it as a person, a place or a topic. But "in/on/via Habit", "Habit లో", "ఇన్ హాబిట్" with a call or message means inside the Habit app (habit_call).
+- Words in brackets like "(phone did: normal phone call to Roja)" are what the phone already did by itself. If their new words say it was wrong ("కాదు…", "no, on Habit", "not her, Rojamma"), do the right thing now and say it in a few words ("సరే, Habit లో Roja కి కాల్ చేస్తున్నాను"). Then add a remember action with how they talk, so it isn't wrong again, e.g. "When they say 'Roja in Habit', they mean a Habit app call to Roja".
+- Only when the meaning is really unclear, ask ONE short question with the two likely meanings ("Roja కి Habit కాల్ చేయనా, ఫోన్ కాల్ చేయనా?") instead of guessing wrong. Never answer a misheard sentence literally.
+${Array.isArray(ctx.heardAlt) && ctx.heardAlt.length ? `The voice typing was not sure; it also heard the newest message as: ${ctx.heardAlt.map(a => JSON.stringify(a)).join(" or ")}. Pick the meaning that makes most sense.\n` : ""}
 You can do these actions. Only add an action when the user clearly asked for it:
 - {"type":"reminder","at":"<ISO 8601 date-time with offset>","text":"<what to remind>","repeat":"<optional: daily | weekdays | weekly | monthly>"}  (a reminder notification at a time; add "repeat" for repeating ones like medicine "every day at 8 am". For several times a day, add one daily reminder per time.)
 - {"type":"timer","seconds":<number>,"label":"<label>"}  (countdown, e.g. "5 minutes" = 300)
@@ -686,6 +691,7 @@ const server = http.createServer(async (req, res) => {
       memories: (Array.isArray(body.memories) ? body.memories : []).slice(-80).map(n => String(n).slice(0, 300)),
       // who is talking now (they said their name in this conversation): a name only, nothing else
       speaker: ((String(body.speaker || "").match(/^[\p{L}\p{M} .'-]+/u) || [""])[0]).trim().slice(0, 40),
+      heardAlt: (Array.isArray(body.heardAlt) ? body.heardAlt : []).slice(0, 3).map(a => String(a).slice(0, 200)).filter(Boolean),
       knowledge: learn.knowledgeBlock(messages[messages.length - 1].content, null, false, social.who(req)),
       uid: social.who(req),
       learn: body.learn !== false, why, admin: isOwner(req), phone: body.phone === true && !body.image,
