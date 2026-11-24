@@ -1066,7 +1066,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     lastPartial = p
                     val call = Talk.plainCall(p, store.wakeName) != null || Talk.habitCall(p, store.wakeName) != null
                     if (!call) main.postDelayed({ if (lastPartial == p && listening && recognizer === rec) thinkAhead(p) }, 1100)
-                    main.postDelayed({ if (lastPartial == p && listening && recognizer === rec) finishWith(rec, p) }, if (call) 1300L else if (unfinished(p)) 5000L else 3000L)
+                    // (a call isn't rushed any more: "call Roja…" is often followed by "…on Habit" or "…video")
+                    main.postDelayed({ if (lastPartial == p && listening && recognizer === rec) finishWith(rec, p) }, if (unfinished(p)) 5000L else if (call) 2300L else 3000L)
                 }
             }
             override fun onResults(results: Bundle?) {
@@ -1074,8 +1075,10 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 endEar(learn = true)
                 unhushSoon()
                 setListening(false)
-                val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() }
+                val all = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                val heard = all.firstOrNull()?.takeIf { it.isNotBlank() }
                     ?: lastPartial.takeIf { it.isNotBlank() }       // the words it showed are what they said
+                brain.heardAlt = all.drop(1)
                 lastPartial = ""
                 if (voiceMode) { onVoiceModeHeard(heard.orEmpty()); return }
                 if (tapStopped) { tapStopped = false; replyVoice = false; return }
@@ -1098,7 +1101,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, LetterHelper.showing?.petLang() ?: if (store.lang == "en") "en-IN" else "te-IN")   // (a letter in English: English)
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)            // other ways it heard the words: the brain picks the meaning
             // a short pause to think in the middle of a sentence is not the end (phones that honour it)
             .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
             .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
@@ -1142,7 +1145,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private fun unfinished(p: String): Boolean {
         val last = p.trim().trimEnd('.', ',', '…').split(Regex("\\s+")).lastOrNull()?.lowercase() ?: return false
         return last in setOf("and", "but", "or", "then", "so", "no", "not", "with", "the", "to", "for", "about", "of", "in", "at", "like", "wait",
-            "ఇంకా", "మరియు", "కానీ", "కాని", "లేదా", "తర్వాత", "తరువాత", "అంటే", "మరి", "కాదు", "ఆగు", "అలాగే", "కూడా", "ఏంటంటే", "అది", "ఆ")
+            "ఇంకా", "మరియు", "కానీ", "కాని", "లేదా", "తర్వాత", "తరువాత", "అంటే", "మరి", "కాదు", "ఆగు", "అలాగే", "కూడా", "ఏంటంటే", "అది", "ఆ",
+            "on", "via", "through", "using", "ఇన్", "ఆన్", "ద్వారా", "లో", "టు", "కి", "కు")
     }
 
     /** A small pause: think about the words so far, quietly (only for questions that go to the brain). */
@@ -1259,16 +1263,21 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                 return
             }
         }
+        // "కాదు, హ్యాబిట్ లో…", "no, I meant…": a correction of what was just done goes to the brain, which sees what was
+        // done and the new words together and works out what they meant (the quick rules below only know single sentences)
+        val correcting = System.currentTimeMillis() - localAt < 120_000 && Regex("^\\s*(కాదు|కాదండి|అది కాదు|no\\b|not\\b|wrong|తప్పు|నేను అన్నది|i meant|i said)", RegexOption.IGNORE_CASE).containsMatchIn(text)
         // "హ్యాబిట్ ద్వారా రోజాకి కాల్ చేయి": a Habit call at once from here (never a normal phone call)
-        Talk.habitCall(text, store.wakeName)?.let { (who, video) ->
+        if (!correcting) Talk.habitCall(text, store.wakeName)?.let { (who, video) ->
             lastQuestion = text
+            brain.noteLocal(text, "phone did: Habit ${if (video) "video " else ""}call to $who"); localAt = System.currentTimeMillis()
             handleReply(JSONObject().put("reply", "").put("emotion", "happy")
                 .put("actions", org.json.JSONArray().put(JSONObject().put("type", "habit_call").put("contact", who).put("video", video))), byVoice = byVoice)
             return
         }
         // "కాల్ టు సాంబ వీఆర్ఓ", "call Roja": a normal phone call at once from here (no waiting for the server)
-        Talk.plainCall(text, store.wakeName)?.let { who ->
+        if (!correcting) Talk.plainCall(text, store.wakeName)?.let { who ->
             lastQuestion = text
+            brain.noteLocal(text, "phone did: normal phone call to $who"); localAt = System.currentTimeMillis()
             val digits = who.filter { it.isDigit() || it == '+' }
             val num = if (digits.count { it.isDigit() } >= 3 && who.none { it.isLetter() }) digits else ""
             handleReply(JSONObject().put("reply", "").put("emotion", "happy")
@@ -1353,6 +1362,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
     private var lastLook: Eyes.Look? = null
     private var lookingSince = 0L
     private var lookToken = 0          // a new question (or tapping me to talk) stops a "look again" that is waiting
+    private var localAt = 0L                       // when the phone last did something itself (a call…): "no, …" right after is a correction
     private var offerLook: Eyes.Look? = null      // it offered to look ("Shall I look?"): a yes opens its eyes
     private var autoLooks = 0          // "move a little left… looking again": at most twice per question
 
