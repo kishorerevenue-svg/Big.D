@@ -1206,6 +1206,13 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             return
         }
+        // only its name ("హ్యాబిట్"): answer like a person — "yes?" — and listen, instead of asking the brain about the word
+        if (Talk.onlyName(text, store.wakeName)) {
+            say(if (te() || isTelugu(text)) listOf("ఆ, చెప్పండి?", "హా, వింటున్నా. చెప్పండి.", "ఏంటి? చెప్పండి.").random()
+                else listOf("Yes? Tell me.", "I'm listening.", "Yes?").random(), PuppyView.Mood.HAPPY)
+            if (byVoice) afterSpeech = { if (!listening && !onPhone()) { convoOn = true; startListening() } }
+            return
+        }
         // "who should I call?" is on the screen and they say who ("the first one", "అత్తయ్య రోజా")
         pickFrom?.let { list -> pickBy(text, list)?.let { pickCall(it); return } }
         if (store.learnWatch || store.learnPeople) Know.refresh(this, store)      // what Habit noticed (only what they switched on)
@@ -1241,6 +1248,16 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             offerLook = null
             if (Regex("^\\s*(yes|yeah|ok|okay|sure|look|see|please|అవును|ఔను|సరే|ఓకే|చూడు|చూడండి|చూసి చెప్పు|హా|ఆ)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text) ||
                 Regex("^\\s*(అవును|ఔను|సరే|ఓకే|చూడు|చూడండి|హా)").containsMatchIn(text)) { lastQuestion = l.ask; look(l); return }
+        }
+        // it offered a normal phone call (the person isn't on Habit): a yes rings them now
+        Actions.offerPhone?.let { who ->
+            Actions.offerPhone = null
+            if (Regex("^\\s*(yes|yeah|ok|okay|sure|call|please|అవును|ఔను|సరే|ఓకే|చెయ్|చేయి|చెయ్యి|చేయండి|కాల్|ఫోన్|హా|ఆ)", RegexOption.IGNORE_CASE).containsMatchIn(text)) {
+                lastQuestion = text
+                handleReply(JSONObject().put("reply", "").put("emotion", "happy")
+                    .put("actions", org.json.JSONArray().put(JSONObject().put("type", "call").put("contact", who))), byVoice = byVoice)
+                return
+            }
         }
         // "హ్యాబిట్ ద్వారా రోజాకి కాల్ చేయి": a Habit call at once from here (never a normal phone call)
         Talk.habitCall(text, store.wakeName)?.let { (who, video) ->

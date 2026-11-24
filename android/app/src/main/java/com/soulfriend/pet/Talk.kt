@@ -134,9 +134,9 @@ object Talk {
     // A call through Habit: "హ్యాబిట్ ద్వారా రోజాకి కాల్ చేయి", "Roja ki Habit call", "call Roja on Habit", "రోజాకి వీడియో కాల్".
     // (Just "హ్యాబిట్, రోజాకి కాల్ చెయ్" is talking to the pet: that is a normal call.) Returns (who, video), or null.
     private const val HB = "(?:హ్యాబిట్|హాబిట్|హబిట్|హేబిట్|హెబిట్|హ్యాబీట్|హాబీట్|హేబీట్|హ్యాబిత్|habit)"
-    private val HABIT_WAY = Regex("$HB\\s*(?:ద్వారా|ద్వార|లో|లోనే|తో|కాల్|call|వీడియో|video|యాప్|app)|(?:on|via|through|in|using)\\s+$HB|వీడియో\\s*కాల్|video\\s*call", RegexOption.IGNORE_CASE)
+    private val HABIT_WAY = Regex("$HB\\s*(?:ద్వారా|ద్వార|లో|లోనే|తో|కాల్|call|వీడియో|video|యాప్|app)|(?:on|via|through|in|using|ఇన్|ఇన్ని|ఇన్నీ|ఇను|ఆన్|వయా)\\s+$HB|వీడియో\\s*కాల్|video\\s*call", RegexOption.IGNORE_CASE)
     private val CALL_WORD = Regex("కాల్|call|ఫోన్\\s*చే|ఫోన్\\s*చె", RegexOption.IGNORE_CASE)
-    private val CALL_FILL = Regex("^(?:$HB|ద్వారా|ద్వార|లో|లోనే|తో|కాల్|కాల్స్|call|calls|వీడియో|video|ఫోన్|యాప్|app|చెయ్.*|చేయ్.*|చేయి|చేయండి|చేసి|చేస్తావా|కలుపు|కలిపి|ఒక్క|ఒక|ఒకసారి|ఒకటి|నువ్వు|నేను|చెప్పింది|చెప్పాను|ఇంకా|వినలేదు|ప్లీజ్|please|make|a|to|on|via|through|using|in|now|ఇప్పుడు|ఇప్పుడే|త్వరగా|కొంచెం|సరే|అమ్మా|రా|బాబు|మరి|కదా|అని|the|my|me|for)$", RegexOption.IGNORE_CASE)
+    private val CALL_FILL = Regex("^(?:$HB|ద్వారా|ద్వార|లో|లోనే|తో|కాల్|కాల్స్|call|calls|వీడియో|video|ఫోన్|యాప్|app|చెయ్.*|చేయ్.*|చేయి|చేయండి|చేసి|చేస్తావా|కలుపు|కలిపి|ఒక్క|ఒక|ఒకసారి|ఒకటి|నువ్వు|నేను|చెప్పింది|చెప్పాను|ఇంకా|వినలేదు|ప్లీజ్|please|make|a|to|on|via|through|using|in|now|టు|తు|ఇన్|ఇన్ని|ఇన్నీ|ఇను|ఆన్|వయా|ఇప్పుడు|ఇప్పుడే|త్వరగా|కొంచెం|సరే|అమ్మా|రా|బాబు|మరి|కదా|అని|the|my|me|for)$", RegexOption.IGNORE_CASE)
     // A plain phone call, done at once by the phone (no waiting for the server): "కాల్ టు సాంబ వీఆర్ఓ", "call Roja",
     // "రోజాకి కాల్ చెయ్", "Roja ki phone kottu". Only asking for a call: "రోజా నిన్న కాల్ చేసింది" is not. Returns who, or null.
     private val CALL_START = Regex("^(?:$HB[,\\s]+)?(?:కాల్|ఫోన్|call|phone|dial|ring)\\s+", RegexOption.IGNORE_CASE)
@@ -152,6 +152,15 @@ object Talk {
             .filter { it.length >= 2 || it.all { c -> c.isDigit() } }
         if (words.isEmpty() || words.size > 4) return null
         return words.joinToString(" ")
+    }
+
+    /** Only the pet's name was said ("హ్యాబిట్", "Habit?", "హే హ్యాబిట్"): it should just answer "yes?" and listen. */
+    fun onlyName(text: String, petName: String = ""): Boolean {
+        var t = text.trim().trimEnd('.', '!', '।', '?', ',').lowercase()
+        t = t.replace(Regex("^(?:హే|హాయ్|ఓయ్|ఒరేయ్|ఏయ్|hey|hi|hello|ok|okay)\\s+"), "")
+        if (Regex("^$HB(?:\\s+$HB)?$", RegexOption.IGNORE_CASE).matches(t)) return true
+        val pn = petName.trim().lowercase()
+        return pn.length >= 2 && t == pn
     }
 
     fun habitCall(text: String, petName: String = ""): Pair<String, Boolean>? {

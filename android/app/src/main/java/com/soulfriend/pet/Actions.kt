@@ -158,6 +158,11 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
         return if (start(i)) "Alarm set for %d:%02d".format(hour, minute) else "Your phone's clock app didn't accept the alarm"
     }
 
+    companion object {
+        /** It offered a normal phone call to this contact (they're not on Habit): a "yes" next makes the call. */
+        @Volatile var offerPhone: String? = null
+    }
+
     private fun lookup(name: String): String? {
         if (name.isBlank()) return null
         if (ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return null
@@ -181,8 +186,16 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
         if (c == null) {
             // no chat with them yet, but they are one of "your contacts on Habit": the chat is made, then the call
             val p = habitContact(contact, alt)
-                ?: return if (te) "⚠ $contact Habit లో దొరకలేదు. వారు Habit వాడుతుంటే, చాట్‌లలో ఒకసారి వారితో చాట్ మొదలుపెట్టండి. (మామూలు కాల్ కావాలంటే \"ఫోన్ కాల్\" అనండి.)"
-                          else "⚠ I couldn't find $contact on Habit. If they use Habit, start a chat with them once in Chats. (Say \"phone call\" for a normal call.)"
+            if (p == null) {
+                // not on Habit (or not found there): offer the normal phone call, a "yes" makes it
+                val inPhone = lookupAll(contact, alt).firstOrNull()
+                if (inPhone != null) {
+                    offerPhone = inPhone.first
+                    return if (te) "${inPhone.first} గారు Habit లో లేరు. మామూలు ఫోన్ కాల్ చేయనా?" else "${inPhone.first} isn't on Habit. Shall I make a normal phone call?"
+                }
+                return if (te) "⚠ $contact Habit లో గానీ, మీ కాంటాక్ట్‌లలో గానీ దొరకలేదు. ఫోన్‌లో సేవ్ చేసిన పేరు చెప్పండి."
+                       else "⚠ I couldn't find $contact on Habit or in your contacts. Say the name as it's saved in the phone."
+            }
             Thread {
                 val r = try { ChatSync.api(store, "POST", "/api/chat/open", org.json.JSONObject().put("uid", p.second).toString()) } catch (e: Exception) { null }
                 val conv = r?.json?.optJSONObject("conv")
