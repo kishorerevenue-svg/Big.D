@@ -90,9 +90,16 @@ class BrainActivity : Activity() {
                 val gb = "%.1f".format(cur.mb / 1000.0)
                 box.addView(text((if (cur === Model.SMALL) "🐣 Small brain" else "🧠 Big brain") + " · $gb GB", 13.5f, muted), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
                 val other = if (cur === Model.SMALL) Model.BIG else Model.SMALL
-                box.addView(button(if (other === Model.BIG) (if (te) "🧠 పెద్ద మెదడుకు మారు (2.6 GB, తెలుగు బాగా)" else "🧠 Change to the big brain (2.6 GB, better Telugu)")
-                                   else (if (te) "🐣 చిన్న మెదడుకు మారు (0.6 GB)" else "🐣 Change to the small brain (0.6 GB)"), false) {
-                    Model.delete(this); Model.choose(this, other); show() }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+                // the other brain: if it's already on the phone, a tap changes to it at once (nothing is deleted); if not,
+                // a tap downloads it and this one stays until that one is ready
+                val otherHere = Model.has(this, other)
+                val og = "%.1f".format(other.mb / 1000.0)
+                box.addView(button(if (other === Model.BIG) (if (te) "🧠 పెద్ద మెదడుకు మారు ($og GB, తెలుగు బాగా)${if (otherHere) " ✓" else ""}" else "🧠 Use the big brain ($og GB, better Telugu)${if (otherHere) " ✓" else ""}")
+                                   else (if (te) "🐣 చిన్న మెదడుకు మారు ($og GB, వేగం)${if (otherHere) " ✓" else ""}" else "🐣 Use the small brain ($og GB, quicker)${if (otherHere) " ✓" else ""}"), false) {
+                    Model.choose(this, other); show() }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
+                box.addView(text(if (otherHere) (if (te) "రెండు మెదళ్ళూ ఫోన్‌లో ఉన్నాయి: ఎప్పుడైనా ఒక్క నొక్కుతో మార్చుకోవచ్చు." else "Both brains are on this phone: change between them any time with one tap.")
+                                 else (if (te) "మారితే అది డౌన్‌లోడ్ అవుతుంది; ఇది తొలగించబడదు." else "Changing downloads it; this one is not deleted."), 12.5f, muted),
+                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
                 box.addView(button(if (te) "🗑 మెదడును తొలగించు ($gb GB ఖాళీ అవుతుంది)" else "🗑 Delete the brain (frees $gb GB)", false) { Model.delete(this); show() },
                     LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(6) })
             }
@@ -106,6 +113,11 @@ class BrainActivity : Activity() {
             }
             else -> {
                 Model.prefs(this).getString("problem", "")?.takeIf { it.isNotBlank() }?.let { box.addView(text("⚠️ $it", 14f, Color.parseColor("#B45309"))) }
+                // the other brain is already on the phone: going back to it needs no download
+                val back = if (cur === Model.BIG) Model.SMALL else Model.BIG
+                if (Model.has(this, back)) box.addView(button(if (back === Model.SMALL) (if (te) "↩ చిన్న మెదడునే వాడు (ఫోన్‌లో ఉంది)" else "↩ Keep using the small brain (it's on the phone)")
+                        else (if (te) "↩ పెద్ద మెదడునే వాడు (ఫోన్‌లో ఉంది)" else "↩ Keep using the big brain (it's on the phone)"), false) { Model.choose(this, back); show() },
+                    LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(10) })
                 box.addView(text(if (te) "ఏ మెదడు కావాలి? (ఒక్కసారే డౌన్‌లోడ్)" else "Which brain? (downloaded only once)", 15f, bold = true))
                 val pick = RadioGroup(this)
                 val small = RadioButton(this).apply { id = View.generateViewId(); textSize = 14.5f

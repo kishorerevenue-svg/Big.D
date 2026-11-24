@@ -117,5 +117,12 @@ object Model {
         part(ctx).delete(); prefs(ctx).edit().putLong("download", -1L).apply()
     }
 
-    fun delete(ctx: Context) { cancel(ctx); file(ctx).delete() }
+    /** Is this size's brain already on the phone (both can be kept, and changed between at once)? */
+    fun has(ctx: Context, s: Size) = File(ctx.getExternalFilesDir(null), s.name).let { it.exists() && it.length() > s.minBytes }
+    /** Removes the brain in use; if the other one is on the phone, that one is used from now on. */
+    fun delete(ctx: Context) {
+        cancel(ctx); file(ctx).delete()
+        val other = if (size(ctx) === BIG) SMALL else BIG
+        if (has(ctx, other)) choose(ctx, other)
+    }
 }
