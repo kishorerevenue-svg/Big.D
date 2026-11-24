@@ -85,6 +85,16 @@ const SKILLS = [
     how: "Privacy: answer plainly what is kept and where (on the phone, or on Habit's server for chats and files), that you never ask for OTPs or passwords, and do what they ask (a forget action for memories). Reassure in simple words without technical terms." },
   { id: "translate", when: /\b(translate|in telugu|in english|in hindi|how to say|what is .* in (telugu|english|hindi))\b|అనువదించు|తెలుగులో|ఇంగ్లీష్‌లో|హిందీలో|ఎలా అంటారు/i,
     how: "Translating: give the translation first, natural (how people really say it, not word by word), then the pronunciation in Telugu letters for English or Hindi, and one note if the tone changes (polite or casual). Long text: in a show_text action." },
+  { id: "essay", when: /\b(essay|speech|bhashan|article|paragraph on|write about|composition|anchoring|vote of thanks|welcome speech)\b|వ్యాసం|ప్రసంగం|ఉపన్యాసం|వందన సమర్పణ|స్వాగత ప్రసంగం/i,
+    how: "Essay or speech: a strong opening line (a question, a fact or a short story), 3 clear parts with one idea each and a local example, and a closing line people remember. For a speech: short sentences to say aloud, greet the guests by role, 1-3 minutes unless told. Put it in a show_text action." },
+  { id: "email", when: /\b(email|e-mail|mail to|write a mail|cover letter|reply mail)\b|ఈమెయిల్|మెయిల్ రాయి/i,
+    how: "E-mail: a clear subject line, a polite greeting, the purpose in the first sentence, the details in 2-3 short paragraphs, the exact request with a date, and a proper sign-off with their name. Put it in a show_text action, ready to copy." },
+  { id: "post", when: /\b(post for|facebook post|instagram|caption|tweet|status|poster text|slogan|tagline|invitation card|invitation|wedding card)\b|పోస్ట్|క్యాప్షన్|స్లోగన్|నినాదం|ఆహ్వాన పత్రిక|పెళ్లి కార్డు/i,
+    how: "Posts, slogans and invitations: short and catchy, the key detail first (what, when, where), a warm or proud tone, at most one or two emojis; give 2-3 options to choose from. Invitations: names, date, time, venue, and a respectful line inviting them." },
+  { id: "rewrite", when: /\b(correct this|check this|proofread|rewrite|improve this|make it better|polish|grammar check|make it formal|make it short|correct chey|correct cheyyi)\b|సరిచేయి|తప్పులు చూడు|మార్చి రాయి|ఇంకా బాగా రాయి|ఫార్మల్ గా|చిన్నగా రాయి/i,
+    how: "Improving their writing: keep their meaning and voice; fix grammar, spelling and order; make it clearer and shorter. Give the improved version first (in show_text if long), then at most 2-3 short notes on what changed, so they learn. Never add facts they didn't give." },
+  { id: "petition", when: /\b(application to|petition|request letter|leave letter|complaint letter|apply for|letter to the (collector|tahsildar|mro|principal|manager|commissioner)|letter raayi|letter rayi|application raayi)\b|దరఖాస్తు|అర్జీ|వినతి పత్రం|సెలవు లేఖ|ఫిర్యాదు లేఖ|లేఖ రాయి|లెటర్ రాయి/i,
+    how: "Letters and applications: use the letter action so the helper asks for the missing details and makes a proper Word file (never invent names, dates or numbers). If they only want a quick text, write it with From, To, Subject, a respectful salutation, the facts, the clear request, and 'Yours faithfully' with their name." },
 ];
 
 // The same situations said in Tenglish (Telugu in English letters), the way people really type and voice typing writes
@@ -120,6 +130,8 @@ const TENGLISH = {
   fact: /\b(interesting|vinthaga|vinta|telusa|gk)\b/i,
   festival: /\b(sankranthi|sankranti|ugadi|deepavali|diwali|dasara|vinayaka chavithi|ramzan|christmas|bonalu|bathukamma)/i,
   vent: /\b(vinu chaalu|vinandi chalu|matladali|evaru artham chesukoru|manasu baaledu|manasu baledu)/i,
+  essay: /\b(speech raayi|speech rayi|essay raayi|essay rayi|vyasam)/i,
+  email: /\b(email raayi|email rayi|mail raayi|mail rayi)/i,
   compliment: /\b(thanks|thank you|super nuvvu|nuvvu super|bagaa chesav|baga chesav|love you)/i,
 };
 
