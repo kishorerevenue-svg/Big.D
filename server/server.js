@@ -33,6 +33,8 @@ const appUpdate = require("./appupdate.js")({ REPO_DIR: path.join(__dirname, "..
 const files = require("./files.js")({ DATA_DIR });
 // Habit's own file skills: learned from the files Claude makes, used when Claude can't (skills.js)
 const skills = require("./skills.js")({ DATA_DIR, learn, files, MODEL, ownBrain });
+// Habit's talk skills: a coach's recipes (explaining, comforting, planning…), the ones that fit each message (talkskills.js)
+const talkSkills = require("./talkskills.js");
 // Habit's own model (habit-gemma): 👍 / 👎 from people, the owner's lessons, the training link and the exam (never Claude's words)
 const gemma = require("./gemma.js")({ DATA_DIR, SERVER_DIR: __dirname, ownBrain, learn });
 const voice = require("./voice.js")({ DATA_DIR });
@@ -122,7 +124,7 @@ UNDERSTAND WHAT THEY MEAN, like a smart friend, not like a word-matching machine
 - Your name alone, or at the start/end, is just them calling you: never treat it as a person, a place or a topic. But "in/on/via Habit", "Habit లో", "ఇన్ హాబిట్" with a call or message means inside the Habit app (habit_call).
 - Words in brackets like "(phone did: normal phone call to Roja)" are what the phone already did by itself. If their new words say it was wrong ("కాదు…", "no, on Habit", "not her, Rojamma"), do the right thing now and say it in a few words ("సరే, Habit లో Roja కి కాల్ చేస్తున్నాను"). Then add a remember action with how they talk, so it isn't wrong again, e.g. "When they say 'Roja in Habit', they mean a Habit app call to Roja".
 - Only when the meaning is really unclear, ask ONE short question with the two likely meanings ("Roja కి Habit కాల్ చేయనా, ఫోన్ కాల్ చేయనా?") instead of guessing wrong. Never answer a misheard sentence literally.
-${Array.isArray(ctx.heardAlt) && ctx.heardAlt.length ? `The voice typing was not sure; it also heard the newest message as: ${ctx.heardAlt.map(a => JSON.stringify(a)).join(" or ")}. Pick the meaning that makes most sense.\n` : ""}
+${ctx.skill ? ctx.skill + "\n" : ""}${Array.isArray(ctx.heardAlt) && ctx.heardAlt.length ? `The voice typing was not sure; it also heard the newest message as: ${ctx.heardAlt.map(a => JSON.stringify(a)).join(" or ")}. Pick the meaning that makes most sense.\n` : ""}
 You can do these actions. Only add an action when the user clearly asked for it:
 - {"type":"reminder","at":"<ISO 8601 date-time with offset>","text":"<what to remind>","repeat":"<optional: daily | weekdays | weekly | monthly>"}  (a reminder notification at a time; add "repeat" for repeating ones like medicine "every day at 8 am". For several times a day, add one daily reminder per time.)
 - {"type":"timer","seconds":<number>,"label":"<label>"}  (countdown, e.g. "5 minutes" = 300)
@@ -692,6 +694,7 @@ const server = http.createServer(async (req, res) => {
       memories: (Array.isArray(body.memories) ? body.memories : []).slice(-80).map(n => String(n).slice(0, 300)),
       // who is talking now (they said their name in this conversation): a name only, nothing else
       speaker: ((String(body.speaker || "").match(/^[\p{L}\p{M} .'-]+/u) || [""])[0]).trim().slice(0, 40),
+      skill: talkSkills.pick(typeof messages[messages.length - 1].content === "string" ? messages[messages.length - 1].content : ""),
       heardAlt: (Array.isArray(body.heardAlt) ? body.heardAlt : []).slice(0, 3).map(a => String(a).slice(0, 200)).filter(Boolean),
       knowledge: learn.knowledgeBlock(messages[messages.length - 1].content, null, false, social.who(req)),
       uid: social.who(req),
