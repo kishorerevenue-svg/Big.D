@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Habit Team Board · మా పనుల బోర్డు</title>
+<style>
+  :root { --ink:#16213a; --sub:#5b6680; --line:#e3e7f0; --bg:#f5f6fa; --card:#fff; --gold:#d9a521; --navy:#0f2a4d; --green:#16a34a; --red:#dc2626; --blue:#2563eb; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Hind Guntur","Noto Sans Telugu",system-ui,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--navy); color:#fff; padding:18px 16px 14px; }
+  header h1 { margin:0; font-size:22px; }
+  header p { margin:4px 0 0; color:#c9d3e8; font-size:13.5px; }
+  main { max-width:860px; margin:0 auto; padding:12px; }
+  .tabs { display:flex; gap:8px; margin:12px 0; flex-wrap:wrap; }
+  .tabs button { border:1px solid var(--line); background:#fff; border-radius:999px; padding:8px 14px; font-size:14.5px; cursor:pointer; }
+  .tabs button.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin:10px 0; }
+  .task { display:flex; gap:10px; align-items:flex-start; }
+  .task input { width:22px; height:22px; margin-top:3px; flex:none; accent-color: var(--green); }
+  .title { font-weight:700; font-size:16px; }
+  .done .title { text-decoration: line-through; color: var(--sub); }
+  .why { color:var(--sub); font-size:13.5px; margin:3px 0; }
+  ol { margin:6px 0 2px 18px; padding:0; font-size:14px; } li { margin:3px 0; }
+  code { background:#eef2fb; padding:1px 5px; border-radius:5px; font-size:13px; word-break: break-all; }
+  .chip { display:inline-block; font-size:11.5px; font-weight:700; border-radius:999px; padding:2px 8px; margin-left:6px; vertical-align: middle; }
+  .now { background:#fde8e8; color:var(--red); } .soon { background:#fff4d6; color:#a16207; } .ongoing { background:#e7f0ff; color:var(--blue); } .later { background:#eef0f4; color:var(--sub); }
+  .when { font-size:12px; color:var(--green); margin-top:4px; }
+  h2 { font-size:17px; margin:18px 4px 6px; }
+  .day { font-weight:700; color:var(--navy); }
+  .muted { color:var(--sub); font-size:13px; }
+  #login { max-width:420px; margin:30px auto; }
+  #login input { width:100%; padding:12px; border:1px solid var(--line); border-radius:10px; font-size:16px; margin:8px 0; }
+  #login button { width:100%; padding:12px; border:0; border-radius:10px; background:var(--navy); color:#fff; font-size:16px; }
+  .bar { height:10px; background:#e7ebf3; border-radius:6px; overflow:hidden; margin:6px 0 2px; }
+  .bar i { display:block; height:100%; background:var(--green); }
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 Habit Team Board · మా పనుల బోర్డు</h1>
+  <p id="sub">Kishore garu + Claude: what's done, and what comes next</p>
+</header>
+<main>
+  <div id="login" class="card" hidden>
+    <b>Owner password</b>
+    <p class="muted">The same password as the Teach page. This board is only for you.</p>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="Teach password">
+    <button id="go" type="button">Open the board</button>
+    <p id="err" class="muted"></p>
+  </div>
+  <div id="board" hidden>
+    <div class="card">
+      <div class="muted" id="updated"></div>
+      <div class="bar"><i id="prog"></i></div>
+      <div class="muted" id="progText"></div>
+    </div>
+    <div class="tabs">
+      <button type="button" data-t="you" class="on">🙋 Your work · మీ పనులు</button>
+      <button type="button" data-t="claude">🤖 Claude's work</button>
+      <button type="button" data-t="done">✅ Done · పూర్తయినవి</button>
+      <button type="button" data-t="ideas">💡 Ideas</button>
+    </div>
+    <div id="list"></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let key = "", data = null, tab = "you";
+try { key = localStorage.getItem("habitBoardKey") || sessionStorage.getItem("teachKey") || ""; } catch (e) {}
+async function api(path, body) {
+  const r = await fetch("/api/teach/" + path, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", "X-Teach-Key": key }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || "Something went wrong."), { status: r.status });
+  return j;
+}
+const PRIO = { now: ["Now · ఇప్పుడే", "now"], soon: ["Soon · త్వరలో", "soon"], ongoing: ["Ongoing · రోజూ", "ongoing"], later: ["Later · తర్వాత", "later"] };
+const ORDER = { now: 0, soon: 1, ongoing: 2, later: 3 };
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function code(text) {      // commands in the steps shown as code (copy-friendly)
+  const li = el("li"); const parts = String(text).split(/(true; \S+|bash \S+ \S+[^(]*)/);
+  for (const p of parts) { if (/^(true; |bash )/.test(p)) { li.appendChild(el("code", "", p.trim())); li.appendChild(document.createTextNode(" ")); } else if (p) li.appendChild(document.createTextNode(p)); }
+  return li;
+}
+function show() {
+  const list = $("list"); list.textContent = "";
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === tab));
+  const ticks = data.ticks || {};
+  const mine = (data.todo || []).filter(t => t.who === "you");
+  const doneN = mine.filter(t => ticks[t.id]).length;
+  $("prog").style.width = (mine.length ? Math.round(doneN * 100 / mine.length) : 0) + "%";
+  $("progText").textContent = `Your work: ${doneN} of ${mine.length} done`;
+  $("updated").textContent = "Last updated by Claude: " + (data.updated || "") + (data.note ? " · " + data.note : "");
+  if (tab === "you" || tab === "claude") {
+    const items = (data.todo || []).filter(t => t.who === tab).sort((a, b) => (!!ticks[a.id] - !!ticks[b.id]) || (ORDER[a.prio] ?? 9) - (ORDER[b.prio] ?? 9));
+    for (const t of items) {
+      const c = el("div", "card task" + (ticks[t.id] ? " done" : ""));
+      if (tab === "you") {
+        const cb = el("input"); cb.type = "checkbox"; cb.checked = !!ticks[t.id];
+        cb.onchange = async () => { try { data.ticks = (await api("board/tick", { id: t.id, done: cb.checked })).ticks; show(); } catch (e) { alert(e.message); cb.checked = !cb.checked; } };
+        c.appendChild(cb);
+      } else c.appendChild(el("div", "", "🤖"));
+      const body = el("div");
+      const h = el("div", "title", t.title);
+      const p = PRIO[t.prio]; if (p) h.appendChild(el("span", "chip " + p[1], p[0]));
+      body.appendChild(h);
+      if (t.why) body.appendChild(el("div", "why", t.why));
+      if (t.steps && t.steps.length) { const ol = el("ol"); t.steps.forEach(s => ol.appendChild(code(s))); body.appendChild(ol); }
+      if (ticks[t.id]) body.appendChild(el("div", "when", "✓ done " + ticks[t.id]));
+      c.appendChild(body); list.appendChild(c);
+    }
+    if (!items.length) list.appendChild(el("div", "card muted", "Nothing here right now 🎉"));
+  } else if (tab === "done") {
+    for (const d of data.done || []) {
+      const c = el("div", "card"); c.appendChild(el("div", "day", d.date));
+      const ul = el("ul"); for (const i of d.items || []) ul.appendChild(el("li", "", i)); c.appendChild(ul); list.appendChild(c);
+    }
+  } else {
+    const c = el("div", "card"); const ul = el("ul"); for (const i of data.ideas || []) ul.appendChild(el("li", "", i)); c.appendChild(ul); list.appendChild(c);
+  }
+}
+async function load() {
+  try { data = await api("board"); $("login").hidden = true; $("board").hidden = false; show(); }
+  catch (e) { $("board").hidden = true; $("login").hidden = false; $("err").textContent = e.status === 401 && key ? "Wrong password." : ""; }
+}
+$("go").onclick = () => { key = $("pw").value; try { localStorage.setItem("habitBoardKey", key); } catch (e) {} load(); };
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { tab = b.dataset.t; show(); });
+load();
+</script>
+</body>
+</html>

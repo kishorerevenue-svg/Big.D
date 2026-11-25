@@ -800,6 +800,23 @@ const server = http.createServer(async (req, res) => {
       // the library: files waiting for a look (ID numbers), what people added to the public library, people's own files (titles)
       if (req.method === "GET" && url.pathname === "/api/teach/library") return send(res, 200, library.overview());
       if (req.method === "GET" && url.pathname === "/api/teach/cartoons") return send(res, 200, await hfCartoons.status());
+      // the team board: done work and next work (board.json, kept up to date by Claude in the code), with the owner's ticks
+      if (req.method === "GET" && url.pathname === "/api/teach/board") {
+        let b = {}, st = {};
+        try { b = JSON.parse(fs.readFileSync(path.join(__dirname, "board.json"), "utf8")); } catch (e) { }
+        try { st = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "board-state.json"), "utf8")); } catch (e) { }
+        return send(res, 200, Object.assign(b, { ticks: st }));
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/board/tick") {
+        let body = {}, st = {};
+        try { body = await readBody(req, 8 * 1024); } catch (e) { }
+        try { st = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "board-state.json"), "utf8")); } catch (e) { }
+        const id = String(body.id || "").slice(0, 40);
+        if (id) { if (body.done) st[id] = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 16).replace("T", " "); else delete st[id]; }
+        if (typeof body.note === "string") st["note:" + id] = body.note.slice(0, 500);
+        fs.writeFileSync(path.join(DATA_DIR, "board-state.json"), JSON.stringify(st));
+        return send(res, 200, { ok: true, ticks: st });
+      }
       if (req.method === "GET" && url.pathname === "/api/teach/studio") return send(res, 200, studio.list());
       // ALL our own videos in one place (Habit Studio explainers, cartoons, reels, Kaggle cartoons): what went out to Media
       if (req.method === "GET" && url.pathname === "/api/teach/videos") {
@@ -974,6 +991,7 @@ const server = http.createServer(async (req, res) => {
     let p = url.pathname === "/" ? "/index.html" : url.pathname;
     if (p === "/privacy") p = "/privacy.html";
     if (p === "/teach") p = "/teach.html";
+    if (p === "/board") p = "/board.html";
     // one page with the two boxes: 🌐 public and 🏛 office (bigdai.tech/office opens it on the office side)
     if (p === "/library" || p === "/my" || p === "/office" || p === "/office.html") p = "/library.html";
     if (p === "/rules" || p === "/child-safety") p = "/rules.html";
