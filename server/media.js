@@ -452,7 +452,9 @@ Reply with only a JSON object, no other text:
   function forgetDevice(req) { const d = me(req); let n = 0; for (const i of db.items) { const k = (i.likes || []).indexOf(d); if (k >= 0) { i.likes.splice(k, 1); n++; } } if (n) save(); return n; }
   function removeItem(id) { const n = db.items.length; db.items = db.items.filter(i => i.id !== Number(id)); if (db.items.length !== n) save(); return db.items.length !== n; }
 
-  return { handle, stats, generate, CATS, MOODS, ISSUES, allItems, removeItem, forgetDevice, changed: save, addItem, hasUrl, recentTitles,
+  /** How many people liked a post (Habit Studio learns which topics people like). */
+  const likesOf = id => { const i = db.items.find(x => x.id === Number(id)); return i ? (i.likes || []).length : -1; };
+  return { handle, stats, generate, CATS, MOODS, ISSUES, allItems, removeItem, forgetDevice, changed: save, addItem, likesOf, hasUrl, recentTitles,
     teach: { info: teachInfo, addFeed: feeds.addFeed, removeFeed: feeds.removeFeed, run: (cat) => { if (!CATS[cat] || cat === "kids") return false; feeds.want(cat, 3); return true; } },
     _test: { feedTick, dailyTick, feeds, daily, db: () => db } };
 };

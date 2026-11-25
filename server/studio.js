@@ -55,23 +55,43 @@ module.exports = function makeStudio({ DATA_DIR, learn, MODEL, ownBrain, freeVoi
     ["నీటిని పొదుపుగా వాడటం: ఇంట్లో 4 చిన్న మార్పులు", "facts", "leaf"],
     ["రోడ్డు భద్రత: హెల్మెట్, సీట్ బెల్ట్ ఎందుకు", "facts", "warn"],
   ];
+  /** What people liked: per topic, the likes its posted videos got (from Media). */
+  function liked() {
+    const by = {};
+    for (const it of db.items) if (it.status === "posted" && it.itemId && media.likesOf) {
+      const n = media.likesOf(it.itemId);
+      if (n < 0) continue;
+      const k = it.topic;
+      by[k] = by[k] || { likes: 0, n: 0, cat: it.cat };
+      by[k].likes += n; by[k].n++;
+    }
+    return by;
+  }
   function pickTopic() {
     const fest = trends && trends.festivalNow && trends.festivalNow();
     if (fest && !db.used.includes("fest:" + fest.f.key + ":" + today())) return { topic: `${fest.f.te}: పండుగ విశేషాలు, ఆచారాలు`, cat: "devotional", icon: "star", key: "fest:" + fest.f.key + ":" + today() };
     const fresh = TOPICS.filter(t => !db.used.slice(-TOPICS.length + 2).includes(t[0]));
-    const t = (fresh.length ? fresh : TOPICS)[crypto.randomInt((fresh.length ? fresh : TOPICS).length)];
+    const pool = fresh.length ? fresh : TOPICS;
+    // learning from people: a section whose videos got more likes is picked more often (never less than a fair chance)
+    const by = liked(), catLikes = {};
+    for (const v of Object.values(by)) { catLikes[v.cat] = catLikes[v.cat] || [0, 0]; catLikes[v.cat][0] += v.likes; catLikes[v.cat][1] += v.n; }
+    const weight = t => { const c = catLikes[t[1]]; return 1 + (c ? Math.min(4, c[0] / Math.max(1, c[1])) : 0.5); };
+    const total = pool.reduce((a, t) => a + weight(t), 0);
+    let x = Math.random() * total, t = pool[0];
+    for (const p of pool) { x -= weight(p); if (x <= 0) { t = p; break; } }
     return { topic: t[0], cat: t[1], icon: t[2], key: t[0] };
   }
 
   // ---------- the writer ----------
   const SYSTEM = `You write short explainer videos for "Habit Studio", the video channel of Habit AI, a Telugu helper app for ordinary people in Andhra Pradesh and Telangana. The video is 30 to 45 seconds, vertical, with Habit's cartoon puppy presenting.
 Write in simple, natural spoken Telugu (English words that people really use, like OTP, UPI, Aadhaar, may stay). Be correct and careful: only well-known, lasting facts and safe, general guidance. Do NOT give money amounts, last dates, eligibility limits or rule numbers that change, unless you are completely sure; instead say where to check (the village/ward Sachivalayam, the official website, the doctor, the agriculture officer). No politics, no party or leader names, no brand promotion, nothing scary for children, no medical doses.
-Scenes (5 to 7), in this order: one "title", then 3 to 5 of "point" / "steps" / "warn" / "number", then one "end".
+Scenes (5 to 7), in this order: one "title", then 3 to 5 of "point" / "steps" / "warn" / "number" / "quiz", then one "end".
 - title: text = the question or topic (at most 8 words); sub = a short promise ("2 నిమిషాల్లో తెలుసుకోండి"); icon.
 - point: text = one key idea (at most 12 words); say = what the puppy says for it (one or two short sentences); icon.
 - steps: text = a short heading (at most 5 words); items = 2 to 4 steps (each at most 7 words); say.
 - warn: text = the warning (at most 12 words); say.
 - number: big = a real, well-known helpline or number (like 1930, 108, 112, 100, 101, 181, 1100, 14567) ONLY if it truly fits; text = what it is for; say.
+- quiz (optional, at most one, people love it): text = a short question (at most 10 words); items = 3 short options; answer = the number of the right option (1, 2 or 3); say = the question read aloud and then the answer with one line why.
 - end: text = "హ్యాబిట్ AI లో అడగండి" or a short call to action; sub = "🤖 AI-made · AI తో తయారైన వీడియో".
 Icons: warn, phone, doc, bulb, heart, leaf, rupee, star, check.
 Every "say" is read aloud by a Telugu voice: plain words, no symbols, numbers written so they read well.
@@ -87,11 +107,13 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
     return null;
   }
   function clean(j, icon) {
-    const KINDS = ["title", "point", "steps", "warn", "number", "end"], ICONS = ["warn", "phone", "doc", "bulb", "heart", "leaf", "rupee", "star", "check"];
+    const KINDS = ["title", "point", "steps", "warn", "number", "quiz", "end"], ICONS = ["warn", "phone", "doc", "bulb", "heart", "leaf", "rupee", "star", "check"];
     const scenes = (Array.isArray(j && j.scenes) ? j.scenes : []).filter(s => s && KINDS.includes(s.kind)).slice(0, 8).map(s => ({
       kind: s.kind, text: str(s.text, 120), sub: str(s.sub, 80), say: str(s.say, 260), big: str(s.big, 8).replace(/[^\d+]/g, ""),
-      items: (Array.isArray(s.items) ? s.items : []).slice(0, 4).map(x => str(x, 60)).filter(Boolean), icon: ICONS.includes(s.icon) ? s.icon : "" }))
-      .filter(s => s.kind !== "number" || /^\d{3,5}$/.test(s.big));
+      items: (Array.isArray(s.items) ? s.items : []).slice(0, 4).map(x => str(x, 60)).filter(Boolean), icon: ICONS.includes(s.icon) ? s.icon : "",
+      answer: Math.max(1, Math.min(3, Number(s.answer) || 1)) }))
+      .filter(s => s.kind !== "number" || /^\d{3,5}$/.test(s.big))
+      .filter(s => s.kind !== "quiz" || s.items.length === 3);
     if (!scenes.length || scenes[0].kind !== "title") scenes.unshift({ kind: "title", text: str(j && j.title, 80), sub: "2 నిమిషాల్లో తెలుసుకోండి", icon });
     if (scenes[0].kind === "title" && !scenes[0].icon) scenes[0].icon = icon;
     if (scenes[scenes.length - 1].kind !== "end") scenes.push({ kind: "end", text: "హ్యాబిట్ AI లో అడగండి", sub: "🤖 AI-made · AI తో తయారైన వీడియో" });
@@ -203,7 +225,7 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
   function list() {
     return { daily: DAILY(), madeToday: db.made, busy, lastError, voice: freeVoice ? freeVoice.state() : "none",
       items: db.items.slice(-30).reverse().map(x => ({ id: x.id, topic: x.topic, title: x.title || "", status: x.status, cat: x.cat, by: x.by || "", dur: x.dur || 0,
-        voiced: !!x.voiced, error: x.error || "", at: x.at, video: ["waiting", "posted"].includes(x.status) ? `/media/cartoon/${x.id}.mp4` : "", poster: ["waiting", "posted"].includes(x.status) ? `/media/cartoon/${x.id}.jpg` : "" })) };
+        voiced: !!x.voiced, error: x.error || "", at: x.at, likes: x.status === "posted" && x.itemId && media.likesOf ? Math.max(0, media.likesOf(x.itemId)) : 0, video: ["waiting", "posted"].includes(x.status) ? `/media/cartoon/${x.id}.mp4` : "", poster: ["waiting", "posted"].includes(x.status) ? `/media/cartoon/${x.id}.jpg` : "" })) };
   }
   return { make, approve, drop, list, tick };
 };

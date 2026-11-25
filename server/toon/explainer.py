@@ -232,6 +232,16 @@ def build_ass(plan, scenes, st, path, fontname):
             for j, it in enumerate(items):
                 ev(a + 0.6 + j * gap, b, "Mid", wrap(it, 24), "\\an4\\pos(190,%d)\\fs40" % (480 + j * 200) + fade + "\\move(230,%d,190,%d,0,300)" % (480 + j * 200, 480 + j * 200))
                 ev(a + 0.75 + j * gap, b, "Mid", str(j + 1), "\\an5\\pos(110,%d)\\fs46\\1c&H00FFFFFF&" % (480 + j * 200) + fade)
+        elif k == "quiz":
+            items = list(s.get("items") or [])[:3]
+            ev(a + 0.2, b, "Mid", wrap(s.get("text", ""), 18), "\\an7\\pos(60,240)" + fade)
+            rev = a + max(1.6, sc["dur"] * 0.55)
+            ok = int(s.get("answer", 1)) - 1
+            for j, it in enumerate(items):
+                y = 520 + j * 180
+                ev(a + 0.5 + j * 0.25, b, "Mid", "%s.  %s" % ("ABC"[j], wrap(it, 22)), "\\an4\\pos(110,%d)\\fs40" % y + fade)
+                if j == ok:
+                    ev(rev, b, "Mid", "✓", "\\an6\\pos(640,%d)\\fs56\\1c&H00FFFFFF&\\fscx40\\fscy40\\t(0,250,\\fscx110\\fscy110)\\t(250,400,\\fscx100\\fscy100)" % y)
         elif k == "warn":
             ev(a + 0.4, b, "Mid", wrap(s.get("text", ""), 24), "\\an8\\pos(360,700)" + fade)
         elif k == "number":
@@ -284,6 +294,26 @@ def frame(base, st, style, sc, t, faces, mouth_level, blink, pal):
             d.ellipse([110 - rr, cy - rr, 110 + rr, cy + rr], fill=c)
             if j + 1 < len(items):
                 d.line([(110, cy + 52), (110, cy + 138)], fill=st["line"], width=4)
+    elif k == "quiz":
+        items = list(s.get("items") or [])[:3]
+        rev = max(1.6, sc["dur"] * 0.55)
+        ok = int(s.get("answer", 1)) - 1
+        for j in range(len(items)):
+            tj = t - (0.5 + j * 0.25)
+            if tj < 0:
+                continue
+            y = 520 + j * 180
+            slide = int(40 * (1 - ease(tj / 0.35)))
+            right = t >= rev and j == ok
+            wrong = t >= rev and j != ok
+            fill = (22, 163, 74) if right else st["card"]
+            outline = (22, 163, 74) if right else st["line"]
+            d.rounded_rectangle([60 + slide, y - 70, W - 50 + slide, y + 70], radius=24, fill=fill, outline=outline, width=3)
+            if wrong:   # the other answers fade back
+                d.rounded_rectangle([60, y - 70, W - 50, y + 70], radius=24, outline=st["line"], width=3)
+        if t < rev:   # a small timer bar while they think
+            w = int((W - 120) * (1 - t / rev))
+            d.rounded_rectangle([60, 1100, 60 + max(0, w), 1116], radius=8, fill=st["hl"])
     elif k == "warn":
         shake = math.sin(t * 40) * 6 * max(0.0, 1 - t / 0.6)
         icon(d, "warn", W // 2 + shake, 480, 110 * pop(t / 0.5), st["warn"], st["ink"], p)

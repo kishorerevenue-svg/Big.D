@@ -514,7 +514,7 @@ async function loadStudio() {
     h.textContent = ({ making: "⏳ ", waiting: "🕒 ", posted: "✅ ", dropped: "🗑 ", failed: "⚠️ " }[it.status] || "") + (it.title || it.topic);
     row.appendChild(h);
     const info = document.createElement("div"); info.className = "hint";
-    info.textContent = `${it.status}${it.dur ? " · " + it.dur + "s" : ""}${it.by ? " · written by " + it.by : ""}${it.voiced ? " · with voice" : it.status === "waiting" ? " · music only (voice not ready)" : ""}${it.error ? " · " + it.error : ""}`;
+    info.textContent = `${it.status}${it.status === "posted" ? " · ❤️ " + (it.likes || 0) : ""}${it.dur ? " · " + it.dur + "s" : ""}${it.by ? " · written by " + it.by : ""}${it.voiced ? " · with voice" : it.status === "waiting" ? " · music only (voice not ready)" : ""}${it.error ? " · " + it.error : ""}`;
     row.appendChild(info);
     if (it.video && it.status === "waiting") {
       const v = document.createElement("video"); v.src = it.video; v.poster = it.poster; v.controls = true; v.preload = "none";
@@ -525,6 +525,12 @@ async function loadStudio() {
       ok.onclick = async () => { try { await api("studio/approve", { id: it.id }); loadStudio(); } catch (e) { alert(e.message); } };
       no.onclick = async () => { if (confirm("Delete this video?")) { try { await api("studio/drop", { id: it.id }); loadStudio(); } catch (e) { alert(e.message); } } };
       row.appendChild(ok); row.appendChild(no);
+    }
+    if (it.video && (it.status === "waiting" || it.status === "posted")) {
+      // to put it on YouTube Shorts, Instagram Reels or WhatsApp Status by hand (the file is ready for all three)
+      const dl = document.createElement("a"); dl.href = it.video; dl.download = (it.title || "habit-video").replace(/[\\/:*?"<>|]/g, "") + ".mp4";
+      dl.textContent = "⬇ Download (YouTube Shorts · Instagram · WhatsApp)"; dl.style.cssText = "display:inline-block;margin:8px 0 0 4px";
+      row.appendChild(dl);
     }
     box.appendChild(row);
   }
