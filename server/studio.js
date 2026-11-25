@@ -15,7 +15,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 
-module.exports = function makeStudio({ DATA_DIR, learn, MODEL, ownBrain, freeVoice, media, trends }) {
+module.exports = function makeStudio({ DATA_DIR, learn, MODEL, ownBrain, freeVoice, voice, media, trends, youtube }) {
   const PY = process.env.PYTHON || "python3";
   const SCRIPT = path.join(__dirname, "toon", "explainer.py");
   const OUT = path.join(DATA_DIR, "cartoons");                 // served as /media/cartoon/<id>.mp4 (cartoon.js)
@@ -85,12 +85,14 @@ module.exports = function makeStudio({ DATA_DIR, learn, MODEL, ownBrain, freeVoi
   // ---------- the writer ----------
   const SYSTEM = `You write short explainer videos for "Habit Studio", the video channel of Habit AI, a Telugu helper app for ordinary people in Andhra Pradesh and Telangana. The video is 30 to 45 seconds, vertical, with Habit's cartoon puppy presenting.
 Write in simple, natural spoken Telugu (English words that people really use, like OTP, UPI, Aadhaar, may stay). Be correct and careful: only well-known, lasting facts and safe, general guidance. Do NOT give money amounts, last dates, eligibility limits or rule numbers that change, unless you are completely sure; instead say where to check (the village/ward Sachivalayam, the official website, the doctor, the agriculture officer). No politics, no party or leader names, no brand promotion, nothing scary for children, no medical doses.
-Scenes (5 to 7), in this order: one "title", then 3 to 5 of "point" / "steps" / "warn" / "number" / "quiz", then one "end".
+Scenes (6 to 8), in this order: one "title", then 4 to 6 of "point" / "steps" / "warn" / "number" / "quiz" / "react", then one "end".
+MAKE IT GRAB PEOPLE, like the best short videos: the title is a HOOK that stops the scroll in 2 seconds (a surprising question, "90% మందికి ఇది తెలీదు", a common mistake); short, fast scenes; at least one react moment and, when it fits, a quiz; the voice talks like a friendly young anchor, with feeling, not like a news reader. A trend from today may be used as the hook only when it truly connects to the topic (no celebrity names, nothing copied).
 - title: text = the question or topic (at most 8 words); sub = a short promise ("2 నిమిషాల్లో తెలుసుకోండి"); icon.
 - point: text = one key idea (at most 12 words); say = what the puppy says for it (one or two short sentences); icon.
 - steps: text = a short heading (at most 5 words); items = 2 to 4 steps (each at most 7 words); say.
 - warn: text = the warning (at most 12 words); say.
 - number: big = a real, well-known helpline or number (like 1930, 108, 112, 100, 101, 181, 1100, 14567) ONLY if it truly fits; text = what it is for; say.
+- react (one or two, the fun part, like a meme moment): the puppy's big reaction to a surprising fact, a fraud trick or a common mistake: text = 1 to 3 words ("అయ్యో!", "నిజమా?!", "అస్సలు కాదు!", "వావ్!"); sub = one short funny line about it (kind, never mocking anyone); say = that line read aloud.
 - quiz (optional, at most one, people love it): text = a short question (at most 10 words); items = 3 short options; answer = the number of the right option (1, 2 or 3); say = the question read aloud and then the answer with one line why.
 - end: text = "హ్యాబిట్ AI లో అడగండి" or a short call to action; sub = "🤖 AI-made · AI తో తయారైన వీడియో".
 Icons: warn, phone, doc, bulb, heart, leaf, rupee, star, check.
@@ -107,7 +109,7 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
     return null;
   }
   function clean(j, icon) {
-    const KINDS = ["title", "point", "steps", "warn", "number", "quiz", "end"], ICONS = ["warn", "phone", "doc", "bulb", "heart", "leaf", "rupee", "star", "check"];
+    const KINDS = ["title", "point", "steps", "warn", "number", "quiz", "react", "end"], ICONS = ["warn", "phone", "doc", "bulb", "heart", "leaf", "rupee", "star", "check"];
     const scenes = (Array.isArray(j && j.scenes) ? j.scenes : []).filter(s => s && KINDS.includes(s.kind)).slice(0, 8).map(s => ({
       kind: s.kind, text: str(s.text, 120), sub: str(s.sub, 80), say: str(s.say, 260), big: str(s.big, 8).replace(/[^\d+]/g, ""),
       items: (Array.isArray(s.items) ? s.items : []).slice(0, 4).map(x => str(x, 60)).filter(Boolean), icon: ICONS.includes(s.icon) ? s.icon : "",
@@ -119,10 +121,19 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
     if (scenes[scenes.length - 1].kind !== "end") scenes.push({ kind: "end", text: "హ్యాబిట్ AI లో అడగండి", sub: "🤖 AI-made · AI తో తయారైన వీడియో" });
     scenes[scenes.length - 1].sub = "🤖 AI-made · AI తో తయారైన వీడియో";
     if (scenes.length < 4) return null;
+    for (const x of scenes) if (x.kind === "react") x.text = x.text.split(/\s+/).slice(0, 3).join(" ");
     return { title: str(j.title, 90) || scenes[0].text, style: j.style === "neon" ? "neon" : "board", lines: (Array.isArray(j.lines) ? j.lines : []).slice(0, 5).map(x => str(x, 160)).filter(Boolean), scenes };
   }
+  /** What is trending today (YouTube in India, Telugu first; Google searches), for a hook. */
+  function trendingNow() {
+    const out = [];
+    try { const yt = typeof youtube === "function" ? youtube() : youtube; for (const v of ((yt && yt._db().trending || {}).list || []).filter(v => v.te).slice(0, 8)) out.push(v.title); } catch (e) { }
+    try { for (const t of (trends && trends.themes ? trends.themes() : []).slice(0, 4)) out.push(t.te || t.en); } catch (e) { }
+    return out.filter(Boolean).slice(0, 10);
+  }
   async function write(topic, icon) {
-    const prompt = `Topic: ${topic}\nMake the explainer video.`;
+    const tr = trendingNow();
+    const prompt = `Topic: ${topic}\n${tr.length ? "Trending today (for a hook only if it truly connects): " + tr.join(" | ") + "\n" : ""}Make the explainer video.`;
     if (learn && !learn.claudeOut()) {
       try {
         const out = await learn.callClaude({ system: SYSTEM, messages: [{ role: "user", content: prompt }], maxTokens: 2000, search: false, model: MODEL });
@@ -143,14 +154,22 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
     const tmp = path.join(OUT, id + "-tmp");
     fs.mkdirSync(tmp, { recursive: true });
     try {
-      const voiced = freeVoice && (freeVoice.ok() || await freeVoice.ready().catch(() => false));
+      const google = !!(voice && voice.enabled);                  // Google's natural Telugu voice when its key is set
+      const voiced = google || (freeVoice && (freeVoice.ok() || await freeVoice.ready().catch(() => false)));
       const scenes = [];
       for (const [i, sc] of s.scenes.entries()) {
         const n = Object.assign({}, sc);
         const words = sc.say || (sc.kind === "title" ? sc.text : sc.kind === "end" ? sc.text : "");
         if (voiced && words) {
           const f = path.join(tmp, `v${i}.wav`);
-          try { await freeVoice.speak(words, "bigd", f); n.voice = f; } catch (e) { }
+          if (google) {
+            try {
+              const mp3 = (await voice.speak(words, "puppy", sc.kind === "react" ? "surprised" : sc.kind === "warn" ? "calm" : "excited")).file;
+              await run(process.env.FFMPEG || "ffmpeg", ["-y", "-v", "error", "-i", mp3, "-ac", "1", "-ar", "24000", "-sample_fmt", "s16", f], 60e3);
+              n.voice = f;
+            } catch (e) { }
+          }
+          if (!n.voice && freeVoice) { try { await freeVoice.speak(words, "bigd", f); n.voice = f; } catch (e) { } }
         }
         scenes.push(n);
       }
@@ -162,7 +181,7 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
       let dur = 30;
       try { dur = JSON.parse(String(out).trim().split("\n").pop()).dur; } catch (e) { }
       if (!fs.existsSync(plan.out)) throw new Error("no video came out");
-      return { dur: Math.round(dur), voiced: !!voiced };
+      return { dur: Math.round(dur), voiced: !!voiced, voiceKind: google ? "google" : voiced ? "free" : "" };
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
 
@@ -178,7 +197,7 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
       const s = await write(pick.topic, pick.icon);
       s.cat = pick.cat;
       const r = await render(id, s);
-      Object.assign(item, { title: s.title, lines: s.lines, scenes: s.scenes.length, by: s.by, style: s.style, dur: r.dur, voiced: r.voiced, status: "waiting", doneAt: Date.now() });
+      Object.assign(item, { title: s.title, lines: s.lines, scenes: s.scenes.length, by: s.by, style: s.style, dur: r.dur, voiced: r.voiced, voiceKind: r.voiceKind, status: "waiting", doneAt: Date.now() });
       if (!topicIn) { db.used.push(pick.key); db.used = db.used.slice(-60); }
       lastError = "";
       console.log(`Studio: made ${id} "${s.title}" (${s.by}), waiting for the owner`);
@@ -223,7 +242,7 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
   setTimeout(() => { tick().catch(() => { }); setInterval(() => tick().catch(() => { }), 40 * 60e3).unref?.(); }, 5 * 60e3).unref?.();
 
   function list() {
-    return { daily: DAILY(), madeToday: db.made, busy, lastError, voice: freeVoice ? freeVoice.state() : "none",
+    return { daily: DAILY(), madeToday: db.made, busy, lastError, voice: voice && voice.enabled ? "Google natural Telugu voice" : freeVoice ? "free voice: " + freeVoice.state() : "none",
       items: db.items.slice(-30).reverse().map(x => ({ id: x.id, topic: x.topic, title: x.title || "", status: x.status, cat: x.cat, by: x.by || "", dur: x.dur || 0,
         voiced: !!x.voiced, error: x.error || "", at: x.at, likes: x.status === "posted" && x.itemId && media.likesOf ? Math.max(0, media.likesOf(x.itemId)) : 0, video: ["waiting", "posted"].includes(x.status) ? `/media/cartoon/${x.id}.mp4` : "", poster: ["waiting", "posted"].includes(x.status) ? `/media/cartoon/${x.id}.jpg` : "" })) };
   }

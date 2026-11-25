@@ -225,6 +225,14 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
+      <h2>🎞 All our videos · మన వీడియోలు అన్నీ</h2>
+      <p class="hint">Every video Habit made itself that is in Media now (Studio explainers, cartoons, news reels), newest first, with its likes. Watch, download, or take one out of Media.</p>
+      <p><button id="vidLoad" type="button" class="ghost">Show / refresh</button>
+        <select id="vidKind"><option value="">All</option><option value="studio">🎬 Studio</option><option value="cartoon">🎨 Cartoons</option><option value="reel">📰 Reels</option></select></p>
+      <div id="vidList"></div>
+    </section>
+
+    <section class="card">
       <h2>🎬 Habit Studio · వీడియోలు</h2>
       <p class="hint">Our own explainer videos, made free on this server: a topic (useful things people ask, or the festival of the day) → Claude writes a 30-45 second Telugu script → our free Telugu voice reads it → the puppy presents it as a whiteboard or motion-graphics animation. Nothing goes out by itself: each new video waits here. ✓ Post puts it in Media with the "🤖 AI-made" label; ✕ Drop deletes it.</p>
       <p id="studioState" class="msg"></p>
@@ -503,6 +511,28 @@ function showMedia(m) {
   if (was) sel.value = was;
 }
 async function loadMedia() { showMedia(await api("media")); }
+async function loadVideos() {
+  const { list } = await api("videos");
+  const want = $("vidKind").value, box = $("vidList"); box.textContent = "";
+  const show = list.filter(v => !want || v.kind === want);
+  if (!show.length) { box.textContent = "No videos yet."; return; }
+  for (const v of show) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:10px;align-items:flex-start;border:1px solid #ddd;border-radius:12px;padding:8px;margin:8px 0";
+    const vid = document.createElement("video"); vid.src = v.url; vid.poster = v.poster; vid.controls = true; vid.preload = "none";
+    vid.style.cssText = "width:120px;border-radius:8px;flex:none";
+    const side = document.createElement("div");
+    const t = document.createElement("b"); t.textContent = ({ studio: "🎬 ", cartoon: "🎨 ", reel: "📰 " }[v.kind] || "") + v.title;
+    const i = document.createElement("div"); i.className = "hint";
+    i.textContent = `${new Date(v.at).toLocaleString()} · ${v.cat} · ❤️ ${v.likes}${v.dur ? " · " + v.dur + "s" : ""}`;
+    const dl = document.createElement("a"); dl.href = v.url; dl.download = ""; dl.textContent = "⬇ Download";
+    const rm = document.createElement("button"); rm.type = "button"; rm.className = "ghost"; rm.textContent = "Take out of Media";
+    rm.onclick = async () => { if (confirm("Take this video out of Media?")) { await api("videos/remove", { id: v.id }); loadVideos(); } };
+    side.append(t, i, dl, document.createElement("br"), rm);
+    row.append(vid, side);
+    box.appendChild(row);
+  }
+}
 async function loadStudio() {
   const d = await api("studio");
   say($("studioState"), `${d.busy ? "⏳ Making a video now… " : ""}Made today: ${d.madeToday}/${d.daily} · voice: ${d.voice}${d.lastError ? " · last problem: " + d.lastError : ""}`, !d.lastError);
@@ -936,6 +966,8 @@ async function refresh() {
   loadGemma().catch(() => {});
   loadMedia().catch(() => {});
   loadStudio().catch(() => {});
+  $("vidLoad").onclick = () => loadVideos().catch(e => alert(e.message));
+  $("vidKind").onchange = () => loadVideos().catch(() => {});
   $("studioMake").onclick = async () => {
     try { await api("studio/make", { topic: $("studioTopic").value.trim() }); $("studioTopic").value = ""; say($("studioState"), "⏳ Making the video (2-5 minutes)… this list updates by itself.", true); setTimeout(() => loadStudio().catch(() => {}), 60000); setTimeout(() => loadStudio().catch(() => {}), 180000); setTimeout(() => loadStudio().catch(() => {}), 360000); }
     catch (e) { say($("studioState"), e.message, false); }

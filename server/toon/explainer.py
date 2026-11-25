@@ -79,6 +79,48 @@ def loudness(samples, rate, fps, frames):
     return out
 
 
+# ---------------- sound effects (made right here from simple waves: nobody else's sounds) ----------------
+def sfx(kind, rate, seed=0):
+    import numpy as np
+    r = np.random.default_rng(seed)
+    def env(n, a=0.005, d=0.2):
+        t = np.arange(n) / rate
+        return np.minimum(1, t / max(a, 1e-4)) * np.exp(-t / max(d, 1e-4))
+    if kind == "whoosh":                       # air rushing past: noise swept from low to high
+        n = int(0.35 * rate); t = np.arange(n) / rate
+        x = r.standard_normal(n)
+        k = np.exp(-((t - 0.18) / 0.1) ** 2)
+        from scipy.signal import butter, sosfilt
+        lo = sosfilt(butter(2, 900, "low", fs=rate, output="sos"), x)
+        hi = sosfilt(butter(2, 2500, "high", fs=rate, output="sos"), x)
+        x = (lo * (1 - t / t[-1]) + hi * (t / t[-1])) * k
+        return (x / (np.abs(x).max() + 1e-6) * 0.45)
+    if kind == "pop":                          # a bubble pop: a quick falling note
+        n = int(0.12 * rate); t = np.arange(n) / rate
+        f = 900 * np.exp(-t * 25) + 250
+        return np.sin(2 * np.pi * np.cumsum(f) / rate) * env(n, 0.002, 0.04) * 0.6
+    if kind == "ding":                         # a bright bell for the right answer
+        n = int(0.9 * rate); t = np.arange(n) / rate
+        x = sum(g * np.sin(2 * np.pi * f * t) for f, g in ((1318, 1), (2637, 0.4), (3951, 0.2), (1975, 0.3)))
+        return x / 1.9 * env(n, 0.003, 0.35) * 0.55
+    if kind == "boing":                        # a cartoon spring for the funny moment
+        n = int(0.55 * rate); t = np.arange(n) / rate
+        f = 180 + 120 * np.sin(2 * np.pi * 9 * t) * np.exp(-t * 4) + 140 * np.exp(-t * 6)
+        return np.sin(2 * np.pi * np.cumsum(f) / rate) * env(n, 0.004, 0.25) * 0.6
+    if kind == "buzz":                         # "wrong!" / warning
+        n = int(0.35 * rate); t = np.arange(n) / rate
+        x = np.sign(np.sin(2 * np.pi * 140 * t)) * 0.5 + np.sin(2 * np.pi * 70 * t) * 0.5
+        return x * env(n, 0.003, 0.18) * 0.32
+    if kind == "drum":                         # a deep hit for the big number
+        n = int(0.5 * rate); t = np.arange(n) / rate
+        f = 120 * np.exp(-t * 8) + 45
+        return (np.sin(2 * np.pi * np.cumsum(f) / rate) * env(n, 0.002, 0.18) + r.standard_normal(n) * env(n, 0.001, 0.02) * 0.3) * 0.7
+    if kind == "tick":
+        n = int(0.03 * rate)
+        return r.standard_normal(n) * env(n, 0.001, 0.006) * 0.3
+    return np.zeros(1)
+
+
 # ---------------- pictures ----------------
 def load_puppy():
     faces = {}
@@ -192,7 +234,7 @@ def layout(plan):
             except Exception:
                 vs, vlen = [], 0.0
         words = len(" ".join([s.get("text", "")] + list(s.get("items") or [])))
-        need = max(vlen + 0.7, 2.6 + words * 0.045, 3.0 if kind in ("title", "end") else 3.5)
+        need = max(vlen + 0.5, 1.8) if kind == "react" else max(vlen + 0.7, 2.6 + words * 0.045, 3.0 if kind in ("title", "end") else 3.5)
         scenes.append({"i": i, "kind": kind, "start": t, "dur": need, "s": s, "voice": vs, "rate": rate, "vlen": vlen})
         t += need
     return scenes, t
@@ -242,6 +284,10 @@ def build_ass(plan, scenes, st, path, fontname):
                 ev(a + 0.5 + j * 0.25, b, "Mid", "%s.  %s" % ("ABC"[j], wrap(it, 22)), "\\an4\\pos(110,%d)\\fs40" % y + fade)
                 if j == ok:
                     ev(rev, b, "Mid", "✓", "\\an6\\pos(640,%d)\\fs56\\1c&H00FFFFFF&\\fscx40\\fscy40\\t(0,250,\\fscx110\\fscy110)\\t(250,400,\\fscx100\\fscy100)" % y)
+        elif k == "react":            # the funny moment: the puppy's big reaction (our own meme)
+            ev(a + 0.05, b, "Big", wrap(s.get("text", "అయ్యో!"), 14), "\\an5\\pos(360,300)\\fs96\\fscx30\\fscy30\\t(0,180,\\fscx118\\fscy118)\\t(180,300,\\fscx100\\fscy100)\\frz-4")
+            if s.get("sub"):
+                ev(a + 0.4, b, "Mid", wrap(s["sub"], 22), "\\an5\\pos(360,1080)" + fade)
         elif k == "warn":
             ev(a + 0.4, b, "Mid", wrap(s.get("text", ""), 24), "\\an8\\pos(360,700)" + fade)
         elif k == "number":
@@ -314,6 +360,21 @@ def frame(base, st, style, sc, t, faces, mouth_level, blink, pal):
         if t < rev:   # a small timer bar while they think
             w = int((W - 120) * (1 - t / rev))
             d.rounded_rectangle([60, 1100, 60 + max(0, w), 1116], radius=8, fill=st["hl"])
+    elif k == "react":
+        # rays behind, and the puppy big in the middle, popping in and shaking with surprise
+        cx, cy = W // 2, 700
+        for j in range(16):
+            ang = j * math.pi / 8 + t * 0.6
+            col = pal[j % len(pal)]
+            d.polygon([(cx, cy), (cx + 900 * math.cos(ang - 0.08), cy + 900 * math.sin(ang - 0.08)),
+                       (cx + 900 * math.cos(ang + 0.08), cy + 900 * math.sin(ang + 0.08))], fill=tuple(int(c * 0.35 + b * 0.65) for c, b in zip(col, st["bg"])))
+        if faces:
+            f = faces.get(("open", "open")) or list(faces.values())[0]
+            k2 = 2.1 * pop(t / 0.35) * (0.6 + 0.4 * ease(t / 0.25))
+            big = f.resize((max(1, int(f.width * k2)), max(1, int(f.height * k2))), Image.LANCZOS)
+            sh = int(math.sin(t * 55) * 10 * max(0.0, 1 - t / 0.7))
+            img.paste(big, (cx - big.width // 2 + sh, cy - big.height // 2), big)
+        return img
     elif k == "warn":
         shake = math.sin(t * 40) * 6 * max(0.0, 1 - t / 0.6)
         icon(d, "warn", W // 2 + shake, 480, 110 * pop(t / 0.5), st["warn"], st["ink"], p)
@@ -353,12 +414,44 @@ def main():
             for i, v in enumerate(src):
                 if at + i < len(track):
                     track[at + i] = v
+    nframes = int(total * FPS)
+    level = loudness(track, rate, FPS, nframes)      # (the mouth follows the voice only, not the sound effects)
+    # sound effects at the right moments (made here; quiet under the voice)
+    import numpy as np
+    tr = np.asarray(track, np.float32) / 32768.0
+    def put(kind, at, gain=1.0):
+        x = sfx(kind, rate, int(at * 1000)) * gain
+        i = int(at * rate)
+        if i < len(tr):
+            n = min(len(x), len(tr) - i)
+            tr[i:i + n] += x[:n]
+    for sc in scenes:
+        k, a = sc["kind"], sc["start"]
+        if sc["i"] > 0:
+            put("whoosh", max(0, a - 0.12), 0.8)
+        if k == "title":
+            put("pop", a + 0.25)
+        elif k == "steps":
+            gap = max(0.6, (sc["dur"] - 1.2) / max(1, len(sc["s"].get("items") or [])))
+            for j in range(len((sc["s"].get("items") or [])[:4])):
+                put("pop", a + 0.6 + j * gap, 0.7)
+        elif k == "quiz":
+            rev = a + max(1.6, sc["dur"] * 0.55)
+            for j in range(int((rev - a - 0.6) / 0.5)):
+                put("tick", a + 0.6 + j * 0.5, 0.8)
+            put("ding", rev)
+        elif k == "warn":
+            put("buzz", a + 0.3)
+        elif k == "number":
+            put("drum", a + 0.2)
+        elif k == "react":
+            put("boing", a + 0.05, 1.1)
+    tr = np.clip(tr, -1, 1)
+    track = (tr * 32767).astype(np.int16).tolist()
     voice_wav = os.path.join(tmp, "voice.wav")
     with wave.open(voice_wav, "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
         w.writeframes(struct.pack("<%dh" % len(track), *track))
-    nframes = int(total * FPS)
-    level = loudness(track, rate, FPS, nframes)
 
     ass = os.path.join(tmp, "words.ass")
     build_ass(plan, scenes, st, ass, plan.get("font", "Hind Guntur"))

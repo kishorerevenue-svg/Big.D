@@ -536,7 +536,7 @@ function isOwner(req) {
 // Habit's own cute pictures and clips made on Kaggle (brain/habit_cartoons.py) come into Media › Fun, a few a day
 const hfCartoons = require("./hfcartoons.js")({ DATA_DIR, media });
 // Habit Studio: our own explainer videos (topic → script → free Telugu voice → animation), each waits for the owner's ✓
-const studio = require("./studio.js")({ DATA_DIR, learn, MODEL, ownBrain, freeVoice, media, trends });
+const studio = require("./studio.js")({ DATA_DIR, learn, MODEL, ownBrain, freeVoice, voice, media, trends, youtube: () => youtube });   // (youtube is made further down)
 const phoneBrain = require("./phonebrain.js")({ DATA_DIR });
 const cartoon = require("./cartoon.js")({ DATA_DIR, media, ai: learn.anthropic, MODEL, API_KEY, ownBrain, voice, h: { send, readBody, allowed, clientIp },
   engagement: id => social.engagement("m" + id), aiPeople: aiVideo.forPeople, freeVoice, trends, claudeOut: learn.claudeOut,
@@ -801,6 +801,18 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/teach/library") return send(res, 200, library.overview());
       if (req.method === "GET" && url.pathname === "/api/teach/cartoons") return send(res, 200, await hfCartoons.status());
       if (req.method === "GET" && url.pathname === "/api/teach/studio") return send(res, 200, studio.list());
+      // ALL our own videos in one place (Habit Studio explainers, cartoons, reels, Kaggle cartoons): what went out to Media
+      if (req.method === "GET" && url.pathname === "/api/teach/videos") {
+        const list = media.allItems().filter(i => i.video && /^\/media\//.test(String(i.video.url || ""))).sort((a, b) => b.at - a.at).slice(0, 120)
+          .map(i => ({ id: i.id, title: i.title, cat: i.cat, at: i.at, likes: (i.likes || []).length, url: i.video.url, poster: i.video.poster || "", dur: i.video.dur || 0,
+            kind: /^\/media\/cartoon\/s\d/.test(i.video.url) ? "studio" : /cartoon/.test(i.video.url) ? "cartoon" : "reel" }));
+        return send(res, 200, { list });
+      }
+      if (req.method === "POST" && url.pathname === "/api/teach/videos/remove") {
+        let body = {};
+        try { body = await readBody(req, 8 * 1024); } catch (e) { }
+        return send(res, 200, { ok: media.removeItem(Number(body.id)) });
+      }
       if (req.method === "POST" && url.pathname.startsWith("/api/teach/studio/")) {
         let body = {};
         try { body = await readBody(req, 64 * 1024); } catch (e) { }
