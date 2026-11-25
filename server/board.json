@@ -1,64 +1,216 @@
 {
-  "updated": "2026-11-26 00:50",
-  "note": "Our team board: what is done, and what comes next (who does it, with steps). Claude updates this every time we work; tick your tasks when you finish them.",
-  "todo": [
-    { "id": "t-update", "who": "you", "prio": "now", "title": "Run the server update",
-      "why": "Switches on Habit Studio v2, the 46 talk skills, writing skills, humour rules, 'All our videos' and this board.",
-      "steps": ["Hostinger black screen: true; /root/Big.D/server/update.sh", "Wait for root@srv2097259:~# to come back"] },
-    { "id": "t-claudekey", "who": "you", "prio": "now", "title": "Check Claude is still answering (key date was 25 Nov)",
-      "why": "If the key stopped, the pet loses its best brain.",
-      "steps": ["Open bigdai.tech/teach: the top should say '✓ Claude is answering'", "If not: make a new key at console.anthropic.com and set it with: bash /root/Big.D/server/set-key.sh ANTHROPIC_API_KEY (paste when asked, never on the command line)"] },
-    { "id": "t-ear2", "who": "you", "prio": "now", "title": "Run Ear v2 on Kaggle, then send the last lines of the Logs",
-      "why": "Ear v1 heard its name only 30%; v2 has more voices, everyday sentences, a bigger ear.",
-      "steps": ["kaggle.com › Your Work › notebookc9053e4218 › ✏️ Edit", "Don't press ▶. Click Save Version › Save & Run All (Commit) › Save", "3-4 hours later: Version 2 › Logs › screenshot of the last lines to Claude"] },
-    { "id": "t-video1", "who": "you", "prio": "soon", "title": "Make one real Studio video and judge it",
-      "why": "Only a real video (with the Telugu voice) shows the true quality.",
-      "steps": ["bigdai.tech/teach › 🎬 Habit Studio › 🎬 Make a video", "Wait 3-5 minutes, play it", "Tell Claude: good / not good, and what to change"] },
-    { "id": "t-gvoice", "who": "you", "prio": "soon", "title": "Google natural Telugu voice (optional, free up to 1 million characters a month)",
-      "why": "Much better voice for the pet and the Studio videos.",
-      "steps": ["console.cloud.google.com › New Project 'Habit Voice'", "Billing: link a card or UPI (Google asks; the server stops at 900,000 characters a month)", "Search 'Text-to-Speech' › Enable", "APIs & Services › Credentials › Create API key › restrict to Cloud Text-to-Speech API", "Black screen: bash /root/Big.D/server/set-key.sh GOOGLE_TTS_KEY (paste when asked)", "Billing › Budgets & alerts › ₹100 alert"] },
-    { "id": "t-office", "who": "you", "prio": "ongoing", "title": "Upload office folders, one at a time",
-      "why": "More office files = better letters, Sy.No. history and search.",
-      "steps": ["bigdai.tech/office › 🏛 Office box › office code › Open", "choose a folder › one office folder › Upload", "Leave personal folders out"] },
-    { "id": "t-practice", "who": "you", "prio": "ongoing", "title": "15 minutes of pet practice (the Practice Guide PDF)",
-      "why": "Your corrections teach the pet; your notes tell Claude what to fix.",
-      "steps": ["One day of the 14-day plan", "Note problems in the observation sheet, send to Claude"] },
-    { "id": "t-reboot", "who": "you", "prio": "later", "title": "Restart the server once at a quiet time (Ubuntu asked for it)",
-      "why": "Security updates finish installing.",
-      "steps": ["Late night, black screen: reboot", "1-2 minutes later bigdai.tech works again by itself"] },
-    { "id": "t-firebase", "who": "you", "prio": "later", "title": "Free Firebase project (Habit calls ring even when the app is closed)",
-      "why": "Calls and messages arrive like WhatsApp.",
-      "steps": ["Claude will guide step by step when we start"] },
-    { "id": "t-playstore", "who": "you", "prio": "later", "title": "Play Console account ($25 + ID check)",
-      "why": "To publish Habit on the Play Store.",
-      "steps": ["Claude will prepare the store text, screenshots and forms first"] },
-    { "id": "c-ear2", "who": "claude", "prio": "now", "title": "Check Ear v2's result and fix it if it is still weak", "steps": [] },
-    { "id": "c-gemma", "who": "claude", "prio": "soon", "title": "Kaggle script to shrink habit-gemma (50% exam) for the home PC brain", "steps": [] },
-    { "id": "c-studio", "who": "claude", "prio": "soon", "title": "Improve Studio videos after the first real one is judged", "steps": [] },
-    { "id": "c-board-app", "who": "claude", "prio": "soon", "title": "Open this board from the Habit app (Settings)", "steps": [] },
-    { "id": "c-play", "who": "claude", "prio": "later", "title": "Play Store: store text, screenshots, Data safety and content-rating answers", "steps": [] },
-    { "id": "c-firebase", "who": "claude", "prio": "later", "title": "Firebase push for calls and messages (when the project is ready)", "steps": [] }
-  ],
-  "done": [
-    { "date": "2026-11-26", "items": ["Team board (this page): done work and next work in one place",
-      "Habit Studio v2: hooks, trends, puppy reaction moments, our own sound effects, Google voice ready",
-      "Habit Studio: quiz scenes, topics people like come more, download button",
-      "Teach page: 🎞 All our videos in one place"] },
-    { "date": "2026-11-25", "items": ["Habit Studio: our own explainer videos (topic → script → Telugu voice → animation), each waits for your ✓",
-      "Ear v2 training script (more voices, everyday sentences, bigger ear, fair exam); the phone ignores long talk without the name"] },
-    { "date": "2026-11-24", "items": ["46 talk skills (explain, comfort, fraud, health, emergency, office, cooking, farming, writing…) with Tenglish",
-      "Humour: personal jokes only when you start it, a different style each time",
-      "Pet understands meaning: full sentences, 3 voice guesses, corrections ('కాదు…') fixed and remembered",
-      "Its name alone: 'ఆ, చెప్పండి?'; 'call Roja in Habit' = Habit call; not on Habit → offers a phone call",
-      "Office files: same-row search, Sy.No. vs S.No., spellings, 📌 labels, 🧠 What Habit found, 📜 Full history",
-      "Habit Brain: small (0.6 GB) and big (2.6 GB), switch without deleting",
-      "Practice Guide PDF (14 days)"] },
-    { "date": "2026-11-23", "items": ["Old Word/Excel/zip files read for free; PDFs read free first", "Office limit 20,000 files",
-      "Small phone brain served by our server", "Home brain (your PC) connected"] }
-  ],
-  "ideas": [
-    "Habit YouTube channel later, after the videos are good enough (download + post by hand meanwhile)",
-    "Your own voice for Studio videos (record a few lines)",
-    "32 GB server: the biggest jump in Habit's own brain"
-  ]
+ "updated": "2026-11-26 01:05",
+ "note": "Our team board: what is done, and what comes next (who does it, with steps). Claude updates this every time we work; tick your tasks when you finish them.",
+ "todo": [
+  {
+   "id": "t-update",
+   "who": "you",
+   "prio": "now",
+   "title": "Run the server update",
+   "why": "Switches on Habit Studio v2, the 46 talk skills, writing skills, humour rules, 'All our videos' and this board.",
+   "steps": [
+    "Hostinger black screen: true; /root/Big.D/server/update.sh",
+    "Wait for root@srv2097259:~# to come back"
+   ]
+  },
+  {
+   "id": "t-claudekey",
+   "who": "you",
+   "prio": "now",
+   "title": "Check Claude is still answering (key date was 25 Nov)",
+   "why": "If the key stopped, the pet loses its best brain.",
+   "steps": [
+    "Open bigdai.tech/teach: the top should say '✓ Claude is answering'",
+    "If not: make a new key at console.anthropic.com and set it with: bash /root/Big.D/server/set-key.sh ANTHROPIC_API_KEY (paste when asked, never on the command line)"
+   ]
+  },
+  {
+   "id": "t-ear2",
+   "who": "you",
+   "prio": "now",
+   "title": "Run Ear v2 on Kaggle, then send the last lines of the Logs",
+   "why": "Ear v1 heard its name only 30%; v2 has more voices, everyday sentences, a bigger ear.",
+   "steps": [
+    "kaggle.com › Your Work › notebookc9053e4218 › ✏️ Edit",
+    "Don't press ▶. Click Save Version › Save & Run All (Commit) › Save",
+    "3-4 hours later: Version 2 › Logs › screenshot of the last lines to Claude"
+   ]
+  },
+  {
+   "id": "t-video1",
+   "who": "you",
+   "prio": "soon",
+   "title": "Make one real Studio video and judge it",
+   "why": "Only a real video (with the Telugu voice) shows the true quality.",
+   "steps": [
+    "bigdai.tech/teach › 🎬 Habit Studio › 🎬 Make a video",
+    "Wait 3-5 minutes, play it",
+    "Tell Claude: good / not good, and what to change"
+   ]
+  },
+  {
+   "id": "t-gvoice",
+   "who": "you",
+   "prio": "soon",
+   "title": "Google natural Telugu voice (optional, free up to 1 million characters a month)",
+   "why": "Much better voice for the pet and the Studio videos.",
+   "steps": [
+    "console.cloud.google.com › New Project 'Habit Voice'",
+    "Billing: link a card or UPI (Google asks; the server stops at 900,000 characters a month)",
+    "Search 'Text-to-Speech' › Enable",
+    "APIs & Services › Credentials › Create API key › restrict to Cloud Text-to-Speech API",
+    "Black screen: bash /root/Big.D/server/set-key.sh GOOGLE_TTS_KEY (paste when asked)",
+    "Billing › Budgets & alerts › ₹100 alert"
+   ]
+  },
+  {
+   "id": "t-office",
+   "who": "you",
+   "prio": "ongoing",
+   "title": "Upload office folders, one at a time",
+   "why": "More office files = better letters, Sy.No. history and search.",
+   "steps": [
+    "bigdai.tech/office › 🏛 Office box › office code › Open",
+    "choose a folder › one office folder › Upload",
+    "Leave personal folders out"
+   ]
+  },
+  {
+   "id": "t-practice",
+   "who": "you",
+   "prio": "ongoing",
+   "title": "15 minutes of pet practice (the Practice Guide PDF)",
+   "why": "Your corrections teach the pet; your notes tell Claude what to fix.",
+   "steps": [
+    "One day of the 14-day plan",
+    "Note problems in the observation sheet, send to Claude"
+   ]
+  },
+  {
+   "id": "t-reboot",
+   "who": "you",
+   "prio": "later",
+   "title": "Restart the server once at a quiet time (Ubuntu asked for it)",
+   "why": "Security updates finish installing.",
+   "steps": [
+    "Late night, black screen: reboot",
+    "1-2 minutes later bigdai.tech works again by itself"
+   ]
+  },
+  {
+   "id": "t-firebase",
+   "who": "you",
+   "prio": "later",
+   "title": "Free Firebase project (Habit calls ring even when the app is closed)",
+   "why": "Calls and messages arrive like WhatsApp.",
+   "steps": [
+    "Claude will guide step by step when we start"
+   ]
+  },
+  {
+   "id": "t-playstore",
+   "who": "you",
+   "prio": "later",
+   "title": "Play Console account ($25 + ID check)",
+   "why": "To publish Habit on the Play Store.",
+   "steps": [
+    "Claude will prepare the store text, screenshots and forms first"
+   ]
+  },
+  {
+   "id": "c-ear2",
+   "who": "claude",
+   "prio": "now",
+   "title": "Check Ear v2's result and fix it if it is still weak",
+   "steps": []
+  },
+  {
+   "id": "c-gemma",
+   "who": "claude",
+   "prio": "soon",
+   "title": "Kaggle script to shrink habit-gemma (50% exam) for the home PC brain",
+   "steps": []
+  },
+  {
+   "id": "c-studio",
+   "who": "claude",
+   "prio": "soon",
+   "title": "Improve Studio videos after the first real one is judged",
+   "steps": []
+  },
+  {
+   "id": "c-board-app",
+   "who": "claude",
+   "prio": "soon",
+   "title": "Open this board from the Habit app (Settings)",
+   "steps": []
+  },
+  {
+   "id": "c-play",
+   "who": "claude",
+   "prio": "later",
+   "title": "Play Store: store text, screenshots, Data safety and content-rating answers",
+   "steps": []
+  },
+  {
+   "id": "c-firebase",
+   "who": "claude",
+   "prio": "later",
+   "title": "Firebase push for calls and messages (when the project is ready)",
+   "steps": []
+  }
+ ],
+ "done": [
+  {
+   "date": "2026-11-26",
+   "items": [
+    "Team board (this page): done work and next work in one place",
+    "Habit Studio v2: hooks, trends, puppy reaction moments, our own sound effects, Google voice ready",
+    "Habit Studio: quiz scenes, topics people like come more, download button",
+    "Teach page: 🎞 All our videos in one place"
+   ]
+  },
+  {
+   "date": "2026-11-25",
+   "items": [
+    "Habit Studio: our own explainer videos (topic → script → Telugu voice → animation), each waits for your ✓",
+    "Ear v2 training script (more voices, everyday sentences, bigger ear, fair exam); the phone ignores long talk without the name"
+   ]
+  },
+  {
+   "date": "2026-11-24",
+   "items": [
+    "46 talk skills (explain, comfort, fraud, health, emergency, office, cooking, farming, writing…) with Tenglish",
+    "Humour: personal jokes only when you start it, a different style each time",
+    "Pet understands meaning: full sentences, 3 voice guesses, corrections ('కాదు…') fixed and remembered",
+    "Its name alone: 'ఆ, చెప్పండి?'; 'call Roja in Habit' = Habit call; not on Habit → offers a phone call",
+    "Office files: same-row search, Sy.No. vs S.No., spellings, 📌 labels, 🧠 What Habit found, 📜 Full history",
+    "Habit Brain: small (0.6 GB) and big (2.6 GB), switch without deleting",
+    "Practice Guide PDF (14 days)"
+   ]
+  },
+  {
+   "date": "2026-11-23",
+   "items": [
+    "Old Word/Excel/zip files read for free; PDFs read free first",
+    "Office limit 20,000 files",
+    "Small phone brain served by our server",
+    "Home brain (your PC) connected"
+   ]
+  }
+ ],
+ "ideas": [
+  "⭐ Sachivalayam helper: voice-guided applications (caste/income certificate, pension, ration card) — who can apply, documents checklist, where to go, a reminder to follow up",
+  "⭐ Pendurthi pilot: your office staff use the Office edition for 1 month; their feedback makes it ready for other mandals",
+  "⭐ Scam shield: share any suspicious SMS/WhatsApp message to Habit → instant verdict, added to the fake list; a weekly 'scam alert' Studio video from real reports",
+  "⭐ Habit Morning: one voice briefing (weather, panchangam, your reminders, top news, mandi price) when you say 'good morning'",
+  "⭐ Elder check-in: Habit asks an elder 'are you okay?' daily; no answer → alerts the family (Family & SOS)",
+  "Money plan: free for the public; Plus ₹29/month (natural voice, more cartoons); Office edition per office per month",
+  "Knowledge packs for villages without internet: schemes, health, farming inside the phone brain",
+  "Pet grows with use: levels, outfits, daily streaks (people come back every day)",
+  "Students: Telugu-medium exam practice with quiz streaks (SSC, Inter, APPSC basics)",
+  "Habit YouTube channel later, after the videos are good enough (download + post by hand meanwhile)",
+  "Your own voice for Studio videos (record a few lines)",
+  "32 GB server: the biggest jump in Habit's own brain"
+ ]
 }
