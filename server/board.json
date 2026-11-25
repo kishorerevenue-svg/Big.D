@@ -1,7 +1,21 @@
 {
- "updated": "2026-11-26 01:05",
+ "updated": "2026-11-26 01:10",
  "note": "Our team board: what is done, and what comes next (who does it, with steps). Claude updates this every time we work; tick your tasks when you finish them.",
  "todo": [
+  {
+   "id": "c-seeing",
+   "who": "claude",
+   "prio": "now",
+   "title": "Build 👁 Seeing: explain notices from the camera, medicine strips, crop leaves",
+   "steps": []
+  },
+  {
+   "id": "c-anu",
+   "who": "claude",
+   "prio": "soon",
+   "title": "Build 📖 Anu / Shree-Lipi → proper Telugu converter for office files",
+   "steps": []
+  },
   {
    "id": "t-update",
    "who": "you",
@@ -167,7 +181,8 @@
     "Team board (this page): done work and next work in one place",
     "Habit Studio v2: hooks, trends, puppy reaction moments, our own sound effects, Google voice ready",
     "Habit Studio: quiz scenes, topics people like come more, download button",
-    "Teach page: 🎞 All our videos in one place"
+    "Teach page: 🎞 All our videos in one place",
+    "Habit's learning map on this board: what it has learned and what it learns next"
    ]
   },
   {
@@ -212,5 +227,107 @@
   "Habit YouTube channel later, after the videos are good enough (download + post by hand meanwhile)",
   "Your own voice for Studio videos (record a few lines)",
   "32 GB server: the biggest jump in Habit's own brain"
- ]
+ ],
+ "learning": {
+  "learned": [
+   {
+    "skill": "🗣 Talking",
+    "what": "Understands meaning, Tenglish, corrections ('కాదు…'), 3 voice guesses, asks when unsure, its name alone → 'ఆ, చెప్పండి?'"
+   },
+   {
+    "skill": "🧑‍🏫 46 talk skills",
+    "what": "Explain, teach, comfort, listen, celebrate, motivate, decide, plan, summarise, fraud, health, emergency, police help, directions, shopping, phone how-to, child/elder mode, family, career, farming, cooking, schemes, festivals, faith, neutral news, privacy, translation…"
+   },
+   {
+    "skill": "✍️ Writing",
+    "what": "Letters and applications (Word files), office reports, essays and speeches, e-mails, posts and invitations, improving your own writing"
+   },
+   {
+    "skill": "🎭 Humour",
+    "what": "Personal, kind jokes only when you start it; a different style each time; never in serious moments"
+   },
+   {
+    "skill": "🏛 Office files",
+    "what": "Same-row search, Sy.No. vs S.No., village spellings, 📌 what each file is, 🧠 What Habit found, 📜 Full history with references"
+   },
+   {
+    "skill": "📚 Library",
+    "what": "Public box (like Wikipedia) and Office box; reads Word, Excel, PDF, scans, zip; self-study every 10 minutes"
+   },
+   {
+    "skill": "🎬 Creating videos",
+    "what": "Habit Studio: hooks, quiz, puppy reactions, own sound effects, Telugu voice; your ✓ before Media"
+   },
+   {
+    "skill": "🧠 Brains",
+    "what": "Claude (best) → home PC (gemma3:4b) → phone brain (small 0.6 GB / big 2.6 GB, offline)"
+   },
+   {
+    "skill": "📞 Doing",
+    "what": "Calls (phone, Habit, video), WhatsApp, reminders, alarms, timers, to-dos, notes, open apps, songs"
+   }
+  ],
+  "next": [
+   {
+    "skill": "👂 Listening (ear)",
+    "what": "Its name from anywhere in the room; later each family member's voice",
+    "status": "Ear v2 training on Kaggle (your run)"
+   },
+   {
+    "skill": "👁 Seeing",
+    "what": "Explain a notice or letter from the camera; medicine strip name and expiry; crop leaf problem (then ask the agriculture officer)",
+    "status": "NEXT to build"
+   },
+   {
+    "skill": "📖 Reading old Telugu fonts",
+    "what": "Anu / Shree-Lipi office files converted to proper Telugu, so they count for search and learning",
+    "status": "After Seeing"
+   },
+   {
+    "skill": "🧠 Memory that reminds first",
+    "what": "Routines, likes, important dates; 'tomorrow is your anniversary' before you ask",
+    "status": "Planned"
+   },
+   {
+    "skill": "🧮 Exact maths",
+    "what": "A calculator tool for land units, interest/EMI, budgets (no mistakes)",
+    "status": "Planned"
+   },
+   {
+    "skill": "🏛 Sachivalayam helper",
+    "what": "Voice-guided applications: who can apply, documents, where to go, follow-up reminder",
+    "status": "Planned (top idea)"
+   },
+   {
+    "skill": "🛡 Scam shield",
+    "what": "Share any suspicious message → verdict, added to the fake list, weekly scam-alert video",
+    "status": "Planned (top idea)"
+   },
+   {
+    "skill": "☀️ Habit Morning",
+    "what": "One voice briefing: weather, panchangam, reminders, news, mandi price",
+    "status": "Planned"
+   },
+   {
+    "skill": "👵 Elder check-in",
+    "what": "Daily 'bagunnara?'; no answer → alerts the family",
+    "status": "Planned"
+   },
+   {
+    "skill": "🎨 Posters and cards",
+    "what": "Invitation cards, notices, festival wishes as pictures",
+    "status": "Planned"
+   },
+   {
+    "skill": "❤️ Feeling from the voice",
+    "what": "Notices tiredness or sadness from the tone, acts gently",
+    "status": "Later"
+   },
+   {
+    "skill": "🧠 habit-gemma on your PC",
+    "what": "Habit's own trained brain (50% exam) shrunk for the home PC",
+    "status": "Claude prepares the Kaggle script"
+   }
+  ]
+ }
 }
