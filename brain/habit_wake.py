@@ -5,7 +5,7 @@ In a Kaggle notebook (Settings: Internet on; a GPU is not needed; secret HF_TOKE
 
     !curl -fsSL https://raw.githubusercontent.com/kishorerevenue-svg/Big.D/main/brain/habit_wake.py -o habit_wake.py && python habit_wake.py --full
 
-(--test: a quick try, about 20 to 30 minutes. --full: the real one, about 1 to 2 hours. Choose GPU T4 x2 if you have it: faster.)
+(--test: a quick try, about 30 to 40 minutes. --full: the real one, about 3 to 4 hours. Choose GPU T4 x2 if you have it: faster.)
 
 What it does:
   1. Free voices (Piper: English with ~1,000 speakers, Telugu and Hindi) say "Habit", "హ్యాబిట్", "हैबिट" thousands of times,
@@ -54,13 +54,13 @@ def pip(*pkgs):
 # ---------------------------------------------------------------- settings
 MODES = {
     # voices, clips of the name, clips of near words, mixing rounds, hours of real talk (English, Telugu), learning steps
-    "test": dict(voices=["en_US-libritts_r-medium", "te_IN-maya-medium", "hi_IN-pratham-medium"], pos=1500, adv=1500, rounds=1,
+    "test": dict(voices=["en_US-libritts_r-medium", "te_IN-maya-medium", "hi_IN-pratham-medium"], pos=1500, adv=1500, chat=800, rounds=1,
                  libri_train=["dev-clean"], libri_val=["test-clean"], libri_hours=5.0, te=["te_in_female"], te_hours=2.0,
                  steps=3000, hidden=64),
     "full": dict(voices=["en_US-libritts_r-medium", "en_GB-vctk-medium", "te_IN-maya-medium", "te_IN-padmavathi-medium",
                          "te_IN-venkatesh-medium", "hi_IN-pratham-medium", "hi_IN-priyamvada-medium", "hi_IN-rohan-medium"],
-                 pos=6000, adv=6000, rounds=2, libri_train=["dev-clean", "test-clean", "train-clean-100"], libri_val=["dev-other"],
-                 libri_hours=25.0, te=["te_in_female", "te_in_male"], te_hours=6.0, steps=12000, hidden=64),
+                 pos=12000, adv=9000, chat=5000, rounds=2, libri_train=["dev-clean", "test-clean", "train-clean-100"], libri_val=["dev-other"],
+                 libri_hours=25.0, te=["te_in_female", "te_in_male"], te_hours=6.0, steps=20000, hidden=128),
 }
 VOICE_PATH = {
     "en_US-libritts_r-medium": "en/en_US/libritts_r/medium", "en_GB-vctk-medium": "en/en_GB/vctk/medium",
@@ -94,6 +94,26 @@ TALK = {  # ordinary sentences in the voices too (they are never the name)
            "బస్సు ఇంకా రాలేదు", "సాయంత్రం వస్తాను", "లైట్ వేయి", "నా ఫోన్ ఎక్కడ", "రేపు సెలవు", "పని అయిపోయింది", "మార్కెట్‌కి వెళ్దాం"],
     "hi": ["अभी क्या समय है", "माँ को फोन करो", "मीटिंग दस बजे है", "आज बारिश होगी", "खाना खाया", "बस अभी तक नहीं आई"],
 }
+
+WORDS = {  # everyday words: random short sentences of them, said by the same voices, are never the name
+    "en": ("please call send open tell show where what when how is the my your this that today tomorrow evening morning office home "
+           "market file report bus train phone light water food money bank time meeting brother sister mother father friend come go "
+           "give take bring check ready late early good very nice okay yes no rain hot cold work school village road shop book letter").split(),
+    "te": ("ఈ రోజు రేపు నిన్న ఎక్కడ ఏంటి ఎప్పుడు ఎలా ఎవరు ఫోన్ చెయ్యి పంపు తీసుకో ఇవ్వు రా వెళ్ళు ఆఫీసు ఇల్లు మార్కెట్ బస్సు "
+           "నీళ్ళు భోజనం డబ్బులు బ్యాంకు సమయం మీటింగ్ అన్న అక్క అమ్మ నాన్న స్నేహితుడు పని పాఠశాల ఊరు దారి షాపు పుస్తకం ఉత్తరం "
+           "బాగుంది సరే అవును కాదు వర్షం ఎండ చలి తొందరగా ఆలస్యం చాలా కొంచెం ఇంకా అయిపోయింది మొదలు").split(),
+    "hi": ("आज कल कहाँ क्या कब कैसे कौन फोन करो भेजो लो दो आओ जाओ ऑफिस घर बाज़ार बस पानी खाना पैसा बैंक समय मीटिंग भाई "
+           "बहन माँ पिता दोस्त काम स्कूल गाँव सड़क दुकान किताब अच्छा ठीक हाँ नहीं बारिश गर्मी ठंड जल्दी देर बहुत थोड़ा").split(),
+}
+
+
+def chat_lines(n, seed):
+    r = random.Random(seed)
+    out = {}
+    for l, w in WORDS.items():
+        out[l] = [" ".join(r.choice(w) for _ in range(r.randint(2, 6))) for _ in range(n)] + TALK[l]
+    return out
+
 
 SR = 16000
 CLIP = 32000             # 2 s windows -> 16 speech features (each 80 ms)
@@ -249,6 +269,10 @@ def _speak(job):
     k = np.convolve(e, np.ones(160) / 160, mode="same")
     on = np.where(k > 0.04 * k.max())[0]
     a = a[max(0, on[0] - 800): on[-1] + 800]
+    if r.random() < 0.75:                       # a different person: higher or deeper voice, a bit faster or slower
+        from scipy.signal import resample
+        f = r.uniform(0.84, 1.2)
+        a = resample(a, max(800, int(len(a) / f)))
     if len(a) > CLIP - 1600 or len(a) < 2400:
         return None
     return a.astype(np.int16)
@@ -672,6 +696,7 @@ def main():
     near = {l: NEAR[l] + TALK[l] for l in NEAR}
     pos_tr = speak_many(paths, NAME, cfg["pos"], 11)
     adv_tr = speak_many(paths, near, cfg["adv"], 12)
+    chat_tr = speak_many(paths, chat_lines(600, 15), cfg["chat"], 15)
     pos_te = speak_many(paths, NAME, max(300, cfg["pos"] // 6), 13, held_out=True)
     adv_te = speak_many(paths, near, max(300, cfg["adv"] // 6), 14, held_out=True)
     say(f"  {len(pos_tr):,} + {len(pos_te):,} clips of the name, {len(adv_tr):,} + {len(adv_te):,} of near words")
@@ -682,10 +707,13 @@ def main():
     room = Room(talk_audio)
     pos = mixed_features(feat, room, pos_tr, cfg["rounds"])
     adv = np.concatenate([mixed_features(feat, room, adv_tr, cfg["rounds"]),
-                          mixed_features(feat, room, adv_tr[: len(adv_tr) // 2], 1, end=False)])
+                          mixed_features(feat, room, adv_tr[: len(adv_tr) // 2], 1, end=False),
+                          mixed_features(feat, room, chat_tr, 1), mixed_features(feat, room, chat_tr, 1, end=False)])
+    del chat_tr
     quiet = mixed_features(feat, room, [None] * (1500 if mode == "test" else 5000), 1)
     room_t = Room(talk_audio, seed=99)
-    pos_x = mixed_features(feat, room_t, pos_te, 1, snr=(0, 20))
+    pos_x = mixed_features(feat, room_t, pos_te, 1, snr=(6, 25))          # everyday rooms (the threshold is chosen by these)
+    pos_n = mixed_features(feat, room_t, pos_te, 1, snr=(0, 8))           # very noisy rooms (shown, for comparison)
     adv_x = mixed_features(feat, room_t, adv_te, 1)
     del talk_audio
 
@@ -694,14 +722,15 @@ def main():
     train(ear, pos, adv, real, quiet, cfg["steps"])
 
     say("6/6 the exam…")
-    sp, sa = ear.score(pos_x), ear.score(adv_x)
+    sp, sa, sn = ear.score(pos_x), ear.score(adv_x), ear.score(pos_n)
     rows = []
     for thr in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 0.97):
         rows.append((thr, float(np.mean(sp >= thr)), float(np.mean(sa >= thr)), fph(ear, val_s, val_h, thr)))
-    print("\n  threshold   hears its name   near words taken as name   wakes by mistake / hour of talk")
-    for thr, rc, fa, fp in rows:
-        print(f"    {thr:4.2f}        {rc * 100:5.1f} %              {fa * 100:5.1f} %                    {fp:5.2f}")
-    target = 0.5 if mode == "full" else 1.0
+    print("\n  threshold   hears its name (everyday / very noisy)   near words taken as name   wakes by mistake / hour of talk")
+    for (thr, rc, fa, fp) in rows:
+        print(f"    {thr:4.2f}        {rc * 100:5.1f} % / {float(np.mean(sn >= thr)) * 100:5.1f} %              {fa * 100:5.1f} %                    {fp:5.2f}")
+    # (on the phone a wake is also checked by the voice typing, so a rare mistake only makes it listen quietly)
+    target = 1.0
     ok = [r for r in rows if r[3] <= target and r[0] >= 0.5]
     best = max(ok, key=lambda r: (r[1], r[0])) if ok else max(rows, key=lambda r: r[0])
     thr, rc, fa, fp = best
@@ -724,7 +753,7 @@ def main():
         return
     if a.no_upload:
         return
-    if fp > 2.0 or rc < 0.5:
+    if fp > 1.5 or rc < 0.6:
         stop(f"the ear isn't good enough yet (hears its name {rc * 100:.0f} %, wakes by mistake {fp:.1f}/hour), so it's not sent "
              "to the phone. Send this output to Claude.")
     from huggingface_hub import HfApi

@@ -866,8 +866,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         unhushSoon()
         // not its name: let it go (it waits again). But when its own ear heard the name, the voice typing only misheard
         // it: it answers "yes?" and listens (like a smart speaker)
-        val rest = afterName(text) ?: (if (!wakeSure) return
-            else text.trim().split(Regex("\\s+")).let { w -> if (w.size >= 3) w.drop(1).joinToString(" ") else "" })   // (the first word: the misheard name)
+        // (a long sentence without the name is people talking, even if the ear thought it heard the name: let it go)
+        val rest = afterName(text) ?: (if (!wakeSure || text.trim().split(Regex("\\s+")).size > 2) return else "")
         wakeSure = false
         if (listening || pet.talking || CallManager.active != null || onPhone()) return
         wakeChecks.clear()
