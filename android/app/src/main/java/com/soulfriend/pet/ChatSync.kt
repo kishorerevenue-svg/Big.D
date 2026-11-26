@@ -33,7 +33,9 @@ import java.util.concurrent.Executors
  * Everything is locked and opened on the phone (ChatCrypto); the server only passes locked messages on.
  */
 object ChatSync {
-    const val CHANNEL = "bigd_chat"
+    /** The message notifications (v2: sound, vibration, light and the app-icon badge set clearly; the old "bigd_chat"
+     *  channel is removed, since a channel's sound can't be changed once a phone made it). */
+    const val CHANNEL = "habit_msgs"
     val listeners = CopyOnWriteArraySet<() -> Unit>()
     /** The chat on screen right now (no notification for it, and its messages count as read). */
     @Volatile var openCid: String? = null
@@ -738,8 +740,23 @@ object ChatSync {
         return (0 until a.length()).any { a.optString(it) == me || a.optString(it) == "*" }
     }
 
+    /** A message came in the chat that is open on screen: a soft "pop" (no notification), like WhatsApp. Not in silent or vibrate mode. */
+    private var lastPop = 0L
+    fun pop(ctx: Context) {
+        if (!ChatTheme.notifyOn(ctx) || System.currentTimeMillis() - lastPop < 1500) return
+        val am = ctx.getSystemService(android.media.AudioManager::class.java) ?: return
+        if (am.ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL) return
+        lastPop = System.currentTimeMillis()
+        try {
+            val tg = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 35)
+            tg.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 90)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ try { tg.release() } catch (e: Exception) { } }, 400)
+        } catch (e: Exception) { }
+    }
+
     fun notify(ctx: Context, list: List<ChatMsg>) {
         if (!ChatTheme.notifyOn(ctx)) return
+        if (openCid != null && list.any { it.cid == openCid }) pop(ctx)
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         ensureChannel(ctx)
         val db = ChatDb.get(ctx)
@@ -760,7 +777,7 @@ object ChatSync {
             if (ChatTheme.isHidden(ctx, cid)) {
                 val te0 = Store(ctx).lang == "te"
                 val open0 = PendingIntent.getActivity(ctx, 7302, Intent(ctx, MainActivity::class.java).putExtra("tab", "messages").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                val b0 = android.app.Notification.Builder(ctx, CHANNEL).setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle("Habit Chat")
+                val b0 = android.app.Notification.Builder(ctx, CHANNEL).setSmallIcon(R.drawable.ic_paw).setColor(AppLook.p.primary).setContentTitle("Habit Chat")
                     .setContentText(if (te0) "🔒 కొత్త మెసేజ్" else "🔒 New message").setAutoCancel(true).setContentIntent(open0).setCategory(android.app.Notification.CATEGORY_MESSAGE)
                 try { nm.notify("chat", "hidden".hashCode(), b0.build()) } catch (e: SecurityException) { }
                 continue
@@ -769,19 +786,55 @@ object ChatSync {
             val open = PendingIntent.getActivity(ctx, cid.hashCode(), Intent(ctx, ChatActivity::class.java).putExtra("cid", cid).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val b = (if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(ctx, CHANNEL) else @Suppress("DEPRECATION") android.app.Notification.Builder(ctx))
-                .setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(title).setContentText(text)
+                .setSmallIcon(R.drawable.ic_paw).setColor(AppLook.p.primary).setContentTitle(title).setContentText(text)
+                .setNumber(conv.unread.coerceAtLeast(ms.size))                 // the number on the app icon's badge
+                .setGroup("habit_chat")
                 .setStyle(android.app.Notification.BigTextStyle().bigText(text)).setAutoCancel(true).setContentIntent(open)
                 .setCategory(android.app.Notification.CATEGORY_MESSAGE).setWhen(last.at).setShowWhen(true)
             try { nm.notify("chat", cid.hashCode(), b.build()) } catch (e: SecurityException) { }
         }
+        // two or more chats: one summary keeps them together (quietly: each chat already rang once)
+        try {
+            val live = nm.activeNotifications.count { it.tag == "chat" && it.id != SUMMARY }
+            if (live >= 2) {
+                val te = Store(ctx).lang == "te"
+                val open = PendingIntent.getActivity(ctx, 7303, Intent(ctx, MainActivity::class.java).putExtra("tab", "messages").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                nm.notify("chat", SUMMARY, android.app.Notification.Builder(ctx, CHANNEL).setSmallIcon(R.drawable.ic_paw).setColor(AppLook.p.primary)
+                    .setContentTitle("Habit Chat").setContentText(if (te) "$live చాట్‌లలో కొత్త మెసేజ్‌లు" else "New messages in $live chats")
+                    .setGroup("habit_chat").setGroupSummary(true).setGroupAlertBehavior(android.app.Notification.GROUP_ALERT_CHILDREN)
+                    .setAutoCancel(true).setContentIntent(open).build())
+            }
+        } catch (e: Exception) { }
     }
+    private const val SUMMARY = 7304
     fun ensureChannel(ctx: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        try { if (nm.getNotificationChannel("bigd_chat") != null) nm.deleteNotificationChannel("bigd_chat") } catch (e: Exception) { }
         if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Habit Chat", NotificationManager.IMPORTANCE_HIGH).apply { description = "New messages from your Habit chats" })
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Habit Chat messages", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "New messages from your Habit chats"
+                setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+                    android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                enableVibration(true); vibrationPattern = longArrayOf(0, 180, 120, 180)
+                enableLights(true); lightColor = android.graphics.Color.parseColor("#3B6BFF")
+                setShowBadge(true); lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
+            })
     }
-    fun clearNotification(ctx: Context, cid: String) { try { ctx.getSystemService(NotificationManager::class.java)?.cancel("chat", cid.hashCode()) } catch (e: Exception) { } }
+    /** Phone settings for the message notifications: tone, vibration, pop on screen. */
+    fun toneSettings(ctx: Context) {
+        ensureChannel(ctx)
+        try { ctx.startActivity(Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+            .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, CHANNEL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+    }
+    fun clearNotification(ctx: Context, cid: String) {
+        try {
+            val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+            nm.cancel("chat", cid.hashCode())
+            if (nm.activeNotifications.count { it.tag == "chat" && it.id != SUMMARY } < 2) nm.cancel("chat", SUMMARY)
+        } catch (e: Exception) { }
+    }
 }
 
 /** When the app is closed: a quiet check for new chat messages every 15 minutes. */

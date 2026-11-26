@@ -75,6 +75,7 @@ class ChatSettingsActivity : Activity() {
         head(t("Notifications", "నోటిఫికేషన్లు"))
         toggle(R.drawable.ic_bell, 0, t("Message notifications", "మెసేజ్ నోటిఫికేషన్లు"), t("New messages show a notification", "కొత్త మెసేజ్‌లకు నోటిఫికేషన్"), ChatTheme.notifyOn(this)) { db.setKv("set:notify", if (it) "1" else "0") }
         toggle(R.drawable.ic_eye, 4, t("Show the message in the notification", "నోటిఫికేషన్‌లో మెసేజ్ చూపించు"), t("Off: only \"New message\"", "ఆఫ్: \"కొత్త మెసేజ్\" మాత్రమే"), ChatTheme.previewOn(this)) { db.setKv("set:preview", if (it) "1" else "0") }
+        item(R.drawable.ic_bell, 1, t("Message tone & vibration", "మెసేజ్ టోన్ & వైబ్రేషన్"), t("Choose the tone in phone settings › Habit Chat messages", "ఫోన్ సెట్టింగ్స్ › Habit Chat messages లో టోన్ ఎంచుకోండి")) { ChatSync.toneSettings(this) }
         toggle(R.drawable.ic_heart, 3, t("Reaction notifications", "స్పందనల నోటిఫికేషన్లు"), t("When someone reacts to your message", "మీ మెసేజ్‌కి ఎవరైనా స్పందిస్తే"), ChatTheme.reactNotify(this)) { db.setKv("set:reactnotify", if (it) "1" else "0") }
         item(R.drawable.ic_phone, 5, t("Ringtone for calls", "కాల్స్ రింగ్‌టోన్"), t("Phone settings › Habit calls (ringing)", "ఫోన్ సెట్టింగ్స్ › Habit calls (ringing)")) {
             CallManager.channels(this)

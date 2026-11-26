@@ -125,14 +125,15 @@ class MainActivity : Activity() {
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
         /** Pages opened from Home (not in the bottom bar). Back and the Home tab return to Home. */
-        val TOOL_PAGES = setOf("translate", "family", "govt", "pet", "vault")
+        /** Pages opened from Home (Back and the ← arrow go Home; the Home tab stays lit). To-dos & reminders are one of them. */
+        val TOOL_PAGES = setOf("translate", "family", "govt", "pet", "vault", "tasks")
         /** Pages opened from Chats › Updates (Back returns there). */
         val CHAT_PAGES = setOf("safety", "channel")
         /** The bottom bar: three tabs, the round Talk button, two tabs (the Vault left the bar; old Vault items open from Home). */
         class NavTab(val key: String, val en: String, val te: String, val icon: Int)
         val TABS = listOf(NavTab("home", "Home", "హోమ్", R.drawable.ic_home), NavTab("messages", "Chats", "చాట్‌లు", R.drawable.ic_chat),
             NavTab("files", "Files", "ఫైల్స్", R.drawable.ic_folder),
-            NavTab("tasks", "Tasks", "పనులు", R.drawable.ic_tasks),
+            NavTab("trend", "Trending", "ట్రెండింగ్", R.drawable.ic_fire),
             NavTab("feedback", "Media", "మీడియా", R.drawable.ic_media))
     }
 
@@ -350,6 +351,7 @@ class MainActivity : Activity() {
         when (tab) {
             "pet" -> petPage()
             "tasks" -> tasksPage()
+            "trend" -> { pageHeader("🔥 " + t("Trending", "ట్రెండింగ్"), t("What India is talking about today, and what people say", "ఈరోజు ఇండియా దేని గురించి మాట్లాడుతోంది, జనాలు ఏమంటున్నారు")); trending.build() }
             "files" -> filesPage()
             "messages" -> messages.build()
             "safety" -> safetyPage()
@@ -617,11 +619,7 @@ class MainActivity : Activity() {
             contentDescription = t("$pending to-dos, $todayCount reminders today", "$pending పనులు, ఈరోజు $todayCount రిమైండర్లు")
             setOnClickListener { tasksTab = if (pending == 0 && todayCount > 0) "rem" else "todo"; go("tasks") }
         }
-        add(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(tasksBox, LinearLayout.LayoutParams(0, -1, 2f))
-            addView(stat(R.drawable.ic_chat, AppLook.TINT3, unread, t("Unread chats", "చదవని చాట్‌లు")) { go("messages") }, LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = dp(9) })
-        }, 10)
+        add(tasksBox, 10)                                    // unread chats show on the Chats tab's badge
         rems.firstOrNull { it.at > System.currentTimeMillis() }?.let { r ->
             val z = Instant.ofEpochMilli(r.at).atZone(zone)
             val whenTxt = (if (z.toLocalDate() == today) t("Today", "ఈరోజు") + ", " + DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH).format(z) else fmt.format(z)) +
@@ -668,7 +666,7 @@ class MainActivity : Activity() {
             action(R.drawable.ic_doc, soft, t("Make a file", "ఫైల్ తయారు")) { go("files") },
             action(R.drawable.ic_bell, AppLook.TINT2, t("Reminder", "రిమైండర్")) { tasksTab = "rem"; go("tasks") },
             action(R.drawable.ic_shield, AppLook.TINT3, t("Safety check", "మోసం చెక్")) { go("safety") },
-            action(R.drawable.ic_status, soft, t("Trending", "ట్రెండింగ్")) { tasksTab = "trend"; go("tasks") },
+            action(R.drawable.ic_fire, soft, t("Trending", "ట్రెండింగ్")) { go("trend") },
             action(R.drawable.ic_globe, AppLook.TINT2, t("Translate", "అనువాదం")) { go("translate") }), 10)
         add(heading(t("More for you", "ఇంకా మీ కోసం")), 22)
         add(grid(
@@ -1325,19 +1323,18 @@ class MainActivity : Activity() {
     // =================== 3. TASKS ===================
     private fun tasksPage() {
         if (tasksTab == "notes") tasksTab = "rem"            // notes now sit under reminders
-        if (tasksTab == "fake") tasksTab = "trend"            // fake messages moved to Chats › Updates › Channels
-        pageHeader(t("Tasks", "పనులు"), t("To-dos, reminders and notes, and what's trending today", "చేయాల్సినవి, రిమైండర్లు, నోట్స్, ఈరోజు ట్రెండింగ్"))
-        // the bar: three options
+        if (tasksTab != "rem") tasksTab = "todo"             // 🔥 Trending has its own tab now; fake messages live in Chats › Updates
+        pageHeader(t("To-dos & reminders", "పనులు & రిమైండర్లు"), t("To-dos, reminders and notes", "చేయాల్సినవి, రిమైండర్లు, నోట్స్"))
+        // the bar: two options
         add(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            listOf("todo" to t("✅ To-do", "✅ చేయాల్సినవి"), "rem" to t("⏰ Reminders & 📝 Notes", "⏰ రిమైండర్లు & 📝 నోట్స్"), "trend" to t("🔥 Trending", "🔥 ట్రెండింగ్")).forEachIndexed { i, (k, label) ->
+            listOf("todo" to t("✅ To-do", "✅ చేయాల్సినవి"), "rem" to t("⏰ Reminders & 📝 Notes", "⏰ రిమైండర్లు & 📝 నోట్స్")).forEachIndexed { i, (k, label) ->
                 addView(ui.chip(label, tasksTab == k) { tasksTab = k; render(); scroll.scrollTo(0, 0) }.apply { maxLines = 2; textSize = 13.5f; setPadding(dp(8), dp(9), dp(8), dp(9)) },
                     LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = dp(6) })
             }
         }, 14)
         when (tasksTab) {
             "rem" -> { remindersSection(); add(ui.label("📝 Notes · నోట్స్"), 22); notesSection() }
-            "trend" -> trending.build()
             else -> todoSection()
         }
     }

@@ -12,7 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Tasks › 🔥 Trending, like Twitter: what India is searching today (from @HabitTrending, explained in one or two
+ * 🔥 Trending (its own tab in the bar), like Twitter: what India is searching today (from @HabitTrending, explained in one or two
  * plain lines, 🤖 AI-made), and under it short posts from people with a Habit profile ("What's happening?", 280 letters),
  * each checked before it shows. ❤️ like, 🚩 report (3 reports hide a post), 🗑 delete your own.
  * Everything sits in its own holder, so taps and new data redraw only this part (not the box you may be typing in).
@@ -44,7 +44,7 @@ class Trending(private val m: MainActivity) {
         fill(h)
         if (!loading && (topics == null || System.currentTimeMillis() - loadedAt > 120_000)) load(false)
     }
-    private fun redraw() { holder?.takeIf { it.isAttachedToWindow && m.tab == "tasks" }?.let { fill(it) } }
+    private fun redraw() { holder?.takeIf { it.isAttachedToWindow && m.tab == "trend" }?.let { fill(it) } }
 
     private fun composer(): View = ui.card().apply {
         addView(ui.text("🔥 " + t("What's happening?", "ఏం జరుగుతోంది?"), 16f, Ui.INK, bold = true))
@@ -82,7 +82,7 @@ class Trending(private val m: MainActivity) {
                     posts = list
                     m.toast(t("Posted ✓", "పోస్ట్ అయింది ✓"))
                 } else m.toast(r.error(t("Couldn't post. Try again.", "పోస్ట్ కాలేదు. మళ్ళీ ప్రయత్నించండి.")))
-                if (m.tab == "tasks") m.render()
+                if (m.tab == "trend") m.render()
             }
         }
     }
