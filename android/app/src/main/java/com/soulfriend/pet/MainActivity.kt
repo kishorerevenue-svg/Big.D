@@ -89,6 +89,10 @@ class MainActivity : Activity() {
     private var pendingGive: List<Uri>? = null
     internal val messages by lazy { MessagesPage(this) }
     internal val chatPage by lazy { ChatPage(this) }
+    /** Chats › Updates › Channels (made by the Habit team) and one channel's page. */
+    internal val channels by lazy { Channels(this) }
+    /** Tasks › 🔥 Trending, like Twitter. */
+    internal val trending by lazy { Trending(this) }
     private var socialPage: SocialPage? = null
     internal val social: SocialPage get() = socialPage ?: SocialPage(this).also { socialPage = it }
     internal val translate by lazy { TranslatePage(this) }
@@ -121,12 +125,14 @@ class MainActivity : Activity() {
         const val REQ_CALL = 22
         const val REQ_NOTIFY = 23
         /** Pages opened from Home (not in the bottom bar). Back and the Home tab return to Home. */
-        val TOOL_PAGES = setOf("translate", "family", "govt", "pet")
-        /** The bottom bar: three tabs, the round Talk button, three tabs. */
+        val TOOL_PAGES = setOf("translate", "family", "govt", "pet", "vault")
+        /** Pages opened from Chats › Updates (Back returns there). */
+        val CHAT_PAGES = setOf("safety", "channel")
+        /** The bottom bar: three tabs, the round Talk button, two tabs (the Vault left the bar; old Vault items open from Home). */
         class NavTab(val key: String, val en: String, val te: String, val icon: Int)
         val TABS = listOf(NavTab("home", "Home", "హోమ్", R.drawable.ic_home), NavTab("messages", "Chats", "చాట్‌లు", R.drawable.ic_chat),
             NavTab("files", "Files", "ఫైల్స్", R.drawable.ic_folder),
-            NavTab("tasks", "Tasks", "పనులు", R.drawable.ic_tasks), NavTab("vault", "Vault", "వాల్ట్", R.drawable.ic_lock),
+            NavTab("tasks", "Tasks", "పనులు", R.drawable.ic_tasks),
             NavTab("feedback", "Media", "మీడియా", R.drawable.ic_media))
     }
 
@@ -297,10 +303,13 @@ class MainActivity : Activity() {
     }
 
     internal fun go(t: String) { if (t == "feedback" && tab != "feedback") social.newMix(); setTab(t); render(); scroll.scrollTo(0, 0) }
-    /** "safety" is not a tab of its own: it is Tasks › 🛡️ Fake (checking messages, the fake messages list, new scams). */
-    private fun setTab(t: String) { if (t == "safety") { tasksTab = "fake"; tab = "tasks" } else tab = t }
-    /** True while Tasks › 🛡️ Fake is on screen. */
-    internal fun onSafety() = tab == "tasks" && tasksTab == "fake"
+    /** "safety": the 🛡 Fake message alerts page (checking messages, the fake messages list, new scams), opened from
+     *  Chats › Updates › Channels or Home's Safety check. */
+    private fun setTab(t: String) { tab = t }
+    /** True while the fake messages page is on screen. */
+    internal fun onSafety() = tab == "safety"
+    /** Back from a channel or the fake messages page: Chats › Updates. */
+    internal fun backToUpdates() { chatPage.openUpdates(); go("messages") }
     /** Opens the letter helper on the Files page with this request (e.g. "Application for a birth certificate").
      *  [mode] "public" or "office" switches the helper first (e.g. a police complaint from the Messages page is always "public"). */
     internal fun openLetter(req: String, mode: String? = null) { tab = "files"; scroll.scrollTo(0, 0); letter.start(req, mode) }
@@ -343,6 +352,8 @@ class MainActivity : Activity() {
             "tasks" -> tasksPage()
             "files" -> filesPage()
             "messages" -> messages.build()
+            "safety" -> safetyPage()
+            "channel" -> channels.page()
             "vault" -> vaultPage()
             "feedback" -> social.build()
             "translate" -> translate.build()
@@ -403,6 +414,7 @@ class MainActivity : Activity() {
             "home" -> false
             "feedback" -> { if (!social.back()) go("home"); true }
             "messages" -> { if (!chatPage.back()) go("home"); true }
+            "safety", "channel" -> { backToUpdates(); true }
             "family" -> { if (!family.back()) go("home"); true }
             else -> { go("home"); true }                          // every other page: Back goes to Home first (Back on Home leaves)
         }
@@ -462,7 +474,7 @@ class MainActivity : Activity() {
         val unread = try { if (ChatSync.isSetUp(this)) ChatDb.get(this).convs().count { it.unread > 0 && !it.muted } else 0 } catch (e: Exception) { 0 }
         TABS.forEach { t ->
             val item = navItems[t.key] ?: return@forEach
-            val on = t.key == tab || (t.key == "home" && tab in TOOL_PAGES)
+            val on = t.key == tab || (t.key == "home" && tab in TOOL_PAGES) || (t.key == "messages" && tab in CHAT_PAGES)
             item.background = if (on) ui.round(pill, 18) else null
             val box = item.getChildAt(0) as FrameLayout
             (box.getChildAt(0) as ImageView).imageTintList = android.content.res.ColorStateList.valueOf(if (on) onInk else offInk)
@@ -577,12 +589,38 @@ class MainActivity : Activity() {
             contentDescription = "$n $label"
             setOnClickListener { onClick() }
         }
+        // one box for to-dos and today's reminders (the first few right here; a tap opens Tasks on the right side), and unread chats
+        val tasksBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(12), dp(10), dp(11)); background = ui.round(Ui.SURFACE, 18, Ui.LINE)
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(Ico.view(this@MainActivity, R.drawable.ic_tasks, Ui.TEAL_DARK, 18, 34, "", ui.round(Ui.TEAL_SOFT, 11)), LinearLayout.LayoutParams(dp(34), dp(34)))
+                addView(ui.text(t("To-dos & reminders", "పనులు & రిమైండర్లు"), 13f, Ui.INK).apply { typeface = Fonts.heavy(context); maxLines = 2; setPadding(dp(9), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(ui.text("+", 20f, Ui.TEAL_DARK, bold = true).apply { gravity = Gravity.CENTER; background = ui.round(Ui.TEAL_SOFT, 14); contentDescription = t("Add", "చేర్చు")
+                    setOnClickListener { tasksTab = if (pending == 0 && todayCount > 0) "rem" else "todo"; go("tasks") } }, LinearLayout.LayoutParams(dp(30), dp(30)))
+            })
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(9), 0, 0)
+                addView(ui.text("✅ $pending", 20f, Ui.INK).apply { typeface = Fonts.heavy(context); includeFontPadding = false; setOnClickListener { tasksTab = "todo"; go("tasks") } }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(ui.text("⏰ $todayCount", 20f, Ui.INK).apply { typeface = Fonts.heavy(context); includeFontPadding = false; setOnClickListener { tasksTab = "rem"; go("tasks") } }, LinearLayout.LayoutParams(0, -2, 1f))
+            })
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(ui.text(t("to-dos open", "చేయాల్సినవి"), 11.5f, Ui.MUTED).apply { typeface = Fonts.semi(context) }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(ui.text(t("reminders today", "ఈరోజు రిమైండర్లు"), 11.5f, Ui.MUTED).apply { typeface = Fonts.semi(context) }, LinearLayout.LayoutParams(0, -2, 1f))
+            })
+            // the first few, so most days there is no need to open Tasks at all
+            val next = store.todos().filter { !it.done }.take(2).map { "☐ " + it.text } +
+                rems.filter { Instant.ofEpochMilli(it.at).atZone(zone).toLocalDate() == today && it.at > System.currentTimeMillis() }.take(2)
+                    .map { "⏰ " + DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH).format(Instant.ofEpochMilli(it.at).atZone(zone)) + " · " + it.text }
+            next.forEach { line -> addView(ui.text(line, 12.5f, Ui.INK).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(5), 0, 0) }) }
+            contentDescription = t("$pending to-dos, $todayCount reminders today", "$pending పనులు, ఈరోజు $todayCount రిమైండర్లు")
+            setOnClickListener { tasksTab = if (pending == 0 && todayCount > 0) "rem" else "todo"; go("tasks") }
+        }
         add(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            listOf(stat(R.drawable.ic_tasks, Ui.TEAL_SOFT to Ui.TEAL_DARK, pending, t("To-dos open", "చేయాల్సినవి")) { tasksTab = "todo"; go("tasks") },
-                stat(R.drawable.ic_bell, AppLook.TINT2, todayCount, t("Reminders today", "ఈరోజు రిమైండర్లు")) { tasksTab = "rem"; go("tasks") },
-                stat(R.drawable.ic_chat, AppLook.TINT3, unread, t("Unread chats", "చదవని చాట్‌లు")) { go("messages") })
-                .forEachIndexed { i, v -> addView(v, LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = dp(9) }) }
+            addView(tasksBox, LinearLayout.LayoutParams(0, -1, 2f))
+            addView(stat(R.drawable.ic_chat, AppLook.TINT3, unread, t("Unread chats", "చదవని చాట్‌లు")) { go("messages") }, LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = dp(9) })
         }, 10)
         rems.firstOrNull { it.at > System.currentTimeMillis() }?.let { r ->
             val z = Instant.ofEpochMilli(r.at).atZone(zone)
@@ -630,7 +668,7 @@ class MainActivity : Activity() {
             action(R.drawable.ic_doc, soft, t("Make a file", "ఫైల్ తయారు")) { go("files") },
             action(R.drawable.ic_bell, AppLook.TINT2, t("Reminder", "రిమైండర్")) { tasksTab = "rem"; go("tasks") },
             action(R.drawable.ic_shield, AppLook.TINT3, t("Safety check", "మోసం చెక్")) { go("safety") },
-            action(R.drawable.ic_lock, soft, t("My Vault", "నా వాల్ట్")) { go("vault") },
+            action(R.drawable.ic_status, soft, t("Trending", "ట్రెండింగ్")) { tasksTab = "trend"; go("tasks") },
             action(R.drawable.ic_globe, AppLook.TINT2, t("Translate", "అనువాదం")) { go("translate") }), 10)
         add(heading(t("More for you", "ఇంకా మీ కోసం")), 22)
         add(grid(
@@ -659,6 +697,12 @@ class MainActivity : Activity() {
             addView(ui.text("", 13f, Ui.TEAL_DARK, bold = true).apply { text = Ico.withIcon(context, R.drawable.ic_sparkle, Ui.TEAL_DARK, dp(16), t("Tip", "చిట్కా")) })
             addView(ui.text(tips[(now.dayOfYear + now.hour) % tips.size], 14.5f, Ui.INK).apply { setPadding(0, dp(4), 0, 0) })
         }, 22)
+
+        // the Vault left the app's bar: whoever saved things there before still opens them here (they stay on this phone only)
+        val oldVault = try { vault.items().size } catch (e: Exception) { 0 }
+        if (oldVault > 0) add(ui.text("🔒 " + t("My Vault · $oldVault saved", "నా వాల్ట్ · $oldVault దాచినవి"), 13.5f, Ui.MUTED, bold = true).apply {
+            setPadding(dp(4), dp(8), dp(4), dp(8)); setOnClickListener { go("vault") }
+        }, 14)
 
         // last on the page: this version, and a check for a newer one (Habit AI Lite; Play Store editions update by themselves)
         add(versionCard(), 14)
@@ -775,7 +819,7 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(0, -2, 1f))
         })
         box.addView(ui.text("", 15f, Ui.INK).apply { text = Ico.withIcon(context, R.drawable.ic_palette, Ui.INK, dp(18), t("App colour", "యాప్ రంగు")); typeface = Fonts.heavy(context); setPadding(0, dp(20), 0, 0) })
-        box.addView(ui.text(t("Home, Tasks, Files, Vault and the other pages. Chats keep their navy and gold look.", "హోమ్, పనులు, ఫైల్స్, వాల్ట్, మిగతా పేజీలు. చాట్‌లు నేవీ & గోల్డ్‌లోనే ఉంటాయి."), 12.5f, Ui.MUTED).apply { setPadding(0, dp(2), 0, dp(10)) })
+        box.addView(ui.text(t("Home, Tasks, Files, Chats and every other page.", "హోమ్, పనులు, ఫైల్స్, చాట్‌లు, మిగతా అన్ని పేజీలు."), 12.5f, Ui.MUTED).apply { setPadding(0, dp(2), 0, dp(10)) })
         val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         AppLook.PALETTES.chunked(3).forEach { row ->
             grid.addView(LinearLayout(this).apply {
@@ -1281,20 +1325,33 @@ class MainActivity : Activity() {
     // =================== 3. TASKS ===================
     private fun tasksPage() {
         if (tasksTab == "notes") tasksTab = "rem"            // notes now sit under reminders
-        pageHeader("Tasks", "To-dos, reminders and notes, and checking fake messages")
+        if (tasksTab == "fake") tasksTab = "trend"            // fake messages moved to Chats › Updates › Channels
+        pageHeader(t("Tasks", "పనులు"), t("To-dos, reminders and notes, and what's trending today", "చేయాల్సినవి, రిమైండర్లు, నోట్స్, ఈరోజు ట్రెండింగ్"))
         // the bar: three options
         add(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            listOf("todo" to "✅ To-do", "rem" to "⏰ Reminders & 📝 Notes", "fake" to "🛡️ Fake messages").forEachIndexed { i, (k, label) ->
+            listOf("todo" to t("✅ To-do", "✅ చేయాల్సినవి"), "rem" to t("⏰ Reminders & 📝 Notes", "⏰ రిమైండర్లు & 📝 నోట్స్"), "trend" to t("🔥 Trending", "🔥 ట్రెండింగ్")).forEachIndexed { i, (k, label) ->
                 addView(ui.chip(label, tasksTab == k) { tasksTab = k; render(); scroll.scrollTo(0, 0) }.apply { maxLines = 2; textSize = 13.5f; setPadding(dp(8), dp(9), dp(8), dp(9)) },
                     LinearLayout.LayoutParams(0, -1, 1f).apply { if (i > 0) marginStart = dp(6) })
             }
         }, 14)
         when (tasksTab) {
             "rem" -> { remindersSection(); add(ui.label("📝 Notes · నోట్స్"), 22); notesSection() }
-            "fake" -> messages.buildSafety()
+            "trend" -> trending.build()
             else -> todoSection()
         }
+    }
+
+    /** 🛡 Fake message alerts (a Habit channel): check a message, and the people's fake messages list. */
+    private fun safetyPage() {
+        add(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(Ico.view(this@MainActivity, R.drawable.ic_back, Ui.INK, 22, 42, t("Back to Updates", "అప్‌డేట్స్‌కి"), ui.round(Ui.SURFACE, 21, Ui.LINE)) { backToUpdates() },
+                LinearLayout.LayoutParams(dp(42), dp(42)))
+            addView(ui.title("🛡 " + t("Fake message alerts", "మోసం మెసేజ్ హెచ్చరికలు")).apply { setPadding(dp(12), 0, 0, 0); textSize = 20f }, LinearLayout.LayoutParams(0, -2, 1f))
+        }, 4)
+        add(ui.text(t("Check a message you got, and see fraud messages other people got.", "మీకు వచ్చిన మెసేజ్ చెక్ చేయండి, ఇతరులకు వచ్చిన మోసం మెసేజ్‌లు చూడండి."), 14f, Ui.MUTED), 4)
+        messages.buildSafety()
     }
 
     private fun todoSection() {

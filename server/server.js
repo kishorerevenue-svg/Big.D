@@ -560,6 +560,9 @@ const chat = require("./chat.js")({ DATA_DIR, social, push, h: { send, readBody,
 // The fake messages list (app: Tasks › 🛡️ Fake messages): people warn each other about fraud messages they got, with votes and comments
 const fakes = require("./fakes.js")({ DATA_DIR, social, learn, MODEL, API_KEY,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
+// Habit channels (app: Chats › Updates › Channels, made by our team only) and 🔥 Trending (app: Tasks › 🔥 Trending)
+const channels = require("./channels.js")({ DATA_DIR, learn, MODEL, social, trends, media, fakes,
+  adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Translate page, and Govt services (official links + answers from official websites only)
 const tools = require("./tools.js")({ learn, API_KEY, MODEL, DATA_DIR, h: { send, readBody, allowed, clientIp } });
 
@@ -582,6 +585,7 @@ const server = http.createServer(async (req, res) => {
   if (await cartoon.handle(req, res, url, origin, social)) return;
   if (await chat.handle(req, res, url, origin)) return;
   if (await fakes.handle(req, res, url, origin)) return;
+  if (await channels.handle(req, res, url, origin)) return;
   if (await social.handle(req, res, url, origin)) return;
   if (await tools(req, res, url, origin)) return;
 
@@ -818,6 +822,14 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, ticks: st });
       }
       if (req.method === "GET" && url.pathname === "/api/teach/studio") return send(res, 200, studio.list());
+      if (req.method === "GET" && url.pathname === "/api/teach/channels") return send(res, 200, channels.status());
+      if (req.method === "POST" && (url.pathname === "/api/teach/channels/write" || url.pathname === "/api/teach/channels/post")) {
+        try {
+          const b = await readBody(req, 16 * 1024);
+          const post = url.pathname.endsWith("/write") ? await channels.write(String(b.ch || "")) : channels.teamPost(String(b.ch || ""), b.te, b.en);
+          return send(res, 200, { post });
+        } catch (e) { return send(res, 400, { error: String(e.message || e).slice(0, 200) }); }
+      }
       // ALL our own videos in one place (Habit Studio explainers, cartoons, reels, Kaggle cartoons): what went out to Media
       if (req.method === "GET" && url.pathname === "/api/teach/videos") {
         const list = media.allItems().filter(i => i.video && /^\/media\//.test(String(i.video.url || ""))).sort((a, b) => b.at - a.at).slice(0, 120)

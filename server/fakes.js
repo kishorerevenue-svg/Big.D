@@ -294,5 +294,16 @@ Reply with only JSON: {"ok":true|false,"reason":"<if rejected: one short kind se
     return { items: live.length, hidden: live.filter(it => it.hidden).length, comments: live.reduce((n, it) => n + (it.comments || []).filter(c => !c.removed).length, 0),
       votes: live.reduce((n, it) => n + Object.keys(it.votes || {}).length, 0), today: live.filter(it => it.at > Date.now() - 86400e3).length };
   }
-  return { handle, stats, _test: { hidePrivate, kindOf, sameAs, commentProblem } };
+  /** For other public boxes (🔥 Trending posts): "" when [text] may be shown, else a short kind reason. */
+  const POST_PROMPT = `You check a short public post in a family app used by all ages in India (Telugu and English), in its 🔥 Trending feed (like Twitter).
+Allow: opinions about news, sports, films, festivals, weather, daily life, questions, jokes that hurt no one, polite talk. Reject: abuse, bad words, hate against any group, sexual content, threats, violence, personal details, links, spam or ads, naming or accusing a private person, false medical or money claims, fake news presented as fact.
+Reply with only JSON: {"ok":true|false,"reason":"<if rejected: one short kind sentence in the post's language>"}`;
+  async function checkPost(text) {
+    const bad = commentProblem(text);
+    if (bad) return bad.replace(/comments/g, "posts");
+    const ai = await askClaude(POST_PROMPT, `Post:\n<<<\n${text}\n>>>`, 150);
+    if (ai && ai.ok === false) return str(ai.reason, 200) || "This post can't be shown. Please keep it kind and safe.";
+    return "";
+  }
+  return { handle, stats, checkPost, _test: { hidePrivate, kindOf, sameAs, commentProblem } };
 };

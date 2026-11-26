@@ -5,7 +5,7 @@ import android.graphics.Color
 
 /**
  * The colours of Habit AI outside the chats (Home, Tasks, Files, Vault, Translate, Family & SOS, Govt, Media): one of six
- * colour choices (Home › your picture › App colour). Habit Chat keeps its own "Navy and gold" / "Clean light" look.
+ * colour choices (Home › your picture › App colour). Habit Chat uses the same colour.
  * Every colour is read when a page is drawn, so changing the choice redraws the app in the new colour.
  */
 object AppLook {
@@ -53,6 +53,12 @@ object AppLook {
         val np = PALETTES.firstOrNull { it.id == id } ?: PALETTES.first { it.id == DEFAULT }
         if (np !== p) { p = np; dk = Dark(np) }
         ChatTheme.refresh(ctx); dark = ChatTheme.dark
+    }
+    /** Reads only the saved colour choice (the chats call this: they use the same colour). */
+    fun colour(ctx: Context) {
+        val id = try { ChatDb.get(ctx).kv("set:appColour") } catch (e: Exception) { "" }
+        val np = PALETTES.firstOrNull { it.id == id } ?: PALETTES.first { it.id == DEFAULT }
+        if (np !== p) { p = np; dk = Dark(np) }
     }
     fun choose(ctx: Context, id: String) { ChatDb.get(ctx).setKv("set:appColour", id); refresh(ctx) }
 
