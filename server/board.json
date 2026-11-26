@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-26 09:00",
+ "updated": "2026-11-26 19:00",
  "note": "Our team board: what is done, and what comes next (who does it, with steps). Claude updates this every time we work; tick your tasks when you finish them.",
  "todo": [
   {
@@ -16,9 +16,11 @@
    "title": "Run the server update",
    "why": "Switches on Habit Studio v2, the 46 talk skills, writing skills, humour rules, 'All our videos' and this board.",
    "steps": [
-    "Hostinger black screen: true; /root/Big.D/server/update.sh",
-    "Wait for root@srv2097259:~# to come back"
-   ]
+    "Open the black server screen (console)",
+    "Type: true; /root/Big.D/server/update.sh  and press Enter",
+    "Wait until it says done (about 1 minute)"
+   ],
+   "done": false
   },
   {
    "id": "t-claudekey",
@@ -184,7 +186,8 @@
   {
    "date": "2026-11-26 (morning)",
    "items": [
-    "👁 Seeing: notices, medicine strips (expiry check), crop leaves — app 1.0.282 + server update"
+    "👁 Seeing: notices, medicine strips (expiry check), crop leaves — app 1.0.282 + server update",
+    "🎬 Studio fix: Claude's Telugu script was being cut short, so the small server brain was asked and refused — now full room, one more try, and the real reason shows if it fails"
    ]
   },
   {
