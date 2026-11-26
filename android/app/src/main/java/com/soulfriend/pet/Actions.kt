@@ -117,7 +117,7 @@ class Actions(private val ctx: Context, private val onCall: ((String, List<Pair<
         if (p == "games") return if (GamesActivity.open(ctx)) null else "Open the Habit AI app"
         if (p == "office") { store.letterMode = "office"; p = "files" }
         else if (p == "files") store.letterMode = "public"
-        if (p !in setOf("tasks", "family", "translate", "files", "vault", "feedback", "govt", "messages", "safety", "home", "pet")) p = "home"
+        if (p !in setOf("tasks", "trend", "family", "translate", "files", "vault", "feedback", "govt", "messages", "safety", "home", "pet")) p = "home"
         return if (start(Intent(ctx, MainActivity::class.java).putExtra("tab", p))) null else "Open the Habit AI app"
     }
 
