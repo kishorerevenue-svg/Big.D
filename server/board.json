@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-26 19:00",
+ "updated": "2026-11-26 21:30",
  "note": "Our team board: what is done, and what comes next (who does it, with steps). Claude updates this every time we work; tick your tasks when you finish them.",
  "todo": [
   {
@@ -10,11 +10,24 @@
    "steps": []
   },
   {
+   "id": "t-channels",
+   "who": "you",
+   "prio": "soon",
+   "title": "Look at the new Channels and 🔥 Trending",
+   "why": "First posts come by themselves after the server update; judge if they are useful.",
+   "steps": [
+    "Update the app to the newest version",
+    "Chats › Updates › scroll to Channels › open each one",
+    "Tasks › 🔥 Trending › write one post",
+    "Tell Claude what to change"
+   ]
+  },
+  {
    "id": "t-update",
    "who": "you",
    "prio": "now",
    "title": "Run the server update",
-   "why": "Switches on Habit Studio v2, the 46 talk skills, writing skills, humour rules, 'All our videos' and this board.",
+   "why": "Switches on the Studio fix, Channels and 🔥 Trending (they need the server update).",
    "steps": [
     "Open the black server screen (console)",
     "Type: true; /root/Big.D/server/update.sh  and press Enter",
@@ -180,9 +193,26 @@
    "prio": "later",
    "title": "Firebase push for calls and messages (when the project is ready)",
    "steps": []
+  },
+  {
+   "id": "c-whatsapp",
+   "who": "claude",
+   "prio": "later",
+   "title": "Habit on WhatsApp (needs a WhatsApp Business number)",
+   "why": "People could chat with Habit inside WhatsApp; needs Meta business verification first."
   }
  ],
  "done": [
+  {
+   "date": "2026-11-26 (night)",
+   "items": [
+    "🌐 Our websites card on Home (Play Store app shows only the 4 public pages)",
+    "💬 Chats now use the app's own colour — gold is gone",
+    "📺 Chats › Updates › Channels: 🛡 Fake alerts (moved from Tasks), 📰 News, 🏛 Govt schemes, 🌾 Farmers, 💡 Tips, 🎬 Habit Videos — only our team posts",
+    "🔥 Tasks › Trending, like Twitter: India's trends explained + people's short posts (checked before showing)",
+    "🏠 One To-do + Reminders box on Home; Vault removed from the bar (old Vault items still open from Home)"
+   ]
+  },
   {
    "date": "2026-11-26 (morning)",
    "items": [
@@ -230,6 +260,9 @@
   }
  ],
  "ideas": [
+  "Daily habit: a 'Today' channel notice at 8 am (one push) so people open the app every day",
+  "Streaks & badges for daily Trending posters and fake-message reporters",
+  "Share-to-WhatsApp cards from channels with the app link at the bottom (free growth)",
   "⭐ Sachivalayam helper: voice-guided applications (caste/income certificate, pension, ration card) — who can apply, documents checklist, where to go, a reminder to follow up",
   "⭐ Pendurthi pilot: your office staff use the Office edition for 1 month; their feedback makes it ready for other mandals",
   "⭐ Scam shield: share any suspicious SMS/WhatsApp message to Habit → instant verdict, added to the fake list; a weekly 'scam alert' Studio video from real reports",
