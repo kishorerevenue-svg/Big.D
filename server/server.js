@@ -560,6 +560,9 @@ const chat = require("./chat.js")({ DATA_DIR, social, push, h: { send, readBody,
 // The fake messages list (app: Tasks › 🛡️ Fake messages): people warn each other about fraud messages they got, with votes and comments
 const fakes = require("./fakes.js")({ DATA_DIR, social, learn, MODEL, API_KEY,
   adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
+// Habit channels (app: Chats › Updates › Channels, made by our team only) and 🔥 Trending (app: Tasks › 🔥 Trending)
+const channels = require("./channels.js")({ DATA_DIR, learn, MODEL, social, trends, media, fakes,
+  adminPassword: () => process.env.ADMIN_PASSWORD || TEACH_PASSWORD, h: { send, readBody, allowed, clientIp } });
 // Translate page, and Govt services (official links + answers from official websites only)
 const tools = require("./tools.js")({ learn, API_KEY, MODEL, DATA_DIR, h: { send, readBody, allowed, clientIp } });
 
@@ -582,6 +585,7 @@ const server = http.createServer(async (req, res) => {
   if (await cartoon.handle(req, res, url, origin, social)) return;
   if (await chat.handle(req, res, url, origin)) return;
   if (await fakes.handle(req, res, url, origin)) return;
+  if (await channels.handle(req, res, url, origin)) return;
   if (await social.handle(req, res, url, origin)) return;
   if (await tools(req, res, url, origin)) return;
 

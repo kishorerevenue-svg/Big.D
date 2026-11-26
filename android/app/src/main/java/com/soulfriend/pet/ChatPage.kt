@@ -397,6 +397,8 @@ class ChatPage(private val m: MainActivity) {
         m.backChanged()
     }
     /** Back while picking: stop picking (true). */
+    /** Opens on the Updates side (Back from a channel lands here). */
+    fun openUpdates() { page = "updates"; hiddenOpen = false }
     fun back(): Boolean { if (pickedChats.isEmpty()) return false; pickedChats.clear(); afterPick(); return true }
     /** Leaving Habit Chat for another page: stop picking. */
     fun leave() { if (pickedChats.isNotEmpty()) { pickedChats.clear(); m.setTopBar(null) } }
@@ -560,8 +562,18 @@ class ChatPage(private val m: MainActivity) {
             orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(12), 0, 0)
             addView(pill(t("Status privacy", "స్టేటస్ గోప్యత"), false) { ChatStatus.privacyDialog(m, store) }.apply { setCompoundDrawablesRelative(Ico.d(m, R.drawable.ic_lock, C.TXT, dp(16)), null, null, null); compoundDrawablePadding = dp(6) })
         })
-        // channels: Habit Media is where people post publicly
+        // channels: made by the Habit team (🛡 fake alerts, 📰 news, 🏛 schemes, 🌾 farmers, 💡 tips, 🎬 our videos), then Habit Media
         box.addView(heading(t("Channels", "ఛానెల్స్")))
+        val chs = m.channels.list
+        if (chs == null) box.addView(personRow("🛡", t("Fake message alerts", "మోసం మెసేజ్ హెచ్చరికలు"), t("Fraud messages people got, so you can spot them", "జనాలకు వచ్చిన మోసం మెసేజ్‌లు — మీరు గుర్తుపట్టడానికి"),
+            goldMini(t("Open", "తెరువు")) { m.channels.open("fake") }, null) { m.channels.open("fake") })
+        else for (i in 0 until chs.length()) {
+            val c = chs.getJSONObject(i)
+            val id = c.optString("id")
+            val dot = if (m.channels.unseen(c)) TextView(m).apply { background = C.circle(C.GOLD); layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginEnd = dp(6) } } else null
+            box.addView(personRow(c.optString("emoji", "📢"), m.channels.name(c) + " ✔", m.channels.lastLine(c), null, dot) { m.channels.open(id) })
+        }
+        m.channels.loadList { if (page == "updates") redraw() }
         box.addView(personRow("📺", "Habit Media", t("Posts, videos and news from people you follow", "మీరు ఫాలో అయ్యేవాళ్ళ పోస్ట్‌లు, వీడియోలు, వార్తలు"), goldMini(t("Open", "తెరువు")) { m.go("feedback") }, null, R.drawable.ic_media) { m.go("feedback") })
     }
     private fun statusRow(o: ChatStatus.Owner, ring: Int): LinearLayout = LinearLayout(m).apply {

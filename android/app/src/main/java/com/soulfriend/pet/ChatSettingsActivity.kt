@@ -173,7 +173,7 @@ class ChatSettingsActivity : Activity() {
         })
     }
 
-    private fun themeName(k: String) = when (k) { "dark" -> t("Navy and gold (dark)", "నేవీ, బంగారు (డార్క్)"); "light" -> t("Clean light", "తెలుపు (లైట్)"); else -> t("Automatic: follows the phone's dark mode", "ఆటోమేటిక్: ఫోన్ డార్క్ మోడ్‌ని బట్టి") }
+    private fun themeName(k: String) = when (k) { "dark" -> t("Dark", "డార్క్"); "light" -> t("Clean light", "తెలుపు (లైట్)"); else -> t("Automatic: follows the phone's dark mode", "ఆటోమేటిక్: ఫోన్ డార్క్ మోడ్‌ని బట్టి") }
     /** Theme: automatic (the phone's dark mode), navy and gold, or clean light. The open screens change at once. */
     private fun pickTheme() {
         val keys = listOf("auto", "dark", "light")

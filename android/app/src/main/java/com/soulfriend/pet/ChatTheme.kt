@@ -17,14 +17,26 @@ import kotlin.math.sin
 
 /**
  * Habit Chat's look, in two styles that follow the phone's dark mode (or Chat settings › Theme):
- *  - "Navy and gold" (dark): navy pages, gold buttons, my messages in gold.
- *  - "Clean light": soft grey-white pages, navy buttons with gold, my messages in navy.
+ *  - Dark: navy pages; buttons and my messages in the app's chosen colour (Home › your picture › App colour).
+ *  - Light: soft grey-white pages; the same chosen colour.
  * Every colour below is read when a screen is drawn, so the same code draws both looks.
  * Also the chat wallpapers (drawn on the phone, nothing to download) and the chat settings kept on this phone.
  */
 object ChatTheme {
     /** The brand colours (the app icon): the same in both looks. */
-    object Brand { val NAVY = Color.parseColor("#0B1026"); val GOLD = Color.parseColor("#F5C451"); val INK = Color.parseColor("#14182E") }
+    object Brand { val NAVY = Color.parseColor("#0B1026"); val GOLD get() = ACC; val INK get() = Color.WHITE }
+
+    // ----- the main colour: the app's own chosen colour (Home › your picture › App colour), no more gold -----
+    private fun mixC(a: Int, b: Int, f: Float) = Color.rgb(
+        (Color.red(a) + (Color.red(b) - Color.red(a)) * f).toInt(), (Color.green(a) + (Color.green(b) - Color.green(a)) * f).toInt(),
+        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * f).toInt())
+    private fun alpha(col: Int, a: Int) = (col and 0x00FFFFFF) or (a shl 24)
+    /** The chosen colour, deep (my bubbles). */
+    private val P get() = AppLook.p.primary
+    /** The chosen colour as a fill (buttons, badges, the send button): a little lighter on the dark pages. White on it. */
+    val ACC get() = pick(mixC(P, Color.WHITE, 0.18f), P)
+    /** The chosen colour as words or icons on the page. */
+    val ACC_TXT get() = pick(mixC(P, Color.WHITE, 0.50f), P)
 
     /** True: "Navy and gold". False: "Clean light". Set by [apply] / [refresh]. */
     var dark = true
@@ -56,25 +68,25 @@ object ChatTheme {
 
     // ----- gold and the main button -----
     /** Gold as a fill (badges, "Mark done"). */
-    val GOLD get() = pick(c("#F5C451"), c("#F2B53A"))
+    val GOLD get() = ACC
     /** Words and icons on [GOLD]. */
-    val ON_GOLD get() = pick(c("#14182E"), c("#10163A"))
+    val ON_GOLD get() = Color.WHITE
     /** Gold as words or icons on the page (dark gold on white, so it can be read). */
-    val GOLD_TXT get() = pick(c("#F5C451"), c("#8A5A00"))
+    val GOLD_TXT get() = ACC_TXT
     /** A soft gold chip ("2 tasks"). */
-    val GOLD_SOFT get() = pick(c("#29F5C451"), c("#FFF1D2"))
-    val GOLD_DARK get() = pick(c("#C8962C"), c("#B57C0A"))
+    val GOLD_SOFT get() = pick(alpha(P, 0x40), mixC(P, Color.WHITE, 0.88f))
+    val GOLD_DARK get() = pick(P, mixC(P, Color.BLACK, 0.15f))
     /** The main button: the ✏️ new chat button, 🎤 / ➤, the chosen chip. Gold on navy; navy on white. */
-    val PRIMARY get() = pick(c("#F5C451"), c("#10163A"))
-    val ON_PRIMARY get() = pick(c("#14182E"), Color.WHITE)
-    val ON_PRIMARY_ICON get() = pick(c("#14182E"), c("#F2B53A"))
+    val PRIMARY get() = ACC
+    val ON_PRIMARY get() = Color.WHITE
+    val ON_PRIMARY_ICON get() = Color.WHITE
     /** The chosen tab's pill. */
-    val PILL get() = pick(c("#2EF5C451"), c("#FFE7B0"))
-    val PILL_TXT get() = pick(c("#F5C451"), c("#10163A"))
+    val PILL get() = pick(alpha(P, 0x55), mixC(P, Color.WHITE, 0.85f))
+    val PILL_TXT get() = pick(mixC(P, Color.WHITE, 0.62f), P)
 
     // ----- messages -----
     /** My bubbles: gold on navy; navy on white. */
-    val MINE get() = pick(c("#F5C451"), c("#10163A"))
+    val MINE get() = P
     val THEIRS get() = pick(c("#1A2148"), Color.WHITE)
     /** ✓✓ read (in the chat list and on their side). */
     val READ get() = pick(c("#53BDEB"), c("#1D7FD8"))
@@ -85,9 +97,9 @@ object ChatTheme {
     val DANGER get() = pick(c("#FF6B6B"), c("#D93A3F"))
     val HEART get() = pick(c("#FF6B81"), c("#E5484D"))
     /** The pinned bar under the top bar. */
-    val PIN_BG get() = pick(c("#131939"), c("#FFF8E6"))
-    val PIN_LINE get() = pick(c("#10FFFFFF"), c("#F1E3BC"))
-    val PIN_SUB get() = pick(c("#A9B0D3"), c("#6B5520"))
+    val PIN_BG get() = pick(c("#131939"), mixC(P, Color.WHITE, 0.93f))
+    val PIN_LINE get() = pick(c("#10FFFFFF"), mixC(P, Color.WHITE, 0.80f))
+    val PIN_SUB get() = pick(c("#A9B0D3"), c("#5A6286"))
     /** Names in groups (each person keeps one colour). */
     private val namesD = intArrayOf(c("#F5C451"), c("#7FD4C9"), c("#F29A76"), c("#B79CF2"), c("#7CC4F2"), c("#F28AB3"))
     private val namesL = intArrayOf(c("#8A5A00"), c("#0F7A70"), c("#C2412F"), c("#5B4BC4"), c("#1F6FA8"), c("#A3326A"))
@@ -108,7 +120,7 @@ object ChatTheme {
     val DAY_BG get() = pick(c("#1A2148"), Color.WHITE)
     val DAY_TXT get() = pick(c("#C9CEE8"), c("#5A6286"))
     /** A picked message's row (long-press), from edge to edge: soft gold. */
-    val PICK get() = pick(c("#38F5C451"), c("#4DF2B53A"))
+    val PICK get() = pick(alpha(P, 0x4D), alpha(P, 0x33))
     /** The quick emojis' pill that floats above a picked message. */
     val STRIP get() = pick(c("#222A5C"), Color.WHITE)
 
@@ -121,22 +133,20 @@ object ChatTheme {
     class Ink(val bg: Int, val edge: Int?, val txt: Int, val sub: Int, val accent: Int, val onAccent: Int, val link: Int,
               val inner: Int, val read: Int, val tick: Int, val gold: Int, val button: Int, val btn: Int, val onBtn: Int, val outline: Int) {
         /** A voice note's bars not played yet. */
-        val waveRest: Int get() = when (accent) {
-            c("#14182E") -> c("#5914182E")           // on my gold bubble
-            c("#F2B53A") -> c("#59FFFFFF")           // on my navy bubble
-            c("#F5C451") -> c("#66A9B0D3")           // their bubble, navy look
+        val waveRest: Int get() = when {
+            accent == Color.WHITE -> c("#59FFFFFF")  // on my coloured bubble
+            isDarkColor(bg) -> c("#66A9B0D3")        // their bubble, dark look
             else -> c("#4D10163A")                   // their bubble, light look
         }
     }
     fun ink(mine: Boolean): Ink = when {
-        mine && dark -> Ink(c("#F5C451"), null, c("#14182E"), c("#5C4A16"), c("#14182E"), c("#F5C451"), c("#1D4E9E"), c("#1A14182E"), c("#1D5FBF"),
-            c("#5C4A16"), c("#14182E"), c("#2414182E"), c("#14182E"), c("#F5C451"), c("#5514182E"))
-        mine -> Ink(c("#10163A"), null, Color.WHITE, c("#C7CCE6"), c("#F2B53A"), c("#10163A"), c("#9FD3FF"), c("#1AFFFFFF"), c("#7CC8FF"),
-            c("#C7CCE6"), c("#F2B53A"), c("#26FFFFFF"), c("#F2B53A"), c("#10163A"), c("#59FFFFFF"))
-        dark -> Ink(c("#1A2148"), null, c("#F3F4FA"), c("#A9B0D3"), c("#F5C451"), c("#14182E"), c("#53BDEB"), c("#0DFFFFFF"), c("#53BDEB"),
-            c("#A9B0D3"), c("#F5C451"), c("#1AFFFFFF"), c("#F5C451"), c("#14182E"), c("#33FFFFFF"))
-        else -> Ink(Color.WHITE, c("#E3E6F0"), c("#10163A"), c("#5A6286"), c("#10163A"), Color.WHITE, c("#1D6FD1"), c("#F4F5FA"), c("#1D7FD8"),
-            c("#5A6286"), c("#8A5A00"), c("#E3E6F0"), c("#F2B53A"), c("#10163A"), c("#C9CEE0"))
+        // my bubble: the chosen colour with white words (both looks)
+        mine -> Ink(P, null, Color.WHITE, mixC(P, Color.WHITE, 0.72f), Color.WHITE, P, c("#D6ECFF"), c("#1FFFFFFF"), c("#A8E6FF"),
+            mixC(P, Color.WHITE, 0.72f), Color.WHITE, c("#26FFFFFF"), Color.WHITE, P, c("#59FFFFFF"))
+        dark -> Ink(c("#1A2148"), null, c("#F3F4FA"), c("#A9B0D3"), ACC, Color.WHITE, c("#53BDEB"), c("#0DFFFFFF"), c("#53BDEB"),
+            c("#A9B0D3"), ACC_TXT, c("#1AFFFFFF"), ACC, Color.WHITE, c("#33FFFFFF"))
+        else -> Ink(Color.WHITE, c("#E3E6F0"), c("#10163A"), c("#5A6286"), P, Color.WHITE, c("#1D6FD1"), c("#F4F5FA"), c("#1D7FD8"),
+            c("#5A6286"), P, c("#E3E6F0"), P, Color.WHITE, c("#C9CEE0"))
     }
 
     /**
@@ -146,10 +156,10 @@ object ChatTheme {
     class Dlg(val dark: Boolean) {
         val txt = if (dark) Color.parseColor("#F3F4FA") else Color.parseColor("#10163A")
         val sub = if (dark) Color.parseColor("#A9B0D3") else Color.parseColor("#5A6286")
-        val accent = if (dark) Color.parseColor("#F5C451") else Color.parseColor("#8A5A00")
+        val accent = if (dark) mixC(AppLook.p.primary, Color.WHITE, 0.50f) else AppLook.p.primary
         val line = if (dark) Color.parseColor("#262D57") else Color.parseColor("#E3E6F0")
         val field = if (dark) Color.parseColor("#1A2148") else Color.parseColor("#F4F5FA")
-        val pill = if (dark) Color.parseColor("#2EF5C451") else Color.parseColor("#FFE7B0")
+        val pill = if (dark) alpha(AppLook.p.primary, 0x55) else mixC(AppLook.p.primary, Color.WHITE, 0.85f)
     }
     /** The pop-up colours for this screen (read from its Android theme). */
     fun dlg(ctx: Context): Dlg = Dlg(themeDark(ctx))
@@ -206,7 +216,7 @@ object ChatTheme {
         else -> (ctx.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
     /** Works out the look again (for screens that are already open). True if it changed. */
-    fun refresh(ctx: Context): Boolean { val w = want(ctx); val changed = w != dark; dark = w; return changed }
+    fun refresh(ctx: Context): Boolean { AppLook.colour(ctx); val w = want(ctx); val changed = w != dark; dark = w; return changed }
     /** Call before super.onCreate(): picks the look and the matching Android theme (dialogs, the keyboard's colours). */
     fun apply(act: android.app.Activity) {
         refresh(act)

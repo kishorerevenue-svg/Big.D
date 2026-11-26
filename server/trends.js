@@ -197,7 +197,7 @@ module.exports = function makeTrends({ fetchImpl } = {}) {
       if (!items.length) throw new Error("no searches in the feed");
       // a search counts only when it AND its news are kind (a cricket search about an accident is left out)
       const kind = items.filter(i => !NEVER.test(i.title) && !i.news.some(n => NEVER.test(n)));
-      state = { at: Date.now(), ok: true, error: "", searches: items.map(i => i.title), themes: themesOf(kind.map(i => [i.title, ...i.news].join(" · "))) };
+      state = { at: Date.now(), ok: true, error: "", searches: items.map(i => i.title), kind: kind.slice(0, 15), themes: themesOf(kind.map(i => [i.title, ...i.news].join(" · "))) };
     } catch (e) {
       state = Object.assign({}, state, { at: Date.now(), ok: false, error: String(e.message || e).slice(0, 160) });
     }
@@ -212,5 +212,7 @@ module.exports = function makeTrends({ fetchImpl } = {}) {
     return { on: ON(), ok: state.ok, checked: state.at, error: state.error, themes: themes(), searches: state.searches.slice(0, 20), festivalsSoon: soon };
   }
 
-  return { festivalsOn, upcoming, next, keys, festivalNow, themes, refresh, status, _test: { parse, themesOf, day, sankranti, islamic, easter } };
+  /** Today's kind trending searches with their news headlines (fresh for 8 hours): the app's 🔥 Trending. */
+  const kindNow = () => (state.ok && Date.now() - state.at < 8 * 3600e3 ? (state.kind || []) : []);
+  return { festivalsOn, upcoming, next, keys, festivalNow, themes, refresh, status, kindNow, _test: { parse, themesOf, day, sankranti, islamic, easter } };
 };

@@ -611,7 +611,7 @@ class ChatActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             when {
                 bare -> { }
-                card -> { setPadding(dp(14), dp(13), dp(14), dp(10)); background = ChatTheme.round(ChatTheme.CARD, dp(22).toFloat(), if (ChatTheme.dark) Color.parseColor("#59F5C451") else ChatTheme.GOLD, if (ChatTheme.dark) dp(1) else dp(2)) }
+                card -> { setPadding(dp(14), dp(13), dp(14), dp(10)); background = ChatTheme.round(ChatTheme.CARD, dp(22).toFloat(), if (ChatTheme.dark) ChatTheme.ACC_TXT else ChatTheme.GOLD, if (ChatTheme.dark) dp(1) else dp(2)) }
                 else -> {
                     if (media) setPadding(dp(4), dp(4), dp(4), dp(5)) else setPadding(dp(11), dp(7), dp(11), dp(6))
                     background = if (mine) ChatTheme.corners(k.bg, r, small, r, r) else ChatTheme.corners(k.bg, small, r, r, r, k.edge, dp(1))
