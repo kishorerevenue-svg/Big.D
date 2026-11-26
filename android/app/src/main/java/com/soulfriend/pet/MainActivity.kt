@@ -559,6 +559,7 @@ class MainActivity : Activity() {
         hero.addView(PuppyView(this).apply { kind = PuppyView.kindOf(store.petKind); mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY },
             LinearLayout.LayoutParams(dp(112), dp(112)))
         add(hero, 14)
+        add(sitesBox(), 10)
         updateCard()?.let { add(it, 12) }
 
         // today: to-dos, reminders, unread chats, and the next reminder
@@ -661,6 +662,51 @@ class MainActivity : Activity() {
 
         // last on the page: this version, and a check for a newer one (Habit AI Lite; Play Store editions update by themselves)
         add(versionCard(), 14)
+    }
+
+    /** 🌐 Our websites on Home, under the pet: every page of the Habit website in one place, one tap each.
+     *  The ⌄ / ⌃ arrow closes and opens the list (remembered). */
+    private fun sitesBox(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(10), dp(10)); background = ui.round(Ui.SURFACE, 20, Ui.LINE)
+        val base = store.server.trimEnd('/')
+        val host = base.substringAfter("://")
+        val sites = listOf(
+            Triple("🏠", t("Home page", "హోమ్ పేజీ"), ""),
+            Triple("🎓", t("Teach Habit · team only", "Habit కి నేర్పించు · టీమ్ మాత్రమే"), "/teach"),
+            Triple("📋", t("Team board · team only", "టీమ్ బోర్డ్ · టీమ్ మాత్రమే"), "/board"),
+            Triple("🗂", t("Office files upload", "ఆఫీస్ ఫైళ్ల అప్‌లోడ్"), "/office"),
+            Triple("⬇️", t("Download the app", "యాప్ డౌన్‌లోడ్"), "/download"),
+            Triple("🛡", t("Rules & child safety", "నియమాలు & పిల్లల భద్రత"), "/rules"),
+            Triple("🔒", t("Privacy policy", "గోప్యతా విధానం"), "/privacy"),
+            Triple("🗑", t("Delete my account", "నా అకౌంట్ తొలగించు"), "/delete-account"))
+        val list = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = if (store.sitesOpen) View.VISIBLE else View.GONE }
+        val arrow = Ico.view(this@MainActivity, if (store.sitesOpen) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, Ui.INK, 20, 36,
+            t("Open or close the list", "లిస్ట్ తెరువు లేదా మూసేయి"), ui.round(Ui.TEAL_SOFT, 18))
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(ui.text("🌐 " + t("Our websites", "మన వెబ్‌సైట్లు") + " · ${sites.size}", 15f, Ui.INK).apply { typeface = Fonts.heavy(context) }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(arrow, LinearLayout.LayoutParams(dp(36), dp(36)))
+            setOnClickListener {
+                store.sitesOpen = !store.sitesOpen
+                list.visibility = if (store.sitesOpen) View.VISIBLE else View.GONE
+                arrow.setImageDrawable(getDrawable(if (store.sitesOpen) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down)!!.mutate())
+            }
+        })
+        sites.forEach { (icon, name, path) ->
+            list.addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(9), 0, dp(9))
+                addView(ui.text(icon, 18f, Ui.INK).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(32), -2))
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(ui.text(name, 14f, Ui.INK).apply { typeface = Fonts.bold(context); maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+                    addView(ui.text(host + path, 11.5f, Ui.MUTED).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8) })
+                addView(Ico.view(this@MainActivity, R.drawable.ic_chevron_right, Ui.MUTED, 16, 26, ""), LinearLayout.LayoutParams(dp(26), dp(26)))
+                contentDescription = name
+                setOnClickListener { openUrl(base + path) }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
+        }
+        addView(list)
     }
 
     /** Office · కార్యాలయం on Home: opens the Office side of the letter helper; each chip starts that kind of paper. */
