@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-26 08:40",
+ "updated": "2026-11-26 09:00",
  "note": "Our team board: what is done, and what comes next (who does it, with steps). Claude updates this every time we work; tick your tasks when you finish them.",
  "todo": [
   {
@@ -29,6 +29,19 @@
    "steps": [
     "Open bigdai.tech/teach: the top should say '✓ Claude is answering'",
     "If not: make a new key at console.anthropic.com and set it with: bash /root/Big.D/server/set-key.sh ANTHROPIC_API_KEY (paste when asked, never on the command line)"
+   ]
+  },
+  {
+   "id": "t-pc",
+   "who": "you",
+   "prio": "soon",
+   "title": "After the PC repair: switch the home brain back on",
+   "why": "The home brain (gemma3:4b) answers when Claude rests and labels office files (📌).",
+   "steps": [
+    "Switch on the PC",
+    "Check Tailscale is connected (100.106.68.7)",
+    "Open Ollama",
+    "bigdai.tech/teach should say '🏠 Home brain … is on'"
    ]
   },
   {
