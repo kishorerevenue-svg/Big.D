@@ -1,14 +1,7 @@
 {
- "updated": "2026-11-26 01:10",
+ "updated": "2026-11-26 08:40",
  "note": "Our team board: what is done, and what comes next (who does it, with steps). Claude updates this every time we work; tick your tasks when you finish them.",
  "todo": [
-  {
-   "id": "c-seeing",
-   "who": "claude",
-   "prio": "now",
-   "title": "Build 👁 Seeing: explain notices from the camera, medicine strips, crop leaves",
-   "steps": []
-  },
   {
    "id": "c-anu",
    "who": "claude",
@@ -176,6 +169,12 @@
  ],
  "done": [
   {
+   "date": "2026-11-26 (morning)",
+   "items": [
+    "👁 Seeing: notices, medicine strips (expiry check), crop leaves — app 1.0.28x + server update"
+   ]
+  },
+  {
    "date": "2026-11-26",
    "items": [
     "Team board (this page): done work and next work in one place",
@@ -265,6 +264,10 @@
    {
     "skill": "📞 Doing",
     "what": "Calls (phone, Habit, video), WhatsApp, reminders, alarms, timers, to-dos, notes, open apps, songs"
+   },
+   {
+    "skill": "👁 Seeing",
+    "what": "Through the camera: explains a notice or letter (what it says, dates, what to do next), reads a medicine strip (name, expiry: warns if expired, no doses), looks at a crop leaf (likely problem, safe first steps, then the agriculture officer). Say 'ee notice chudu', 'ee mandu expiry enti', 'ఈ ఆకుకి ఏమైంది'"
    }
   ],
   "next": [
@@ -272,11 +275,6 @@
     "skill": "👂 Listening (ear)",
     "what": "Its name from anywhere in the room; later each family member's voice",
     "status": "Ear v2 training on Kaggle (your run)"
-   },
-   {
-    "skill": "👁 Seeing",
-    "what": "Explain a notice or letter from the camera; medicine strip name and expiry; crop leaf problem (then ask the agriculture officer)",
-    "status": "NEXT to build"
    },
    {
     "skill": "📖 Reading old Telugu fonts",

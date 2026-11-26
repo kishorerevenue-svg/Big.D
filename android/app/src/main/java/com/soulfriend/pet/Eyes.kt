@@ -27,6 +27,8 @@ object Eyes {
         "జీన్స్|ప్యాంట్|ప్యాంటు|చెప్పులు|షూస్|వాచ్|గడియారం|బ్యాగ్|సంచి|కళ్ళజోడు|కళ్లజోడు|మొక్క|పువ్వు|పూలు|చెట్టు|ఆకు|పండు|కూరగాయ|పక్షి|జంతువు|కుక్క|పిల్లి|ఆవు|" +
         "పురుగు|పాము|బిల్డింగ్|భవనం|గుడి|ఆలయం|విగ్రహం|ప్లేస్|ప్రదేశం|రోడ్డు|కారు|బైక్|బండి|స్కూటర్|బస్సు|నంబర్ ?ప్లేట్|ఫుడ్|వంటకం|స్వీట్|మెషిన్|మీటర్|టీవీ|ఫ్రిజ్|ఫ్యాన్|" +
         "బొమ్మ|నోటు|నాణెం|ఉంగరం|గొలుసు|లోగో|టికెట్|సర్టిఫికెట్"
+    // the same things in Telugu typed in English letters ("ee mandu", "ee aaku", "ee notice")
+    private const val THINGS_TL = "mandu|mandulu|maatra|matra|maatralu|aaku|aakulu|mokka|panta|puvvu|chettu|purugu|kaagitham|kagitham|utharam|patram|rasidu"
     private const val READS_TE = "$THINGS_TE|ఉత్తరం|లెటర్|కాగితం|పేపర్|ఫారం|ఫారమ్|పుస్తకం|బుక్|పత్రం|దస్తావేజు|అక్షరాలు"
     // your own clothes and looks
     private const val WEAR = "shirt|t-?shirt|tshirt|dress|outfit|saree|sari|kurta|kurti|top|jacket|tie|hair|hairstyle|haircut|beard|moustache|mustache|specs|spectacles|glasses|look|face|smile|makeup|clothes"
@@ -95,7 +97,7 @@ object Eyes {
         "^(ఇది|ఇవి) ?(ఏంటి|ఏమిటి|ఎంత|ఏంటో చెప్పు|ఏమిటో చెప్పు)[?.!\\s]*$", "^(ఇదేంటి|ఇదేమిటి|ఇవేంటి|ఇదెంత|దీని ధర ఎంత|దీని రేటు ఎంత|చూడు|చూడండి)[?.!\\s]*$",
         // Telugu in English letters
         "\\b(idi|idhi|ivi|ikkada|deenni|dinni|deenini)\\s+(chudu|choodu|chuudu|chusi|chudandi|chuso|chudagalava|kanipistunda)\\b",
-        "\\bee ($THINGS)\\b", "\\b(ee|aa|idi|deeni|dini|ikkada) [^.?!]{0,25}\\b(rasi undi|rasundi|raasi undi|rasaru|raasaru|rasi vundi)\\b",
+        "\\bee ($THINGS|$THINGS_TL)\\b", "\\b(ee|aa|idi|deeni|dini|ikkada) [^.?!]{0,25}\\b(rasi undi|rasundi|raasi undi|rasaru|raasaru|rasi vundi)\\b",
         "\\b(idi|idhi|ivi|deenni)\\b[^.?!]{0,25}\\b(chaduvu|chadavandi|chadivi|chadavu)\\b",
         "^(idi|idhi) (enti|emiti|entidi|ento|enta)[?.!\\s]*$", "^(chudu|choodu)[?.!\\s]*$"
     ).joinToString("|"))
