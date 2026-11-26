@@ -134,18 +134,25 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
   async function write(topic, icon) {
     const tr = trendingNow();
     const prompt = `Topic: ${topic}\n${tr.length ? "Trending today (for a hook only if it truly connects): " + tr.join(" | ") + "\n" : ""}Make the explainer video.`;
+    let why = "";
     if (learn && !learn.claudeOut()) {
-      try {
-        const out = await learn.callClaude({ system: SYSTEM, messages: [{ role: "user", content: prompt }], maxTokens: 2000, search: false, model: MODEL });
-        const j = clean(parse(out.text), icon);
-        if (j) return Object.assign(j, { by: "claude" });
-      } catch (e) { lastError = "writer: " + String(e.message || e).slice(0, 120); }
-    }
+      // (Telugu takes many tokens: room for a full 8-scene script, and one more try if the JSON came out cut or broken)
+      for (let tries = 0; tries < 2; tries++) {
+        try {
+          const out = await learn.callClaude({ system: SYSTEM, messages: [{ role: "user", content: prompt }], maxTokens: 6000, search: false, model: MODEL });
+          const j = clean(parse(out.text), icon);
+          if (j) return Object.assign(j, { by: "claude" });
+          why = "Claude's script came out incomplete" + (out.truncated ? " (too long)" : "");
+        } catch (e) { why = "Claude: " + String(e.message || e).slice(0, 120); }
+      }
+    } else why = "Claude is resting";
     if (ownBrain && ownBrain.writeJson) {
-      const j = clean(await ownBrain.writeJson({ system: SYSTEM, prompt, schema: SCHEMA, maxTokens: 1800, timeoutMs: 280000 }), icon);
-      if (j) return Object.assign(j, { by: "own" });
+      try {
+        const j = clean(await ownBrain.writeJson({ system: SYSTEM, prompt, schema: SCHEMA, maxTokens: 3000, timeoutMs: 280000 }), icon);
+        if (j) return Object.assign(j, { by: "own" });
+      } catch (e) { why += (why ? "; " : "") + "own brain: " + String(e.message || e).slice(0, 80); }
     }
-    throw new Error("no brain could write the video now");
+    throw new Error(why || "no brain could write the video now");
   }
 
   // ---------- voice + animation ----------
@@ -232,12 +239,14 @@ Reply with only JSON: {"title":"<the video title in Telugu, at most 10 words>","
 
   // by itself: a few a day, in the daytime, only when nothing is waiting too long (the owner sees them first)
   async function tick() {
-    if (db.day !== today()) { db.day = today(); db.made = 0; save(); }
+    if (db.day !== today()) { db.day = today(); db.made = 0; db.tried = 0; save(); }
     const h = hourIST();
-    if (busy || h < 7 || h >= 20 || db.made >= DAILY()) return;
+    // (only made videos count; a failed try doesn't, but at most twice as many tries as videos a day)
+    if (busy || h < 7 || h >= 20 || db.made >= DAILY() || (db.tried || 0) >= DAILY() * 2) return;
     if (db.items.filter(x => x.status === "waiting").length >= 6) return;       // the owner hasn't looked yet: don't pile up
-    db.made++; save();
-    await make().catch(() => { });
+    db.tried = (db.tried || 0) + 1; save();
+    const it = await make().catch(() => null);
+    if (it && it.status === "waiting") { db.made++; save(); }
   }
   setTimeout(() => { tick().catch(() => { }); setInterval(() => tick().catch(() => { }), 40 * 60e3).unref?.(); }, 5 * 60e3).unref?.();
 
