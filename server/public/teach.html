@@ -238,6 +238,18 @@ summary{cursor:pointer;font-weight:600}
     </section>
 
     <section class="card">
+      <h2>📺 Channels · ఛానెల్స్</h2>
+      <p class="hint">Our own channels in the app (Chats › Updates › Channels). Only we post in them. Claude writes one post a day in each by itself (marked 🤖 AI-made); you can also ask for one now or write your own. 🔥 Trending (Tasks page) fills by itself every 3 hours.</p>
+      <p id="chState" class="msg"></p>
+      <label for="chPick">Channel</label>
+      <select id="chPick"><option value="news">📰 Habit News</option><option value="govt">🏛 Govt schemes</option><option value="farm">🌾 Farmers' corner</option><option value="tips">💡 Daily tips</option></select>
+      <button id="chWrite" type="button">✍️ Claude, write a post now</button>
+      <label for="chText">Or write your own post (Telugu or English)</label>
+      <textarea id="chText" rows="4" maxlength="1500"></textarea>
+      <button id="chPost" type="button">📤 Post it</button>
+    </section>
+
+    <section class="card">
       <h2>🎬 Habit Studio · వీడియోలు</h2>
       <p class="hint">Our own explainer videos, made free on this server: a topic (useful things people ask, or the festival of the day) → Claude writes a 30-45 second Telugu script → our free Telugu voice reads it → the puppy presents it as a whiteboard or motion-graphics animation. Nothing goes out by itself: each new video waits here. ✓ Post puts it in Media with the "🤖 AI-made" label; ✕ Drop deletes it.</p>
       <p id="studioState" class="msg"></p>
@@ -537,6 +549,11 @@ async function loadVideos() {
     row.append(vid, side);
     box.appendChild(row);
   }
+}
+async function loadChannels() {
+  const d = await api("channels");
+  say($("chState"), d.channels.map(c => `${c.en}: ${c.posts} posts${c.last ? " (last " + new Date(c.last).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) + ")" : ""}`).join(" · ") +
+    ` · 🔥 trending: ${d.topics} topics, ${d.posts} people's posts${d.hidden ? ", " + d.hidden + " hidden" : ""}`, true);
 }
 async function loadStudio() {
   const d = await api("studio");
@@ -971,6 +988,17 @@ async function refresh() {
   loadGemma().catch(() => {});
   loadMedia().catch(() => {});
   loadStudio().catch(() => {});
+  loadChannels().catch(() => {});
+  $("chWrite").onclick = async () => {
+    say($("chState"), "⏳ Claude is writing (about 30 seconds)…", true);
+    try { const r = await api("channels/write", { ch: $("chPick").value }); say($("chState"), "✅ Posted: " + (r.post.te || r.post.en).slice(0, 140), true); }
+    catch (e) { say($("chState"), e.message, false); }
+  };
+  $("chPost").onclick = async () => {
+    const te = $("chText").value.trim(); if (!te) return;
+    try { await api("channels/post", { ch: $("chPick").value, te }); $("chText").value = ""; say($("chState"), "✅ Posted in the channel.", true); }
+    catch (e) { say($("chState"), e.message, false); }
+  };
   $("vidLoad").onclick = () => loadVideos().catch(e => alert(e.message));
   $("vidKind").onchange = () => loadVideos().catch(() => {});
   $("studioMake").onclick = async () => {

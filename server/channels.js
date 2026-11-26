@@ -254,5 +254,19 @@ Reply with only JSON: [{"title":"<the search>","te":"<simple Telugu, 1-2 sentenc
     return { channels: list().map(c => ({ id: c.id, en: c.en, posts: c.id === "studio" ? studioPosts().length : (db.posts[c.id] || []).length, last: c.last && c.last.at })),
       topics: db.topics.length, posts: db.tweets.filter(t => !t.removed).length, hidden: db.tweets.filter(t => t.hidden && !t.removed).length };
   }
-  return { handle, tick, status, write: chId => write(CHANNELS.find(c => c.id === chId)), refreshTopics, CHANNELS };
+  /** The team's own post (Teach page). */
+  function teamPost(ch, te, en) {
+    const c = WRITERS.find(x => x.id === ch);
+    if (!c) throw new Error("That channel takes no posts from here.");
+    const p = addPost(c.id, { te, en: en || te, by: "team" });
+    if (!p) throw new Error("Write the post first.");
+    return p;
+  }
+  async function writeNow(ch) {
+    const c = WRITERS.find(x => x.id === ch);
+    if (!c) throw new Error("No such channel.");
+    if (!claudeUp()) throw new Error("Claude is resting now. Try later.");
+    return write(c);
+  }
+  return { handle, tick, status, write: writeNow, teamPost, refreshTopics, CHANNELS };
 };
