@@ -679,6 +679,9 @@ class MainActivity : Activity() {
             Triple("🛡", t("Rules & child safety", "నియమాలు & పిల్లల భద్రత"), "/rules"),
             Triple("🔒", t("Privacy policy", "గోప్యతా విధానం"), "/privacy"),
             Triple("🗑", t("Delete my account", "నా అకౌంట్ తొలగించు"), "/delete-account"))
+            // the Play Store editions show only the public pages: no team pages, no office upload,
+            // and no app download (Google Play doesn't allow pointing to installs from outside the Play Store)
+            .filter { BuildConfig.SELF_UPDATE || it.third in setOf("", "/rules", "/privacy", "/delete-account") }
         val list = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = if (store.sitesOpen) View.VISIBLE else View.GONE }
         val arrow = Ico.view(this@MainActivity, if (store.sitesOpen) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, Ui.INK, 20, 36,
             t("Open or close the list", "లిస్ట్ తెరువు లేదా మూసేయి"), ui.round(Ui.TEAL_SOFT, 18))
