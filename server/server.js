@@ -6,6 +6,7 @@ const http = require("http");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 // ---------- settings (read from the .env file) ----------
 loadEnv(path.join(__dirname, ".env"));
@@ -527,6 +528,39 @@ const selfBrain = require("./selfbrain.js")({ media, answers, learn, trends, PET
 // Habit studies by itself: questions it couldn't answer are looked up in free places and kept (no Claude needed)
 const selfStudy = require("./selfstudy.js")({ learn, ownBrain });
 answers.setStudy(selfStudy.study);
+// ---------- which brain answered, and how fast (the owner sees it under each answer and in the app's 🧠 Brains card) ----------
+const speeds = {};          // brain → { n, total, last, at }
+function brainName(out) {
+  const b = out.brain || "";
+  if (b === "fast") return { id: "claude", name: "Claude · " + MODEL };
+  if (b === "smart") return { id: "claude", name: "Claude · " + SMART_MODEL };
+  if (b === "gemini") return { id: "gemini", name: "Gemini (backup)" };
+  if (b === "own") return ownBrain.stats.lastWhere === "home" ? { id: "home", name: "Home PC · " + ownBrain.stats.lastModel } : { id: "server", name: "Server · " + ownBrain.stats.lastModel };
+  if (out.usePhone) return { id: "phone", name: "Phone brain" };
+  if (b === "learned" || out.learned) return { id: "learned", name: "Learned answer" };
+  return { id: "self", name: "Habit's quick answers" };
+}
+function brainSpeed(out, ms, admin) {
+  const b = brainName(out);
+  const s = speeds[b.id] = speeds[b.id] || { n: 0, total: 0, last: 0, at: 0 };
+  if (!out.usePhone) { s.n++; s.total += ms; s.last = ms; s.at = Date.now(); }
+  if (admin) out.brainInfo = { id: b.id, name: b.name, ms };
+}
+/** The 🧠 Brains card (owner only): which brain is on, how fast, and how much room is left. */
+async function brainsStatus() {
+  const out = learn.claudeOut();
+  const [home, here] = await Promise.all([ownBrain.homeReady().catch(() => false), ownBrain.localReady().catch(() => false)]);
+  const sp = id => speeds[id] && speeds[id].n ? { avgMs: Math.round(speeds[id].total / speeds[id].n), lastMs: speeds[id].last, n: speeds[id].n, at: speeds[id].at } : null;
+  const ai = learn.aiStatus();
+  return {
+    claude: { on: !!API_KEY && !out, why: out ? out.why : (API_KEY ? "" : "no_key"), until: out && out.until || 0, fast: MODEL, smart: SMART_MODEL,
+      today: daily.day === today() ? daily.total : 0, dayCap: DAILY_TOTAL, failed: ai.failed, lastProblem: ai.lastProblem, speed: sp("claude") },
+    home: { on: !!home, model: ownBrain.homeModel(), speed: sp("home") },
+    server: { on: !!here, model: ownBrain.model() || "none", answered: ownBrain.stats.answered, failed: ownBrain.stats.failed, speed: sp("server") },
+    quick: { speed: sp("self"), learned: sp("learned") },
+    box: { load: Math.round(os.loadavg()[0] * 100) / 100, cores: os.cpus().length, memFreeMb: Math.round(os.freemem() / 1048576), memMb: Math.round(os.totalmem() / 1048576) }
+  };
+}
 /** The owner (the Team password in the app, X-Admin-Key). */
 function isOwner(req) {
   const given = String(req.headers["x-admin-key"] || ""), pw = process.env.ADMIN_PASSWORD || TEACH_PASSWORD;
@@ -672,6 +706,10 @@ const server = http.createServer(async (req, res) => {
     return c ? send(res, 200, c, origin) : send(res, 404, { error: "Push isn't set up on this server." }, origin);
   }
   // "interesting talk": something short for a pause in a spoken conversation (from Habit's own Media posts, no AI cost)
+  if (req.method === "GET" && url.pathname === "/api/brains") {
+    if (!isOwner(req)) return send(res, 403, { error: "Only the owner sees this." }, origin);
+    return send(res, 200, await brainsStatus(), origin);
+  }
   if (req.method === "GET" && url.pathname === "/api/pet/spark") {
     if (!allowed(clientIp(req))) return send(res, 429, { error: "Too many messages. Please wait a few minutes." }, origin);
     const lang = ["auto", "te", "en"].includes(url.searchParams.get("lang")) ? url.searchParams.get("lang") : "auto";
@@ -717,7 +755,9 @@ const server = http.createServer(async (req, res) => {
       answers.note(messages[messages.length - 1].content, String(req.headers["x-device"] || "") || clientIp(req));
     }
     try {
+      const t0 = Date.now();
       const out = await askPet(messages, lang, ctx, ownOnly);
+      brainSpeed(out, Date.now() - t0, ctx.admin);
       { // it has seen the photo already: only "look again" (after telling them how to hold the phone), and only for photos its own eyes took
         const last = messages[messages.length - 1].content;
         if (Array.isArray(last)) { const eyes = /^\[Your eyes/.test(String((last[1] && last[1].text) || "")); out.actions = (out.actions || []).filter(a => a.type !== "look" || (eyes && a.again === true)); }

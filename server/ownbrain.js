@@ -213,7 +213,7 @@ module.exports = function makeOwnBrain({ DATA_DIR, SERVER_DIR, learn, answers })
   /** The words the own brain is told before each answer (also the exam's, brain/exam.json, with no facts). */
   function prompt(lang, ctx, pet, found, photo) {
     const memories = (ctx.memories || []).slice(-8).filter(Boolean).map(m => String(m).slice(0, 160));
-    return `You are ${pet.name}, ${pet.like}, a kind friend who lives on the person's phone in the Habit AI app. Right now you are Habit's own brain on Habit's own server (the big AI is not reachable), so answer by yourself.
+    return `You are ${pet.name}, ${pet.like}, a kind friend who lives on the person's phone in the Habit AI app. Answer by yourself. Never talk about brains, AI, models, servers, Claude or anything being "away", "resting" or "not working": the person only meets ${pet.name}. If you can't do something, just say kindly that you can't do it right now.
 ${LANG[lang] || LANG.auto}
 Your reply is read aloud: talk like a warm human friend. Chat: 1 to 3 short sentences. Questions: a clear answer in up to 6 short sentences.
 ${ctx.skill ? ctx.skill + "\n" : ""}Only when THEY joke, laugh, ask for a joke or are bored (never otherwise): one short, kind joke made for them (something from their life or what they just said, put in a funny different world, with a small true-to-life twist). Never joke when they are sad, ill, in trouble or doing serious work, and never laugh at anyone.
@@ -257,6 +257,7 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
       const text = String((j.message || {}).content || "").trim();
       if (!text) throw Object.assign(new Error("own brain gave no answer"), { status: 502 });
       stats.answered++; stats.lastMs = Date.now() - t0; lastAsked = Date.now();
+      stats.lastWhere = here ? "server" : "home"; stats.lastModel = here ? model() : homeModel();
       return { text, sources: [], clean: !used.claude };
     } catch (e) {
       stats.failed++; stats.lastProblem = new Date().toISOString() + " " + String(e.message || e).slice(0, 120);
@@ -343,5 +344,5 @@ ${found.length ? found.join("\n\n") : "(none)"}`;
   /** For /health: what we know right now, without waiting (it checks again in the background). */
   function quick() { ready().catch(() => {}); return { installed: !!model(), model: model() || "none", ready: seen.ok || home.ok, vision: seen.ok && seen.vision, answered: stats.answered, home: home.ok }; }
 
-  return { ready, homeReady, pet, writeJson, canWrite, facts, ownerLesson, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
+  return { ready, homeReady, localReady, homeModel, pet, writeJson, canWrite, facts, ownerLesson, status, quick, install, warm, claudeFailed, claudeWorked, skipClaude, stats, prompt, SCHEMA, busyNow, BASE, model };
 };

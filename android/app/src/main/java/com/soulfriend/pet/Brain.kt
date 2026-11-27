@@ -76,9 +76,12 @@ class Brain(private val store: Store) {
                         // reminders, alarms, calls and apps: the phone's small brain does these itself
                         val dev = try { LocalBrain.device(store.ctx, store, text) } catch (e: Exception) { null }
                         if (dev != null) { keep(text, dev); onReply(dev); return@post }
+                        val t0 = System.currentTimeMillis()
                         TinyBrain.ask(store.ctx, TinyBrain.system(store, online = true), TinyBrain.prompt(store, history, text)) { t ->
                             if (t != null) {
                                 val j = JSONObject().put("reply", Talk.plain(t)).put("emotion", "happy").put("actions", JSONArray()).put("tiny", true)
+                                if (store.teamKey.isNotBlank()) j.put("brainInfo", JSONObject().put("id", "phone").put("name", "Phone brain").put("ms", System.currentTimeMillis() - t0))
+                                try { ChatDb.get(store.ctx).setKv("phoneBrainMs", (System.currentTimeMillis() - t0).toString()) } catch (e: Exception) { }
                                 keep(text, j); onReply(j)
                             } else { TinyBrain.failedAt = System.currentTimeMillis(); ask(text, onReply, onError, null, local) }   // the server answers this time
                         }
@@ -224,6 +227,7 @@ class Brain(private val store: Store) {
             c.requestMethod = "POST"; c.connectTimeout = 8_000; c.readTimeout = 20_000; c.doOutput = true
             c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             c.setRequestProperty("X-Device", store.deviceId)
+        if (store.teamKey.isNotBlank()) c.setRequestProperty("X-Admin-Key", store.teamKey)   // the owner: which brain answered, and how fast
             val body = JSONObject().put("text", Privacy.maybe(store, text)).put("pet", pet).put("mood", mood).toString()
             c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val code = c.responseCode
