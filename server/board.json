@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-27 00:00",
+ "updated": "2026-11-27 20:30",
  "note": "Our team board: what is done, and what comes next (who does it, with steps). Claude updates this every time we work; tick your tasks when you finish them.",
  "todo": [
   {
@@ -203,6 +203,13 @@
   }
  ],
  "done": [
+  {
+   "date": "2026-11-27",
+   "items": [
+    "🤫 The pet no longer tells people about big/small brains; riddles ask you for the answer (no 'comment box')",
+    "🧠 Owner-only: which brain answered + seconds under each pet answer, and a 🧠 Brains card on Home (Claude, home PC, server, phone brain, speed, today's use, server CPU/memory)"
+   ]
+  },
   {
    "date": "2026-11-26 (night)",
    "items": [
