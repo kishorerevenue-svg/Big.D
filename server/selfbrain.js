@@ -43,6 +43,12 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
   const same = (a, b) => a === b || (Math.min(a.length, b.length) >= (isTe(a) ? 2 : 4) && (a.startsWith(b) || b.startsWith(a)) && Math.abs(a.length - b.length) <= 4);
 
   /** Cuts a text at a sentence end before [n] characters. */
+  /** A Media post said by the pet: without the lines meant for the Media page ("answer in the comments", like, share, follow). */
+  function talkable(t) {
+    const PAGE = /కామెంట్|కామెంట్స్|comment|లైక్ చే|like and|షేర్ చే|share this|ఫాలో|follow us|subscribe|సబ్‌స్క్రైబ్/i;
+    return String(t || "").split(/(?<=[.!?।])\s+|\n+/).filter(x => !PAGE.test(x)).join(" ").replace(/\s{2,}/g, " ").trim()
+      + (/పొడుపు|riddle/i.test(String(t || "")) ? " " + "జవాబు ఏమిటో నాకు చెప్పండి! 😄" : "");
+  }
   function clip(t, n) {
     const s = String(t || "").replace(/\s+\n/g, "\n").trim();
     if (s.length <= n) return s;
@@ -117,8 +123,10 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
   }
   const time12 = ms => { const t = new Date(ms + 5.5 * 3600e3); const h = t.getUTCHours(); return `${h % 12 || 12}:${String(t.getUTCMinutes()).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
 
-  /** Why the big AI isn't answering, in a few kind words (and the real reason for the owner). */
+  /** Why the big AI isn't answering: only the owner hears about brains (and the real reason); others hear nothing about it,
+   *  except that their own free messages for today are used up. */
   function whyLine(info = {}, te, admin) {
+    if (!admin) return info.why === "your_day" ? say(te, "ఈ రోజు మీ ఉచిత మెసేజ్‌లు అయిపోయాయి, రేపు మళ్ళీ వస్తాయి.", "You've used today's free messages; they come back tomorrow.") : "";
     const until = info.until ? dateSay(istDate(info.until), te) : "";
     const lines = {
       resting: until ? say(te, `నా పెద్ద AI మెదడు ${until} వరకు విశ్రాంతి తీసుకుంటోంది.`, `My big AI brain is resting until ${until}.`)
@@ -381,7 +389,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
       const quick = chat(q, te, ctx, info) || panchangam(q, te) || festivals(q, te);
       if (quick) return quick;
       if (SYMPTOM.test(q) && re("\\b(i|me|my|mine|i'?ve|i'?m|have|having|got)\\b|నాకు|నా |మా |ఉంది|వచ్చింది|naku").test(q))
-        return R("health", say(te, "ఆరోగ్యం విషయంలో నా సొంత మెదడు సలహా ఇవ్వలేదు. 🙏 ఎక్కువగా ఉంటే దగ్గర్లోని డాక్టర్‌ని కలవండి; అత్యవసరమైతే వెంటనే 108 కి కాల్ చేయండి.",
+        return R("health", say(te, "ఆరోగ్యం విషయంలో ఇప్పుడు నేను సలహా ఇవ్వలేను. 🙏 ఎక్కువగా ఉంటే దగ్గర్లోని డాక్టర్‌ని కలవండి; అత్యవసరమైతే వెంటనే 108 కి కాల్ చేయండి.",
           "I can't give health advice on my own. 🙏 If it's bad, please see a doctor nearby; in an emergency, call 108 right away."), "sad");
       const sec = await sections(q, te, ctx);
       if (sec) return sec;
@@ -393,7 +401,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
       const k = learn && learn.searchKnowledge ? learn.searchKnowledge(q, 1, false, (ctx && ctx.uid) || "")[0] : null;
       if (k && k.of >= (strong ? 0.6 : 0.5) && k.score >= 2.5) return R("library", say(te, `📚 ${k.scope && k.scope.startsWith("my:") ? "మీ ఫైల్ " : ""}"${k.title}" ప్రకారం: `, `📚 From ${k.scope && k.scope.startsWith("my:") ? "your file " : ""}"${k.title}": `) + clip(k.text, 600), "thinking");
       const m = searchPosts(q, strong ? 0.66 : 0.5);
-      if (m) return R("media", say(te, "📰 హ్యాబిట్ మీడియాలో దీని గురించి: ", "📰 Here's what Habit Media has on this: ") + `${String(m.it.title).replace(/^[^\p{L}\p{N}]+/u, "")}\n${clip(m.it.body, 650)}`, "thinking", { sources: srcOf(m.it) });
+      if (m) return R("media", `${String(m.it.title).replace(/^[^\p{L}\p{N}]+/u, "")}\n${clip(talkable(m.it.body), 650)}`, "thinking", { sources: srcOf(m.it) });
       if (!strong || DEFINE.test(q)) { const wk = await wiki(q, te); if (wk) return wk; }
     } catch (e) { console.error("Self brain:", e.message); }
     // no answer: it studies this by itself in a few minutes, so the next time it knows
@@ -401,7 +409,8 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
     return strong ? null : fallback(te, ctx, info);
   }
   function fallback(te, ctx, info) {
-    return R("fallback", say(te, "క్షమించండి, దీనికి నా సొంత మెదడు దగ్గర ఇంకా జవాబు లేదు. ", "Sorry, my own brain doesn't have an answer for this yet. ") + whyLine(info, te, ctx && ctx.admin) + " " +
+    const why = whyLine(info, te, ctx && ctx.admin);
+    return R("fallback", say(te, "క్షమించండి, దీనికి నా దగ్గర ఇంకా జవాబు లేదు, త్వరలో నేర్చుకుంటాను. ", "Sorry, I don't have an answer for this yet; I'll learn it soon. ") + (why ? why + " " : "") +
       say(te, "ఈలోగా " + CAN(true) + " 🐾", "Meanwhile " + CAN(false) + " 🐾"), "shy", { weak: true });
   }
   /** A photo, and no AI that can see right now. */
@@ -445,7 +454,7 @@ module.exports = function makeSelfBrain({ media, answers, learn, trends, PETS = 
       told(dev, it);
       stats.skills.spark = (stats.skills.spark || 0) + 1;
       const title = String(it.title).replace(/^[^\p{L}\p{N}]+/u, "").trim();
-      return { reply: `${heads[cat]}${title}. ${clip(it.body, 170)} ఇంకా చెప్పమంటారా?`, emotion: cat === "fun" ? "laughing" : "excited",
+      return { reply: `${heads[cat]}${title}. ${clip(talkable(it.body), 170)} ఇంకా చెప్పమంటారా?`, emotion: cat === "fun" ? "laughing" : "excited",
         actions: [], sources: srcOf(it), brain: "self", own: true, self: true, spark: true };
     }
     return null;

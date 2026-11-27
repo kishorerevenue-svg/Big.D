@@ -1471,13 +1471,11 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         val src = json.optJSONArray("sources")
         if (src != null && src.length() > 0)
             extra += "\n\nSources:\n" + (0 until src.length()).joinToString("\n") { i -> src.optJSONObject(i)?.let { "• " + it.optString("title") + "\n  " + it.optString("url") } ?: "" }
-        // which brain answered, when it wasn't the big AI (shown, not spoken): once in a while, not under every answer
-        val note = (json.optBoolean("self") || json.optBoolean("own")) && store.onceEvery("brainNote", 12 * 3600_000L)
-        if (!note && (json.optBoolean("self") || json.optBoolean("own"))) { }
-        else if (json.optBoolean("self")) extra += "\n\n🧠 " + (if (store.lang == "te") "హ్యాబిట్ సొంత మెదడు, తను నేర్చుకున్న దాని నుంచి జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "Habit's own brain answered from what it has learned (the big AI is away right now)")
-        else if (json.optBoolean("own")) extra += "\n\n🧠 " + (if (store.lang == "te") "హ్యాబిట్ సొంత మెదడు జవాబిచ్చింది (పెద్ద AI ఇప్పుడు అందుబాటులో లేదు)" else "Habit's own brain answered (the big AI is away right now)")
-        else if (json.optBoolean("learned")) extra += "\n\n📚 " + (if (store.lang == "te") "ముందే సిద్ధం చేసిన జవాబు" else "A prepared answer to a common question")
-        else if (json.optBoolean("tiny")) extra += "\n\n📴 " + (if (store.lang == "te") "ఇంటర్నెట్ లేదు, ఫోన్‌లోని చిన్న మెదడు జవాబిచ్చింది" else "No internet: the tiny brain on this phone answered")
+        // which brain answered and how fast: only for the owner (the Team password is in the app). Others never hear about brains.
+        json.optJSONObject("brainInfo")?.takeIf { store.teamKey.isNotBlank() }?.let { b ->
+            val ico = when (b.optString("id")) { "claude" -> "🟢"; "home" -> "🏠"; "server" -> "🖥"; "phone" -> "📱"; "learned" -> "📚"; else -> "⚡" }
+            extra += "\n\n$ico ${b.optString("name")} · ${"%.1f".format(b.optLong("ms") / 1000.0)} s"
+        }
         val snd = json.optString("sound")
         val wait = if (snd.isNotEmpty() && store.voiceOn && store.funSounds) SoundFx.play(this, snd) else 0L
         val ask = sayInstead; sayInstead = null                 // "who should I call?" (several people have that name)

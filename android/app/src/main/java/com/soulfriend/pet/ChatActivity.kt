@@ -672,7 +672,10 @@ class ChatActivity : Activity() {
     private fun rateRow(m: ChatMsg, r: JSONObject, k: ChatTheme.Ink): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, 0) }
         val self = r.optString("b") == "self"
-        row.addView(ui.text("🧠 " + (if (self) t("Habit's own brain", "హ్యాబిట్ సొంత మెదడు") else t("Habit's own AI (Gemma)", "హ్యాబిట్ సొంత AI (జెమ్మా)")), 12f, k.sub), LinearLayout.LayoutParams(0, -2, 1f))
+        // which brain answered: only the owner sees it; everyone else is just asked whether the answer was good
+        val label = if (store.teamKey.isNotBlank()) "🧠 " + (if (self) t("Habit's own brain", "హ్యాబిట్ సొంత మెదడు") else t("Habit's own AI (Gemma)", "హ్యాబిట్ సొంత AI (జెమ్మా)"))
+            else if (store.learnShare) t("Was this answer good?", "ఈ జవాబు బాగుందా?") else ""
+        row.addView(ui.text(label, 12f, k.sub), LinearLayout.LayoutParams(0, -2, 1f))
         if (!store.learnShare) return row
         val rated = m.body.optString("_rated")
         if (rated.isNotEmpty()) { row.addView(ui.text(t("Thank you ", "ధన్యవాదాలు ") + (if (rated == "up") "👍" else "👎"), 12f, k.sub)); return row }
@@ -691,7 +694,7 @@ class ChatActivity : Activity() {
         val send = { fix: String ->
             rater.rate(r.optString("rid"), r.optString("q"), r.optString("r"), good, fix) { err ->
                 if (err != null) toast(err)
-                else { m.body.put("_rated", if (good) "up" else "down"); db.setBody(cid, m.id, m.body); render(); toast(t("Thank you! This helps Habit's own brain learn.", "ధన్యవాదాలు! దీంతో హ్యాబిట్ సొంత మెదడు నేర్చుకుంటుంది.")) }
+                else { m.body.put("_rated", if (good) "up" else "down"); db.setBody(cid, m.id, m.body); render(); toast(t("Thank you! This helps Habit learn.", "ధన్యవాదాలు! దీంతో హ్యాబిట్ నేర్చుకుంటుంది.")) }
             }
         }
         val go = {

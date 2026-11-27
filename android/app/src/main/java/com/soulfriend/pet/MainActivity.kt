@@ -573,6 +573,7 @@ class MainActivity : Activity() {
         hero.addView(PuppyView(this).apply { kind = PuppyView.kindOf(store.petKind); mood = if (PetService.running) PuppyView.Mood.EXCITED else PuppyView.Mood.HAPPY },
             LinearLayout.LayoutParams(dp(112), dp(112)))
         add(hero, 14)
+        if (store.teamKey.isNotBlank()) add(brainsBox(), 10)      // only the owner: which brain is on, speed, room left
         add(sitesBox(), 10)
         updateCard()?.let { add(it, 12) }
 
@@ -704,6 +705,68 @@ class MainActivity : Activity() {
 
         // last on the page: this version, and a check for a newer one (Habit AI Lite; Play Store editions update by themselves)
         add(versionCard(), 14)
+    }
+
+    // ---------- 🧠 Brains (only the owner, with the Team password in the app) ----------
+    private var brains: org.json.JSONObject? = null
+    private var brainsAt = 0L
+    private var brainsBusy = false
+    private fun loadBrains(force: Boolean = false) {
+        if (brainsBusy || (!force && System.currentTimeMillis() - brainsAt < 60_000)) return
+        brainsBusy = true
+        io.execute {
+            val r = Net.get(store, "/api/brains", mapOf("X-Admin-Key" to store.teamKey))
+            runOnUiThread { brainsBusy = false; brainsAt = System.currentTimeMillis(); brains = if (r.ok) r.json else org.json.JSONObject().put("error", r.error("Couldn't reach the server.")); if (tab == "home") render() }
+        }
+    }
+    private fun brainsBox(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(10), dp(12)); background = ui.round(Ui.SURFACE, 20, Ui.LINE)
+        val db = ChatDb.get(this@MainActivity)
+        val open = db.kv("set:brainsOpen") != "0"
+        val b = brains
+        if (open) loadBrains()
+        fun sec(ms: Long) = if (ms <= 0) "—" else "%.1f s".format(ms / 1000.0)
+        fun speed(o: org.json.JSONObject?) = o?.let { t("avg ", "సగటు ") + sec(it.optLong("avgMs")) + " · " + t("last ", "చివరి ") + sec(it.optLong("lastMs")) + " · ${it.optInt("n")}×" } ?: t("not used yet", "ఇంకా వాడలేదు")
+        val c = b?.optJSONObject("claude")
+        val on = c?.optBoolean("on") == true
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(ui.text("🧠 " + t("Brains", "మెదళ్ళు") + (if (b != null && b.optString("error").isBlank()) (if (on) "  🟢 Claude" else "  🟠 " + t("own brains", "సొంత మెదళ్ళు")) else "") , 15f, Ui.INK).apply { typeface = Fonts.heavy(context) }, LinearLayout.LayoutParams(0, -2, 1f))
+            if (open) addView(ui.text("↻", 18f, Ui.TEAL_DARK, bold = true).apply { gravity = Gravity.CENTER; contentDescription = t("Refresh", "రిఫ్రెష్"); setOnClickListener { loadBrains(true) } }, LinearLayout.LayoutParams(dp(36), dp(36)))
+            addView(Ico.view(this@MainActivity, if (open) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, Ui.INK, 20, 36, t("Open or close", "తెరువు లేదా మూసేయి"), ui.round(Ui.TEAL_SOFT, 18)), LinearLayout.LayoutParams(dp(36), dp(36)))
+            setOnClickListener { db.setKv("set:brainsOpen", if (open) "0" else "1"); render() }
+        })
+        if (!open) return@apply
+        addView(ui.text(t("Only you see this (Team password). Others never hear about brains.", "ఇది మీకు మాత్రమే కనిపిస్తుంది. ఇతరులకు మెదళ్ళ గురించి చెప్పదు."), 11.5f, Ui.MUTED))
+        if (b == null) { addView(ui.text(t("Loading…", "లోడ్ అవుతోంది…"), 13.5f, Ui.MUTED).apply { setPadding(0, dp(8), 0, 0) }); return@apply }
+        if (b.optString("error").isNotBlank()) { addView(ui.text(b.optString("error"), 13.5f, Ui.MUTED).apply { setPadding(0, dp(8), 0, 0) }); return@apply }
+        fun row(dot: String, name: String, state: String, detail: String) = addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(0, dp(9), 0, 0)
+            addView(ui.text("$dot  $name  ·  $state", 14f, Ui.INK, bold = true))
+            if (detail.isNotBlank()) addView(ui.text(detail, 12.5f, Ui.MUTED).apply { setPadding(dp(26), dp(2), 0, 0) })
+        })
+        if (c != null) {
+            val why = when (c.optString("why")) { "limit" -> t("monthly limit used up", "నెల పరిమితి అయిపోయింది"); "credit" -> t("credit used up", "క్రెడిట్ అయిపోయింది")
+                "key" -> t("key wrong or expired", "కీ తప్పు/గడువు ముగిసింది"); "no_key" -> t("no key on the server", "సర్వర్‌లో కీ లేదు"); "" -> ""; else -> t("account problem", "అకౌంట్ సమస్య") }
+            val until = c.optLong("until").takeIf { it > 0 }?.let { " · " + t("back on ", "తిరిగి ") + java.text.SimpleDateFormat("d MMM", Locale.ENGLISH).format(java.util.Date(it)) } ?: ""
+            row(if (on) "🟢" else "🔴", "Claude", if (on) t("ON", "ఆన్") else t("resting", "విశ్రాంతి") + (if (why.isNotBlank()) ": $why" else "") + until,
+                "${c.optString("fast").removePrefix("claude-")} / ${c.optString("smart").removePrefix("claude-")} · " + speed(c.optJSONObject("speed")) +
+                "\n" + t("Today: ", "ఈరోజు: ") + "${c.optInt("today")} / ${c.optInt("dayCap")} " + t("messages", "మెసేజ్‌లు") +
+                (if (c.optInt("failed") > 0) " · ${c.optInt("failed")} " + t("failed", "ఫెయిల్") else ""))
+        }
+        b.optJSONObject("home")?.let { h -> row(if (h.optBoolean("on")) "🟢" else "⚪", t("Home PC", "ఇంటి PC") + " · " + h.optString("model"), if (h.optBoolean("on")) t("ON", "ఆన్") else t("off", "ఆఫ్"), speed(h.optJSONObject("speed"))) }
+        b.optJSONObject("server")?.let { v -> row(if (v.optBoolean("on")) "🟢" else "⚪", t("Server brain", "సర్వర్ మెదడు") + " · " + v.optString("model"), if (v.optBoolean("on")) t("ON", "ఆన్") else t("off", "ఆఫ్"),
+            speed(v.optJSONObject("speed")) + " · " + t("answered ", "జవాబులు ") + v.optInt("answered")) }
+        val phone = TinyBrain.installed(this@MainActivity)
+        row(if (phone) "🟢" else "⚪", t("Phone brain (Habit Brain app)", "ఫోన్ మెదడు (Habit Brain యాప్)"), if (phone) t("installed", "ఉంది") else t("not installed", "లేదు"),
+            db.kv("phoneBrainMs").toLongOrNull()?.let { t("last ", "చివరి ") + sec(it) } ?: "")
+        b.optJSONObject("quick")?.let { q -> row("⚡", t("Quick answers (no AI)", "తక్షణ జవాబులు (AI లేకుండా)"), "", speed(q.optJSONObject("speed"))) }
+        b.optJSONObject("box")?.let { x ->
+            val load = x.optDouble("load"); val cores = x.optInt("cores").coerceAtLeast(1)
+            val busy = (load / cores * 100).toInt().coerceIn(0, 999)
+            row(if (busy < 70) "🟢" else if (busy < 100) "🟠" else "🔴", t("Server room", "సర్వర్ సామర్థ్యం"), t("CPU busy ", "CPU పని ") + "$busy%",
+                t("Memory free ", "మెమరీ ఖాళీ ") + "%.1f / %.1f GB".format(x.optInt("memFreeMb") / 1024.0, x.optInt("memMb") / 1024.0))
+        }
     }
 
     /** 🌐 Our websites on Home, under the pet: every page of the Habit website in one place, one tap each.
