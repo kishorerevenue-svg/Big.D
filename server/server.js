@@ -561,6 +561,12 @@ async function brainsStatus() {
     box: { load: Math.round(os.loadavg()[0] * 100) / 100, cores: os.cpus().length, memFreeMb: Math.round(os.freemem() / 1048576), memMb: Math.round(os.totalmem() / 1048576) }
   };
 }
+/** The owner for the 🧠 Brains card and the brain line under answers: the admin password or the Teach password, spaces ignored. */
+function ownerOrTeach(req) {
+  const given = String(req.headers["x-admin-key"] || "").trim();
+  const same = (a, b) => !!a && !!b && crypto.timingSafeEqual(crypto.createHash("sha256").update(a).digest(), crypto.createHash("sha256").update(b).digest());
+  return same(given, String(process.env.ADMIN_PASSWORD || "").trim()) || same(given, String(TEACH_PASSWORD || "").trim());
+}
 /** The owner (the Team password in the app, X-Admin-Key). */
 function isOwner(req) {
   const given = String(req.headers["x-admin-key"] || ""), pw = process.env.ADMIN_PASSWORD || TEACH_PASSWORD;
@@ -707,10 +713,7 @@ const server = http.createServer(async (req, res) => {
   }
   // "interesting talk": something short for a pause in a spoken conversation (from Habit's own Media posts, no AI cost)
   if (req.method === "GET" && url.pathname === "/api/brains") {
-    // the owner: the admin password or the Teach password, extra spaces ignored
-    const given = String(req.headers["x-admin-key"] || "").trim();
-    const same = (a, b) => !!a && !!b && crypto.timingSafeEqual(crypto.createHash("sha256").update(a).digest(), crypto.createHash("sha256").update(b).digest());
-    if (!(same(given, String(process.env.ADMIN_PASSWORD || "").trim()) || same(given, String(TEACH_PASSWORD || "").trim())))
+    if (!ownerOrTeach(req))
       return send(res, 403, { error: "The Team password saved in the app doesn't match the server. Tap KK › Your pet and settings › Advanced › Habit team password: type your admin (or Teach page) password again and tap Save password. · యాప్‌లో సేవ్ చేసిన టీమ్ పాస్‌వర్డ్ సర్వర్‌తో సరిపోలలేదు. KK › మీ పెట్, సెట్టింగ్స్ › Advanced లో మళ్ళీ టైప్ చేసి Save నొక్కండి." }, origin);
     return send(res, 200, await brainsStatus(), origin);
   }
@@ -761,7 +764,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const t0 = Date.now();
       const out = await askPet(messages, lang, ctx, ownOnly);
-      brainSpeed(out, Date.now() - t0, ctx.admin);
+      brainSpeed(out, Date.now() - t0, ctx.admin || ownerOrTeach(req));
       { // it has seen the photo already: only "look again" (after telling them how to hold the phone), and only for photos its own eyes took
         const last = messages[messages.length - 1].content;
         if (Array.isArray(last)) { const eyes = /^\[Your eyes/.test(String((last[1] && last[1].text) || "")); out.actions = (out.actions || []).filter(a => a.type !== "look" || (eyes && a.again === true)); }
