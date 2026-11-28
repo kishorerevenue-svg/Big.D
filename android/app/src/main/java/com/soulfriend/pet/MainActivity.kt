@@ -933,7 +933,11 @@ class MainActivity : Activity() {
     private fun togglePet() {
         if (PetService.running) stopService(Intent(this, PetService::class.java))
         else if (!Settings.canDrawOverlays(this)) { toast("First allow \"Show over other apps\" on the Pet page."); go("pet"); return }
-        else { startForegroundService(Intent(this, PetService::class.java)); moveTaskToBack(true) }
+        else {
+            startForegroundService(Intent(this, PetService::class.java)); moveTaskToBack(true)
+            // the pet comes and listens at once (after its hello, the first few times)
+            content.postDelayed({ try { startService(Intent(this, PetService::class.java).setAction(PetService.ACTION_LISTEN)) } catch (e: Exception) { } }, 1100)
+        }
         content.postDelayed({ render() }, 400)
     }
 
