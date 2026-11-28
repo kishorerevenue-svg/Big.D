@@ -209,7 +209,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble(PuppyView.hello(pet.kind), 4000) }
             ACTION_ASK -> { showPetAgain(); intent.getStringExtra("text")?.takeIf { it.isNotBlank() }?.let { q ->
-                pet.mood = PuppyView.Mood.THINKING; showBubble("“$q”\n…", 0); askBrain(q, byVoice = store.voiceOn, context = intent.getStringExtra("context") ?: "") } }
+                pet.mood = PuppyView.Mood.THINKING; showBubble("“$q”\n…", 0); askBrain(q, byVoice = store.voiceOn, context = intent.getStringExtra("context") ?: "", ears = false) } }
             ACTION_LOOK_DONE -> lookDone(intent.getStringExtra("path"), intent.getStringExtra("ask") ?: "", intent.getBooleanExtra("back", true), intent.getStringExtra("problem") ?: "")
         }
         return START_STICKY
@@ -1341,7 +1341,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         recognizer?.let { r -> recDone = r; try { r.cancel() } catch (e: Exception) { } }
         endEar(); setListening(false); unhushSoon(); lastPartial = ""
     }
-    private fun askBrain(text: String, byVoice: Boolean, context: String = "") {
+    private fun askBrain(text: String, byVoice: Boolean, context: String = "", ears: Boolean = true) {
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
         showBubble("“$text”\n…", 0)
@@ -1349,7 +1349,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         // a minute it gives up and says so
         val no = ++askSeq; askNo = no
         val te = te()
-        if (byVoice) main.postDelayed({ earsWhileThinking(no) }, 700)
+        if (byVoice && ears) main.postDelayed({ earsWhileThinking(no) }, 700)      // (only for spoken questions)
         main.postDelayed({ if (askNo == no) showBubble("“$text”\n" + (if (te) "🔎 చూస్తున్నాను, ఒక్క క్షణం…" else "🔎 Looking it up, one moment…"), 0) }, 5_000)
         main.postDelayed({ if (askNo == no) showBubble("“$text”\n" + (if (te) "⏳ ఇంకా వెతుకుతున్నాను… నెట్ నెమ్మదిగా ఉంది" else "⏳ Still looking… the network is slow"), 0) }, 20_000)
         main.postDelayed({
