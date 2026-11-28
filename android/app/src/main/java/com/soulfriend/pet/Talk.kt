@@ -142,11 +142,15 @@ object Talk {
     private val CALL_START = Regex("^(?:$HB[,\\s]+)?(?:కాల్|ఫోన్|call|phone|dial|ring)\\s+", RegexOption.IGNORE_CASE)
     // "శివ ప్రసాద్ కాల్ టు శివ ప్రసాద్", "please call to Roja": "call to" in the middle
     private val CALL_MID = Regex("(?:^|\\s)(?:కాల్|ఫోన్|call|phone)\\s+(?:టు|తు|to)\\s+\\S", RegexOption.IGNORE_CASE)
+    private val NOT_A_CALL = Regex("ఏమిటి|ఏంటి|ఎందుకు|ఎలా|ఎప్పుడు|అంటే|అర్థం|చేసింది|చేశాడు|చేసాడు|చేశారు|చేసారు|చేశాను|చేసాను|చేశావా|చేసావా|వచ్చింది|వచ్చిందా|రాలేదు|ఎత్తలేదు|\\bwhat\\b|\\bwhy\\b|\\bhow\\b|\\bwhen\\b|meaning|\\bcalled\\b|\\bcalling me\\b|action|missed", RegexOption.IGNORE_CASE)
     private val CALL_END = Regex("(?:కాల్|ఫోన్|call|phone)\\s*(?:చెయ్యి|చేయి|చెయ్|చేయ్|చేయండి|చెయ్యండి|చెయ్యవా|చేస్తావా|కొట్టు|కలుపు|cheyyi|chey|cheyi|cheyyu|cheyandi|kottu|cheyyava)$", RegexOption.IGNORE_CASE)
     fun plainCall(text: String, petName: String = ""): String? {
         val t = text.trim().trimEnd('.', '!', '।', '?')
         if (t.length > 80 || HABIT_WAY.containsMatchIn(t)) return null
         if (!CALL_START.containsMatchIn(t) && !CALL_END.containsMatchIn(t) && !CALL_MID.containsMatchIn(t)) return null
+        // talk ABOUT a call is not a call: questions, things that already happened, "call to action". Those go to the
+        // brain, which thinks about what they mean (and still makes the call if that is what they want)
+        if (NOT_A_CALL.containsMatchIn(t)) return null
         val pn = petName.lowercase().split(Regex("[,\\s]+")).filter { it.length >= 2 }
         val words = t.replace(Regex("[,،!?।\"']"), " ").split(Regex("\\s+")).filter { it.isNotBlank() }
             .filter { w -> !CALL_FILL.matches(w) && w.lowercase() !in pn && !Regex("^(?:టు|dial|ring|phone|number|నంబర్|నెంబర్|kottu|chey.*)$", RegexOption.IGNORE_CASE).matches(w) }
