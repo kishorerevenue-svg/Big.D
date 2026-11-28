@@ -707,7 +707,11 @@ const server = http.createServer(async (req, res) => {
   }
   // "interesting talk": something short for a pause in a spoken conversation (from Habit's own Media posts, no AI cost)
   if (req.method === "GET" && url.pathname === "/api/brains") {
-    if (!isOwner(req)) return send(res, 403, { error: "Only the owner sees this." }, origin);
+    // the owner: the admin password or the Teach password, extra spaces ignored
+    const given = String(req.headers["x-admin-key"] || "").trim();
+    const same = (a, b) => !!a && !!b && crypto.timingSafeEqual(crypto.createHash("sha256").update(a).digest(), crypto.createHash("sha256").update(b).digest());
+    if (!(same(given, String(process.env.ADMIN_PASSWORD || "").trim()) || same(given, String(TEACH_PASSWORD || "").trim())))
+      return send(res, 403, { error: "The Team password saved in the app doesn't match the server. Tap KK › Your pet and settings › Advanced › Habit team password: type your admin (or Teach page) password again and tap Save password. · యాప్‌లో సేవ్ చేసిన టీమ్ పాస్‌వర్డ్ సర్వర్‌తో సరిపోలలేదు. KK › మీ పెట్, సెట్టింగ్స్ › Advanced లో మళ్ళీ టైప్ చేసి Save నొక్కండి." }, origin);
     return send(res, 200, await brainsStatus(), origin);
   }
   if (req.method === "GET" && url.pathname === "/api/pet/spark") {
