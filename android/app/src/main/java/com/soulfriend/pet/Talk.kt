@@ -140,18 +140,23 @@ object Talk {
     // A plain phone call, done at once by the phone (no waiting for the server): "కాల్ టు సాంబ వీఆర్ఓ", "call Roja",
     // "రోజాకి కాల్ చెయ్", "Roja ki phone kottu". Only asking for a call: "రోజా నిన్న కాల్ చేసింది" is not. Returns who, or null.
     private val CALL_START = Regex("^(?:$HB[,\\s]+)?(?:కాల్|ఫోన్|call|phone|dial|ring)\\s+", RegexOption.IGNORE_CASE)
+    // "శివ ప్రసాద్ కాల్ టు శివ ప్రసాద్", "please call to Roja": "call to" in the middle
+    private val CALL_MID = Regex("(?:^|\\s)(?:కాల్|ఫోన్|call|phone)\\s+(?:టు|తు|to)\\s+\\S", RegexOption.IGNORE_CASE)
     private val CALL_END = Regex("(?:కాల్|ఫోన్|call|phone)\\s*(?:చెయ్యి|చేయి|చెయ్|చేయ్|చేయండి|చెయ్యండి|చెయ్యవా|చేస్తావా|కొట్టు|కలుపు|cheyyi|chey|cheyi|cheyyu|cheyandi|kottu|cheyyava)$", RegexOption.IGNORE_CASE)
     fun plainCall(text: String, petName: String = ""): String? {
         val t = text.trim().trimEnd('.', '!', '।', '?')
         if (t.length > 80 || HABIT_WAY.containsMatchIn(t)) return null
-        if (!CALL_START.containsMatchIn(t) && !CALL_END.containsMatchIn(t)) return null
+        if (!CALL_START.containsMatchIn(t) && !CALL_END.containsMatchIn(t) && !CALL_MID.containsMatchIn(t)) return null
         val pn = petName.lowercase().split(Regex("[,\\s]+")).filter { it.length >= 2 }
         val words = t.replace(Regex("[,،!?।\"']"), " ").split(Regex("\\s+")).filter { it.isNotBlank() }
             .filter { w -> !CALL_FILL.matches(w) && w.lowercase() !in pn && !Regex("^(?:టు|dial|ring|phone|number|నంబర్|నెంబర్|kottu|chey.*)$", RegexOption.IGNORE_CASE).matches(w) }
             .map { w -> w.replace(Regex("(?:గారికి|గారికీ|కి|కీ|కు|కూ)$"), "").replace(Regex("(?:ki|ku)$", RegexOption.IGNORE_CASE), "") }
             .filter { it.length >= 2 || it.all { c -> c.isDigit() } }
-        if (words.isEmpty() || words.size > 4) return null
-        return words.joinToString(" ")
+        // the name said twice ("శివ ప్రసాద్ కాల్ టు శివ ప్రసాద్"): once
+        val half = words.size / 2
+        val once = if (words.size % 2 == 0 && half > 0 && words.take(half).map { it.lowercase() } == words.drop(half).map { it.lowercase() }) words.take(half) else words.distinctBy { it.lowercase() }
+        if (once.isEmpty() || once.size > 4) return null
+        return once.joinToString(" ")
     }
 
     /** Only the pet's name was said ("హ్యాబిట్", "Habit?", "హే హ్యాబిట్"): it should just answer "yes?" and listen. */

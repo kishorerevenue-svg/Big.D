@@ -112,6 +112,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private var greeting = false                     // its hello is about to be said (listening waits for it)
     override fun onCreate() {
         super.onCreate()
         running = true
@@ -128,7 +129,8 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         tts = TextToSpeech(this, this)
         SoundFx.load(this)
         // the hello and how to close it: only the first few times (after that it just appears, quietly)
-        if (store.introDue()) say(if (te()) "హాయ్! నేను హ్యాబిట్. నన్ను తాకి మాట్లాడండి. మూసేయాలంటే నన్ను కిందకి ✕ దగ్గరికి లాగండి."
+        greeting = store.introDue()
+        if (greeting) say(if (te()) "హాయ్! నేను హ్యాబిట్. నన్ను తాకి మాట్లాడండి. మూసేయాలంటే నన్ను కిందకి ✕ దగ్గరికి లాగండి."
             else "Hi! I'm Habit AI. Tap me and talk! To close me, drag me down to the ✕.", PuppyView.Mood.EXCITED)
         main.postDelayed(wakeTick, 6000)
         watchUnlock()
@@ -185,7 +187,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     prefix = intent.getStringExtra("prefix") ?: "⏰ ", local = intent.getBooleanExtra("local", false))
             }
             ACTION_HUSH -> hush()
-            ACTION_LISTEN -> startListening()
+            ACTION_LISTEN -> if (pet.talking || greeting) {
+                greeting = false
+                val go = { startListening() }
+                afterSpeech = go
+                main.postDelayed({ if (afterSpeech === go && !pet.talking && !listening) { afterSpeech = null; go() } }, 12_000)   // (the voice never started)
+            } else if (!listening) startListening()
             ACTION_PHOTO -> { showPetAgain(); intent.getStringExtra("path")?.let { sendPhoto(it, intent.getBooleanExtra("screen", false)) } }
             ACTION_REMOTE -> { if (store.remoteOn) showRemote() else hideRemote() }
             ACTION_VOICE_MODE -> startVoiceMode()
@@ -202,7 +209,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             }
             ACTION_PET -> { pet.kind = PuppyView.kindOf(store.petKind); pet.mood = PuppyView.Mood.EXCITED; showBubble(PuppyView.hello(pet.kind), 4000) }
             ACTION_ASK -> { showPetAgain(); intent.getStringExtra("text")?.takeIf { it.isNotBlank() }?.let { q ->
-                pet.mood = PuppyView.Mood.THINKING; showBubble("“$q”\n…", 0); askBrain(q, byVoice = store.voiceOn, context = intent.getStringExtra("context") ?: "") } }
+                pet.mood = PuppyView.Mood.THINKING; showBubble("“$q”\n…", 0); askBrain(q, byVoice = store.voiceOn, context = intent.getStringExtra("context") ?: "", ears = false) } }
             ACTION_LOOK_DONE -> lookDone(intent.getStringExtra("path"), intent.getStringExtra("ask") ?: "", intent.getBooleanExtra("back", true), intent.getStringExtra("problem") ?: "")
         }
         return START_STICKY
@@ -1013,6 +1020,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 readyAt = System.currentTimeMillis()
                 if (gameSmall) toCorner()
+                if (thinkingEars) { pet.mood = PuppyView.Mood.THINKING; showBubble("“$lastQuestion”\n… 🎙", 0); return }
                 showBubble(when {
                     gameSmall && unclearTries == 0 -> "🎙"
                     voiceMode -> "🎙 Say: next · previous · pause · like\n(tap me to stop)"
@@ -1029,6 +1037,13 @@ class PetService : Service(), TextToSpeech.OnInitListener {
             override fun onEndOfSpeech() { setListening(false) }
             override fun onError(error: Int) {
                 if (!take(rec)) return
+                if (thinkingEars && lastPartial.isBlank()) {            // nothing new said while it thinks: keep the ears open quietly
+                    setListening(false); endEar(); pet.mood = PuppyView.Mood.THINKING
+                    val no = askNo
+                    thinkingEars = false
+                    if (no != 0) main.postDelayed({ earsWhileThinking(no) }, 500)
+                    return
+                }
                 // it showed their words, then the voice typing failed (net, busy, cut off): those words are the question
                 // (before, it started listening again and the words were lost)
                 if (lastPartial.isNotBlank() && !voiceMode && !tapStopped) { val p = lastPartial; lastPartial = ""; heardWords(p); return }
@@ -1080,6 +1095,12 @@ class PetService : Service(), TextToSpeech.OnInitListener {
                     ?: lastPartial.takeIf { it.isNotBlank() }       // the words it showed are what they said
                 brain.heardAlt = all.drop(1)
                 lastPartial = ""
+                if (thinkingEars && heard.isNullOrBlank()) {
+                    setListening(false); pet.mood = PuppyView.Mood.THINKING
+                    val no = askNo; thinkingEars = false
+                    if (no != 0) main.postDelayed({ earsWhileThinking(no) }, 500)
+                    return
+                }
                 if (voiceMode) { onVoiceModeHeard(heard.orEmpty()); return }
                 if (tapStopped) { tapStopped = false; replyVoice = false; return }
                 if (heard.isNullOrBlank()) {
@@ -1173,6 +1194,15 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         endEar(learn = true)
         unhushSoon()
         setListening(false)
+        // new words while it was still thinking: the old question is dropped; "stop" / "ఆపు" / "వద్దు" just stops
+        if (thinkingEars) {
+            thinkingEars = false
+            askNo = 0
+            if (Regex("^\\s*(stop|cancel|leave it|wait|ఆపు|ఆగు|ఆపేయ్|ఆపేయి|వద్దు|వదిలేయ్|వదిలెయ్|చాలు|క్యాన్సల్)\\b", RegexOption.IGNORE_CASE).containsMatchIn(p) ||
+                Regex("^\\s*(ఆపు|ఆగు|వద్దు|చాలు)").containsMatchIn(p)) {
+                pet.mood = PuppyView.Mood.HAPPY; showBubble(if (te()) "సరే, ఆపాను. 👍" else "Okay, stopped. 👍", 3000); return
+            }
+        }
         if (voiceMode) { onVoiceModeHeard(p); return }
         if (tapStopped) { tapStopped = false; replyVoice = false; return }
         wokeByEar = false
@@ -1296,7 +1326,22 @@ class PetService : Service(), TextToSpeech.OnInitListener {
 
     /** Asks the brain. [context]: what is on Habit's own screen now (a game's question), told to the brain with the question. */
     private var askNo = 0                            // which question is waiting for its answer (0: none)
-    private fun askBrain(text: String, byVoice: Boolean, context: String = "") {
+    /** It keeps its ears open while it thinks (like a person): new words replace the question; "stop" / "ఆపు" drops it. */
+    private var thinkingEars = false
+    private fun earsWhileThinking(no: Int) {
+        if (askNo != no || listening || pet.talking || voiceMode || onPhone() || CallManager.active != null || GamesActivity.shown != null) return
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        thinkingEars = true
+        startListening(again = true)
+    }
+    /** The answer came while it was listening: let the microphone go quietly (no "didn't hear"), then answer. */
+    private fun closeThinkingEars() {
+        if (!thinkingEars) return
+        thinkingEars = false
+        recognizer?.let { r -> recDone = r; try { r.cancel() } catch (e: Exception) { } }
+        endEar(); setListening(false); unhushSoon(); lastPartial = ""
+    }
+    private fun askBrain(text: String, byVoice: Boolean, context: String = "", ears: Boolean = true) {
         lastQuestion = text
         pet.mood = PuppyView.Mood.THINKING
         showBubble("“$text”\n…", 0)
@@ -1304,19 +1349,20 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         // a minute it gives up and says so
         val no = ++askSeq; askNo = no
         val te = te()
+        if (byVoice && ears) main.postDelayed({ earsWhileThinking(no) }, 700)      // (only for spoken questions)
         main.postDelayed({ if (askNo == no) showBubble("“$text”\n" + (if (te) "🔎 చూస్తున్నాను, ఒక్క క్షణం…" else "🔎 Looking it up, one moment…"), 0) }, 5_000)
         main.postDelayed({ if (askNo == no) showBubble("“$text”\n" + (if (te) "⏳ ఇంకా వెతుకుతున్నాను… నెట్ నెమ్మదిగా ఉంది" else "⏳ Still looking… the network is slow"), 0) }, 20_000)
         main.postDelayed({
             if (askNo != no) return@postDelayed
-            askNo = 0
+            askNo = 0; closeThinkingEars()
             pet.mood = PuppyView.Mood.SAD
             showBubble(if (te) "జవాబు రావడానికి చాలా సమయం పడుతోంది. నెట్ చూసి మళ్లీ అడగండి." else "The answer is taking too long. Please check the internet and ask again.", 7000)
             if (convoOn) endConvo(quiet = true)
         }, 60_000)
         val ask = {
-            brain.ask(if (context.isBlank()) text else "[$context]\n$text", onReply = { json -> if (askNo == no) { askNo = 0; handleReply(json, byVoice = byVoice) } }, onError = { err ->
+            brain.ask(if (context.isBlank()) text else "[$context]\n$text", onReply = { json -> if (askNo == no) { askNo = 0; closeThinkingEars(); handleReply(json, byVoice = byVoice) } }, onError = { err ->
                 if (askNo == no) {
-                    askNo = 0
+                    askNo = 0; closeThinkingEars()
                     pet.mood = PuppyView.Mood.SAD; showBubble(err, 7000)
                     if (convoOn) endConvo(quiet = true)
                 }
@@ -1325,7 +1371,7 @@ class PetService : Service(), TextToSpeech.OnInitListener {
         // it already started thinking about these words while they were talking: that answer (no second wait)
         if (context.isBlank() && useDraft(text) { j ->
                 if (askNo == no) {
-                    if (j == null) ask() else { askNo = 0; brain.adopt(text, j); handleReply(j, byVoice = byVoice) }
+                    if (j == null) ask() else { askNo = 0; closeThinkingEars(); brain.adopt(text, j); handleReply(j, byVoice = byVoice) }
                 }
             }) return
         ask()
